@@ -406,9 +406,13 @@ struct VoiceView: View {
 
             Group {
                 if let ruleID = app.ruleStore.selectedRuleID,
-                   app.ruleStore.rules.contains(where: { $0.id == ruleID }) {
-                    RuleEditorView(ruleID: ruleID)
-                        .id(ruleID)
+                   let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID }) {
+                    RuleEditorView(
+                        rule: Binding(
+                            get: { app.ruleStore.rules[idx] },
+                            set: { app.ruleStore.rules[idx] = $0 }
+                        )
+                    )
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "list.bullet.rectangle")
@@ -513,17 +517,13 @@ struct RuleRowView: View {
 }
 
 struct RuleEditorView: View {
-    let ruleID: UUID
+    @Binding var rule: Rule
     @EnvironmentObject var app: AppModel
 
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
         }
-    }
-
-    private var ruleIndex: Int? {
-        app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
     }
 
     private func serverName(for serverId: String) -> String {
@@ -534,34 +534,34 @@ struct RuleEditorView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    TextField("Rule Name", text: binding(for: \.name, default: ""))
+                    TextField("Rule Name", text: $rule.name)
                         .textFieldStyle(.roundedBorder)
                         .font(.title2.weight(.semibold))
 
                     RuleGroupSection(title: "When", systemImage: "bolt.fill") {
                         TriggerSectionView(
-                            triggerType: binding(for: \.trigger, default: .userJoinedVoice),
-                            triggerServerId: binding(for: \.triggerServerId, default: ""),
-                            triggerVoiceChannelId: binding(for: \.triggerVoiceChannelId, default: ""),
-                            includeStageChannels: binding(for: \.includeStageChannels, default: true),
+                            triggerType: $rule.trigger,
+                            triggerServerId: $rule.triggerServerId,
+                            triggerVoiceChannelId: $rule.triggerVoiceChannelId,
+                            includeStageChannels: $rule.includeStageChannels,
                             serverIds: serverIds,
                             serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[binding(for: \.triggerServerId, default: "").wrappedValue] ?? []
+                            voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "If", systemImage: "line.3.horizontal.decrease.circle") {
                         ConditionsSectionView(
-                            conditions: binding(for: \.conditions, default: []),
+                            conditions: $rule.conditions,
                             serverIds: serverIds,
                             serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[binding(for: \.triggerServerId, default: "").wrappedValue] ?? []
+                            voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "Do", systemImage: "paperplane.fill") {
                         ActionsSectionView(
-                            actions: binding(for: \.actions, default: []),
+                            actions: $rule.actions,
                             serverIds: serverIds,
                             serverName: serverName(for:),
                             textChannelsByServer: app.availableTextChannelsByServer
@@ -587,76 +587,69 @@ struct RuleEditorView: View {
         .onAppear {
             initializeRuleDefaultsIfNeeded()
         }
-        .onChange(of: binding(for: \.trigger, default: .userJoinedVoice).wrappedValue) { newTrigger in
+        .onChange(of: rule) { _ in
+            app.ruleStore.scheduleAutoSave()
+        }
+        .onChange(of: rule.trigger) { newTrigger in
             applyTriggerDefaults(for: newTrigger)
         }
     }
 
-    private func binding<Value>(for keyPath: WritableKeyPath<Rule, Value>, default defaultValue: Value) -> Binding<Value> {
-        Binding(
-            get: {
-                guard let idx = ruleIndex else { return defaultValue }
-                return app.ruleStore.rules[idx][keyPath: keyPath]
-            },
-            set: { newValue in
-                guard let idx = ruleIndex else { return }
-                app.ruleStore.rules[idx][keyPath: keyPath] = newValue
-                app.ruleStore.scheduleAutoSave()
-            }
-        )
-    }
-
     private func initializeRuleDefaultsIfNeeded() {
-        mutateRule { rule in
-            if rule.triggerServerId.isEmpty {
-                rule.triggerServerId = serverIds.first ?? ""
-            }
+        var didChange = false
 
-            if rule.actions.isEmpty {
-                var action = RuleAction()
-                action.serverId = serverIds.first ?? ""
-                let channels = app.availableTextChannelsByServer[action.serverId] ?? []
-                action.channelId = channels.first?.id ?? ""
-                action.message = rule.trigger.defaultMessage
-                rule.actions = [action]
-            } else {
-                if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
-                    rule.actions[0].serverId = first
-                }
-                if rule.actions[0].channelId.isEmpty {
-                    let channels = app.availableTextChannelsByServer[rule.actions[0].serverId] ?? []
-                    if let first = channels.first {
-                        rule.actions[0].channelId = first.id
-                    }
+        if rule.triggerServerId.isEmpty {
+            rule.triggerServerId = serverIds.first ?? ""
+            didChange = true
+        }
+
+        if rule.actions.isEmpty {
+            var action = RuleAction()
+            action.serverId = serverIds.first ?? ""
+            let channels = app.availableTextChannelsByServer[action.serverId] ?? []
+            action.channelId = channels.first?.id ?? ""
+            action.message = rule.trigger.defaultMessage
+            rule.actions = [action]
+            didChange = true
+        } else {
+            if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
+                rule.actions[0].serverId = first
+                didChange = true
+            }
+            if rule.actions[0].channelId.isEmpty {
+                let channels = app.availableTextChannelsByServer[rule.actions[0].serverId] ?? []
+                if let first = channels.first {
+                    rule.actions[0].channelId = first.id
+                    didChange = true
                 }
             }
+        }
+
+        if didChange {
+            app.ruleStore.scheduleAutoSave()
         }
     }
 
     private func applyTriggerDefaults(for newTrigger: TriggerType) {
-        mutateRule { rule in
-            let defaults = TriggerType.allDefaultMessages
-            if !rule.actions.isEmpty,
-               rule.actions[0].type == .sendMessage,
-               defaults.contains(rule.actions[0].message) {
-                rule.actions[0].message = newTrigger.defaultMessage
-            }
+        let defaults = TriggerType.allDefaultMessages
+        var didChange = false
 
-            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
-            if defaultNames.contains(rule.name) {
-                rule.name = newTrigger.defaultRuleName
-            }
+        if !rule.actions.isEmpty,
+           rule.actions[0].type == .sendMessage,
+           defaults.contains(rule.actions[0].message) {
+            rule.actions[0].message = newTrigger.defaultMessage
+            didChange = true
         }
-    }
 
-    private func mutateRule(_ update: (inout Rule) -> Void) {
-        guard let idx = ruleIndex else { return }
-        var current = app.ruleStore.rules[idx]
-        let before = current
-        update(&current)
-        guard current != before else { return }
-        app.ruleStore.rules[idx] = current
-        app.ruleStore.scheduleAutoSave()
+        let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
+        if defaultNames.contains(rule.name) {
+            rule.name = newTrigger.defaultRuleName
+            didChange = true
+        }
+
+        if didChange {
+            app.ruleStore.scheduleAutoSave()
+        }
     }
 }
 

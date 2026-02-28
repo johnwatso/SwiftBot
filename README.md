@@ -54,6 +54,24 @@ DMs without prefix return:
 3. Set deployment target macOS 13.0+.
 4. Run on an Apple Silicon Mac (arm64).
 
+## Build Standalone .app
+
+Use the helper script to build and package a runnable app bundle:
+
+```bash
+./BUILD_APP.sh
+```
+
+Optional configuration:
+
+```bash
+./BUILD_APP.sh Release
+```
+
+Output:
+
+- `Dist/DiscordBotApp.app`
+
 ## Intents
 
 This implementation identifies with intents bitfield `37639`:

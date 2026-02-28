@@ -13,6 +13,7 @@ actor DiscordService {
     private var ruleEngine: RuleEngine?
     private var voiceChannelByMemberKey: [String: String] = [:]
     private var voiceJoinTimeByMemberKey: [String: Date] = [:]
+    private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
 
     private let session = URLSession(configuration: .default)
 
@@ -48,6 +49,7 @@ actor DiscordService {
         botToken = nil
         voiceChannelByMemberKey.removeAll()
         voiceJoinTimeByMemberKey.removeAll()
+        voiceChannelNamesByGuild.removeAll()
         Task { await onConnectionState?(.stopped) }
     }
 
@@ -59,6 +61,7 @@ actor DiscordService {
                    let payload = try? JSONDecoder().decode(GatewayPayload.self, from: Data(text.utf8)) {
                     sequence = payload.s ?? sequence
                     await handleGatewayPayload(payload, token: token)
+                    seedVoiceChannelsIfNeeded(payload)
                     seedVoiceStateIfNeeded(payload)
                     await processRuleActionsIfNeeded(payload)
                     await onPayload?(payload)
@@ -143,6 +146,32 @@ actor DiscordService {
         }
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to send message"])
+        }
+    }
+
+    private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) {
+        guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
+        guard case let .object(guildMap)? = payload.d,
+              case let .string(guildId)? = guildMap["id"],
+              case let .array(channels)? = guildMap["channels"]
+        else { return }
+
+        var names: [String: String] = [:]
+        for channel in channels {
+            guard case let .object(channelMap) = channel,
+                  case let .string(channelId)? = channelMap["id"],
+                  case let .string(channelName)? = channelMap["name"],
+                  case let .int(type)? = channelMap["type"]
+            else { continue }
+
+            // Discord voice = 2, stage = 13
+            if type == 2 || type == 13 {
+                names[channelId] = channelName
+            }
+        }
+
+        if !names.isEmpty {
+            voiceChannelNamesByGuild[guildId] = names
         }
     }
 
@@ -269,15 +298,30 @@ actor DiscordService {
     }
 
     private func renderMessage(template: String, event: VoiceRuleEvent, mentionUser: Bool) -> String {
+        let channelId = event.channelId
+        let fromChannelId = event.fromChannelId ?? channelId
+        let toChannelId = event.toChannelId ?? channelId
+
+        let channelName = resolvedChannelName(guildId: event.guildId, channelId: channelId)
+        let fromChannelName = resolvedChannelName(guildId: event.guildId, channelId: fromChannelId)
+        let toChannelName = resolvedChannelName(guildId: event.guildId, channelId: toChannelId)
+
+        let channelWithMention = "\(channelName) (<#\(channelId)>)"
+        let fromChannelWithMention = "\(fromChannelName) (<#\(fromChannelId)>)"
+        let toChannelWithMention = "\(toChannelName) (<#\(toChannelId)>)"
+
         var output = template
+            .replacingOccurrences(of: "<#{channelId}>", with: channelWithMention)
+            .replacingOccurrences(of: "<#{fromChannelId}>", with: fromChannelWithMention)
+            .replacingOccurrences(of: "<#{toChannelId}>", with: toChannelWithMention)
             .replacingOccurrences(of: "{userId}", with: event.userId)
             .replacingOccurrences(of: "{username}", with: event.username)
             .replacingOccurrences(of: "{guildId}", with: event.guildId)
             .replacingOccurrences(of: "{guildName}", with: event.guildId)
-            .replacingOccurrences(of: "{channelId}", with: event.channelId)
-            .replacingOccurrences(of: "{channelName}", with: event.channelId)
-            .replacingOccurrences(of: "{fromChannelId}", with: event.fromChannelId ?? event.channelId)
-            .replacingOccurrences(of: "{toChannelId}", with: event.toChannelId ?? event.channelId)
+            .replacingOccurrences(of: "{channelId}", with: channelId)
+            .replacingOccurrences(of: "{channelName}", with: channelName)
+            .replacingOccurrences(of: "{fromChannelId}", with: fromChannelId)
+            .replacingOccurrences(of: "{toChannelId}", with: toChannelId)
             .replacingOccurrences(of: "{duration}", with: formatDuration(seconds: event.durationSeconds))
 
         if !mentionUser {
@@ -285,6 +329,13 @@ actor DiscordService {
         }
 
         return output
+    }
+
+    private func resolvedChannelName(guildId: String, channelId: String) -> String {
+        if let name = voiceChannelNamesByGuild[guildId]?[channelId], !name.isEmpty {
+            return name
+        }
+        return "Channel \(channelId.suffix(5))"
     }
 
     private func formatDuration(seconds: Int?) -> String {
