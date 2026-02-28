@@ -38,7 +38,16 @@ final class AppModel: ObservableObject {
 
         Task {
             settings = await store.load()
+            if settings.localAIEndpoint.contains("mac-studio.local") {
+                settings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
+            }
             await service.setRuleEngine(ruleEngine)
+            await service.configureLocalAIDMReplies(
+                enabled: settings.localAIDMReplyEnabled,
+                endpoint: settings.localAIEndpoint,
+                model: settings.localAIModel,
+                systemPrompt: settings.localAISystemPrompt
+            )
             await configureServiceCallbacks()
             if settings.autoStart, !settings.token.isEmpty {
                 await startBot()
@@ -56,6 +65,13 @@ final class AppModel: ObservableObject {
         }
 
         Task {
+            await service.configureLocalAIDMReplies(
+                enabled: settings.localAIDMReplyEnabled,
+                endpoint: settings.localAIEndpoint,
+                model: settings.localAIModel,
+                systemPrompt: settings.localAISystemPrompt
+            )
+
             do {
                 try await store.save(settings)
                 logs.append("✅ Settings saved")
@@ -195,7 +211,9 @@ final class AppModel: ObservableObject {
         let prefix = effectivePrefix()
         let isDM = map["guild_id"] == nil || map["guild_id"] == .null
         if isDM, !content.hasPrefix(prefix) {
-            try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type \(prefix)help to see what I can do!", token: settings.token)
+            if shouldSendDefaultDMGreeting(for: content) {
+                try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type \(prefix)help to see what I can do!", token: settings.token)
+            }
             return
         }
 
@@ -315,6 +333,26 @@ final class AppModel: ObservableObject {
             responseChannelId,
             "ℹ️ Notification channel: \(notification)\nMonitored voice channels: \(monitoredText)\nIgnored voice channels: \(ignoredText)\nJoin: \(guildSettings.notifyOnJoin ? "on" : "off"), Leave: \(guildSettings.notifyOnLeave ? "on" : "off"), Move: \(guildSettings.notifyOnMove ? "on" : "off")"
         )
+    }
+
+    private func shouldSendDefaultDMGreeting(for content: String) -> Bool {
+        if settings.localAIDMReplyEnabled {
+            return false
+        }
+
+        let normalizedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedContent.isEmpty else { return true }
+
+        for rule in ruleStore.rules where rule.isEnabled {
+            guard rule.trigger == .messageContains, rule.replyToDMs else { continue }
+            let needle = rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !needle.isEmpty else { continue }
+            if normalizedContent.localizedCaseInsensitiveContains(needle) {
+                return false
+            }
+        }
+
+        return true
     }
 
     private func persistSettings() async -> Bool {
