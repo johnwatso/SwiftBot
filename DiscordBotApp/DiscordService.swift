@@ -43,6 +43,10 @@ actor DiscordService {
         localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    func generateSmartDMReply(message: String, username: String) async -> String? {
+        await generateLocalAIDMReply(userMessage: message, username: username)
+    }
+
     func connect(token: String) async {
         botToken = token
         await onConnectionState?(.connecting)

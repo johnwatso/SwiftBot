@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
     private var usernamesById: [String: String] = [:]
+    private var dmUsersSeen: Set<String> = []
 
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
@@ -100,6 +101,7 @@ final class AppModel: ObservableObject {
         activeVoice.removeAll()
         joinTimes.removeAll()
         usernamesById.removeAll()
+        dmUsersSeen.removeAll()
         gatewayEventCount = 0
         voiceStateEventCount = 0
         readyEventCount = 0
@@ -122,6 +124,7 @@ final class AppModel: ObservableObject {
         activeVoice.removeAll()
         joinTimes.removeAll()
         usernamesById.removeAll()
+        dmUsersSeen.removeAll()
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
@@ -211,9 +214,26 @@ final class AppModel: ObservableObject {
         let prefix = effectivePrefix()
         let isDM = map["guild_id"] == nil || map["guild_id"] == .null
         if isDM, !content.hasPrefix(prefix) {
-            if shouldSendDefaultDMGreeting(for: content) {
-                try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type \(prefix)help to see what I can do!", token: settings.token)
+            let dmUserKey: String
+            if case let .string(userId)? = author["id"] {
+                dmUserKey = userId
+            } else {
+                dmUserKey = username
             }
+
+            if !dmUsersSeen.contains(dmUserKey) {
+                dmUsersSeen.insert(dmUserKey)
+                try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type \(prefix)help to see what I can do!", token: settings.token)
+                return
+            }
+
+            if settings.localAIDMReplyEnabled,
+               let aiReply = await service.generateSmartDMReply(message: content, username: username) {
+                try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
+                return
+            }
+
+            try? await service.sendMessage(channelId: channelId, content: "If you need help, type \(prefix)help.", token: settings.token)
             return
         }
 
@@ -333,26 +353,6 @@ final class AppModel: ObservableObject {
             responseChannelId,
             "ℹ️ Notification channel: \(notification)\nMonitored voice channels: \(monitoredText)\nIgnored voice channels: \(ignoredText)\nJoin: \(guildSettings.notifyOnJoin ? "on" : "off"), Leave: \(guildSettings.notifyOnLeave ? "on" : "off"), Move: \(guildSettings.notifyOnMove ? "on" : "off")"
         )
-    }
-
-    private func shouldSendDefaultDMGreeting(for content: String) -> Bool {
-        if settings.localAIDMReplyEnabled {
-            return false
-        }
-
-        let normalizedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedContent.isEmpty else { return true }
-
-        for rule in ruleStore.rules where rule.isEnabled {
-            guard rule.trigger == .messageContains, rule.replyToDMs else { continue }
-            let needle = rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !needle.isEmpty else { continue }
-            if normalizedContent.localizedCaseInsensitiveContains(needle) {
-                return false
-            }
-        }
-
-        return true
     }
 
     private func persistSettings() async -> Bool {
