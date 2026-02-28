@@ -46,7 +46,7 @@ struct DashboardSidebar: View {
                     Circle()
                         .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
                         .frame(width: 56, height: 56)
-                    Image(systemName: "cpu")
+                    Image(systemName: "cpu.fill")
                         .font(.title2)
                         .foregroundStyle(.white)
                 }
@@ -83,7 +83,7 @@ struct DashboardSidebar: View {
                     Button {
                         Task { await app.startBot() }
                     } label: {
-                        Label("Start Bot", systemImage: "play.fill")
+                        Label("Start Bot", systemImage: "play.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -91,7 +91,7 @@ struct DashboardSidebar: View {
                     Button {
                         app.stopBot()
                     } label: {
-                        Label("Stop Bot", systemImage: "stop.fill")
+                        Label("Stop Bot", systemImage: "stop.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -146,11 +146,11 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .overview: return "circle.grid.2x1"
-        case .voice: return "person.3.sequence"
-        case .commands: return "command"
-        case .logs: return "doc.text"
-        case .settings: return "gearshape"
+        case .overview: return "square.grid.2x2.fill"
+        case .voice: return "person.3.sequence.fill"
+        case .commands: return "terminal.fill"
+        case .logs: return "list.bullet.clipboard.fill"
+        case .settings: return "gearshape.2.fill"
         }
     }
 }
@@ -173,12 +173,9 @@ struct OverviewView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Overview")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
-                        Text("Connected • \(app.uptime?.text ?? "--")")
-                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
-                    StatusPill(status: app.status)
                 }
 
                 LazyVGrid(columns: [
@@ -192,8 +189,8 @@ struct OverviewView: View {
                     )
                     DashboardMetricCard(
                         title: "Servers",
-                        value: "\(app.settings.guildSettings.count)",
-                        subtitle: "guilds connected",
+                        value: "\(app.connectedServers.count)",
+                        subtitle: "servers connected",
                         color: .blue
                     )
                     DashboardMetricCard(
@@ -231,7 +228,7 @@ struct OverviewView: View {
                         } else {
                             ForEach(recentCommands) { entry in
                                 PanelLine(
-                                    title: "\(entry.user) • \(entry.command)",
+                                    title: "\(entry.user) @ \(entry.server) • \(entry.command)",
                                     subtitle: entry.time.formatted(date: .omitted, time: .standard),
                                     tone: entry.ok ? .accentColor : .red
                                 )
@@ -323,6 +320,7 @@ struct CommandsView: View {
             Table(app.commandLog) {
                 TableColumn("Time") { Text($0.time.formatted(date: .omitted, time: .standard)) }
                 TableColumn("User") { Text($0.user) }
+                TableColumn("Server") { Text($0.server) }
                 TableColumn("Command") { Text($0.command) }
                 TableColumn("Channel") { Text($0.channel) }
                 TableColumn("Status") { entry in
@@ -390,6 +388,18 @@ struct LogsView: View {
 struct SettingsView: View {
     @EnvironmentObject var app: AppModel
     @Binding var showToken: Bool
+    @State private var prefixDraft = "!"
+    @State private var notificationChannelDrafts: [String: String] = [:]
+    @State private var ignoredChannelDrafts: [String: String] = [:]
+
+    private let allowedPrefixes = ["$", "#", "!", "?", "%"]
+
+    private var editableServerIds: [String] {
+        let ids = Set(app.connectedServers.keys).union(app.settings.guildSettings.keys)
+        return ids.sorted { lhs, rhs in
+            serverName(for: lhs).localizedCaseInsensitiveCompare(serverName(for: rhs)) == .orderedAscending
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -407,16 +417,111 @@ struct SettingsView: View {
                     }
                     Button(showToken ? "Hide" : "Show") { showToken.toggle() }
                 }
-                TextField("Command Prefix", text: $app.settings.prefix)
+
+                Picker("Command Prefix", selection: $prefixDraft) {
+                    ForEach(allowedPrefixes, id: \.self) { prefix in
+                        Text(prefix).tag(prefix)
+                    }
+                }
+                .pickerStyle(.menu)
+
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
-                Button("Save") { app.saveSettings() }
-                    .buttonStyle(.borderedProminent)
+
+                Section("Server Notifications") {
+                    if editableServerIds.isEmpty {
+                        Text("Connect the bot to a server to configure voice notifications here.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(editableServerIds, id: \.self) { serverId in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(serverName(for: serverId)) (\(serverId))")
+                                    .font(.subheadline.weight(.semibold))
+
+                                TextField(
+                                    "Notification Channel ID",
+                                    text: Binding(
+                                        get: { notificationChannelDrafts[serverId, default: ""] },
+                                        set: { notificationChannelDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                TextField(
+                                    "Ignored Voice Channel IDs (comma separated)",
+                                    text: Binding(
+                                        get: { ignoredChannelDrafts[serverId, default: ""] },
+                                        set: { ignoredChannelDrafts[serverId] = $0 }
+                                    )
+                                )
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+
+                Button("Save") {
+                    app.settings.prefix = prefixDraft
+                    applyServerDraftsToSettings()
+                    app.saveSettings()
+                    prefixDraft = app.settings.prefix
+                }
+                .buttonStyle(.borderedProminent)
+
                 Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
+            }
+            .onAppear {
+                prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
+                refreshServerDrafts()
+            }
+            .onChange(of: app.settings.prefix) { newValue in
+                prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
+            }
+            .onChange(of: app.connectedServers.count) { _ in
+                refreshServerDrafts()
+            }
+            .onChange(of: app.settings.guildSettings.count) { _ in
+                refreshServerDrafts()
             }
             .formStyle(.grouped)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(20)
+    }
+
+    private func serverName(for serverId: String) -> String {
+        app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
+    }
+
+    private func refreshServerDrafts() {
+        for serverId in editableServerIds {
+            let guildSettings = app.settings.guildSettings[serverId] ?? GuildSettings()
+            notificationChannelDrafts[serverId] = guildSettings.notificationChannelId ?? ""
+            ignoredChannelDrafts[serverId] = guildSettings.ignoredVoiceChannelIds.sorted().joined(separator: ",")
+        }
+    }
+
+    private func applyServerDraftsToSettings() {
+        for serverId in editableServerIds {
+            var guildSettings = app.settings.guildSettings[serverId] ?? GuildSettings()
+
+            let notification = notificationChannelDrafts[serverId, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+            guildSettings.notificationChannelId = notification.isEmpty ? nil : notification
+
+            let ignoredRaw = ignoredChannelDrafts[serverId, default: ""]
+            let ignoredIds = ignoredRaw
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .compactMap(parseChannelId)
+            guildSettings.ignoredVoiceChannelIds = Set(ignoredIds)
+
+            app.settings.guildSettings[serverId] = guildSettings
+        }
+    }
+
+    private func parseChannelId(_ text: String) -> String? {
+        if text.hasPrefix("<#") && text.hasSuffix(">") {
+            return String(text.dropFirst(2).dropLast())
+        }
+        return text.allSatisfy(\.isNumber) ? text : nil
     }
 }
 
@@ -544,7 +649,7 @@ struct PlaceholderPanelLine: View {
 
     var body: some View {
         HStack {
-            Image(systemName: "line.3.horizontal.decrease.circle")
+            Image(systemName: "line.3.horizontal.decrease.circle.fill")
                 .foregroundStyle(.secondary)
             Text(text)
                 .foregroundStyle(.secondary)

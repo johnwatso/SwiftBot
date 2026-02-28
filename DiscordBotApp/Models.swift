@@ -47,6 +47,7 @@ struct CommandLogEntry: Identifiable, Hashable {
     let id = UUID()
     let time: Date
     let user: String
+    let server: String
     let command: String
     let channel: String
     let ok: Bool

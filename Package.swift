@@ -3,10 +3,10 @@ import PackageDescription
 
 let package = Package(
     name: "DiscordBotApp",
-    platforms: [
+    platforms:
         .macOS(.v13)
     ],
-    products: [
+    productsmomolmomomk
         .executable(name: "DiscordBotApp", targets: ["DiscordBotApp"])
     ],
     targets: [
