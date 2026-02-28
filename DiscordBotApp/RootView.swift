@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -25,29 +24,6 @@ struct RootView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationSplitViewStyle(.balanced)
-        .background(WindowFocusBridge().frame(width: 0, height: 0))
-    }
-}
-
-struct WindowFocusBridge: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async {
-            focusWindow(for: view)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            focusWindow(for: nsView)
-        }
-    }
-
-    private func focusWindow(for view: NSView) {
-        guard let window = view.window else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -1070,7 +1046,6 @@ struct SettingsView: View {
     @EnvironmentObject var app: AppModel
     @Binding var showToken: Bool
     @State private var prefixDraft = "!"
-    @State private var keyboardProbe = ""
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -1080,11 +1055,6 @@ struct SettingsView: View {
                 .font(.system(size: 30, weight: .bold, design: .rounded))
 
             Form {
-                TextField("Keyboard Probe (type here)", text: $keyboardProbe)
-                Text("Probe length: \(keyboardProbe.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 HStack {
                     Group {
                         if showToken {

@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "DiscordBotApp",
-            path: "DiscordBotApp"
+            path: "DiscordBotApp",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )
