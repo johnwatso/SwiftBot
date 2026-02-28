@@ -10,18 +10,7 @@ struct RootView: View {
             DashboardSidebar(selection: $selection)
                 .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 280)
         } detail: {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(nsColor: .windowBackgroundColor),
-                        Color.accentColor.opacity(0.10),
-                        Color(nsColor: .windowBackgroundColor)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-
+            Group {
                 switch selection {
                 case .overview: OverviewView()
                 case .voice: VoiceView()
@@ -30,6 +19,8 @@ struct RootView: View {
                 case .settings: SettingsView(showToken: $showToken)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -265,46 +256,574 @@ struct OverviewView: View {
     }
 }
 
+enum TriggerType: String, CaseIterable, Identifiable {
+    case userJoinedVoice = "User Joins Voice"
+    case userLeftVoice = "User Leaves Voice"
+    case userMovedVoice = "User Moves Voice"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .userJoinedVoice: return "person.crop.circle.badge.plus"
+        case .userLeftVoice: return "person.crop.circle.badge.xmark"
+        case .userMovedVoice: return "arrow.left.arrow.right.circle"
+        }
+    }
+}
+
+enum ConditionType: String, CaseIterable, Identifiable {
+    case server = "Server Is"
+    case voiceChannel = "Voice Channel Is"
+    case usernameContains = "Username Contains"
+    case minimumDuration = "Duration In Channel"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .server: return "building.2"
+        case .voiceChannel: return "waveform"
+        case .usernameContains: return "text.magnifyingglass"
+        case .minimumDuration: return "timer"
+        }
+    }
+}
+
+enum ActionType: String, CaseIterable, Identifiable {
+    case sendMessage = "Send Message"
+    case addLogEntry = "Add Log Entry"
+    case setStatus = "Set Bot Status"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .sendMessage: return "paperplane.fill"
+        case .addLogEntry: return "list.bullet.clipboard"
+        case .setStatus: return "dot.radiowaves.left.and.right"
+        }
+    }
+}
+
+struct Condition: Identifiable {
+    var id = UUID()
+    var type: ConditionType
+    var value: String = ""
+    var secondaryValue: String = ""
+    var enabled: Bool = true
+}
+
+struct RuleAction: Identifiable {
+    var id = UUID()
+    var type: ActionType = .sendMessage
+    var serverId: String = ""
+    var channelId: String = ""
+    var mentionUser: Bool = true
+    var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
+    var statusText: String = "Voice notifier active"
+}
+
+typealias Action = RuleAction
+
+struct Rule: Identifiable {
+    var id: UUID = UUID()
+    var name: String = "New Notification"
+    var trigger: TriggerType = .userJoinedVoice
+    var conditions: [Condition] = []
+    var actions: [Action] = [Action()]
+    var isEnabled: Bool = true
+
+    var triggerServerId: String = ""
+    var triggerVoiceChannelId: String = ""
+    var includeStageChannels: Bool = true
+
+    var triggerSummary: String {
+        switch trigger {
+        case .userJoinedVoice: return "When user joins voice"
+        case .userLeftVoice: return "When user leaves voice"
+        case .userMovedVoice: return "When user moves voice"
+        }
+    }
+}
+
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
+    @Environment(\.undoManager) private var undoManager
+
+    var body: some View {
+        NavigationSplitView {
+            RuleListView(
+                rules: rulesBinding,
+                selectedRuleID: selectedRuleIDBinding,
+                onAddNew: { app.ruleStore.addNewRule() },
+                onDeleteOffsets: { offsets in
+                    app.ruleStore.deleteRules(at: offsets, undoManager: undoManager)
+                },
+                onDeleteRuleID: { ruleID in
+                    app.ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
+                },
+                onDeleteSelected: {
+                    if let selected = app.ruleStore.selectedRuleID {
+                        app.ruleStore.deleteRule(id: selected, undoManager: undoManager)
+                    }
+                }
+            )
+        } detail: {
+            if let selectedRule = selectedRuleBinding {
+                RuleEditorView(
+                    rule: selectedRule,
+                    serverIds: serverIds,
+                    serverName: serverName(for:),
+                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                    textChannelsByServer: app.availableTextChannelsByServer
+                )
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No Notification Rules")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.regularMaterial)
+            }
+        }
+    }
+
+    private var rulesBinding: Binding<[Rule]> {
+        Binding(
+            get: { app.ruleStore.rules },
+            set: { app.ruleStore.rules = $0 }
+        )
+    }
+
+    private var selectedRuleIDBinding: Binding<UUID?> {
+        Binding(
+            get: { app.ruleStore.selectedRuleID },
+            set: { app.ruleStore.selectedRuleID = $0 }
+        )
+    }
+
+    private var serverIds: [String] {
+        app.connectedServers.keys.sorted {
+            (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
+        }
+    }
+
+    private var selectedRuleBinding: Binding<Rule>? {
+        guard let selectedRuleID = app.ruleStore.selectedRuleID else { return nil }
+        guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else { return nil }
+        return Binding(
+            get: { app.ruleStore.rules[idx] },
+            set: { app.ruleStore.rules[idx] = $0 }
+        )
+    }
+
+    private func serverName(for serverId: String) -> String {
+        app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
+    }
+}
+
+struct RuleListView: View {
+    @Binding var rules: [Rule]
+    @Binding var selectedRuleID: UUID?
+    let onAddNew: () -> Void
+    let onDeleteOffsets: (IndexSet) -> Void
+    let onDeleteRuleID: (UUID) -> Void
+    let onDeleteSelected: () -> Void
+
+    var body: some View {
+        List(selection: $selectedRuleID) {
+            ForEach($rules) { $rule in
+                RuleRowView(rule: $rule)
+                    .tag(rule.id)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onDeleteRuleID(rule.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+            }
+            .onDelete(perform: onDeleteOffsets)
+        }
+        .listStyle(.inset)
+        .navigationTitle("Notifications")
+        .toolbar {
+            ToolbarItem {
+                Button(action: onAddNew) {
+                    Label("Add New Notification", systemImage: "plus")
+                }
+            }
+            ToolbarItem {
+                Button(role: .destructive, action: onDeleteSelected) {
+                    Label("Delete", systemImage: "trash")
+                }
+                .keyboardShortcut(.delete, modifiers: [])
+                .disabled(selectedRuleID == nil)
+            }
+        }
+    }
+}
+
+struct RuleRowView: View {
+    @Binding var rule: Rule
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.name)
+                    .font(.headline)
+                Text(rule.triggerSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("Enabled", isOn: $rule.isEnabled)
+                .labelsHidden()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct RuleEditorView: View {
+    @Binding var rule: Rule
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
+    let textChannelsByServer: [String: [GuildTextChannel]]
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Voice Activity")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+            VStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    TextField("Rule Name", text: $rule.name)
+                        .textFieldStyle(.roundedBorder)
 
-                HStack(spacing: 12) {
-                    DashboardPanel(title: "Active Voice Channels") {
-                        if app.activeVoice.isEmpty {
-                            PlaceholderPanelLine(text: "No active members")
-                        } else {
-                            ForEach(app.activeVoice) { member in
-                                PanelLine(
-                                    title: "\(member.channelName) • \(member.username)",
-                                    subtitle: member.joinedAt.formatted(date: .omitted, time: .shortened),
-                                    tone: .blue
-                                )
-                            }
-                        }
+                    RuleGroupSection(title: "When", systemImage: "bolt.fill") {
+                        TriggerSectionView(
+                            triggerType: $rule.trigger,
+                            triggerServerId: $rule.triggerServerId,
+                            triggerVoiceChannelId: $rule.triggerVoiceChannelId,
+                            includeStageChannels: $rule.includeStageChannels,
+                            serverIds: serverIds,
+                            serverName: serverName,
+                            voiceChannels: voiceChannelsByServer[rule.triggerServerId] ?? []
+                        )
                     }
 
-                    DashboardPanel(title: "Voice Event Log") {
-                        if app.voiceLog.isEmpty {
-                            PlaceholderPanelLine(text: "No voice events logged")
-                        } else {
-                            ForEach(Array(app.voiceLog.prefix(15))) { entry in
-                                PanelLine(
-                                    title: entry.description,
-                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
-                                    tone: .secondary
-                                )
-                            }
-                        }
+                    RuleGroupSection(title: "If", systemImage: "line.3.horizontal.decrease.circle") {
+                        ConditionsSectionView(
+                            conditions: $rule.conditions,
+                            serverIds: serverIds,
+                            serverName: serverName,
+                            voiceChannels: voiceChannelsByServer[rule.triggerServerId] ?? []
+                        )
+                    }
+
+                    RuleGroupSection(title: "Do", systemImage: "paperplane.fill") {
+                        ActionsSectionView(
+                            actions: $rule.actions,
+                            serverIds: serverIds,
+                            serverName: serverName,
+                            textChannelsByServer: textChannelsByServer
+                        )
+                    }
+                }
+                .frame(maxWidth: 860)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(24)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .navigationTitle(rule.name)
+        .onAppear {
+            if rule.triggerServerId.isEmpty {
+                rule.triggerServerId = serverIds.first ?? ""
+            }
+            if rule.actions.isEmpty {
+                var action = Action()
+                action.serverId = serverIds.first ?? ""
+                let channels = textChannelsByServer[action.serverId] ?? []
+                action.channelId = channels.first?.id ?? ""
+                rule.actions = [action]
+            }
+        }
+    }
+}
+
+struct RuleGroupSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            content
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct TriggerSectionView: View {
+    @Binding var triggerType: TriggerType
+    @Binding var triggerServerId: String
+    @Binding var triggerVoiceChannelId: String
+    @Binding var includeStageChannels: Bool
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let voiceChannels: [GuildVoiceChannel]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Event", selection: $triggerType) {
+                ForEach(TriggerType.allCases) { trigger in
+                    Label(trigger.rawValue, systemImage: trigger.symbol).tag(trigger)
+                }
+            }
+
+            Picker("Server", selection: $triggerServerId) {
+                ForEach(serverIds, id: \.self) { serverId in
+                    Text(serverName(serverId)).tag(serverId)
+                }
+            }
+
+            if !voiceChannels.isEmpty {
+                Picker("Voice Channel", selection: $triggerVoiceChannelId) {
+                    Text("Any Channel").tag("")
+                    ForEach(voiceChannels) { channel in
+                        Text(channel.name).tag(channel.id)
                     }
                 }
             }
-            .padding(20)
+
+            if triggerType == .userJoinedVoice || triggerType == .userMovedVoice {
+                Toggle("Include Stage Channels", isOn: $includeStageChannels)
+            }
+        }
+    }
+}
+
+struct ConditionsSectionView: View {
+    @Binding var conditions: [Condition]
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let voiceChannels: [GuildVoiceChannel]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if conditions.isEmpty {
+                Text("No conditions configured. Rules will run for all matching events.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach($conditions) { $condition in
+                    ConditionRowView(
+                        condition: $condition,
+                        serverIds: serverIds,
+                        serverName: serverName,
+                        voiceChannels: voiceChannels,
+                        onDelete: {
+                            conditions.removeAll { $0.id == condition.id }
+                        }
+                    )
+                }
+            }
+
+            Menu {
+                ForEach(ConditionType.allCases) { type in
+                    Button {
+                        conditions.append(Condition(type: type))
+                    } label: {
+                        Label(type.rawValue, systemImage: type.symbol)
+                    }
+                }
+            } label: {
+                Label("Add Condition", systemImage: "plus")
+            }
+            .menuStyle(.borderlessButton)
+        }
+    }
+}
+
+struct ConditionRowView: View {
+    @Binding var condition: Condition
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let voiceChannels: [GuildVoiceChannel]
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Picker("Condition", selection: $condition.type) {
+                    ForEach(ConditionType.allCases) { type in
+                        Label(type.rawValue, systemImage: type.symbol).tag(type)
+                    }
+                }
+                Toggle("Enabled", isOn: $condition.enabled)
+                    .toggleStyle(.switch)
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            conditionEditor
+        }
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var conditionEditor: some View {
+        switch condition.type {
+        case .server:
+            Picker("Server", selection: $condition.value) {
+                ForEach(serverIds, id: \.self) { serverId in
+                    Text(serverName(serverId)).tag(serverId)
+                }
+            }
+        case .voiceChannel:
+            Picker("Voice Channel", selection: $condition.value) {
+                Text("Any Channel").tag("")
+                ForEach(voiceChannels) { channel in
+                    Text(channel.name).tag(channel.id)
+                }
+            }
+        case .usernameContains:
+            TextField("Username contains…", text: $condition.value)
+        case .minimumDuration:
+            HStack {
+                TextField("Minimum", text: $condition.value)
+                    .frame(width: 80)
+                Text("minutes in channel")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct ActionsSectionView: View {
+    @Binding var actions: [Action]
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let textChannelsByServer: [String: [GuildTextChannel]]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if actions.isEmpty {
+                Button {
+                    var action = Action()
+                    action.serverId = serverIds.first ?? ""
+                    action.channelId = textChannelsByServer[action.serverId]?.first?.id ?? ""
+                    actions = [action]
+                } label: {
+                    Label("Add Action", systemImage: "plus")
+                }
+            } else {
+                ActionSectionView(
+                    action: primaryActionBinding,
+                    serverIds: serverIds,
+                    serverName: serverName,
+                    textChannels: textChannelsByServer[primaryActionBinding.wrappedValue.serverId] ?? []
+                )
+            }
+        }
+    }
+
+    private var primaryActionBinding: Binding<Action> {
+        Binding(
+            get: { actions.first ?? Action() },
+            set: { newValue in
+                if actions.isEmpty {
+                    actions = [newValue]
+                } else {
+                    actions[0] = newValue
+                }
+            }
+        )
+    }
+}
+
+struct ActionSectionView: View {
+    @Binding var action: Action
+
+    let serverIds: [String]
+    let serverName: (String) -> String
+    let textChannels: [GuildTextChannel]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Action", selection: $action.type) {
+                ForEach(ActionType.allCases) { actionType in
+                    Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
+                }
+            }
+
+            switch action.type {
+            case .sendMessage:
+                if serverIds.isEmpty {
+                    Text("No connected servers available yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Server", selection: $action.serverId) {
+                        ForEach(serverIds, id: \.self) { serverId in
+                            Text(serverName(serverId)).tag(serverId)
+                        }
+                    }
+                }
+
+                if textChannels.isEmpty {
+                    Text("No text channels discovered for this server.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Text Channel", selection: $action.channelId) {
+                        ForEach(textChannels) { channel in
+                            Text("#\(channel.name)").tag(channel.id)
+                        }
+                    }
+                }
+
+                Toggle("Mention user in message", isOn: $action.mentionUser)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Message")
+                        .font(.subheadline.weight(.semibold))
+                    TextEditor(text: $action.message)
+                        .frame(minHeight: 120)
+                        .padding(6)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            case .addLogEntry:
+                TextField("Log message", text: $action.message)
+            case .setStatus:
+                TextField("Status text", text: $action.statusText)
+            }
+
+            Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            if action.serverId.isEmpty {
+                action.serverId = serverIds.first ?? ""
+            }
+            if action.channelId.isEmpty {
+                action.channelId = textChannels.first?.id ?? ""
+            }
+        }
+        .onChange(of: action.serverId) { _ in
+            action.channelId = textChannels.first?.id ?? ""
         }
     }
 }
@@ -391,6 +910,13 @@ struct SettingsView: View {
     @State private var prefixDraft = "!"
     @State private var notificationChannelDrafts: [String: String] = [:]
     @State private var ignoredChannelDrafts: [String: String] = [:]
+    @State private var monitoredChannelDrafts: [String: String] = [:]
+    @State private var notifyJoinDrafts: [String: Bool] = [:]
+    @State private var notifyLeaveDrafts: [String: Bool] = [:]
+    @State private var notifyMoveDrafts: [String: Bool] = [:]
+    @State private var joinTemplateDrafts: [String: String] = [:]
+    @State private var leaveTemplateDrafts: [String: String] = [:]
+    @State private var moveTemplateDrafts: [String: String] = [:]
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -445,6 +971,62 @@ struct SettingsView: View {
                                     )
                                 )
 
+                                Toggle(
+                                    "Notify On Join",
+                                    isOn: Binding(
+                                        get: { notifyJoinDrafts[serverId, default: true] },
+                                        set: { notifyJoinDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                Toggle(
+                                    "Notify On Leave",
+                                    isOn: Binding(
+                                        get: { notifyLeaveDrafts[serverId, default: true] },
+                                        set: { notifyLeaveDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                Toggle(
+                                    "Notify On Move",
+                                    isOn: Binding(
+                                        get: { notifyMoveDrafts[serverId, default: true] },
+                                        set: { notifyMoveDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                TextField(
+                                    "Join Message Template",
+                                    text: Binding(
+                                        get: { joinTemplateDrafts[serverId, default: GuildSettings().joinNotificationTemplate] },
+                                        set: { joinTemplateDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                TextField(
+                                    "Leave Message Template",
+                                    text: Binding(
+                                        get: { leaveTemplateDrafts[serverId, default: GuildSettings().leaveNotificationTemplate] },
+                                        set: { leaveTemplateDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                TextField(
+                                    "Move Message Template",
+                                    text: Binding(
+                                        get: { moveTemplateDrafts[serverId, default: GuildSettings().moveNotificationTemplate] },
+                                        set: { moveTemplateDrafts[serverId] = $0 }
+                                    )
+                                )
+
+                                TextField(
+                                    "Notify Only Voice Channel IDs (comma separated, empty = all)",
+                                    text: Binding(
+                                        get: { monitoredChannelDrafts[serverId, default: ""] },
+                                        set: { monitoredChannelDrafts[serverId] = $0 }
+                                    )
+                                )
+
                                 TextField(
                                     "Ignored Voice Channel IDs (comma separated)",
                                     text: Binding(
@@ -452,6 +1034,27 @@ struct SettingsView: View {
                                         set: { ignoredChannelDrafts[serverId] = $0 }
                                     )
                                 )
+
+                                let voiceChannels = app.availableVoiceChannelsByServer[serverId] ?? []
+                                if voiceChannels.isEmpty {
+                                    Text("No voice channels discovered yet.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Available Voice Channels")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+
+                                    ForEach(voiceChannels) { channel in
+                                        Text("• \(channel.name) (\(channel.id))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Text("Template placeholders: {userId} {username} {guildName} {channelId} {channelName} {fromChannelId} {toChannelId}")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 4)
                         }
@@ -496,6 +1099,13 @@ struct SettingsView: View {
             let guildSettings = app.settings.guildSettings[serverId] ?? GuildSettings()
             notificationChannelDrafts[serverId] = guildSettings.notificationChannelId ?? ""
             ignoredChannelDrafts[serverId] = guildSettings.ignoredVoiceChannelIds.sorted().joined(separator: ",")
+            monitoredChannelDrafts[serverId] = guildSettings.monitoredVoiceChannelIds.sorted().joined(separator: ",")
+            notifyJoinDrafts[serverId] = guildSettings.notifyOnJoin
+            notifyLeaveDrafts[serverId] = guildSettings.notifyOnLeave
+            notifyMoveDrafts[serverId] = guildSettings.notifyOnMove
+            joinTemplateDrafts[serverId] = guildSettings.joinNotificationTemplate
+            leaveTemplateDrafts[serverId] = guildSettings.leaveNotificationTemplate
+            moveTemplateDrafts[serverId] = guildSettings.moveNotificationTemplate
         }
     }
 
@@ -506,12 +1116,32 @@ struct SettingsView: View {
             let notification = notificationChannelDrafts[serverId, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
             guildSettings.notificationChannelId = notification.isEmpty ? nil : notification
 
+            let monitoredRaw = monitoredChannelDrafts[serverId, default: ""]
+            let monitoredIds = monitoredRaw
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .compactMap(parseChannelId)
+            guildSettings.monitoredVoiceChannelIds = Set(monitoredIds)
+
             let ignoredRaw = ignoredChannelDrafts[serverId, default: ""]
             let ignoredIds = ignoredRaw
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .compactMap(parseChannelId)
             guildSettings.ignoredVoiceChannelIds = Set(ignoredIds)
+
+            guildSettings.notifyOnJoin = notifyJoinDrafts[serverId, default: true]
+            guildSettings.notifyOnLeave = notifyLeaveDrafts[serverId, default: true]
+            guildSettings.notifyOnMove = notifyMoveDrafts[serverId, default: true]
+
+            let joinTemplate = joinTemplateDrafts[serverId, default: GuildSettings().joinNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
+            guildSettings.joinNotificationTemplate = joinTemplate.isEmpty ? GuildSettings().joinNotificationTemplate : joinTemplate
+
+            let leaveTemplate = leaveTemplateDrafts[serverId, default: GuildSettings().leaveNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
+            guildSettings.leaveNotificationTemplate = leaveTemplate.isEmpty ? GuildSettings().leaveNotificationTemplate : leaveTemplate
+
+            let moveTemplate = moveTemplateDrafts[serverId, default: GuildSettings().moveNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
+            guildSettings.moveNotificationTemplate = moveTemplate.isEmpty ? GuildSettings().moveNotificationTemplate : moveTemplate
 
             app.settings.guildSettings[serverId] = guildSettings
         }

@@ -12,17 +12,24 @@ final class AppModel: ObservableObject {
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
     @Published var connectedServers: [String: String] = [:]
+    @Published var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
+    @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
 
     var logs = LogStore()
+    let ruleStore = RuleStore()
 
     private let store = ConfigStore()
     private let service = DiscordService()
+    private let ruleEngine: RuleEngine
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
 
     init() {
+        self.ruleEngine = RuleEngine(store: ruleStore)
+
         Task {
             settings = await store.load()
+            await service.setRuleEngine(ruleEngine)
             await configureServiceCallbacks()
             if settings.autoStart, !settings.token.isEmpty {
                 await startBot()
@@ -58,6 +65,10 @@ final class AppModel: ObservableObject {
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
         connectedServers.removeAll()
+        availableVoiceChannelsByServer.removeAll()
+        availableTextChannelsByServer.removeAll()
+        activeVoice.removeAll()
+        joinTimes.removeAll()
         startUptimeTicker()
         await service.connect(token: settings.token)
         logs.append("Connecting to Discord Gateway")
@@ -68,6 +79,10 @@ final class AppModel: ObservableObject {
         uptimeTask?.cancel()
         uptime = nil
         connectedServers.removeAll()
+        availableVoiceChannelsByServer.removeAll()
+        availableTextChannelsByServer.removeAll()
+        activeVoice.removeAll()
+        joinTimes.removeAll()
         status = .stopped
         logs.append("Bot stopped")
     }
@@ -251,10 +266,15 @@ final class AppModel: ObservableObject {
 
         let guildSettings = settings.guildSettings[guildId] ?? GuildSettings()
         let notification = guildSettings.notificationChannelId.map { "<#\($0)>" } ?? "Not set"
+        let monitored = guildSettings.monitoredVoiceChannelIds.sorted().map { "<#\($0)>" }.joined(separator: ", ")
+        let monitoredText = monitored.isEmpty ? "All" : monitored
         let ignored = guildSettings.ignoredVoiceChannelIds.sorted().map { "<#\($0)>" }.joined(separator: ", ")
         let ignoredText = ignored.isEmpty ? "None" : ignored
 
-        return await send(responseChannelId, "ℹ️ Notification channel: \(notification)\nIgnored voice channels: \(ignoredText)")
+        return await send(
+            responseChannelId,
+            "ℹ️ Notification channel: \(notification)\nMonitored voice channels: \(monitoredText)\nIgnored voice channels: \(ignoredText)\nJoin: \(guildSettings.notifyOnJoin ? "on" : "off"), Leave: \(guildSettings.notifyOnLeave ? "on" : "off"), Move: \(guildSettings.notifyOnMove ? "on" : "off")"
+        )
     }
 
     private func persistSettings() async -> Bool {
@@ -316,7 +336,15 @@ final class AppModel: ObservableObject {
         if case let .string(cid)? = map["channel_id"] { channelId = cid } else { channelId = nil }
 
         if let newChannel = channelId {
-            let next = VoiceMemberPresence(id: key, userId: userId, username: displayName, guildId: guildId, channelId: newChannel, channelName: "#\(newChannel.suffix(5))", joinedAt: joinTimes[key] ?? now)
+            let next = VoiceMemberPresence(
+                id: key,
+                userId: userId,
+                username: displayName,
+                guildId: guildId,
+                channelId: newChannel,
+                channelName: channelDisplayName(guildId: guildId, channelId: newChannel),
+                joinedAt: joinTimes[key] ?? now
+            )
 
             if let previous {
                 if previous.channelId != newChannel {
@@ -326,7 +354,16 @@ final class AppModel: ObservableObject {
                     voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
 
                     if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
-                        _ = await sendVoiceNotification(guildId: guildId, message: "🔁 <@\(userId)> switched voice channels: <#\(previous.channelId)> → <#\(newChannel)>")
+                        let message = renderNotificationTemplate(
+                            settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
+                            userId: userId,
+                            username: displayName,
+                            guildId: guildId,
+                            channelId: newChannel,
+                            fromChannelId: previous.channelId,
+                            toChannelId: newChannel
+                        )
+                        _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move)
                     }
                 }
                 activeVoice.removeAll { $0.id == previous.id }
@@ -337,7 +374,16 @@ final class AppModel: ObservableObject {
                 voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
 
                 if shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
-                    _ = await sendVoiceNotification(guildId: guildId, message: "🔊 <@\(userId)> connected to <#\(newChannel)>")
+                    let message = renderNotificationTemplate(
+                        settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
+                        userId: userId,
+                        username: displayName,
+                        guildId: guildId,
+                        channelId: newChannel,
+                        fromChannelId: nil,
+                        toChannelId: newChannel
+                    )
+                    _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join)
                 }
             }
 
@@ -352,11 +398,26 @@ final class AppModel: ObservableObject {
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
 
             if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
-                _ = await sendVoiceNotification(guildId: guildId, message: "🔌 <@\(userId)> disconnected from <#\(previous.channelId)>")
+                let message = renderNotificationTemplate(
+                    settings.guildSettings[guildId]?.leaveNotificationTemplate ?? GuildSettings().leaveNotificationTemplate,
+                    userId: userId,
+                    username: displayName,
+                    guildId: guildId,
+                    channelId: previous.channelId,
+                    fromChannelId: previous.channelId,
+                    toChannelId: nil
+                )
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave)
             }
         }
 
         if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }
+    }
+
+    private enum VoiceNotifyEvent {
+        case join
+        case leave
+        case move
     }
 
     private func voiceDisplayName(from map: [String: DiscordJSON], userId: String) -> String {
@@ -368,17 +429,108 @@ final class AppModel: ObservableObject {
         return "User \(userId.suffix(4))"
     }
 
+    private func channelDisplayName(guildId: String, channelId: String) -> String {
+        if let channel = availableVoiceChannelsByServer[guildId]?.first(where: { $0.id == channelId }) {
+            return channel.name
+        }
+        return "#\(channelId.suffix(5))"
+    }
+
     private func shouldNotifyVoiceEvent(guildId: String, channelId: String) -> Bool {
         guard let guildSettings = settings.guildSettings[guildId],
               guildSettings.notificationChannelId != nil
         else { return false }
 
-        return !guildSettings.ignoredVoiceChannelIds.contains(channelId)
+        if guildSettings.ignoredVoiceChannelIds.contains(channelId) {
+            return false
+        }
+
+        if !guildSettings.monitoredVoiceChannelIds.isEmpty,
+           !guildSettings.monitoredVoiceChannelIds.contains(channelId) {
+            return false
+        }
+
+        return true
     }
 
-    private func sendVoiceNotification(guildId: String, message: String) async -> Bool {
-        guard let channelId = settings.guildSettings[guildId]?.notificationChannelId else { return false }
+    private func sendVoiceNotification(guildId: String, message: String, event: VoiceNotifyEvent) async -> Bool {
+        guard let guildSettings = settings.guildSettings[guildId],
+              let channelId = guildSettings.notificationChannelId else { return false }
+
+        switch event {
+        case .join where !guildSettings.notifyOnJoin:
+            return false
+        case .leave where !guildSettings.notifyOnLeave:
+            return false
+        case .move where !guildSettings.notifyOnMove:
+            return false
+        default:
+            break
+        }
+
         return await send(channelId, message)
+    }
+
+    private func renderNotificationTemplate(
+        _ template: String,
+        userId: String,
+        username: String,
+        guildId: String,
+        channelId: String,
+        fromChannelId: String?,
+        toChannelId: String?
+    ) -> String {
+        let guildName = connectedServers[guildId] ?? "Server \(guildId.suffix(4))"
+        let resolvedFromChannelId = fromChannelId ?? channelId
+        let resolvedToChannelId = toChannelId ?? channelId
+
+        return template
+            .replacingOccurrences(of: "{userId}", with: userId)
+            .replacingOccurrences(of: "{username}", with: username)
+            .replacingOccurrences(of: "{guildId}", with: guildId)
+            .replacingOccurrences(of: "{guildName}", with: guildName)
+            .replacingOccurrences(of: "{channelId}", with: channelId)
+            .replacingOccurrences(of: "{channelName}", with: channelDisplayName(guildId: guildId, channelId: channelId))
+            .replacingOccurrences(of: "{fromChannelId}", with: resolvedFromChannelId)
+            .replacingOccurrences(of: "{toChannelId}", with: resolvedToChannelId)
+    }
+
+    private func parseVoiceChannels(from guildMap: [String: DiscordJSON]) -> [GuildVoiceChannel] {
+        guard case let .array(channels)? = guildMap["channels"] else { return [] }
+
+        var result: [GuildVoiceChannel] = []
+        for channel in channels {
+            guard case let .object(channelMap) = channel,
+                  case let .string(channelId)? = channelMap["id"],
+                  case let .string(channelName)? = channelMap["name"],
+                  case let .int(type)? = channelMap["type"]
+            else { continue }
+
+            if type == 2 || type == 13 {
+                result.append(GuildVoiceChannel(id: channelId, name: channelName))
+            }
+        }
+
+        return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func parseTextChannels(from guildMap: [String: DiscordJSON]) -> [GuildTextChannel] {
+        guard case let .array(channels)? = guildMap["channels"] else { return [] }
+
+        var result: [GuildTextChannel] = []
+        for channel in channels {
+            guard case let .object(channelMap) = channel,
+                  case let .string(channelId)? = channelMap["id"],
+                  case let .string(channelName)? = channelMap["name"],
+                  case let .int(type)? = channelMap["type"]
+            else { continue }
+
+            if type == 0 || type == 5 {
+                result.append(GuildTextChannel(id: channelId, name: channelName))
+            }
+        }
+
+        return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func handleReady(_ raw: DiscordJSON?) {
@@ -414,6 +566,9 @@ final class AppModel: ObservableObject {
         }
 
         connectedServers[guildId] = guildName
+        availableVoiceChannelsByServer[guildId] = parseVoiceChannels(from: map)
+        availableTextChannelsByServer[guildId] = parseTextChannels(from: map)
+        syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
     }
 
     private func handleGuildDelete(_ raw: DiscordJSON?) {
@@ -422,6 +577,41 @@ final class AppModel: ObservableObject {
         else { return }
 
         connectedServers[guildId] = nil
+        availableVoiceChannelsByServer[guildId] = nil
+        availableTextChannelsByServer[guildId] = nil
+        activeVoice.removeAll { $0.guildId == guildId }
+        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
+    }
+
+    private func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) {
+        activeVoice.removeAll { $0.guildId == guildId }
+
+        guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
+
+        let now = Date()
+        for state in voiceStates {
+            guard case let .object(stateMap) = state,
+                  case let .string(userId)? = stateMap["user_id"],
+                  case let .string(channelId)? = stateMap["channel_id"]
+            else { continue }
+
+            let username = voiceDisplayName(from: stateMap, userId: userId)
+            let key = "\(guildId)-\(userId)"
+            let joinedAt = now
+            joinTimes[key] = joinedAt
+
+            activeVoice.append(
+                VoiceMemberPresence(
+                    id: key,
+                    userId: userId,
+                    username: username,
+                    guildId: guildId,
+                    channelId: channelId,
+                    channelName: channelDisplayName(guildId: guildId, channelId: channelId),
+                    joinedAt: joinedAt
+                )
+            )
+        }
     }
 
     private func commandServerName(from map: [String: DiscordJSON]) -> String {

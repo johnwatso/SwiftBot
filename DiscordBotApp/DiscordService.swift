@@ -9,6 +9,10 @@ actor DiscordService {
     private var heartbeatInterval: UInt64 = 41_250_000_000
     private var sequence: Int?
     private var sessionId: String?
+    private var botToken: String?
+    private var ruleEngine: RuleEngine?
+    private var voiceChannelByMemberKey: [String: String] = [:]
+    private var voiceJoinTimeByMemberKey: [String: Date] = [:]
 
     private let session = URLSession(configuration: .default)
 
@@ -23,7 +27,12 @@ actor DiscordService {
         onConnectionState = handler
     }
 
+    func setRuleEngine(_ engine: RuleEngine) {
+        ruleEngine = engine
+    }
+
     func connect(token: String) async {
+        botToken = token
         await onConnectionState?(.connecting)
         let task = session.webSocketTask(with: gatewayURL)
         self.socket = task
@@ -36,6 +45,9 @@ actor DiscordService {
         receiveTask?.cancel()
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
+        botToken = nil
+        voiceChannelByMemberKey.removeAll()
+        voiceJoinTimeByMemberKey.removeAll()
         Task { await onConnectionState?(.stopped) }
     }
 
@@ -47,6 +59,7 @@ actor DiscordService {
                    let payload = try? JSONDecoder().decode(GatewayPayload.self, from: Data(text.utf8)) {
                     sequence = payload.s ?? sequence
                     await handleGatewayPayload(payload, token: token)
+                    await processRuleActionsIfNeeded(payload)
                     await onPayload?(payload)
                 }
             } catch {
@@ -130,6 +143,140 @@ actor DiscordService {
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to send message"])
         }
+    }
+
+    private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
+        guard payload.op == 0, payload.t == "VOICE_STATE_UPDATE" else { return }
+        guard let event = parseVoiceRuleEvent(from: payload.d) else { return }
+
+        let engine = ruleEngine
+        let actions = await MainActor.run {
+            engine?.evaluate(event: event) ?? []
+        }
+
+        for action in actions {
+            await execute(action: action, for: event)
+        }
+    }
+
+    private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
+        guard case let .object(map)? = raw,
+              case let .string(userId)? = map["user_id"],
+              case let .string(guildId)? = map["guild_id"]
+        else { return nil }
+
+        let now = Date()
+        let memberKey = "\(guildId)-\(userId)"
+        let previousChannel = voiceChannelByMemberKey[memberKey]
+        let newChannel: String?
+        if case let .string(cid)? = map["channel_id"] { newChannel = cid } else { newChannel = nil }
+
+        let username = parseUsername(from: map, userId: userId)
+
+        if let newChannel, previousChannel == nil {
+            voiceChannelByMemberKey[memberKey] = newChannel
+            voiceJoinTimeByMemberKey[memberKey] = now
+            return VoiceRuleEvent(
+                kind: .join,
+                guildId: guildId,
+                userId: userId,
+                username: username,
+                channelId: newChannel,
+                fromChannelId: nil,
+                toChannelId: newChannel,
+                durationSeconds: nil
+            )
+        }
+
+        if let newChannel, let previousChannel, previousChannel != newChannel {
+            let joinedAt = voiceJoinTimeByMemberKey[memberKey] ?? now
+            let durationSeconds = Int(now.timeIntervalSince(joinedAt))
+            voiceChannelByMemberKey[memberKey] = newChannel
+            voiceJoinTimeByMemberKey[memberKey] = now
+            return VoiceRuleEvent(
+                kind: .move,
+                guildId: guildId,
+                userId: userId,
+                username: username,
+                channelId: newChannel,
+                fromChannelId: previousChannel,
+                toChannelId: newChannel,
+                durationSeconds: durationSeconds
+            )
+        }
+
+        if newChannel == nil, let previousChannel {
+            let joinedAt = voiceJoinTimeByMemberKey[memberKey] ?? now
+            let durationSeconds = Int(now.timeIntervalSince(joinedAt))
+            voiceChannelByMemberKey[memberKey] = nil
+            voiceJoinTimeByMemberKey[memberKey] = nil
+            return VoiceRuleEvent(
+                kind: .leave,
+                guildId: guildId,
+                userId: userId,
+                username: username,
+                channelId: previousChannel,
+                fromChannelId: previousChannel,
+                toChannelId: nil,
+                durationSeconds: durationSeconds
+            )
+        }
+
+        return nil
+    }
+
+    private func parseUsername(from map: [String: DiscordJSON], userId: String) -> String {
+        if case let .object(member)? = map["member"],
+           case let .object(user)? = member["user"],
+           case let .string(username)? = user["username"] {
+            return username
+        }
+        return "User \(userId.suffix(4))"
+    }
+
+    private func execute(action: Action, for event: VoiceRuleEvent) async {
+        switch action.type {
+        case .sendMessage:
+            guard let token = botToken, !action.channelId.isEmpty else { return }
+            let rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+            try? await sendMessage(channelId: action.channelId, content: rendered, token: token)
+        case .addLogEntry:
+            return
+        case .setStatus:
+            guard !action.statusText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            await updatePresence(text: action.statusText)
+        }
+    }
+
+    private func renderMessage(template: String, event: VoiceRuleEvent, mentionUser: Bool) -> String {
+        var output = template
+            .replacingOccurrences(of: "{userId}", with: event.userId)
+            .replacingOccurrences(of: "{username}", with: event.username)
+            .replacingOccurrences(of: "{guildId}", with: event.guildId)
+            .replacingOccurrences(of: "{guildName}", with: event.guildId)
+            .replacingOccurrences(of: "{channelId}", with: event.channelId)
+            .replacingOccurrences(of: "{channelName}", with: event.channelId)
+            .replacingOccurrences(of: "{fromChannelId}", with: event.fromChannelId ?? event.channelId)
+            .replacingOccurrences(of: "{toChannelId}", with: event.toChannelId ?? event.channelId)
+
+        if !mentionUser {
+            output = output.replacingOccurrences(of: "<@\(event.userId)>", with: event.username)
+        }
+
+        return output
+    }
+
+    private func updatePresence(text: String) async {
+        let payload: [String: Any] = [
+            "op": 3,
+            "d": [
+                "since": NSNull(),
+                "activities": [["name": text, "type": 0]],
+                "status": "online",
+                "afk": false
+            ]
+        ]
+        await sendRaw(payload)
     }
 
     private func sendRaw(_ dictionary: [String: Any]) async {
