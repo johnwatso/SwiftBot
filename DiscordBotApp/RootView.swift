@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -24,6 +25,29 @@ struct RootView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationSplitViewStyle(.balanced)
+        .background(WindowFocusBridge().frame(width: 0, height: 0))
+    }
+}
+
+struct WindowFocusBridge: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            focusWindow(for: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            focusWindow(for: nsView)
+        }
+    }
+
+    private func focusWindow(for view: NSView) {
+        guard let window = view.window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -515,14 +539,15 @@ struct RuleRowView: View {
 struct RuleEditorView: View {
     let ruleID: UUID
     @EnvironmentObject var app: AppModel
-    @State private var draft: Rule = Rule()
-    @State private var didLoad = false
-    @State private var draftCommitTask: Task<Void, Never>?
 
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
         }
+    }
+
+    private var ruleIndex: Int? {
+        app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
     }
 
     private func serverName(for serverId: String) -> String {
@@ -533,34 +558,34 @@ struct RuleEditorView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    TextField("Rule Name", text: $draft.name)
+                    TextField("Rule Name", text: binding(for: \.name, default: ""))
                         .textFieldStyle(.roundedBorder)
                         .font(.title2.weight(.semibold))
 
                     RuleGroupSection(title: "When", systemImage: "bolt.fill") {
                         TriggerSectionView(
-                            triggerType: $draft.trigger,
-                            triggerServerId: $draft.triggerServerId,
-                            triggerVoiceChannelId: $draft.triggerVoiceChannelId,
-                            includeStageChannels: $draft.includeStageChannels,
+                            triggerType: binding(for: \.trigger, default: .userJoinedVoice),
+                            triggerServerId: binding(for: \.triggerServerId, default: ""),
+                            triggerVoiceChannelId: binding(for: \.triggerVoiceChannelId, default: ""),
+                            includeStageChannels: binding(for: \.includeStageChannels, default: true),
                             serverIds: serverIds,
                             serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[draft.triggerServerId] ?? []
+                            voiceChannels: app.availableVoiceChannelsByServer[binding(for: \.triggerServerId, default: "").wrappedValue] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "If", systemImage: "line.3.horizontal.decrease.circle") {
                         ConditionsSectionView(
-                            conditions: $draft.conditions,
+                            conditions: binding(for: \.conditions, default: []),
                             serverIds: serverIds,
                             serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[draft.triggerServerId] ?? []
+                            voiceChannels: app.availableVoiceChannelsByServer[binding(for: \.triggerServerId, default: "").wrappedValue] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "Do", systemImage: "paperplane.fill") {
                         ActionsSectionView(
-                            actions: $draft.actions,
+                            actions: binding(for: \.actions, default: []),
                             serverIds: serverIds,
                             serverName: serverName(for:),
                             textChannelsByServer: app.availableTextChannelsByServer
@@ -576,7 +601,6 @@ struct RuleEditorView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button {
-                    commitDraft()
                     app.ruleStore.save()
                 } label: {
                     Label("Save", systemImage: "square.and.arrow.down")
@@ -585,80 +609,77 @@ struct RuleEditorView: View {
             }
         }
         .onAppear {
-            loadDraft()
+            initializeRuleDefaultsIfNeeded()
         }
-        .onDisappear {
-            draftCommitTask?.cancel()
-            commitDraft()
-        }
-        .onChange(of: draft) { _ in
-            scheduleDraftCommit()
-        }
-        .onChange(of: draft.trigger) { newTrigger in
-            let defaults = TriggerType.allDefaultMessages
-            if !draft.actions.isEmpty,
-               draft.actions[0].type == .sendMessage,
-               defaults.contains(draft.actions[0].message) {
-                draft.actions[0].message = newTrigger.defaultMessage
-            }
-
-            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
-            if defaultNames.contains(draft.name) {
-                draft.name = newTrigger.defaultRuleName
-            }
+        .onChange(of: binding(for: \.trigger, default: .userJoinedVoice).wrappedValue) { newTrigger in
+            applyTriggerDefaults(for: newTrigger)
         }
     }
 
-    private func loadDraft() {
-        guard !didLoad,
-              let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
-        else { return }
-        var r = app.ruleStore.rules[idx]
-
-        if r.triggerServerId.isEmpty {
-            r.triggerServerId = serverIds.first ?? ""
-        }
-        if r.actions.isEmpty {
-            var action = RuleAction()
-            action.serverId = serverIds.first ?? ""
-            let channels = app.availableTextChannelsByServer[action.serverId] ?? []
-            action.channelId = channels.first?.id ?? ""
-            action.message = r.trigger.defaultMessage
-            r.actions = [action]
-        } else {
-            if r.actions[0].serverId.isEmpty, let first = serverIds.first {
-                r.actions[0].serverId = first
+    private func binding<Value>(for keyPath: WritableKeyPath<Rule, Value>, default defaultValue: Value) -> Binding<Value> {
+        Binding(
+            get: {
+                guard let idx = ruleIndex else { return defaultValue }
+                return app.ruleStore.rules[idx][keyPath: keyPath]
+            },
+            set: { newValue in
+                guard let idx = ruleIndex else { return }
+                app.ruleStore.rules[idx][keyPath: keyPath] = newValue
+                app.ruleStore.scheduleAutoSave()
             }
-            if r.actions[0].channelId.isEmpty {
-                let channels = app.availableTextChannelsByServer[r.actions[0].serverId] ?? []
-                if let first = channels.first {
-                    r.actions[0].channelId = first.id
+        )
+    }
+
+    private func initializeRuleDefaultsIfNeeded() {
+        mutateRule { rule in
+            if rule.triggerServerId.isEmpty {
+                rule.triggerServerId = serverIds.first ?? ""
+            }
+
+            if rule.actions.isEmpty {
+                var action = RuleAction()
+                action.serverId = serverIds.first ?? ""
+                let channels = app.availableTextChannelsByServer[action.serverId] ?? []
+                action.channelId = channels.first?.id ?? ""
+                action.message = rule.trigger.defaultMessage
+                rule.actions = [action]
+            } else {
+                if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
+                    rule.actions[0].serverId = first
+                }
+                if rule.actions[0].channelId.isEmpty {
+                    let channels = app.availableTextChannelsByServer[rule.actions[0].serverId] ?? []
+                    if let first = channels.first {
+                        rule.actions[0].channelId = first.id
+                    }
                 }
             }
         }
-
-        draft = r
-        didLoad = true
     }
 
-    private func scheduleDraftCommit() {
-        draftCommitTask?.cancel()
-        let snapshot = draft
-        draftCommitTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                commitDraft(snapshot)
+    private func applyTriggerDefaults(for newTrigger: TriggerType) {
+        mutateRule { rule in
+            let defaults = TriggerType.allDefaultMessages
+            if !rule.actions.isEmpty,
+               rule.actions[0].type == .sendMessage,
+               defaults.contains(rule.actions[0].message) {
+                rule.actions[0].message = newTrigger.defaultMessage
+            }
+
+            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
+            if defaultNames.contains(rule.name) {
+                rule.name = newTrigger.defaultRuleName
             }
         }
     }
 
-    private func commitDraft(_ value: Rule? = nil) {
-        let draftValue = value ?? draft
-        guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
-        else { return }
-        guard app.ruleStore.rules[idx] != draftValue else { return }
-        app.ruleStore.rules[idx] = draftValue
+    private func mutateRule(_ update: (inout Rule) -> Void) {
+        guard let idx = ruleIndex else { return }
+        var current = app.ruleStore.rules[idx]
+        let before = current
+        update(&current)
+        guard current != before else { return }
+        app.ruleStore.rules[idx] = current
         app.ruleStore.scheduleAutoSave()
     }
 }
@@ -1049,6 +1070,7 @@ struct SettingsView: View {
     @EnvironmentObject var app: AppModel
     @Binding var showToken: Bool
     @State private var prefixDraft = "!"
+    @State private var keyboardProbe = ""
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -1058,6 +1080,11 @@ struct SettingsView: View {
                 .font(.system(size: 30, weight: .bold, design: .rounded))
 
             Form {
+                TextField("Keyboard Probe (type here)", text: $keyboardProbe)
+                Text("Probe length: \(keyboardProbe.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 HStack {
                     Group {
                         if showToken {
