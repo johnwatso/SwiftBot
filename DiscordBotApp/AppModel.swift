@@ -14,6 +14,13 @@ final class AppModel: ObservableObject {
     @Published var connectedServers: [String: String] = [:]
     @Published var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
+    @Published var gatewayEventCount = 0
+    @Published var voiceStateEventCount = 0
+    @Published var readyEventCount = 0
+    @Published var guildCreateEventCount = 0
+    @Published var lastGatewayEventName: String = "-"
+    @Published var lastVoiceStateAt: Date?
+    @Published var lastVoiceStateSummary: String = "-"
 
     var logs = LogStore()
     let ruleStore = RuleStore()
@@ -21,8 +28,10 @@ final class AppModel: ObservableObject {
     private let store = ConfigStore()
     private let service = DiscordService()
     private let ruleEngine: RuleEngine
+    private var serviceCallbacksConfigured = false
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
+    private var usernamesById: [String: String] = [:]
 
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
@@ -62,6 +71,11 @@ final class AppModel: ObservableObject {
             logs.append("⚠️ Token is empty; cannot start bot")
             return
         }
+
+        if !serviceCallbacksConfigured {
+            await configureServiceCallbacks()
+        }
+
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
         connectedServers.removeAll()
@@ -69,6 +83,14 @@ final class AppModel: ObservableObject {
         availableTextChannelsByServer.removeAll()
         activeVoice.removeAll()
         joinTimes.removeAll()
+        usernamesById.removeAll()
+        gatewayEventCount = 0
+        voiceStateEventCount = 0
+        readyEventCount = 0
+        guildCreateEventCount = 0
+        lastGatewayEventName = "-"
+        lastVoiceStateAt = nil
+        lastVoiceStateSummary = "-"
         startUptimeTicker()
         await service.connect(token: settings.token)
         logs.append("Connecting to Discord Gateway")
@@ -83,11 +105,17 @@ final class AppModel: ObservableObject {
         availableTextChannelsByServer.removeAll()
         activeVoice.removeAll()
         joinTimes.removeAll()
+        usernamesById.removeAll()
+        lastGatewayEventName = "-"
+        lastVoiceStateAt = nil
+        lastVoiceStateSummary = "-"
         status = .stopped
         logs.append("Bot stopped")
     }
 
     private func configureServiceCallbacks() async {
+        if serviceCallbacksConfigured { return }
+
         await service.setOnConnectionState { [weak self] state in
             await MainActor.run {
                 self?.status = state
@@ -98,6 +126,8 @@ final class AppModel: ObservableObject {
         await service.setOnPayload { [weak self] payload in
             await self?.handlePayload(payload)
         }
+
+        serviceCallbacksConfigured = true
     }
 
     private func startUptimeTicker() {
@@ -122,15 +152,21 @@ final class AppModel: ObservableObject {
     func handlePayload(_ payload: GatewayPayload) async {
         guard payload.op == 0, let eventName = payload.t else { return }
 
+        gatewayEventCount += 1
+        lastGatewayEventName = eventName
+
         switch eventName {
         case "MESSAGE_CREATE":
             await handleMessageCreate(payload.d)
         case "VOICE_STATE_UPDATE":
+            voiceStateEventCount += 1
             await handleVoiceStateUpdate(payload.d)
         case "READY":
+            readyEventCount += 1
             handleReady(payload.d)
             logs.append("READY received")
         case "GUILD_CREATE":
+            guildCreateEventCount += 1
             handleGuildCreate(payload.d)
         case "GUILD_DELETE":
             handleGuildDelete(payload.d)
@@ -146,6 +182,10 @@ final class AppModel: ObservableObject {
               case let .string(username)? = author["username"],
               case let .string(channelId)? = map["channel_id"]
         else { return }
+
+        if case let .string(userId)? = author["id"] {
+            usernamesById[userId] = username
+        }
 
         // Ignore messages from bots (including this bot) to prevent reply loops.
         if case let .bool(isBot)? = author["bot"], isBot {
@@ -332,6 +372,8 @@ final class AppModel: ObservableObject {
         let previous = activeVoice.first(where: { $0.userId == userId && $0.guildId == guildId })
         let displayName = voiceDisplayName(from: map, userId: userId)
 
+        lastVoiceStateAt = now
+
         let channelId: String?
         if case let .string(cid)? = map["channel_id"] { channelId = cid } else { channelId = nil }
 
@@ -350,6 +392,7 @@ final class AppModel: ObservableObject {
                 if previous.channelId != newChannel {
                     let elapsed = formatDuration(from: joinTimes[key] ?? previous.joinedAt, to: now)
                     stats.voiceLeaves += 1
+                    lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
                     addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
                     voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
 
@@ -370,6 +413,7 @@ final class AppModel: ObservableObject {
             } else {
                 joinTimes[key] = now
                 stats.voiceJoins += 1
+                lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
                 addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
                 voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
 
@@ -394,6 +438,7 @@ final class AppModel: ObservableObject {
             stats.voiceLeaves += 1
             activeVoice.removeAll { $0.id == previous.id }
             joinTimes[key] = nil
+            lastVoiceStateSummary = "LEAVE \(previous.username) <- \(previous.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
 
@@ -421,11 +466,39 @@ final class AppModel: ObservableObject {
     }
 
     private func voiceDisplayName(from map: [String: DiscordJSON], userId: String) -> String {
-        if case let .object(member)? = map["member"],
-           case let .object(user)? = member["user"],
-           case let .string(username)? = user["username"] {
-            return username
+        if case let .object(member)? = map["member"] {
+            if case let .string(nick)? = member["nick"], !nick.isEmpty {
+                usernamesById[userId] = nick
+                return nick
+            }
+
+            if case let .object(user)? = member["user"] {
+                if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
+                    usernamesById[userId] = globalName
+                    return globalName
+                }
+                if case let .string(username)? = user["username"], !username.isEmpty {
+                    usernamesById[userId] = username
+                    return username
+                }
+            }
         }
+
+        if case let .object(user)? = map["user"] {
+            if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
+                usernamesById[userId] = globalName
+                return globalName
+            }
+            if case let .string(username)? = user["username"], !username.isEmpty {
+                usernamesById[userId] = username
+                return username
+            }
+        }
+
+        if let cached = usernamesById[userId], !cached.isEmpty {
+            return cached
+        }
+
         return "User \(userId.suffix(4))"
     }
 
@@ -584,9 +657,10 @@ final class AppModel: ObservableObject {
     }
 
     private func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) {
-        activeVoice.removeAll { $0.guildId == guildId }
-
         guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
+
+        activeVoice.removeAll { $0.guildId == guildId }
+        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
 
         let now = Date()
         for state in voiceStates {

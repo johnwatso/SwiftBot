@@ -161,17 +161,30 @@ struct VoiceRuleEvent {
 
 @MainActor
 final class RuleStore: ObservableObject {
-    @Published var rules: [Rule] = [Rule(name: "Join Notification")]
+    @Published var rules: [Rule] = []
     @Published var selectedRuleID: UUID?
+    @Published var lastSavedAt: Date?
+
+    private let store = RuleConfigStore()
+    private var autoSaveTask: Task<Void, Never>?
 
     init() {
-        selectedRuleID = rules.first?.id
+        Task {
+            let loaded = await store.load()
+            if let loaded, !loaded.isEmpty {
+                rules = loaded
+            } else {
+                rules = [Rule(name: "Join Notification")]
+            }
+            selectedRuleID = rules.first?.id
+        }
     }
 
     func addNewRule() {
         let rule = Rule(name: "New Notification")
         rules.append(rule)
         selectedRuleID = rule.id
+        scheduleAutoSave()
     }
 
     func deleteRules(at offsets: IndexSet, undoManager: UndoManager?) {
@@ -184,6 +197,7 @@ final class RuleStore: ObservableObject {
             rules.remove(at: index)
         }
         reseatSelection(previousSelection: previousSelection)
+        scheduleAutoSave()
 
         undoManager?.registerUndo(withTarget: self) { target in
             target.restoreRules(removed, previousSelection: previousSelection, undoManager: undoManager)
@@ -195,12 +209,30 @@ final class RuleStore: ObservableObject {
         deleteRules(at: IndexSet(integer: idx), undoManager: undoManager)
     }
 
+    func save() {
+        let snapshot = rules
+        Task {
+            try? await store.save(snapshot)
+            lastSavedAt = Date()
+        }
+    }
+
+    func scheduleAutoSave() {
+        autoSaveTask?.cancel()
+        autoSaveTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            save()
+        }
+    }
+
     private func restoreRules(_ removed: [(Int, Rule)], previousSelection: UUID?, undoManager: UndoManager?) {
         for (index, rule) in removed.sorted(by: { $0.0 < $1.0 }) {
             let insertIndex = min(index, rules.count)
             rules.insert(rule, at: insertIndex)
         }
         selectedRuleID = previousSelection ?? removed.first?.1.id
+        scheduleAutoSave()
 
         undoManager?.registerUndo(withTarget: self) { target in
             let offsets = IndexSet(removed.map(\.0))

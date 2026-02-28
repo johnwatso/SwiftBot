@@ -59,6 +59,7 @@ actor DiscordService {
                    let payload = try? JSONDecoder().decode(GatewayPayload.self, from: Data(text.utf8)) {
                     sequence = payload.s ?? sequence
                     await handleGatewayPayload(payload, token: token)
+                    seedVoiceStateIfNeeded(payload)
                     await processRuleActionsIfNeeded(payload)
                     await onPayload?(payload)
                 }
@@ -120,7 +121,7 @@ actor DiscordService {
 
         let identify: [String: Any] = [
             "token": token,
-            "intents": 37_639,
+            "intents": 37_767,
             "properties": ["$os": "macOS", "$browser": "DiscordBotNative", "$device": "DiscordBotNative"],
             "presence": presence
         ]
@@ -142,6 +143,25 @@ actor DiscordService {
         }
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to send message"])
+        }
+    }
+
+    private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) {
+        guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
+        guard case let .object(guildMap)? = payload.d,
+              case let .string(guildId)? = guildMap["id"],
+              case let .array(voiceStates)? = guildMap["voice_states"]
+        else { return }
+
+        for state in voiceStates {
+            guard case let .object(stateMap) = state,
+                  case let .string(userId)? = stateMap["user_id"],
+                  case let .string(channelId)? = stateMap["channel_id"]
+            else { continue }
+
+            let key = "\(guildId)-\(userId)"
+            voiceChannelByMemberKey[key] = channelId
+            voiceJoinTimeByMemberKey[key] = Date()
         }
     }
 
@@ -258,12 +278,23 @@ actor DiscordService {
             .replacingOccurrences(of: "{channelName}", with: event.channelId)
             .replacingOccurrences(of: "{fromChannelId}", with: event.fromChannelId ?? event.channelId)
             .replacingOccurrences(of: "{toChannelId}", with: event.toChannelId ?? event.channelId)
+            .replacingOccurrences(of: "{duration}", with: formatDuration(seconds: event.durationSeconds))
 
         if !mentionUser {
             output = output.replacingOccurrences(of: "<@\(event.userId)>", with: event.username)
         }
 
         return output
+    }
+
+    private func formatDuration(seconds: Int?) -> String {
+        guard let seconds, seconds > 0 else { return "0s" }
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m \(s)s" }
+        return "\(s)s"
     }
 
     private func updatePresence(text: String) async {
