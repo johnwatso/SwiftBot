@@ -7,26 +7,137 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.icon)
-                    .tag(item)
-            }
-            .navigationTitle("Discord Bot")
+            DashboardSidebar(selection: $selection)
+                .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 280)
         } detail: {
-            switch selection {
-            case .overview: OverviewView()
-            case .voice: VoiceView()
-            case .commands: CommandsView()
-            case .logs: LogsView()
-            case .settings: SettingsView(showToken: $showToken)
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(nsColor: .windowBackgroundColor),
+                        Color.accentColor.opacity(0.10),
+                        Color(nsColor: .windowBackgroundColor)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                switch selection {
+                case .overview: OverviewView()
+                case .voice: VoiceView()
+                case .commands: CommandsView()
+                case .logs: LogsView()
+                case .settings: SettingsView(showToken: $showToken)
+                }
             }
         }
+        .navigationSplitViewStyle(.balanced)
+    }
+}
+
+struct DashboardSidebar: View {
+    @EnvironmentObject var app: AppModel
+    @Binding var selection: SidebarItem
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "cpu")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                }
+
+                VStack(spacing: 2) {
+                    Text("OnlineBot")
+                        .font(.headline)
+                    Text("Native Assistant")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            List(selection: $selection) {
+                Section("Main") {
+                    SidebarRow(item: .overview, selection: $selection)
+                    SidebarRow(item: .voice, selection: $selection, count: app.activeVoice.count)
+                    SidebarRow(item: .commands, selection: $selection)
+                    SidebarRow(item: .logs, selection: $selection)
+                }
+
+                Section("Config") {
+                    SidebarRow(item: .settings, selection: $selection)
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+
+            Group {
+                if app.status == .stopped {
+                    Button {
+                        Task { await app.startBot() }
+                    } label: {
+                        Label("Start Bot", systemImage: "play.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        app.stopBot()
+                    } label: {
+                        Label("Stop Bot", systemImage: "stop.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+            .controlSize(.large)
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+    }
+}
+
+struct SidebarRow: View {
+    let item: SidebarItem
+    @Binding var selection: SidebarItem
+    var count: Int?
+
+    var body: some View {
+        Button {
+            selection = item
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.icon)
+                    .frame(width: 16)
+                Text(item.rawValue)
+                Spacer()
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.20), in: Capsule())
+                }
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .tag(item)
     }
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
-    case voice = "Voice"
+    case voice = "Voice Activity"
     case commands = "Commands"
     case logs = "Logs"
     case settings = "Settings"
@@ -35,10 +146,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .overview: return "rectangle.3.group"
+        case .overview: return "circle.grid.2x1"
         case .voice: return "person.3.sequence"
-        case .commands: return "terminal"
-        case .logs: return "doc.plaintext"
+        case .commands: return "command"
+        case .logs: return "doc.text"
         case .settings: return "gearshape"
         }
     }
@@ -47,47 +158,112 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct OverviewView: View {
     @EnvironmentObject var app: AppModel
 
+    private var recentVoice: [VoiceEventLogEntry] {
+        Array(app.voiceLog.prefix(5))
+    }
+
+    private var recentCommands: [CommandLogEntry] {
+        Array(app.commandLog.prefix(5))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    StatusBadge(status: app.status, uptime: app.uptime?.text ?? "--")
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Overview")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                        Text("Connected • \(app.uptime?.text ?? "--")")
+                            .foregroundStyle(.secondary)
+                    }
+
                     Spacer()
-                    if app.status == .stopped {
-                        Button("Start Bot") { Task { await app.startBot() } }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Stop Bot") { app.stopBot() }
-                            .buttonStyle(.bordered)
+                    StatusPill(status: app.status)
+                }
+
+                LazyVGrid(columns: [
+                    GridItem(.adaptive(minimum: 180), spacing: 12)
+                ], spacing: 12) {
+                    DashboardMetricCard(
+                        title: "Status",
+                        value: app.status.rawValue.capitalized,
+                        subtitle: app.uptime?.text ?? "--",
+                        color: .green
+                    )
+                    DashboardMetricCard(
+                        title: "Servers",
+                        value: "\(app.settings.guildSettings.count)",
+                        subtitle: "guilds connected",
+                        color: .blue
+                    )
+                    DashboardMetricCard(
+                        title: "In Voice",
+                        value: "\(app.activeVoice.count)",
+                        subtitle: "users right now",
+                        color: .orange
+                    )
+                    DashboardMetricCard(
+                        title: "Commands Run",
+                        value: "\(app.stats.commandsRun)",
+                        subtitle: "this session",
+                        color: .red
+                    )
+                }
+
+                HStack(spacing: 12) {
+                    DashboardPanel(title: "Recent Voice Events", actionTitle: "View") {
+                        if recentVoice.isEmpty {
+                            PlaceholderPanelLine(text: "No voice events yet")
+                        } else {
+                            ForEach(recentVoice) { entry in
+                                PanelLine(
+                                    title: entry.description,
+                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
+                                    tone: .green
+                                )
+                            }
+                        }
+                    }
+
+                    DashboardPanel(title: "Recent Commands", actionTitle: "View") {
+                        if recentCommands.isEmpty {
+                            PlaceholderPanelLine(text: "No commands yet")
+                        } else {
+                            ForEach(recentCommands) { entry in
+                                PanelLine(
+                                    title: "\(entry.user) • \(entry.command)",
+                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
+                                    tone: entry.ok ? .accentColor : .red
+                                )
+                            }
+                        }
                     }
                 }
 
-                HStack {
-                    StatCard(title: "Commands Run", value: "\(app.stats.commandsRun)")
-                    StatCard(title: "Voice Joins", value: "\(app.stats.voiceJoins)")
-                    StatCard(title: "Voice Leaves", value: "\(app.stats.voiceLeaves)")
-                    StatCard(title: "Errors", value: "\(app.stats.errors)")
-                }
+                HStack(spacing: 12) {
+                    DashboardPanel(title: "Currently In Voice") {
+                        if app.activeVoice.isEmpty {
+                            PlaceholderPanelLine(text: "No one is in voice right now")
+                        } else {
+                            ForEach(app.activeVoice) { member in
+                                PanelLine(
+                                    title: "\(member.username) in \(member.channelName)",
+                                    subtitle: member.joinedAt.formatted(date: .omitted, time: .shortened),
+                                    tone: .indigo
+                                )
+                            }
+                        }
+                    }
 
-                Text("Live Activity")
-                    .font(.headline)
-                ForEach(app.events) { event in
-                    Text("[\(event.timestamp.formatted(date: .omitted, time: .standard))] \(event.message)")
-                        .font(.system(.body, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Text("Active Voice")
-                    .font(.headline)
-                FlowWrap(app.activeVoice) { member in
-                    Text("\(member.username) • \(member.channelName)")
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(.thinMaterial)
-                        .cornerRadius(10)
+                    DashboardPanel(title: "Bot Info") {
+                        InfoRow(label: "Uptime", value: app.uptime?.text ?? "--")
+                        InfoRow(label: "Prefix", value: app.settings.prefix)
+                        InfoRow(label: "Errors", value: "\(app.stats.errors)")
+                        InfoRow(label: "State", value: app.status.rawValue.capitalized)
+                    }
                 }
             }
-            .padding()
+            .padding(20)
         }
     }
 }
@@ -96,22 +272,43 @@ struct VoiceView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("Active Voice Channels").font(.headline)
-                List(app.activeVoice) { member in
-                    Text("\(member.channelName)  •  \(member.username)")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Voice Activity")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+
+                HStack(spacing: 12) {
+                    DashboardPanel(title: "Active Voice Channels") {
+                        if app.activeVoice.isEmpty {
+                            PlaceholderPanelLine(text: "No active members")
+                        } else {
+                            ForEach(app.activeVoice) { member in
+                                PanelLine(
+                                    title: "\(member.channelName) • \(member.username)",
+                                    subtitle: member.joinedAt.formatted(date: .omitted, time: .shortened),
+                                    tone: .blue
+                                )
+                            }
+                        }
+                    }
+
+                    DashboardPanel(title: "Voice Event Log") {
+                        if app.voiceLog.isEmpty {
+                            PlaceholderPanelLine(text: "No voice events logged")
+                        } else {
+                            ForEach(Array(app.voiceLog.prefix(15))) { entry in
+                                PanelLine(
+                                    title: entry.description,
+                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
+                                    tone: .secondary
+                                )
+                            }
+                        }
+                    }
                 }
             }
-            VStack(alignment: .leading) {
-                Text("Voice Event Log").font(.headline)
-                List(app.voiceLog) { entry in
-                    Text("[\(entry.time.formatted(date: .omitted, time: .standard))] \(entry.description)")
-                        .font(.system(.body, design: .monospaced))
-                }
-            }
+            .padding(20)
         }
-        .padding()
     }
 }
 
@@ -119,17 +316,27 @@ struct CommandsView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        Table(app.commandLog) {
-            TableColumn("Time") { Text($0.time.formatted(date: .omitted, time: .standard)) }
-            TableColumn("User") { Text($0.user) }
-            TableColumn("Command") { Text($0.command) }
-            TableColumn("Channel") { Text($0.channel) }
-            TableColumn("Status") { entry in
-                Text(entry.ok ? "OK" : "ERROR")
-                    .foregroundStyle(entry.ok ? .green : .red)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Commands")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+
+            Table(app.commandLog) {
+                TableColumn("Time") { Text($0.time.formatted(date: .omitted, time: .standard)) }
+                TableColumn("User") { Text($0.user) }
+                TableColumn("Command") { Text($0.command) }
+                TableColumn("Channel") { Text($0.channel) }
+                TableColumn("Status") { entry in
+                    Text(entry.ok ? "OK" : "ERROR")
+                        .foregroundStyle(entry.ok ? .green : .red)
+                }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+            )
         }
-        .padding()
+        .padding(20)
     }
 }
 
@@ -137,19 +344,23 @@ struct LogsView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
+                Text("Logs")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Spacer()
                 Button("Clear") { app.logs.clear() }
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(app.logs.fullLog(), forType: .string)
                 }
                 Toggle("Auto-scroll", isOn: $app.logs.autoScroll)
-                Spacer()
+                    .toggleStyle(.switch)
             }
+
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading) {
+                    LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(Array(app.logs.lines.enumerated()), id: \.offset) { idx, line in
                             Text(line)
                                 .font(.system(.caption, design: .monospaced))
@@ -158,7 +369,13 @@ struct LogsView: View {
                                 .id(idx)
                         }
                     }
+                    .padding(12)
                 }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                )
                 .onChange(of: app.logs.lines.count) { _ in
                     if app.logs.autoScroll, let last = app.logs.lines.indices.last {
                         proxy.scrollTo(last, anchor: .bottom)
@@ -166,7 +383,7 @@ struct LogsView: View {
                 }
             }
         }
-        .padding()
+        .padding(20)
     }
 }
 
@@ -175,73 +392,182 @@ struct SettingsView: View {
     @Binding var showToken: Bool
 
     var body: some View {
-        Form {
-            HStack {
-                Group {
-                    if showToken {
-                        TextField("Bot Token", text: $app.settings.token)
-                    } else {
-                        SecureField("Bot Token", text: $app.settings.token)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Settings")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+
+            Form {
+                HStack {
+                    Group {
+                        if showToken {
+                            TextField("Bot Token", text: $app.settings.token)
+                        } else {
+                            SecureField("Bot Token", text: $app.settings.token)
+                        }
                     }
+                    Button(showToken ? "Hide" : "Show") { showToken.toggle() }
                 }
-                Button(showToken ? "Hide" : "Show") { showToken.toggle() }
+                TextField("Command Prefix", text: $app.settings.prefix)
+                Toggle("Auto Start", isOn: $app.settings.autoStart)
+                Button("Save") { app.saveSettings() }
+                    .buttonStyle(.borderedProminent)
+                Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
             }
-            TextField("Command Prefix", text: $app.settings.prefix)
-            Toggle("Auto Start", isOn: $app.settings.autoStart)
-            Button("Save") { app.saveSettings() }
-                .buttonStyle(.borderedProminent)
-            Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
+            .formStyle(.grouped)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .padding()
+        .padding(20)
     }
 }
 
-struct StatusBadge: View {
+struct StatusPill: View {
     let status: BotStatus
-    let uptime: String
+
+    private var color: Color {
+        switch status {
+        case .running: return .green
+        case .connecting: return .orange
+        case .reconnecting: return .yellow
+        case .stopped: return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(status.rawValue.capitalized)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.14), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(color.opacity(0.35), lineWidth: 1)
+        )
+    }
+}
+
+struct DashboardMetricCard: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(color.opacity(0.85), lineWidth: 1.5)
+        )
+    }
+}
+
+struct DashboardPanel<Content: View>: View {
+    let title: String
+    var actionTitle: String?
+    @ViewBuilder let content: Content
+
+    init(title: String, actionTitle: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.actionTitle = actionTitle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+                if let actionTitle {
+                    Button(actionTitle) {}
+                        .buttonStyle(.link)
+                        .font(.caption)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+struct PanelLine: View {
+    let title: String
+    let subtitle: String
+    let tone: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .lineLimit(1)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+struct PlaceholderPanelLine: View {
+    let text: String
 
     var body: some View {
         HStack {
-            Circle().fill(status == .running ? .green : .gray).frame(width: 10, height: 10)
-            Text("@bot • \(status.rawValue.capitalized) • Uptime: \(uptime)")
-                .font(.headline)
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .foregroundStyle(.secondary)
+            Text(text)
+                .foregroundStyle(.secondary)
         }
-        .padding(8)
-        .background(.thinMaterial)
-        .cornerRadius(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
-struct StatCard: View {
-    let title: String
+struct InfoRow: View {
+    let label: String
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.bold())
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.semibold)
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial)
-        .cornerRadius(12)
-    }
-}
-
-struct FlowWrap<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
-    let items: Data
-    let content: (Data.Element) -> Content
-
-    init(_ items: Data, @ViewBuilder content: @escaping (Data.Element) -> Content) {
-        self.items = items
-        self.content = content
-    }
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 8)], spacing: 8) {
-            ForEach(items) { item in
-                content(item)
-            }
-        }
+        .padding(.vertical, 4)
     }
 }
