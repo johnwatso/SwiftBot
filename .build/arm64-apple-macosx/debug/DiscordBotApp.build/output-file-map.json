@@ -1,0 +1,47 @@
+{
+  "": {
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/master.swiftdeps"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/AppModel.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/AppModel.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/AppModel.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/AppModel~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/AppModel.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/AppModel.dia"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/DiscordBotNativeApp.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordBotNativeApp.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordBotNativeApp.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordBotNativeApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordBotNativeApp.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordBotNativeApp.dia"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/DiscordService.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordService.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordService.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordService~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordService.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/DiscordService.dia"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/Models.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Models.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Models.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Models.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Models.dia"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/Persistence.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Persistence.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Persistence.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Persistence~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Persistence.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/Persistence.dia"
+  },
+  "/Users/john/Development/Github/DiscordBot/DiscordBotApp/RootView.swift": {
+    "dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/RootView.d",
+    "object": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/RootView.swift.o",
+    "swiftmodule": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/RootView~partial.swiftmodule",
+    "swift-dependencies": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/RootView.swiftdeps",
+    "diagnostics": "/Users/john/Development/Github/DiscordBot/.build/arm64-apple-macosx/debug/DiscordBotApp.build/RootView.dia"
+  }
+}
