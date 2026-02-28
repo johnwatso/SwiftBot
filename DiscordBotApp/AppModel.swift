@@ -116,6 +116,11 @@ final class AppModel: ObservableObject {
               case let .string(channelId)? = map["channel_id"]
         else { return }
 
+        // Ignore messages from bots (including this bot) to prevent reply loops.
+        if case let .bool(isBot)? = author["bot"], isBot {
+            return
+        }
+
         let isDM = map["guild_id"] == nil || map["guild_id"] == .null
         if isDM, !content.hasPrefix(settings.prefix) {
             try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type !help to see what I can do!", token: settings.token)
