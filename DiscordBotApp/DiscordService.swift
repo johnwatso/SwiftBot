@@ -195,8 +195,19 @@ actor DiscordService {
     }
 
     private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
-        guard payload.op == 0, payload.t == "VOICE_STATE_UPDATE" else { return }
-        guard let event = parseVoiceRuleEvent(from: payload.d) else { return }
+        guard payload.op == 0 else { return }
+
+        let event: VoiceRuleEvent?
+        switch payload.t {
+        case "VOICE_STATE_UPDATE":
+            event = parseVoiceRuleEvent(from: payload.d)
+        case "MESSAGE_CREATE":
+            event = parseMessageRuleEvent(from: payload.d)
+        default:
+            event = nil
+        }
+
+        guard let event else { return }
 
         let engine = ruleEngine
         let actions = await MainActor.run {
@@ -233,7 +244,9 @@ actor DiscordService {
                 channelId: newChannel,
                 fromChannelId: nil,
                 toChannelId: newChannel,
-                durationSeconds: nil
+                durationSeconds: nil,
+                messageContent: nil,
+                isDirectMessage: false
             )
         }
 
@@ -250,7 +263,9 @@ actor DiscordService {
                 channelId: newChannel,
                 fromChannelId: previousChannel,
                 toChannelId: newChannel,
-                durationSeconds: durationSeconds
+                durationSeconds: durationSeconds,
+                messageContent: nil,
+                isDirectMessage: false
             )
         }
 
@@ -267,11 +282,40 @@ actor DiscordService {
                 channelId: previousChannel,
                 fromChannelId: previousChannel,
                 toChannelId: nil,
-                durationSeconds: durationSeconds
+                durationSeconds: durationSeconds,
+                messageContent: nil,
+                isDirectMessage: false
             )
         }
 
         return nil
+    }
+
+    private func parseMessageRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
+        guard case let .object(map)? = raw,
+              case let .object(author)? = map["author"],
+              case let .string(userId)? = author["id"],
+              case let .string(username)? = author["username"],
+              case let .string(content)? = map["content"],
+              case let .string(channelId)? = map["channel_id"],
+              case let .string(guildId)? = map["guild_id"]
+        else { return nil }
+
+        if case let .bool(isBot)? = author["bot"], isBot {
+            return nil
+        }
+
+        return VoiceRuleEvent(
+            kind: .message,
+            guildId: guildId,
+            userId: userId,
+            username: username,
+            channelId: channelId,
+            fromChannelId: nil,
+            toChannelId: nil,
+            durationSeconds: nil,
+            messageContent: content
+        )
     }
 
     private func parseUsername(from map: [String: DiscordJSON], userId: String) -> String {
@@ -286,9 +330,11 @@ actor DiscordService {
     private func execute(action: Action, for event: VoiceRuleEvent) async {
         switch action.type {
         case .sendMessage:
-            guard let token = botToken, !action.channelId.isEmpty else { return }
+            guard let token = botToken else { return }
+            let targetChannelId = (event.kind == .message) ? event.channelId : action.channelId
+            guard !targetChannelId.isEmpty else { return }
             let rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
-            try? await sendMessage(channelId: action.channelId, content: rendered, token: token)
+            try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
         case .addLogEntry:
             return
         case .setStatus:
@@ -306,14 +352,10 @@ actor DiscordService {
         let fromChannelName = resolvedChannelName(guildId: event.guildId, channelId: fromChannelId)
         let toChannelName = resolvedChannelName(guildId: event.guildId, channelId: toChannelId)
 
-        let channelWithMention = "\(channelName) (<#\(channelId)>)"
-        let fromChannelWithMention = "\(fromChannelName) (<#\(fromChannelId)>)"
-        let toChannelWithMention = "\(toChannelName) (<#\(toChannelId)>)"
-
         var output = template
-            .replacingOccurrences(of: "<#{channelId}>", with: channelWithMention)
-            .replacingOccurrences(of: "<#{fromChannelId}>", with: fromChannelWithMention)
-            .replacingOccurrences(of: "<#{toChannelId}>", with: toChannelWithMention)
+            .replacingOccurrences(of: "<#{channelId}>", with: channelName)
+            .replacingOccurrences(of: "<#{fromChannelId}>", with: fromChannelName)
+            .replacingOccurrences(of: "<#{toChannelId}>", with: toChannelName)
             .replacingOccurrences(of: "{userId}", with: event.userId)
             .replacingOccurrences(of: "{username}", with: event.username)
             .replacingOccurrences(of: "{guildId}", with: event.guildId)
