@@ -95,10 +95,21 @@ actor DiscordService {
     }
 
     private func identify(token: String) async {
+        let presence: [String: Any] = [
+            "since": NSNull(),
+            "activities": [[
+                "name": "Hello! Ping me for help",
+                "type": 0
+            ]],
+            "status": "online",
+            "afk": false
+        ]
+
         let identify: [String: Any] = [
             "token": token,
             "intents": 37_639,
-            "properties": ["$os": "macOS", "$browser": "DiscordBotNative", "$device": "DiscordBotNative"]
+            "properties": ["$os": "macOS", "$browser": "DiscordBotNative", "$device": "DiscordBotNative"],
+            "presence": presence
         ]
         await sendRaw(["op": 2, "d": identify])
     }
