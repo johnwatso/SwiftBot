@@ -15,6 +15,14 @@ actor DiscordService {
     var onPayload: ((GatewayPayload) async -> Void)?
     var onConnectionState: ((BotStatus) async -> Void)?
 
+    func setOnPayload(_ handler: @escaping (GatewayPayload) async -> Void) {
+        onPayload = handler
+    }
+
+    func setOnConnectionState(_ handler: @escaping (BotStatus) async -> Void) {
+        onConnectionState = handler
+    }
+
     func connect(token: String) async {
         await onConnectionState?(.connecting)
         let task = session.webSocketTask(with: gatewayURL)

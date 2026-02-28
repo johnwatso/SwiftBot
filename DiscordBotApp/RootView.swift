@@ -159,7 +159,7 @@ struct LogsView: View {
                         }
                     }
                 }
-                .onChange(of: app.logs.lines.count) { _, _ in
+                .onChange(of: app.logs.lines.count) { _ in
                     if app.logs.autoScroll, let last = app.logs.lines.indices.last {
                         proxy.scrollTo(last, anchor: .bottom)
                     }
