@@ -381,11 +381,15 @@ struct VoiceView: View {
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
-        NavigationSplitView {
+        HSplitView {
             RuleListView(
                 rules: rulesBinding,
                 selectedRuleID: selectedRuleIDBinding,
-                onAddNew: { app.ruleStore.addNewRule() },
+                onAddNew: {
+                    let sid = serverIds.first ?? ""
+                    let cid = app.availableTextChannelsByServer[sid]?.first?.id ?? ""
+                    app.ruleStore.addNewRule(serverId: sid, channelId: cid)
+                },
                 onDeleteOffsets: { offsets in
                     app.ruleStore.deleteRules(at: offsets, undoManager: undoManager)
                 },
@@ -398,30 +402,31 @@ struct VoiceView: View {
                     }
                 }
             )
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-        } detail: {
-            if let selectedRule = selectedRuleBinding {
-                RuleEditorView(
-                    rule: selectedRule,
-                    serverIds: serverIds,
-                    serverName: serverName(for:),
-                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                    textChannelsByServer: app.availableTextChannelsByServer
-                )
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No Notification Rules")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+            .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+
+            Group {
+                if let ruleID = app.ruleStore.selectedRuleID,
+                   app.ruleStore.rules.contains(where: { $0.id == ruleID }) {
+                    RuleEditorView(ruleID: ruleID)
+                        .id(ruleID)
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("No Notification Rules")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.regularMaterial)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.regularMaterial)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.prominentDetail)
+        .onChange(of: app.ruleStore.rules) { _ in
+            app.ruleStore.scheduleAutoSave()
+        }
     }
 
     private var rulesBinding: Binding<[Rule]> {
@@ -442,28 +447,6 @@ struct VoiceView: View {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
         }
-    }
-
-    private var selectedRuleBinding: Binding<Rule>? {
-        guard let selectedRuleID = app.ruleStore.selectedRuleID,
-              app.ruleStore.rules.contains(where: { $0.id == selectedRuleID })
-        else { return nil }
-        return Binding(
-            get: {
-                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
-                else { return Rule() }
-                return app.ruleStore.rules[idx]
-            },
-            set: { newValue in
-                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
-                else { return }
-                app.ruleStore.rules[idx] = newValue
-            }
-        )
-    }
-
-    private func serverName(for serverId: String) -> String {
-        app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
     }
 }
 
@@ -530,49 +513,57 @@ struct RuleRowView: View {
 }
 
 struct RuleEditorView: View {
-    @Binding var rule: Rule
+    let ruleID: UUID
     @EnvironmentObject var app: AppModel
+    @State private var draft: Rule = Rule()
+    @State private var didLoad = false
+    @State private var draftCommitTask: Task<Void, Never>?
 
-    let serverIds: [String]
-    let serverName: (String) -> String
-    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
-    let textChannelsByServer: [String: [GuildTextChannel]]
+    private var serverIds: [String] {
+        app.connectedServers.keys.sorted {
+            (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
+        }
+    }
+
+    private func serverName(for serverId: String) -> String {
+        app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
+    }
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    TextField("Rule Name", text: $rule.name)
+                    TextField("Rule Name", text: $draft.name)
                         .textFieldStyle(.roundedBorder)
                         .font(.title2.weight(.semibold))
 
                     RuleGroupSection(title: "When", systemImage: "bolt.fill") {
                         TriggerSectionView(
-                            triggerType: $rule.trigger,
-                            triggerServerId: $rule.triggerServerId,
-                            triggerVoiceChannelId: $rule.triggerVoiceChannelId,
-                            includeStageChannels: $rule.includeStageChannels,
+                            triggerType: $draft.trigger,
+                            triggerServerId: $draft.triggerServerId,
+                            triggerVoiceChannelId: $draft.triggerVoiceChannelId,
+                            includeStageChannels: $draft.includeStageChannels,
                             serverIds: serverIds,
-                            serverName: serverName,
-                            voiceChannels: voiceChannelsByServer[rule.triggerServerId] ?? []
+                            serverName: serverName(for:),
+                            voiceChannels: app.availableVoiceChannelsByServer[draft.triggerServerId] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "If", systemImage: "line.3.horizontal.decrease.circle") {
                         ConditionsSectionView(
-                            conditions: $rule.conditions,
+                            conditions: $draft.conditions,
                             serverIds: serverIds,
-                            serverName: serverName,
-                            voiceChannels: voiceChannelsByServer[rule.triggerServerId] ?? []
+                            serverName: serverName(for:),
+                            voiceChannels: app.availableVoiceChannelsByServer[draft.triggerServerId] ?? []
                         )
                     }
 
                     RuleGroupSection(title: "Do", systemImage: "paperplane.fill") {
                         ActionsSectionView(
-                            actions: $rule.actions,
+                            actions: $draft.actions,
                             serverIds: serverIds,
-                            serverName: serverName,
-                            textChannelsByServer: textChannelsByServer
+                            serverName: serverName(for:),
+                            textChannelsByServer: app.availableTextChannelsByServer
                         )
                     }
                 }
@@ -585,6 +576,7 @@ struct RuleEditorView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button {
+                    commitDraft()
                     app.ruleStore.save()
                 } label: {
                     Label("Save", systemImage: "square.and.arrow.down")
@@ -593,34 +585,81 @@ struct RuleEditorView: View {
             }
         }
         .onAppear {
-            if rule.triggerServerId.isEmpty {
-                rule.triggerServerId = serverIds.first ?? ""
-            }
-            if rule.actions.isEmpty {
-                var action = Action()
-                action.serverId = serverIds.first ?? ""
-                let channels = textChannelsByServer[action.serverId] ?? []
-                action.channelId = channels.first?.id ?? ""
-                action.message = rule.trigger.defaultMessage
-                rule.actions = [action]
-            }
+            loadDraft()
         }
-        .onChange(of: rule.trigger) { newTrigger in
+        .onDisappear {
+            draftCommitTask?.cancel()
+            commitDraft()
+        }
+        .onChange(of: draft) { _ in
+            scheduleDraftCommit()
+        }
+        .onChange(of: draft.trigger) { newTrigger in
             let defaults = TriggerType.allDefaultMessages
-            if rule.actions.first != nil,
-               rule.actions[0].type == .sendMessage,
-               defaults.contains(rule.actions[0].message) {
-                rule.actions[0].message = newTrigger.defaultMessage
+            if !draft.actions.isEmpty,
+               draft.actions[0].type == .sendMessage,
+               defaults.contains(draft.actions[0].message) {
+                draft.actions[0].message = newTrigger.defaultMessage
             }
 
-            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification"])
-            if defaultNames.contains(rule.name) {
-                rule.name = newTrigger.defaultRuleName
+            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
+            if defaultNames.contains(draft.name) {
+                draft.name = newTrigger.defaultRuleName
             }
         }
-        .onChange(of: rule) { _ in
-            app.ruleStore.scheduleAutoSave()
+    }
+
+    private func loadDraft() {
+        guard !didLoad,
+              let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
+        else { return }
+        var r = app.ruleStore.rules[idx]
+
+        if r.triggerServerId.isEmpty {
+            r.triggerServerId = serverIds.first ?? ""
         }
+        if r.actions.isEmpty {
+            var action = RuleAction()
+            action.serverId = serverIds.first ?? ""
+            let channels = app.availableTextChannelsByServer[action.serverId] ?? []
+            action.channelId = channels.first?.id ?? ""
+            action.message = r.trigger.defaultMessage
+            r.actions = [action]
+        } else {
+            if r.actions[0].serverId.isEmpty, let first = serverIds.first {
+                r.actions[0].serverId = first
+            }
+            if r.actions[0].channelId.isEmpty {
+                let channels = app.availableTextChannelsByServer[r.actions[0].serverId] ?? []
+                if let first = channels.first {
+                    r.actions[0].channelId = first.id
+                }
+            }
+        }
+
+        draft = r
+        didLoad = true
+    }
+
+    private func scheduleDraftCommit() {
+        draftCommitTask?.cancel()
+        let snapshot = draft
+        draftCommitTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                commitDraft(snapshot)
+            }
+        }
+    }
+
+    private func commitDraft(_ value: Rule? = nil) {
+        let draftValue = value ?? draft
+        guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID })
+        else { return }
+        guard app.ruleStore.rules[idx] != draftValue else { return }
+        app.ruleStore.rules[idx] = draftValue
+        app.ruleStore.scheduleAutoSave()
     }
 }
 
@@ -802,26 +841,13 @@ struct ActionsSectionView: View {
                 }
             } else {
                 ActionSectionView(
-                    action: primaryActionBinding,
+                    action: $actions[0],
                     serverIds: serverIds,
                     serverName: serverName,
-                    textChannels: textChannelsByServer[primaryActionBinding.wrappedValue.serverId] ?? []
+                    textChannels: textChannelsByServer[actions[0].serverId] ?? []
                 )
             }
         }
-    }
-
-    private var primaryActionBinding: Binding<Action> {
-        Binding(
-            get: { actions.first ?? Action() },
-            set: { newValue in
-                if actions.isEmpty {
-                    actions = [newValue]
-                } else {
-                    actions[0] = newValue
-                }
-            }
-        )
     }
 }
 
