@@ -17,6 +17,7 @@ struct RootView: View {
                 case .commands: CommandsView()
                 case .logs: LogsView()
                 case .settings: SettingsView(showToken: $showToken)
+                case .status: StatusView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,6 +65,7 @@ struct DashboardSidebar: View {
 
                 Section("Config") {
                     SidebarRow(item: .settings, selection: $selection)
+                    SidebarRow(item: .status, selection: $selection)
                 }
             }
             .listStyle(.sidebar)
@@ -128,20 +130,22 @@ struct SidebarRow: View {
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
-    case voice = "Voice Activity"
+    case voice = "Server Notifier"
     case commands = "Commands"
     case logs = "Logs"
     case settings = "Settings"
+    case status = "Status"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
-        case .voice: return "person.3.sequence.fill"
+        case .voice: return "bell.badge.fill"
         case .commands: return "terminal.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .settings: return "gearshape.2.fill"
+        case .status: return "waveform.path.ecg"
         }
     }
 }
@@ -256,7 +260,7 @@ struct OverviewView: View {
     }
 }
 
-enum TriggerType: String, CaseIterable, Identifiable {
+enum TriggerType: String, CaseIterable, Identifiable, Codable {
     case userJoinedVoice = "User Joins Voice"
     case userLeftVoice = "User Leaves Voice"
     case userMovedVoice = "User Moves Voice"
@@ -270,9 +274,34 @@ enum TriggerType: String, CaseIterable, Identifiable {
         case .userMovedVoice: return "arrow.left.arrow.right.circle"
         }
     }
+
+    var defaultMessage: String {
+        switch self {
+        case .userJoinedVoice: return "🔊 <@{userId}> connected to <#{channelId}>"
+        case .userLeftVoice: return "🔌 <@{userId}> disconnected from <#{channelId}> (Online for {duration})"
+        case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
+        }
+    }
+
+    var defaultRuleName: String {
+        switch self {
+        case .userJoinedVoice: return "Join Notification"
+        case .userLeftVoice: return "Leave Notification"
+        case .userMovedVoice: return "Move Notification"
+        }
+    }
+
+    static var allDefaultMessages: Set<String> {
+        var messages = Set(allCases.map(\.defaultMessage))
+        // Include legacy defaults so trigger changes still auto-populate
+        messages.insert("🔊 <@{userId}> connected to <#{channelId}>")
+        messages.insert("🔌 <@{userId}> disconnected from <#{channelId}>")
+        messages.insert("🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>")
+        return messages
+    }
 }
 
-enum ConditionType: String, CaseIterable, Identifiable {
+enum ConditionType: String, CaseIterable, Identifiable, Codable {
     case server = "Server Is"
     case voiceChannel = "Voice Channel Is"
     case usernameContains = "Username Contains"
@@ -290,7 +319,7 @@ enum ConditionType: String, CaseIterable, Identifiable {
     }
 }
 
-enum ActionType: String, CaseIterable, Identifiable {
+enum ActionType: String, CaseIterable, Identifiable, Codable {
     case sendMessage = "Send Message"
     case addLogEntry = "Add Log Entry"
     case setStatus = "Set Bot Status"
@@ -306,7 +335,7 @@ enum ActionType: String, CaseIterable, Identifiable {
     }
 }
 
-struct Condition: Identifiable {
+struct Condition: Identifiable, Codable, Equatable {
     var id = UUID()
     var type: ConditionType
     var value: String = ""
@@ -314,7 +343,7 @@ struct Condition: Identifiable {
     var enabled: Bool = true
 }
 
-struct RuleAction: Identifiable {
+struct RuleAction: Identifiable, Codable, Equatable {
     var id = UUID()
     var type: ActionType = .sendMessage
     var serverId: String = ""
@@ -326,12 +355,12 @@ struct RuleAction: Identifiable {
 
 typealias Action = RuleAction
 
-struct Rule: Identifiable {
+struct Rule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String = "New Notification"
     var trigger: TriggerType = .userJoinedVoice
     var conditions: [Condition] = []
-    var actions: [Action] = [Action()]
+    var actions: [RuleAction] = [RuleAction()]
     var isEnabled: Bool = true
 
     var triggerServerId: String = ""
@@ -369,6 +398,7 @@ struct VoiceView: View {
                     }
                 }
             )
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
             if let selectedRule = selectedRuleBinding {
                 RuleEditorView(
@@ -391,6 +421,7 @@ struct VoiceView: View {
                 .background(.regularMaterial)
             }
         }
+        .navigationSplitViewStyle(.prominentDetail)
     }
 
     private var rulesBinding: Binding<[Rule]> {
@@ -414,11 +445,20 @@ struct VoiceView: View {
     }
 
     private var selectedRuleBinding: Binding<Rule>? {
-        guard let selectedRuleID = app.ruleStore.selectedRuleID else { return nil }
-        guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else { return nil }
+        guard let selectedRuleID = app.ruleStore.selectedRuleID,
+              app.ruleStore.rules.contains(where: { $0.id == selectedRuleID })
+        else { return nil }
         return Binding(
-            get: { app.ruleStore.rules[idx] },
-            set: { app.ruleStore.rules[idx] = $0 }
+            get: {
+                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
+                else { return Rule() }
+                return app.ruleStore.rules[idx]
+            },
+            set: { newValue in
+                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
+                else { return }
+                app.ruleStore.rules[idx] = newValue
+            }
         )
     }
 
@@ -451,7 +491,7 @@ struct RuleListView: View {
             .onDelete(perform: onDeleteOffsets)
         }
         .listStyle(.inset)
-        .navigationTitle("Notifications")
+        .navigationTitle("Server Notifier")
         .toolbar {
             ToolbarItem {
                 Button(action: onAddNew) {
@@ -491,6 +531,7 @@ struct RuleRowView: View {
 
 struct RuleEditorView: View {
     @Binding var rule: Rule
+    @EnvironmentObject var app: AppModel
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -498,11 +539,12 @@ struct RuleEditorView: View {
     let textChannelsByServer: [String: [GuildTextChannel]]
 
     var body: some View {
-        ScrollView {
-            VStack {
+        GeometryReader { geometry in
+            ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     TextField("Rule Name", text: $rule.name)
                         .textFieldStyle(.roundedBorder)
+                        .font(.title2.weight(.semibold))
 
                     RuleGroupSection(title: "When", systemImage: "bolt.fill") {
                         TriggerSectionView(
@@ -534,13 +576,22 @@ struct RuleEditorView: View {
                         )
                     }
                 }
-                .frame(maxWidth: 860)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(24)
+                .frame(maxWidth: 700)
+                .padding(.vertical, 24)
+                .frame(width: geometry.size.width)
             }
-            .frame(maxWidth: .infinity)
         }
-        .navigationTitle(rule.name)
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    app.ruleStore.save()
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                }
+                .help("Save all rules")
+            }
+        }
         .onAppear {
             if rule.triggerServerId.isEmpty {
                 rule.triggerServerId = serverIds.first ?? ""
@@ -550,8 +601,25 @@ struct RuleEditorView: View {
                 action.serverId = serverIds.first ?? ""
                 let channels = textChannelsByServer[action.serverId] ?? []
                 action.channelId = channels.first?.id ?? ""
+                action.message = rule.trigger.defaultMessage
                 rule.actions = [action]
             }
+        }
+        .onChange(of: rule.trigger) { newTrigger in
+            let defaults = TriggerType.allDefaultMessages
+            if rule.actions.first != nil,
+               rule.actions[0].type == .sendMessage,
+               defaults.contains(rule.actions[0].message) {
+                rule.actions[0].message = newTrigger.defaultMessage
+            }
+
+            let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification"])
+            if defaultNames.contains(rule.name) {
+                rule.name = newTrigger.defaultRuleName
+            }
+        }
+        .onChange(of: rule) { _ in
+            app.ruleStore.scheduleAutoSave()
         }
     }
 }
@@ -567,6 +635,7 @@ struct RuleGroupSection<Content: View>: View {
                 .font(.headline)
             content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
@@ -810,7 +879,7 @@ struct ActionSectionView: View {
                 TextField("Status text", text: $action.statusText)
             }
 
-            Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}")
+            Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}, {duration}")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -904,28 +973,58 @@ struct LogsView: View {
     }
 }
 
+struct StatusView: View {
+    @EnvironmentObject var app: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Status")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+
+                RuleGroupSection(title: "Gateway", systemImage: "network") {
+                    InfoRow(label: "Connection", value: app.status.rawValue.capitalized)
+                    InfoRow(label: "Total Events", value: "\(app.gatewayEventCount)")
+                    InfoRow(label: "Last Event", value: app.lastGatewayEventName)
+                    InfoRow(label: "READY Events", value: "\(app.readyEventCount)")
+                    InfoRow(label: "GUILD_CREATE Events", value: "\(app.guildCreateEventCount)")
+                    InfoRow(label: "Servers", value: "\(app.connectedServers.count)")
+                }
+
+                RuleGroupSection(title: "Voice", systemImage: "person.3.sequence") {
+                    InfoRow(label: "Voice State Events", value: "\(app.voiceStateEventCount)")
+                    InfoRow(label: "Active Voice Users", value: "\(app.activeVoice.count)")
+                    InfoRow(label: "Last Voice Event", value: app.lastVoiceStateSummary)
+                    InfoRow(label: "Last Voice Timestamp", value: app.lastVoiceStateAt?.formatted(date: .omitted, time: .standard) ?? "-")
+
+                    if app.activeVoice.isEmpty {
+                        Text("No active voice users currently tracked.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(app.activeVoice.prefix(20)) { member in
+                            PanelLine(
+                                title: "\(member.username) in \(member.channelName)",
+                                subtitle: "Server: \(app.connectedServers[member.guildId] ?? member.guildId)",
+                                tone: .blue
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 860)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject var app: AppModel
     @Binding var showToken: Bool
     @State private var prefixDraft = "!"
-    @State private var notificationChannelDrafts: [String: String] = [:]
-    @State private var ignoredChannelDrafts: [String: String] = [:]
-    @State private var monitoredChannelDrafts: [String: String] = [:]
-    @State private var notifyJoinDrafts: [String: Bool] = [:]
-    @State private var notifyLeaveDrafts: [String: Bool] = [:]
-    @State private var notifyMoveDrafts: [String: Bool] = [:]
-    @State private var joinTemplateDrafts: [String: String] = [:]
-    @State private var leaveTemplateDrafts: [String: String] = [:]
-    @State private var moveTemplateDrafts: [String: String] = [:]
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
-
-    private var editableServerIds: [String] {
-        let ids = Set(app.connectedServers.keys).union(app.settings.guildSettings.keys)
-        return ids.sorted { lhs, rhs in
-            serverName(for: lhs).localizedCaseInsensitiveCompare(serverName(for: rhs)) == .orderedAscending
-        }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -953,117 +1052,8 @@ struct SettingsView: View {
 
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
-                Section("Server Notifications") {
-                    if editableServerIds.isEmpty {
-                        Text("Connect the bot to a server to configure voice notifications here.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(editableServerIds, id: \.self) { serverId in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("\(serverName(for: serverId)) (\(serverId))")
-                                    .font(.subheadline.weight(.semibold))
-
-                                TextField(
-                                    "Notification Channel ID",
-                                    text: Binding(
-                                        get: { notificationChannelDrafts[serverId, default: ""] },
-                                        set: { notificationChannelDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                Toggle(
-                                    "Notify On Join",
-                                    isOn: Binding(
-                                        get: { notifyJoinDrafts[serverId, default: true] },
-                                        set: { notifyJoinDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                Toggle(
-                                    "Notify On Leave",
-                                    isOn: Binding(
-                                        get: { notifyLeaveDrafts[serverId, default: true] },
-                                        set: { notifyLeaveDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                Toggle(
-                                    "Notify On Move",
-                                    isOn: Binding(
-                                        get: { notifyMoveDrafts[serverId, default: true] },
-                                        set: { notifyMoveDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                TextField(
-                                    "Join Message Template",
-                                    text: Binding(
-                                        get: { joinTemplateDrafts[serverId, default: GuildSettings().joinNotificationTemplate] },
-                                        set: { joinTemplateDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                TextField(
-                                    "Leave Message Template",
-                                    text: Binding(
-                                        get: { leaveTemplateDrafts[serverId, default: GuildSettings().leaveNotificationTemplate] },
-                                        set: { leaveTemplateDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                TextField(
-                                    "Move Message Template",
-                                    text: Binding(
-                                        get: { moveTemplateDrafts[serverId, default: GuildSettings().moveNotificationTemplate] },
-                                        set: { moveTemplateDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                TextField(
-                                    "Notify Only Voice Channel IDs (comma separated, empty = all)",
-                                    text: Binding(
-                                        get: { monitoredChannelDrafts[serverId, default: ""] },
-                                        set: { monitoredChannelDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                TextField(
-                                    "Ignored Voice Channel IDs (comma separated)",
-                                    text: Binding(
-                                        get: { ignoredChannelDrafts[serverId, default: ""] },
-                                        set: { ignoredChannelDrafts[serverId] = $0 }
-                                    )
-                                )
-
-                                let voiceChannels = app.availableVoiceChannelsByServer[serverId] ?? []
-                                if voiceChannels.isEmpty {
-                                    Text("No voice channels discovered yet.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Available Voice Channels")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-
-                                    ForEach(voiceChannels) { channel in
-                                        Text("• \(channel.name) (\(channel.id))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-
-                                Text("Template placeholders: {userId} {username} {guildName} {channelId} {channelName} {fromChannelId} {toChannelId}")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-
                 Button("Save") {
                     app.settings.prefix = prefixDraft
-                    applyServerDraftsToSettings()
                     app.saveSettings()
                     prefixDraft = app.settings.prefix
                 }
@@ -1073,85 +1063,14 @@ struct SettingsView: View {
             }
             .onAppear {
                 prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
-                refreshServerDrafts()
             }
             .onChange(of: app.settings.prefix) { newValue in
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
-            }
-            .onChange(of: app.connectedServers.count) { _ in
-                refreshServerDrafts()
-            }
-            .onChange(of: app.settings.guildSettings.count) { _ in
-                refreshServerDrafts()
             }
             .formStyle(.grouped)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(20)
-    }
-
-    private func serverName(for serverId: String) -> String {
-        app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
-    }
-
-    private func refreshServerDrafts() {
-        for serverId in editableServerIds {
-            let guildSettings = app.settings.guildSettings[serverId] ?? GuildSettings()
-            notificationChannelDrafts[serverId] = guildSettings.notificationChannelId ?? ""
-            ignoredChannelDrafts[serverId] = guildSettings.ignoredVoiceChannelIds.sorted().joined(separator: ",")
-            monitoredChannelDrafts[serverId] = guildSettings.monitoredVoiceChannelIds.sorted().joined(separator: ",")
-            notifyJoinDrafts[serverId] = guildSettings.notifyOnJoin
-            notifyLeaveDrafts[serverId] = guildSettings.notifyOnLeave
-            notifyMoveDrafts[serverId] = guildSettings.notifyOnMove
-            joinTemplateDrafts[serverId] = guildSettings.joinNotificationTemplate
-            leaveTemplateDrafts[serverId] = guildSettings.leaveNotificationTemplate
-            moveTemplateDrafts[serverId] = guildSettings.moveNotificationTemplate
-        }
-    }
-
-    private func applyServerDraftsToSettings() {
-        for serverId in editableServerIds {
-            var guildSettings = app.settings.guildSettings[serverId] ?? GuildSettings()
-
-            let notification = notificationChannelDrafts[serverId, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-            guildSettings.notificationChannelId = notification.isEmpty ? nil : notification
-
-            let monitoredRaw = monitoredChannelDrafts[serverId, default: ""]
-            let monitoredIds = monitoredRaw
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .compactMap(parseChannelId)
-            guildSettings.monitoredVoiceChannelIds = Set(monitoredIds)
-
-            let ignoredRaw = ignoredChannelDrafts[serverId, default: ""]
-            let ignoredIds = ignoredRaw
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .compactMap(parseChannelId)
-            guildSettings.ignoredVoiceChannelIds = Set(ignoredIds)
-
-            guildSettings.notifyOnJoin = notifyJoinDrafts[serverId, default: true]
-            guildSettings.notifyOnLeave = notifyLeaveDrafts[serverId, default: true]
-            guildSettings.notifyOnMove = notifyMoveDrafts[serverId, default: true]
-
-            let joinTemplate = joinTemplateDrafts[serverId, default: GuildSettings().joinNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
-            guildSettings.joinNotificationTemplate = joinTemplate.isEmpty ? GuildSettings().joinNotificationTemplate : joinTemplate
-
-            let leaveTemplate = leaveTemplateDrafts[serverId, default: GuildSettings().leaveNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
-            guildSettings.leaveNotificationTemplate = leaveTemplate.isEmpty ? GuildSettings().leaveNotificationTemplate : leaveTemplate
-
-            let moveTemplate = moveTemplateDrafts[serverId, default: GuildSettings().moveNotificationTemplate].trimmingCharacters(in: .whitespacesAndNewlines)
-            guildSettings.moveNotificationTemplate = moveTemplate.isEmpty ? GuildSettings().moveNotificationTemplate : moveTemplate
-
-            app.settings.guildSettings[serverId] = guildSettings
-        }
-    }
-
-    private func parseChannelId(_ text: String) -> String? {
-        if text.hasPrefix("<#") && text.hasSuffix(">") {
-            return String(text.dropFirst(2).dropLast())
-        }
-        return text.allSatisfy(\.isNumber) ? text : nil
     }
 }
 
