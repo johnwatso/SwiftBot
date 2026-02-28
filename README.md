@@ -6,7 +6,7 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ### App Icon
 
-![DiscordBot App Icon](DiscordBotApp/Resources/AppIcon.png)
+<img src="DiscordBotApp/Resources/AppIcon.png" alt="DiscordBot App Icon" width="120" />
 
 ### App UI
 
