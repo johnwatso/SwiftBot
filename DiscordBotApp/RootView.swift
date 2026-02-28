@@ -1097,6 +1097,16 @@ struct SettingsView: View {
 
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
+                Section("On-Device AI DM Replies") {
+                    Toggle("Enable on-device intelligent DM replies", isOn: $app.settings.localAIDMReplyEnabled)
+                    TextField("System Prompt", text: $app.settings.localAISystemPrompt)
+                        .disabled(!app.settings.localAIDMReplyEnabled)
+
+                    Text("Uses Apple Intelligence Foundation Models locally on this Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Button("Save") {
                     app.settings.prefix = prefixDraft
                     app.saveSettings()

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 actor DiscordService {
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
@@ -15,6 +18,9 @@ actor DiscordService {
     private var voiceJoinTimeByMemberKey: [String: Date] = [:]
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
 
+    private var localAIDMReplyEnabled = false
+    private var localAISystemPrompt = ""
+
     private let session = URLSession(configuration: .default)
 
     var onPayload: ((GatewayPayload) async -> Void)?
@@ -30,6 +36,11 @@ actor DiscordService {
 
     func setRuleEngine(_ engine: RuleEngine) {
         ruleEngine = engine
+    }
+
+    func configureLocalAIDMReplies(enabled: Bool, endpoint: String, model: String, systemPrompt: String) {
+        localAIDMReplyEnabled = enabled
+        localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func connect(token: String) async {
@@ -297,12 +308,21 @@ actor DiscordService {
               case let .string(userId)? = author["id"],
               case let .string(username)? = author["username"],
               case let .string(content)? = map["content"],
-              case let .string(channelId)? = map["channel_id"],
-              case let .string(guildId)? = map["guild_id"]
+              case let .string(channelId)? = map["channel_id"]
         else { return nil }
 
         if case let .bool(isBot)? = author["bot"], isBot {
             return nil
+        }
+
+        let guildId: String
+        let isDirectMessage: Bool
+        if case let .string(gid)? = map["guild_id"] {
+            guildId = gid
+            isDirectMessage = false
+        } else {
+            guildId = ""
+            isDirectMessage = true
         }
 
         return VoiceRuleEvent(
@@ -314,7 +334,8 @@ actor DiscordService {
             fromChannelId: nil,
             toChannelId: nil,
             durationSeconds: nil,
-            messageContent: content
+            messageContent: content,
+            isDirectMessage: isDirectMessage
         )
     }
 
@@ -333,7 +354,18 @@ actor DiscordService {
             guard let token = botToken else { return }
             let targetChannelId = (event.kind == .message) ? event.channelId : action.channelId
             guard !targetChannelId.isEmpty else { return }
-            let rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+
+            let rendered: String
+            if event.kind == .message,
+               event.isDirectMessage,
+               localAIDMReplyEnabled,
+               let userMessage = event.messageContent,
+               let aiReply = await generateLocalAIDMReply(userMessage: userMessage, username: event.username) {
+                rendered = aiReply
+            } else {
+                rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+            }
+
             try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
         case .addLogEntry:
             return
@@ -378,6 +410,38 @@ actor DiscordService {
             return name
         }
         return "Channel \(channelId.suffix(5))"
+    }
+
+    private func generateLocalAIDMReply(userMessage: String, username: String) async -> String? {
+        guard localAIDMReplyEnabled else { return nil }
+
+        let systemPrompt = localAISystemPrompt.isEmpty
+            ? "You are a friendly Discord DM assistant. Reply briefly and naturally."
+            : localAISystemPrompt
+
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let model = SystemLanguageModel.default
+            switch model.availability {
+            case .available:
+                break
+            default:
+                return nil
+            }
+
+            let prompt = "Message from \(username): \(userMessage)"
+            let session = LanguageModelSession(model: model, instructions: Instructions(systemPrompt))
+            do {
+                let response = try await session.respond(to: prompt)
+                let content = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                return content.isEmpty ? nil : content
+            } catch {
+                return nil
+            }
+        }
+#endif
+
+        return nil
     }
 
     private func formatDuration(seconds: Int?) -> String {

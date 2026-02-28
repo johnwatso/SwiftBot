@@ -18,6 +18,12 @@ struct BotSettings: Codable, Hashable {
     var prefix: String = "!"
     var autoStart: Bool = false
     var guildSettings: [String: GuildSettings] = [:]
+
+    // Local AI DM auto-reply settings (OpenAI-compatible local endpoint)
+    var localAIDMReplyEnabled: Bool = false
+    var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
+    var localAIModel: String = "local-model"
+    var localAISystemPrompt: String = "You are a friendly Discord DM assistant. Reply briefly and naturally."
 }
 
 enum BotStatus: String {
