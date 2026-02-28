@@ -12,7 +12,7 @@ final class AppModel: ObservableObject {
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
 
-    let logs = LogStore()
+    var logs = LogStore()
 
     private let store = ConfigStore()
     private let service = DiscordService()
@@ -54,7 +54,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopBot() {
-        service.disconnect()
+        Task { await service.disconnect() }
         uptimeTask?.cancel()
         uptime = nil
         status = .stopped
@@ -62,14 +62,14 @@ final class AppModel: ObservableObject {
     }
 
     private func configureServiceCallbacks() async {
-        await service.onConnectionState { [weak self] state in
+        await service.setOnConnectionState { [weak self] state in
             await MainActor.run {
                 self?.status = state
                 self?.logs.append("Connection state: \(state.rawValue)")
             }
         }
 
-        await service.onPayload { [weak self] payload in
+        await service.setOnPayload { [weak self] payload in
             await self?.handlePayload(payload)
         }
     }

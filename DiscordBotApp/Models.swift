@@ -88,7 +88,7 @@ struct GatewayPayload: Codable {
     let t: String?
 }
 
-enum DiscordJSON: Codable {
+enum DiscordJSON: Codable, Equatable {
     case string(String)
     case int(Int)
     case double(Double)
