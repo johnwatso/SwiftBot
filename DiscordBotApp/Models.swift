@@ -180,8 +180,13 @@ final class RuleStore: ObservableObject {
         }
     }
 
-    func addNewRule() {
-        let rule = Rule(name: "New Notification")
+    func addNewRule(serverId: String = "", channelId: String = "") {
+        var action = RuleAction()
+        action.serverId = serverId
+        action.channelId = channelId
+        var rule = Rule(name: "New Notification")
+        rule.triggerServerId = serverId
+        rule.actions = [action]
         rules.append(rule)
         selectedRuleID = rule.id
         scheduleAutoSave()
