@@ -147,6 +147,7 @@ struct VoiceRuleEvent {
         case join
         case leave
         case move
+        case message
     }
 
     let kind: Kind
@@ -157,6 +158,8 @@ struct VoiceRuleEvent {
     let fromChannelId: String?
     let toChannelId: String?
     let durationSeconds: Int?
+    let messageContent: String?
+    let isDirectMessage: Bool
 }
 
 @MainActor
@@ -278,10 +281,21 @@ final class RuleEngine {
 
     private func matchesTrigger(rule: Rule, event: VoiceRuleEvent) -> Bool {
         switch (rule.trigger, event.kind) {
-        case (.userJoinedVoice, .join): return true
-        case (.userLeftVoice, .leave): return true
-        case (.userMovedVoice, .move): return true
-        default: return false
+        case (.userJoinedVoice, .join):
+            return true
+        case (.userLeftVoice, .leave):
+            return true
+        case (.userMovedVoice, .move):
+            return true
+        case (.messageContains, .message):
+            let needle = rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !needle.isEmpty, let content = event.messageContent else { return false }
+            if event.isDirectMessage {
+                return rule.replyToDMs && content.localizedCaseInsensitiveContains(needle)
+            }
+            return content.localizedCaseInsensitiveContains(needle)
+        default:
+            return false
         }
     }
 

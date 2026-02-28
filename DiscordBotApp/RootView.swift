@@ -264,6 +264,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
     case userJoinedVoice = "User Joins Voice"
     case userLeftVoice = "User Leaves Voice"
     case userMovedVoice = "User Moves Voice"
+    case messageContains = "Message Contains"
 
     var id: String { rawValue }
 
@@ -272,6 +273,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userJoinedVoice: return "person.crop.circle.badge.plus"
         case .userLeftVoice: return "person.crop.circle.badge.xmark"
         case .userMovedVoice: return "arrow.left.arrow.right.circle"
+        case .messageContains: return "text.bubble"
         }
     }
 
@@ -280,6 +282,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userJoinedVoice: return "🔊 <@{userId}> connected to <#{channelId}>"
         case .userLeftVoice: return "🔌 <@{userId}> disconnected from <#{channelId}> (Online for {duration})"
         case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
+        case .messageContains: return "nm you?"
         }
     }
 
@@ -288,6 +291,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userJoinedVoice: return "Join Notification"
         case .userLeftVoice: return "Leave Notification"
         case .userMovedVoice: return "Move Notification"
+        case .messageContains: return "Message Reply"
         }
     }
 
@@ -365,6 +369,8 @@ struct Rule: Identifiable, Codable, Equatable {
 
     var triggerServerId: String = ""
     var triggerVoiceChannelId: String = ""
+    var triggerMessageContains: String = "up to?"
+    var replyToDMs: Bool = false
     var includeStageChannels: Bool = true
 
     var triggerSummary: String {
@@ -372,6 +378,8 @@ struct Rule: Identifiable, Codable, Equatable {
         case .userJoinedVoice: return "When user joins voice"
         case .userLeftVoice: return "When user leaves voice"
         case .userMovedVoice: return "When user moves voice"
+        case .messageContains:
+            return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
         }
     }
 }
@@ -406,11 +414,17 @@ struct VoiceView: View {
 
             Group {
                 if let ruleID = app.ruleStore.selectedRuleID,
-                   let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID }) {
+                   app.ruleStore.rules.contains(where: { $0.id == ruleID }) {
                     RuleEditorView(
                         rule: Binding(
-                            get: { app.ruleStore.rules[idx] },
-                            set: { app.ruleStore.rules[idx] = $0 }
+                            get: {
+                                app.ruleStore.rules.first(where: { $0.id == ruleID }) ?? Rule()
+                            },
+                            set: { newRule in
+                                if let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID }) {
+                                    app.ruleStore.rules[idx] = newRule
+                                }
+                            }
                         )
                     )
                 } else {
@@ -543,6 +557,8 @@ struct RuleEditorView: View {
                             triggerType: $rule.trigger,
                             triggerServerId: $rule.triggerServerId,
                             triggerVoiceChannelId: $rule.triggerVoiceChannelId,
+                            triggerMessageContains: $rule.triggerMessageContains,
+                            replyToDMs: $rule.replyToDMs,
                             includeStageChannels: $rule.includeStageChannels,
                             serverIds: serverIds,
                             serverName: serverName(for:),
@@ -647,6 +663,12 @@ struct RuleEditorView: View {
             didChange = true
         }
 
+        if newTrigger == .messageContains,
+           rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            rule.triggerMessageContains = "up to?"
+            didChange = true
+        }
+
         if didChange {
             app.ruleStore.scheduleAutoSave()
         }
@@ -674,6 +696,8 @@ struct TriggerSectionView: View {
     @Binding var triggerType: TriggerType
     @Binding var triggerServerId: String
     @Binding var triggerVoiceChannelId: String
+    @Binding var triggerMessageContains: String
+    @Binding var replyToDMs: Bool
     @Binding var includeStageChannels: Bool
 
     let serverIds: [String]
@@ -694,13 +718,18 @@ struct TriggerSectionView: View {
                 }
             }
 
-            if !voiceChannels.isEmpty {
+            if triggerType != .messageContains, !voiceChannels.isEmpty {
                 Picker("Voice Channel", selection: $triggerVoiceChannelId) {
                     Text("Any Channel").tag("")
                     ForEach(voiceChannels) { channel in
                         Text(channel.name).tag(channel.id)
                     }
                 }
+            }
+
+            if triggerType == .messageContains {
+                TextField("Message contains…", text: $triggerMessageContains)
+                Toggle("Reply to DMs", isOn: $replyToDMs)
             }
 
             if triggerType == .userJoinedVoice || triggerType == .userMovedVoice {
