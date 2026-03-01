@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     private var joinTimes: [String: Date] = [:]
     private var usernamesById: [String: String] = [:]
     private var dmUsersSeen: Set<String> = []
+    private var botUserId: String?
 
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
@@ -200,6 +201,11 @@ final class AppModel: ObservableObject {
             readyEventCount += 1
             handleReady(payload.d)
             logs.append("READY received")
+            if case let .object(map)? = payload.d,
+               case let .object(user)? = map["user"],
+               case let .string(id)? = user["id"] {
+                botUserId = id
+            }
         case "GUILD_CREATE":
             guildCreateEventCount += 1
             handleGuildCreate(payload.d)
@@ -251,6 +257,26 @@ final class AppModel: ObservableObject {
 
             try? await service.sendMessage(channelId: channelId, content: "If you need help, type \(prefix)help.", token: settings.token)
             return
+        }
+
+        // If the message mentions this bot in a guild/channel, optionally reply with local AI
+        if !isDM, settings.localAIDMReplyEnabled, let botId = botUserId {
+            var mentionsBot = false
+            if case let .array(mentions)? = map["mentions"] {
+                for m in mentions {
+                    if case let .object(mobj) = m,
+                       case let .string(mid)? = mobj["id"], mid == botId {
+                        mentionsBot = true
+                        break
+                    }
+                }
+            }
+            if mentionsBot {
+                if let aiReply = await service.generateSmartDMReply(message: content, username: username) {
+                    try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
+                    return
+                }
+            }
         }
 
         guard content.hasPrefix(prefix) else { return }
@@ -761,3 +787,4 @@ final class AppModel: ObservableObject {
         return "\(m)m \(s)s"
     }
 }
+

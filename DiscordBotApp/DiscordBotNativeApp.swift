@@ -11,7 +11,7 @@ struct DiscordBotNativeApp: App {
             return
         }
 
-        guard let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
               let image = NSImage(contentsOf: iconURL)
         else { return }
         NSApp.applicationIconImage = image
