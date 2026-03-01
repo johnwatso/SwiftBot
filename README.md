@@ -1,12 +1,12 @@
 # DiscordBot Native (SwiftUI macOS)
 
-A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrency (async/await + actors). The app connects directly to Discord Gateway + REST APIs without Electron or Node.js.
+A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrency (`async/await` + actors). It connects directly to Discord Gateway and REST APIs with no Electron or Node.js runtime.
 
 ## Preview
 
 ### App Icon
 
-<img src="DiscordBotApp/Resources/AppIcon.png" alt="DiscordBot App Icon" width="120" />
+<img src="DiscordBotApp/Resources/AppIcon.png" alt="DiscordBot App Icon" width="96" />
 
 ### App UI
 
@@ -14,20 +14,28 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ## Features
 
-- Native SwiftUI desktop UI with sidebar pages:
+- Native SwiftUI desktop UI pages:
   - Overview
-  - Voice
+  - Server Notifier
   - Commands
   - Logs
   - Settings
+  - Status
 - Discord Gateway (`wss://gateway.discord.gg/?v=10&encoding=json`) connection
-  - Handles Hello, Heartbeat, Identify, Reconnect and Invalid Session opcodes
+  - Handles hello, heartbeat, identify, reconnect, and invalid session flow
 - Discord REST sending via `https://discord.com/api/v10`
-- Voice join/leave/move tracking with in-memory session timing
+- Server Notifier rule engine:
+  - Triggers: user joins/leaves/moves voice, message contains
+  - Conditions: server, voice channel, username contains, minimum duration
+  - Actions: send message, add log entry, set status
+- Voice channel activity tracking with session timing
 - Command parsing with configurable prefix (default `!`)
-- Persistent app settings in Application Support JSON
+- DM behavior:
+  - First DM from a user gets a generic help message
+  - Follow-up DMs can use on-device intelligent replies (Beta toggle)
+- Persistent settings and rules saved in Application Support JSON
 
-## Commands implemented
+## Commands
 
 - `!help`
 - `!ping`
@@ -43,18 +51,19 @@ Unknown commands return:
 
 `❓ I don't know that command! Type !help to see all available commands.`
 
-DMs without prefix return:
+## On-Device AI DM Replies (Beta)
 
-`👋 Hey there! If you need help, type !help to see what I can do!`
+- Uses Apple on-device Foundation Models when available.
+- Controlled via Settings toggle: `Enable on-device intelligent DM replies (Beta)`.
+- Disabled by default.
 
 ## Build in Xcode
 
-1. Open the folder in Xcode 15+.
-2. Open `Package.swift` (or add sources to a macOS App target).
-3. Set deployment target macOS 13.0+.
-4. Run on an Apple Silicon Mac (arm64).
+1. Open this folder in Xcode 15+.
+2. Open `Package.swift`.
+3. Build and run the macOS app target.
 
-## Build Standalone .app
+## Build Standalone `.app`
 
 Use the helper script to build and package a runnable app bundle:
 
@@ -74,15 +83,16 @@ Output:
 
 ## Intents
 
-This implementation identifies with intents bitfield `37639`:
+The bot identifies with intents bitfield `37639`:
 
-- Guilds (1)
-- GuildMembers (2)
-- GuildVoiceStates (128)
-- GuildMessages (512)
-- DirectMessages (4096)
-- MessageContent (32768)
+- Guilds (`1`)
+- GuildMembers (`2`)
+- GuildVoiceStates (`128`)
+- GuildMessages (`512`)
+- DirectMessages (`4096`)
+- MessageContent (`32768`)
 
 ## Notes
 
-- This is a full native baseline implementation intended to be extended with richer guild/channel/member resolution and robust REST rate-limit bucket management.
+- For message-based triggers and smart DM behavior, ensure your Discord bot has **Message Content Intent** enabled in the Discord Developer Portal.
+- This is a native baseline implementation and can be extended with richer guild/channel/member resolution and expanded rate-limit handling.
