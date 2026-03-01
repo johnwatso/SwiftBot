@@ -38,10 +38,26 @@ final class AppModel: ObservableObject {
         self.ruleEngine = RuleEngine(store: ruleStore)
 
         Task {
-            settings = await store.load()
-            if settings.localAIEndpoint.contains("mac-studio.local") {
-                settings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
+            var loadedSettings = await store.load()
+            var migrated = false
+
+            if loadedSettings.localAIEndpoint.contains("mac-studio.local") {
+                loadedSettings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
+                migrated = true
             }
+
+            // Beta feature should default to off, including older saved configs.
+            if loadedSettings.localAIDMReplyEnabled {
+                loadedSettings.localAIDMReplyEnabled = false
+                migrated = true
+            }
+
+            settings = loadedSettings
+
+            if migrated {
+                try? await store.save(loadedSettings)
+            }
+
             await service.setRuleEngine(ruleEngine)
             await service.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,

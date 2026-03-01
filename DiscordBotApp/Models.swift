@@ -185,7 +185,7 @@ final class RuleStore: ObservableObject {
             } else {
                 rules = [Rule(name: "Join Notification")]
             }
-            selectedRuleID = rules.first?.id
+            selectedRuleID = nil
         }
     }
 
@@ -256,14 +256,14 @@ final class RuleStore: ObservableObject {
 
     private func reseatSelection(previousSelection: UUID?) {
         guard let previousSelection else {
-            selectedRuleID = rules.first?.id
+            selectedRuleID = nil
             return
         }
 
         if rules.contains(where: { $0.id == previousSelection }) {
             selectedRuleID = previousSelection
         } else {
-            selectedRuleID = rules.first?.id
+            selectedRuleID = nil
         }
     }
 }

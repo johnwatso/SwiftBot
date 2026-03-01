@@ -413,26 +413,14 @@ struct VoiceView: View {
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
 
             Group {
-                if let ruleID = app.ruleStore.selectedRuleID,
-                   app.ruleStore.rules.contains(where: { $0.id == ruleID }) {
-                    RuleEditorView(
-                        rule: Binding(
-                            get: {
-                                app.ruleStore.rules.first(where: { $0.id == ruleID }) ?? Rule()
-                            },
-                            set: { newRule in
-                                if let idx = app.ruleStore.rules.firstIndex(where: { $0.id == ruleID }) {
-                                    app.ruleStore.rules[idx] = newRule
-                                }
-                            }
-                        )
-                    )
+                if let selectedRuleBinding {
+                    RuleEditorView(rule: selectedRuleBinding)
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "list.bullet.rectangle")
                             .font(.largeTitle)
                             .foregroundStyle(.secondary)
-                        Text("No Notification Rules")
+                        Text("Select a Notification Rule")
                             .font(.headline)
                             .foregroundStyle(.secondary)
                     }
@@ -458,6 +446,29 @@ struct VoiceView: View {
         Binding(
             get: { app.ruleStore.selectedRuleID },
             set: { app.ruleStore.selectedRuleID = $0 }
+        )
+    }
+
+    private var selectedRuleBinding: Binding<Rule>? {
+        guard let selectedRuleID = app.ruleStore.selectedRuleID,
+              app.ruleStore.rules.contains(where: { $0.id == selectedRuleID })
+        else {
+            return nil
+        }
+
+        return Binding(
+            get: {
+                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else {
+                    return Rule(id: selectedRuleID)
+                }
+                return app.ruleStore.rules[idx]
+            },
+            set: { updatedRule in
+                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else {
+                    return
+                }
+                app.ruleStore.rules[idx] = updatedRule
+            }
         )
     }
 
@@ -1098,7 +1109,7 @@ struct SettingsView: View {
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
                 Section("On-Device AI DM Replies") {
-                    Toggle("Enable on-device intelligent DM replies", isOn: $app.settings.localAIDMReplyEnabled)
+                    Toggle("Enable on-device intelligent DM replies (Beta)", isOn: $app.settings.localAIDMReplyEnabled)
                     TextField("System Prompt", text: $app.settings.localAISystemPrompt)
                         .disabled(!app.settings.localAIDMReplyEnabled)
 
