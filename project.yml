@@ -1,0 +1,43 @@
+name: DiscordBotApp
+options:
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    PRODUCT_BUNDLE_IDENTIFIER: com.john.discordbotapp
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+targets:
+  DiscordBotApp:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: DiscordBotApp
+        excludes:
+          - Resources
+          - .DS_Store
+    resources:
+      - path: DiscordBotApp/Resources
+        excludes:
+          - .DS_Store
+    settings:
+      base:
+        PRODUCT_NAME: DiscordBotApp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: DiscordBotApp
+        INFOPLIST_KEY_CFBundleName: DiscordBotApp
+        INFOPLIST_KEY_LSMinimumSystemVersion: 13.0
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  DiscordBotApp:
+    build:
+      targets:
+        DiscordBotApp: all
+    run:
+      config: Debug
+    archive:
+      config: Release

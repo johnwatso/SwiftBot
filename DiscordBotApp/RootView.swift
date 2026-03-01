@@ -371,6 +371,7 @@ struct Rule: Identifiable, Codable, Equatable {
     var triggerVoiceChannelId: String = ""
     var triggerMessageContains: String = "up to?"
     var replyToDMs: Bool = false
+
     var includeStageChannels: Bool = true
 
     var triggerSummary: String {
