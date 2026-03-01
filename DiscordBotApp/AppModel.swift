@@ -37,6 +37,15 @@ final class AppModel: ObservableObject {
     private let pluginManager: PluginManager
     private var weeklyPlugin: WeeklySummaryPlugin?
     private var botUserId: String?
+    @Published var botUsername: String = "OnlineBot"
+    @Published var botDiscriminator: String?
+    @Published var botAvatarHash: String?
+    
+    var botAvatarURL: URL? {
+        guard let userId = botUserId, let hash = botAvatarHash else { return nil }
+        let ext = hash.hasPrefix("a_") ? "gif" : "png"
+        return URL(string: "https://cdn.discordapp.com/avatars/\(userId)/\(hash).\(ext)?size=128")
+    }
 
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
@@ -154,6 +163,10 @@ final class AppModel: ObservableObject {
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
+        botUserId = nil
+        botUsername = "OnlineBot"
+        botDiscriminator = nil
+        botAvatarHash = nil
         Task { await pluginManager.removeAll() }
         status = .stopped
         logs.append("Bot stopped")
@@ -212,9 +225,19 @@ final class AppModel: ObservableObject {
             handleReady(payload.d)
             logs.append("READY received")
             if case let .object(map)? = payload.d,
-               case let .object(user)? = map["user"],
-               case let .string(id)? = user["id"] {
-                botUserId = id
+               case let .object(user)? = map["user"] {
+                if case let .string(id)? = user["id"] {
+                    botUserId = id
+                }
+                if case let .string(username)? = user["username"] {
+                    botUsername = username
+                }
+                if case let .string(discriminator)? = user["discriminator"] {
+                    botDiscriminator = discriminator != "0" ? discriminator : nil
+                }
+                if case let .string(avatarHash)? = user["avatar"] {
+                    botAvatarHash = avatarHash
+                }
             }
         case "GUILD_CREATE":
             guildCreateEventCount += 1

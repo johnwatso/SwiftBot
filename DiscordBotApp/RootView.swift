@@ -22,8 +22,17 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .windowBackgroundColor))
+            .navigationTitle(windowTitle)
         }
         .navigationSplitViewStyle(.balanced)
+    }
+    
+    private var windowTitle: String {
+        if app.status == .running {
+            return "\(app.botUsername) - Discord Bot"
+        } else {
+            return "Discord Bot Dashboard"
+        }
     }
 }
 
@@ -34,21 +43,67 @@ struct DashboardSidebar: View {
     var body: some View {
         VStack(spacing: 14) {
             VStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 56, height: 56)
-                    Image(systemName: "cpu.fill")
-                        .font(.title2)
-                        .foregroundStyle(.white)
+                Group {
+                    if let avatarURL = app.botAvatarURL {
+                        AsyncImage(url: avatarURL) { phase in
+                            switch phase {
+                            case .empty:
+                                ZStack {
+                                    Circle()
+                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .frame(width: 56, height: 56)
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(Circle())
+                            case .failure:
+                                ZStack {
+                                    Circle()
+                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .frame(width: 56, height: 56)
+                                    Image(systemName: "cpu.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.white)
+                                }
+                            @unknown default:
+                                ZStack {
+                                    Circle()
+                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .frame(width: 56, height: 56)
+                                    Image(systemName: "cpu.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 56, height: 56)
+                            Image(systemName: "cpu.fill")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                        }
+                    }
                 }
 
                 VStack(spacing: 2) {
-                    Text("OnlineBot")
+                    Text(app.botUsername)
                         .font(.headline)
-                    Text("Native Assistant")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(app.status == .running ? Color.green : Color.secondary)
+                            .frame(width: 6, height: 6)
+                        Text(app.status == .running ? "Online" : "Offline")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
