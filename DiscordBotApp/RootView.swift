@@ -416,6 +416,7 @@ struct VoiceView: View {
             Group {
                 if let selectedRuleBinding {
                     RuleEditorView(rule: selectedRuleBinding)
+                        .id(app.ruleStore.selectedRuleID) // Force view recreation when selection changes
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "list.bullet.rectangle")
@@ -459,13 +460,17 @@ struct VoiceView: View {
 
         return Binding(
             get: {
-                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else {
+                // Always look up the current selected rule ID, not the captured one
+                guard let currentSelectedID = app.ruleStore.selectedRuleID,
+                      let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
                     return Rule(id: selectedRuleID)
                 }
                 return app.ruleStore.rules[idx]
             },
             set: { updatedRule in
-                guard let idx = app.ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) else {
+                // Always look up the current selected rule ID, not the captured one
+                guard let currentSelectedID = app.ruleStore.selectedRuleID,
+                      let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
                     return
                 }
                 app.ruleStore.rules[idx] = updatedRule
