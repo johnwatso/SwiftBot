@@ -33,10 +33,14 @@ final class AppModel: ObservableObject {
     private var joinTimes: [String: Date] = [:]
     private var usernamesById: [String: String] = [:]
     private var dmUsersSeen: Set<String> = []
+    let eventBus = EventBus()
+    private let pluginManager: PluginManager
+    private var weeklyPlugin: WeeklySummaryPlugin?
     private var botUserId: String?
 
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
+        self.pluginManager = PluginManager(bus: eventBus)
 
         Task {
             var loadedSettings = await store.load()
@@ -127,6 +131,11 @@ final class AppModel: ObservableObject {
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
         startUptimeTicker()
+
+        let weekly = WeeklySummaryPlugin()
+        self.weeklyPlugin = weekly
+        Task { await pluginManager.add(weekly) }
+
         await service.connect(token: settings.token)
         logs.append("Connecting to Discord Gateway")
     }
@@ -145,6 +154,7 @@ final class AppModel: ObservableObject {
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
+        Task { await pluginManager.removeAll() }
         status = .stopped
         logs.append("Bot stopped")
     }
@@ -259,25 +269,14 @@ final class AppModel: ObservableObject {
             return
         }
 
-        // If the message mentions this bot in a guild/channel, optionally reply with local AI
-        if !isDM, settings.localAIDMReplyEnabled, let botId = botUserId {
-            var mentionsBot = false
-            if case let .array(mentions)? = map["mentions"] {
-                for m in mentions {
-                    if case let .object(mobj) = m,
-                       case let .string(mid)? = mobj["id"], mid == botId {
-                        mentionsBot = true
-                        break
-                    }
-                }
-            }
-            if mentionsBot {
-                if let aiReply = await service.generateSmartDMReply(message: content, username: username) {
-                    try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
-                    return
-                }
-            }
-        }
+        await eventBus.publish(MessageReceived(
+            guildId: (map["guild_id"] != nil && map["guild_id"] != .null) ? ( ( { () -> String in if case let .string(gid)? = map["guild_id"] { return gid } else { return "" } }() ) ) : nil,
+            channelId: channelId,
+            userId: ( { () -> String in if case let .string(uid)? = author["id"] { return uid } else { return "" } }() ),
+            username: username,
+            content: content,
+            isDirectMessage: isDM
+        ))
 
         guard content.hasPrefix(prefix) else { return }
 
@@ -318,6 +317,9 @@ final class AppModel: ObservableObject {
             return await updateIgnoredChannels(tokens: tokens, raw: raw, responseChannelId: channelId)
         case "notifystatus":
             return await notifyStatus(raw: raw, responseChannelId: channelId)
+        case "weekly":
+            let report = weeklyPlugin?.snapshotSummary() ?? "No data yet."
+            return await send(channelId, report)
         default:
             _ = await unknown(channelId)
             return false
@@ -509,6 +511,7 @@ final class AppModel: ObservableObject {
                     )
                     _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join)
                 }
+                await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
             }
 
             activeVoice.append(next)
@@ -534,6 +537,8 @@ final class AppModel: ObservableObject {
                 )
                 _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave)
             }
+            let elapsedSec = Int(now.timeIntervalSince(joinTimes[key] ?? previous.joinedAt))
+            await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
         }
 
         if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }
@@ -704,6 +709,7 @@ final class AppModel: ObservableObject {
 
             connectedServers[guildId] = guildName
         }
+        // TODO: Emit UserJoinedServer events when GUILD_MEMBER_ADD events are handled (future implementation)
     }
 
     private func handleGuildCreate(_ raw: DiscordJSON?) {
