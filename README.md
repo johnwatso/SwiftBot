@@ -2,6 +2,12 @@
 
 A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrency (`async/await` + actors). It connects directly to Discord Gateway and REST APIs with no Electron or Node.js runtime.
 
+## Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - All changes and fixes made to the project
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical architecture and design patterns
+- **[AI_GUIDE.md](AI_GUIDE.md)** - Quick reference for AI assistants and developers
+
 ## Preview
 
 ### App Icon
