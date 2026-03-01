@@ -47,6 +47,19 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
   - Smart replies on @mentions in guild channels using on-device Apple Intelligence (Beta)
 - Persistent settings and rules saved in Application Support JSON
 
+## Roadmap / Want To Add
+
+- General server notifications (join/leave events, voice activity, session duration)
+- Voice session tracking for analytics and summaries
+- AI patch note summaries using a local LLM
+- Notification channel auto-cleanup (e.g. clear every 24 hours)
+- Weekly server activity summaries based on logged usage
+- Game/wiki data lookup commands (e.g. weapon stats from a game wiki)
+- Improved rule builder UI with drag-and-drop automation
+- Plugin system to extend features modularly
+- Web dashboard / remote access with Discord SSO
+- Improved macOS UI design (modern SwiftUI / glass-style interface)
+
 ## Commands
 
 - `!help`
@@ -82,4 +95,5 @@ Use the helper script to build and package a runnable app bundle:
 
 ```bash
 ./BUILD_APP.sh
+
 
