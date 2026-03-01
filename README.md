@@ -55,7 +55,7 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ## Roadmap / Want To Add
 
-- General server notifications (join/leave events, voice activity, session duration)
+- ✅ ~~General server notifications (join/leave events, voice activity, session duration)~~ - **Working!**
 - Voice session tracking for analytics and summaries
 - AI patch note summaries using a local LLM
 - Notification channel auto-cleanup (e.g. clear every 24 hours)
