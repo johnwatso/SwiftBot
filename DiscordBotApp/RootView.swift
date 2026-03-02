@@ -1207,11 +1207,24 @@ struct AIBotsView: View {
                 // Apple Intelligence Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
-                        Image("Apple_AI")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        if let nsImage = NSImage(named: NSImage.Name("Apple_AI")) {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 44, height: 44)
+                                .cornerRadius(10)
+                        } else {
+                            // Fallback
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.blue.gradient)
+                                    .frame(width: 44, height: 44)
+                                
+                                Image(systemName: "sparkles")
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Apple Intelligence")
