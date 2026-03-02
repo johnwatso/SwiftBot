@@ -1,0 +1,12 @@
+.DS_Store
+
+.build/
+.swiftpm/
+Dist/
+
+xcuserdata/
+*.xcuserstate
+
+/DiscordBotApp.xcodeproj/project.xcworkspace/xcuserdata/
+/DiscordBotApp.xcodeproj/xcuserdata/
+.build

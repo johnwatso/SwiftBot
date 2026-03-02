@@ -2,19 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "DiscordBotApp",
+    name: "SwiftBot",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "DiscordBotApp", targets: ["DiscordBotApp"])
+        .executable(name: "SwiftBot", targets: ["SwiftBot"])
     ],
     targets: [
         .executableTarget(
-            name: "DiscordBotApp",
-            path: "DiscordBotApp",
+            name: "SwiftBot",
+            path: "SwiftBotApp",
             resources: [
-                .process("Resources/Assets.xcassets"),
                 .process("Resources")
             ]
         )

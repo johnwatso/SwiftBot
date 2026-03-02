@@ -1,4 +1,4 @@
-# DiscordBot Native (SwiftUI macOS)
+# SwiftBot (SwiftUI macOS)
 
 A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrency (`async/await` + actors). It connects directly to Discord Gateway and REST APIs with no Electron or Node.js runtime.
 
@@ -12,11 +12,11 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ### App Icon
 
-<img src="DiscordBotApp/Resources/AppIcon.png" alt="DiscordBot App Icon" width="96" />
+<img src="SwiftBotApp/Resources/AppIcon.png" alt="SwiftBot App Icon" width="96" />
 
 ### App UI
 
-![DiscordBot UI](App%20Images/Bot%20UI.png)
+![SwiftBot UI](App%20Images/Bot%20UI.png)
 
 ## Features
 
@@ -91,8 +91,8 @@ Unknown commands return:
 ## Build in Xcode
 
 1. Open this folder in Xcode 15+.
-2. Open `DiscordBotApp.xcodeproj`.
-3. Select the `DiscordBotApp` scheme.
+2. Open `SwiftBot.xcodeproj`.
+3. Select the `SwiftBot` scheme.
 4. Build and run the macOS app target.
 
 ## Build Standalone `.app`
@@ -101,5 +101,4 @@ Use the helper script to build and package a runnable app bundle:
 
 ```bash
 ./BUILD_APP.sh
-
 
