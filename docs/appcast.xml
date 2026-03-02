@@ -1,9 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <channel>
-    <title>SwiftBot Updates</title>
-    <link>https://johnwatso.github.io/SwiftBot/appcast.xml</link>
-    <description>Latest releases for SwiftBot</description>
-    <language>en</language>
-  </channel>
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>SwiftBot</title>
+        <item>
+            <title>1.3</title>
+            <pubDate>Mon, 02 Mar 2026 22:46:35 +1300</pubDate>
+            <sparkle:version>beta</sparkle:version>
+            <sparkle:shortVersionString>1.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.3/SwiftBot-1.3.zip" length="9535403" type="application/octet-stream" sparkle:edSignature="eXdlGB4WcmR4Un/9KYrOIZrQeF104oixWkoGiN8V4kkRGpcL5COzgqkKYfmX39oObRARbMQVEafWnqYMbLnzAw=="/>
+        </item>
+    </channel>
 </rss>
