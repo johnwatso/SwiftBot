@@ -14,6 +14,7 @@ let package = Package(
             name: "DiscordBotApp",
             path: "DiscordBotApp",
             resources: [
+                .process("Resources/Assets.xcassets"),
                 .process("Resources")
             ]
         )
