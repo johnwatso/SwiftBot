@@ -57,9 +57,15 @@ actor DiscordService {
             return direct
         }
 
-        if let title = await searchFinalsWikiTitle(query: trimmedQuery),
-           let result = await fetchFinalsWikiSummary(title: title) {
-            return result
+        if let title = await searchFinalsWikiTitle(query: trimmedQuery) {
+            if let pageResult = await fetchFinalsWikiPage(forTitle: title),
+               pageResult.weaponStats != nil {
+                return pageResult
+            }
+
+            if let result = await fetchFinalsWikiSummary(title: title) {
+                return result
+            }
         }
 
         if let result = await searchFinalsWikiViaSiteSearch(query: trimmedQuery) {
@@ -530,7 +536,8 @@ actor DiscordService {
             return FinalsWikiLookupResult(
                 title: page.title,
                 extract: summary,
-                url: page.fullurl ?? fallbackURL
+                url: page.fullurl ?? fallbackURL,
+                weaponStats: nil
             )
         } catch {
             return nil
@@ -544,6 +551,15 @@ actor DiscordService {
             }
         }
         return nil
+    }
+
+    private func fetchFinalsWikiPage(forTitle title: String) async -> FinalsWikiLookupResult? {
+        let slug = title
+            .replacingOccurrences(of: " ", with: "_")
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+        guard !slug.isEmpty,
+              let url = URL(string: "https://www.thefinals.wiki/wiki/\(slug)") else { return nil }
+        return await fetchFinalsWikiPage(at: url)
     }
 
     private func directFinalsWikiCandidateURLs(for query: String) -> [URL] {
@@ -590,10 +606,12 @@ actor DiscordService {
 
             let extract = extractSummaryParagraph(from: html)
             let resolvedURL = extractCanonicalWikiPageURL(from: html) ?? pageURL
+            let weaponStats = extractWeaponStats(from: html)
             return FinalsWikiLookupResult(
                 title: title ?? resolvedURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " "),
                 extract: extract,
-                url: resolvedURL.absoluteString
+                url: resolvedURL.absoluteString,
+                weaponStats: weaponStats
             )
         } catch {
             return nil
@@ -721,6 +739,427 @@ actor DiscordService {
         }
 
         return ""
+    }
+
+    private func extractWeaponStats(from html: String) -> FinalsWeaponStats? {
+        if let parsedFromText = extractWeaponStatsFromText(html: html) {
+            return parsedFromText
+        }
+
+        if let parsedFromNormalizedText = extractWeaponStatsFromNormalizedText(html: html) {
+            return parsedFromNormalizedText
+        }
+
+        let profileSection = extractSectionHTML(named: "Profile", from: html)
+        let damageSection = extractSectionHTML(named: "Damage", from: html)
+        let falloffSection = extractSectionHTML(named: "Damage Falloff", from: html)
+        let technicalSection = extractSectionHTML(named: "Technical", from: html)
+
+        let type = profileSection.flatMap { extractTableValue(label: "Type", from: $0) }
+        let bodyDamage = damageSection.flatMap { extractTableValue(label: "Body", from: $0) }
+        let headshotDamage = damageSection.flatMap { extractTableValue(label: "Head", from: $0) }
+        let fireRate = technicalSection.flatMap {
+            extractTableValue(label: "RPM", from: $0) ?? extractTableValue(label: "Fire Rate", from: $0)
+        }
+        let dropoffStart = falloffSection.flatMap {
+            extractTableValue(label: "Min Range", from: $0) ?? extractTableValue(label: "Dropoff Start", from: $0)
+        }
+        let dropoffEnd = falloffSection.flatMap {
+            extractTableValue(label: "Max Range", from: $0) ?? extractTableValue(label: "Dropoff End", from: $0)
+        }
+        let minimumDamage = computeMinimumDamage(
+            bodyDamage: bodyDamage,
+            multiplier: falloffSection.flatMap {
+                extractTableValue(label: "Multiplier", from: $0) ?? extractTableValue(label: "Min Damage Multiplier", from: $0)
+            }
+        )
+        let magazineSize = technicalSection.flatMap {
+            extractTableValue(label: "Magazine", from: $0) ?? extractTableValue(label: "Mag Size", from: $0)
+        }
+        let shortReload = technicalSection.flatMap {
+            extractTableValue(label: "Tactical Reload", from: $0) ?? extractTableValue(label: "Short Reload", from: $0)
+        }
+        let longReload = technicalSection.flatMap {
+            extractTableValue(label: "Empty Reload", from: $0) ?? extractTableValue(label: "Long Reload", from: $0)
+        }
+
+        let stats = FinalsWeaponStats(
+            type: cleanedStatValue(type),
+            bodyDamage: cleanedStatValue(bodyDamage),
+            headshotDamage: cleanedStatValue(headshotDamage),
+            fireRate: cleanedStatValue(fireRate),
+            dropoffStart: cleanedStatValue(dropoffStart),
+            dropoffEnd: cleanedStatValue(dropoffEnd),
+            minimumDamage: cleanedStatValue(minimumDamage),
+            magazineSize: cleanedStatValue(magazineSize),
+            shortReload: cleanedStatValue(shortReload),
+            longReload: cleanedStatValue(longReload)
+        )
+
+        let hasUsefulData = [
+            stats.bodyDamage,
+            stats.headshotDamage,
+            stats.fireRate,
+            stats.magazineSize,
+            stats.shortReload,
+            stats.longReload
+        ].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+
+        return hasUsefulData ? stats : nil
+    }
+
+    private func extractWeaponStatsFromText(html: String) -> FinalsWeaponStats? {
+        let rawLines = readableTextLines(from: html)
+            .map {
+                $0.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+
+        let profileIndex = rawLines.firstIndex { normalizedLabel($0) == "profile" } ?? 0
+        let slice = Array(rawLines[profileIndex...])
+
+        let type = value(in: slice, labels: ["Type"])
+        let bodyDamage = value(in: slice, labels: ["Body"])
+        let fireRate = value(in: slice, labels: ["RPM", "Fire Rate"])
+        let dropoffStart = value(in: slice, labels: ["Min Range", "Dropoff Start"])
+        let dropoffEnd = value(in: slice, labels: ["Max Range", "Dropoff End"])
+        let multiplier = value(in: slice, labels: ["Multiplier", "Min Damage Multiplier"])
+        let magazineSize = value(in: slice, labels: ["Magazine", "Mag Size"])
+        let longReload = value(in: slice, labels: ["Empty Reload", "Long Reload"])
+        let shortReload = value(in: slice, labels: ["Tactical Reload", "Short Reload"])
+
+        let headshotDamage: String?
+        if let explicitHead = value(in: slice, labels: ["Head", "Critical Hit", "Headshot"]) {
+            headshotDamage = explicitHead
+        } else if slice.contains(where: { $0.localizedCaseInsensitiveContains("No Critical Hit") }) ||
+                    slice.contains(where: { $0.localizedCaseInsensitiveContains("does not critically hit") }) {
+            headshotDamage = "No critical hit"
+        } else {
+            headshotDamage = nil
+        }
+
+        let stats = FinalsWeaponStats(
+            type: cleanedStatValue(type),
+            bodyDamage: cleanedStatValue(bodyDamage),
+            headshotDamage: cleanedStatValue(headshotDamage),
+            fireRate: cleanedStatValue(fireRate),
+            dropoffStart: cleanedStatValue(dropoffStart),
+            dropoffEnd: cleanedStatValue(dropoffEnd),
+            minimumDamage: cleanedStatValue(computeMinimumDamage(bodyDamage: bodyDamage, multiplier: multiplier)),
+            magazineSize: cleanedStatValue(magazineSize),
+            shortReload: cleanedStatValue(shortReload),
+            longReload: cleanedStatValue(longReload)
+        )
+
+        let hasUsefulData = [
+            stats.bodyDamage,
+            stats.fireRate,
+            stats.magazineSize,
+            stats.longReload
+        ].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+
+        return hasUsefulData ? stats : nil
+    }
+
+    private func extractWeaponStatsFromNormalizedText(html: String) -> FinalsWeaponStats? {
+        let normalized = stripHTML(html)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalized.isEmpty else { return nil }
+
+        let profileText = sectionText(in: normalized, heading: "Profile", nextHeadings: ["Damage", "Stats", "Usage", "Technical"])
+        let damageText = sectionText(in: normalized, heading: "Damage", nextHeadings: ["Damage Falloff", "Technical", "Stats", "Usage"])
+        let falloffText = sectionText(in: normalized, heading: "Damage Falloff", nextHeadings: ["Technical", "Stats", "Usage"])
+        let technicalText = sectionText(in: normalized, heading: "Technical", nextHeadings: ["Usage", "Stats", "Controls", "Properties"])
+        let propertiesText = sectionText(in: normalized, heading: "Properties", nextHeadings: ["Item Mastery", "Weapon Skins", "Trivia", "History"])
+
+        let type = firstCapturedValue(
+            in: profileText,
+            patterns: [
+                #"Type\s*:?\s*(.+?)(?=\s+Unlock\b|\s+Damage\b|\s+Build\b|$)"#
+            ]
+        )
+
+        let bodyDamage = firstCapturedValue(
+            in: damageText,
+            patterns: [
+                #"Body\s*:?\s*([0-9]+(?:\.[0-9]+)?(?:\s*[x×]\s*[0-9]+(?:\.[0-9]+)?)?)(?=\s+Environmental\b|\s+Damage Falloff\b|\s+Technical\b|$)"#
+            ]
+        )
+
+        let fireRate = firstCapturedValue(
+            in: technicalText,
+            patterns: [
+                #"RPM\s*:?\s*([0-9]+(?:\.[0-9]+)?)(?=\s+Magazine\b|\s+Empty Reload\b|\s+Tactical Reload\b|$)"#,
+                #"Fire Rate\s*:?\s*([0-9]+(?:\.[0-9]+)?(?:\s*RPM)?)(?=\s+Magazine\b|\s+Reload\b|$)"#
+            ]
+        )
+
+        let dropoffStart = firstCapturedValue(
+            in: falloffText,
+            patterns: [
+                #"Min Range\s*:?\s*([0-9]+(?:\.[0-9]+)?\s*m)(?=\s+Max Range\b|\s+Multiplier\b|$)"#,
+                #"Dropoff Start\s*:?\s*([0-9]+(?:\.[0-9]+)?\s*m)(?=\s+Dropoff End\b|\s+Multiplier\b|$)"#
+            ]
+        )
+
+        let dropoffEnd = firstCapturedValue(
+            in: falloffText,
+            patterns: [
+                #"Max Range\s*:?\s*([0-9]+(?:\.[0-9]+)?\s*m)(?=\s+Multiplier\b|\s+Technical\b|$)"#,
+                #"Dropoff End\s*:?\s*([0-9]+(?:\.[0-9]+)?\s*m)(?=\s+Multiplier\b|\s+Technical\b|$)"#
+            ]
+        )
+
+        let multiplier = firstCapturedValue(
+            in: falloffText,
+            patterns: [
+                #"Multiplier\s*:?\s*([0-9]+(?:\.[0-9]+)?)(?=\s+Technical\b|\s+Usage\b|$)"#,
+                #"Min Damage Multiplier\s*:?\s*([0-9]+(?:\.[0-9]+)?)(?=\s+Technical\b|\s+Usage\b|$)"#
+            ]
+        )
+
+        let magazineSize = firstCapturedValue(
+            in: technicalText,
+            patterns: [
+                #"Magazine\s*:?\s*([0-9]+)(?=\s+Empty Reload\b|\s+Tactical Reload\b|\s+Controls\b|$)"#,
+                #"Mag Size\s*:?\s*([0-9]+)(?=\s+Reload\b|\s+Controls\b|$)"#
+            ]
+        )
+
+        let shortReload = firstCapturedValue(
+            in: technicalText,
+            patterns: [
+                #"Tactical Reload\s*:?\s*(Segmented|[0-9]+(?:\.[0-9]+)?s)(?=\s+Controls\b|\s+Usage\b|$)"#,
+                #"Short Reload\s*:?\s*([0-9]+(?:\.[0-9]+)?s)(?=\s+Long Reload\b|\s+Controls\b|$)"#
+            ]
+        )
+
+        let longReload = firstCapturedValue(
+            in: technicalText,
+            patterns: [
+                #"Empty Reload\s*:?\s*([0-9]+(?:\.[0-9]+)?s)(?=\s+Tactical Reload\b|\s+Controls\b|\s+Usage\b|$)"#,
+                #"Long Reload\s*:?\s*([0-9]+(?:\.[0-9]+)?s)(?=\s+Short Reload\b|\s+Controls\b|$)"#
+            ]
+        )
+
+        let headshotDamage: String?
+        if propertiesText.localizedCaseInsensitiveContains("No Critical Hit") ||
+            normalized.localizedCaseInsensitiveContains("No Critical Hit") {
+            headshotDamage = "No critical hit"
+        } else {
+            headshotDamage = firstCapturedValue(
+                in: damageText,
+                patterns: [
+                    #"Head\s*:?\s*([0-9]+(?:\.[0-9]+)?(?:\s*[x×]\s*[0-9]+(?:\.[0-9]+)?)?)(?=\s+Environmental\b|\s+Damage Falloff\b|\s+Technical\b|$)"#
+                ]
+            )
+        }
+
+        let stats = FinalsWeaponStats(
+            type: cleanedStatValue(type),
+            bodyDamage: cleanedStatValue(bodyDamage),
+            headshotDamage: cleanedStatValue(headshotDamage),
+            fireRate: cleanedStatValue(fireRate),
+            dropoffStart: cleanedStatValue(dropoffStart),
+            dropoffEnd: cleanedStatValue(dropoffEnd),
+            minimumDamage: cleanedStatValue(computeMinimumDamage(bodyDamage: bodyDamage, multiplier: multiplier)),
+            magazineSize: cleanedStatValue(magazineSize),
+            shortReload: cleanedStatValue(shortReload),
+            longReload: cleanedStatValue(longReload)
+        )
+
+        let hasUsefulData = [
+            stats.bodyDamage,
+            stats.fireRate,
+            stats.magazineSize,
+            stats.longReload
+        ].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+
+        return hasUsefulData ? stats : nil
+    }
+
+    private func readableTextLines(from html: String) -> [String] {
+        let blockSeparated = html
+            .replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)</(p|div|section|article|header|footer|li|tr|td|th|h1|h2|h3|h4|h5|h6|figcaption|caption|dd|dt)>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)<(p|div|section|article|header|footer|li|tr|td|th|h1|h2|h3|h4|h5|h6|figcaption|caption|dd|dt)\b[^>]*>"#, with: "\n", options: .regularExpression)
+
+        let text = stripHTML(blockSeparated)
+        return text.components(separatedBy: .newlines)
+    }
+
+    private func sectionText(in normalized: String, heading: String, nextHeadings: [String]) -> String {
+        guard let range = normalized.range(of: heading, options: [.caseInsensitive]) else {
+            return normalized
+        }
+
+        let tail = String(normalized[range.lowerBound...])
+        var endIndex = tail.endIndex
+
+        for nextHeading in nextHeadings {
+            if let nextRange = tail.range(of: nextHeading, options: [.caseInsensitive]),
+               nextRange.lowerBound > tail.startIndex,
+               nextRange.lowerBound < endIndex {
+                endIndex = nextRange.lowerBound
+            }
+        }
+
+        return String(tail[..<endIndex])
+    }
+
+    private func firstCapturedValue(in text: String, patterns: [String]) -> String? {
+        for pattern in patterns {
+            if let value = text.firstMatch(for: pattern) {
+                let cleaned = value
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty {
+                    return cleaned
+                }
+            }
+        }
+        return nil
+    }
+
+    private func value(in lines: [String], labels: [String]) -> String? {
+        for (index, line) in lines.enumerated() {
+            for label in labels {
+                if let inlineValue = inlineValue(in: line, label: label) {
+                    return inlineValue
+                }
+
+                if normalizedLabel(line) == normalizedLabel(label),
+                   let nextValue = nextValue(in: lines, after: index) {
+                    return nextValue
+                }
+            }
+        }
+        return nil
+    }
+
+    private func inlineValue(in line: String, label: String) -> String? {
+        let candidates = [
+            label + " ",
+            label + ": ",
+            label + "\t",
+            label
+        ]
+
+        for candidate in candidates where line.hasPrefix(candidate) {
+            let value = String(line.dropFirst(candidate.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                return value
+            }
+        }
+
+        return nil
+    }
+
+    private func nextValue(in lines: [String], after index: Int) -> String? {
+        guard index + 1 < lines.count else { return nil }
+
+        for candidate in lines[(index + 1)...] {
+            if candidate.hasSuffix(":") {
+                continue
+            }
+
+            let normalized = normalizedLabel(candidate)
+            if normalized == "profile" || normalized == "damage" || normalized == "damage falloff" || normalized == "technical" {
+                return nil
+            }
+
+            if !candidate.isEmpty {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+
+    private func normalizedLabel(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private func extractSectionHTML(named sectionName: String, from html: String) -> String? {
+        let escaped = NSRegularExpression.escapedPattern(for: sectionName)
+        let pattern = #"(?is)<h[2-4][^>]*>\s*.*?"# + escaped + #".*?</h[2-4]>(.*?)(?=<h[2-4][^>]*>|$)"#
+        return html.firstMatch(for: pattern)
+    }
+
+    private func extractTableValue(label: String, from html: String) -> String? {
+        let escaped = NSRegularExpression.escapedPattern(for: label)
+        let rowPatterns = [
+            #"(?is)<tr[^>]*>\s*<t[hd][^>]*>\s*"# + escaped + #"\s*</t[hd]>\s*<t[hd][^>]*>(.*?)</t[hd]>\s*</tr>"#,
+            #"(?is)"# + escaped + #"</[^>]+>\s*<[^>]+>(.*?)</[^>]+>"#
+        ]
+
+        for pattern in rowPatterns {
+            if let value = html.firstMatch(for: pattern) {
+                let cleaned = stripHTML(value)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty {
+                    return cleaned
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func cleanedStatValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let cleaned = value
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private func computeMinimumDamage(bodyDamage: String?, multiplier: String?) -> String? {
+        guard let bodyDamage, let multiplier,
+              let multiplierValue = firstNumericValue(in: multiplier) else { return nil }
+
+        let numbers = bodyDamage.matches(for: #"[0-9]+(?:\.[0-9]+)?"#)
+        guard let first = numbers.first, let baseDamage = Double(first) else { return nil }
+
+        let scaled = formatDamageValue(baseDamage * multiplierValue)
+        if bodyDamage.contains("×") || bodyDamage.contains("x") || bodyDamage.contains("X") {
+            if numbers.count >= 2 {
+                return "\(scaled)×\(numbers[1])"
+            }
+            return "\(scaled)×?"
+        }
+
+        return scaled
+    }
+
+    private func firstNumericValue(in text: String) -> Double? {
+        text.matches(for: #"[0-9]+(?:\.[0-9]+)?"#).first.flatMap(Double.init)
+    }
+
+    private func formatDamageValue(_ value: Double) -> String {
+        let rounded = (value * 10).rounded() / 10
+        if rounded.rounded() == rounded {
+            return String(Int(rounded))
+        }
+        return String(format: "%.1f", rounded)
     }
 
     private func stripHTML(_ html: String) -> String {

@@ -237,7 +237,7 @@ struct SidebarSection<Content: View>: View {
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
-    case voice = "Server Notifier"
+    case voice = "Actions"
     case commands = "Commands"
     case logs = "Logs"
     case settings = "Settings"
@@ -249,7 +249,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
-        case .voice: return "bell.badge.fill"
+        case .voice: return "point.3.filled.connected.trianglepath.dotted"
         case .commands: return "terminal.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .settings: return "gearshape.2.fill"
@@ -441,9 +441,9 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
 
     var defaultRuleName: String {
         switch self {
-        case .userJoinedVoice: return "Join Notification"
-        case .userLeftVoice: return "Leave Notification"
-        case .userMovedVoice: return "Move Notification"
+        case .userJoinedVoice: return "Join Action"
+        case .userLeftVoice: return "Leave Action"
+        case .userMovedVoice: return "Move Action"
         case .messageContains: return "Message Reply"
         }
     }
@@ -514,7 +514,7 @@ typealias Action = RuleAction
 
 struct Rule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
-    var name: String = "New Notification"
+    var name: String = "New Action"
     var trigger: TriggerType = .userJoinedVoice
     var conditions: [Condition] = []
     var actions: [RuleAction] = [RuleAction()]
@@ -529,9 +529,9 @@ struct Rule: Identifiable, Codable, Equatable {
 
     var triggerSummary: String {
         switch trigger {
-        case .userJoinedVoice: return "When user joins voice"
-        case .userLeftVoice: return "When user leaves voice"
-        case .userMovedVoice: return "When user moves voice"
+        case .userJoinedVoice: return "When someone joins voice"
+        case .userLeftVoice: return "When someone leaves voice"
+        case .userMovedVoice: return "When someone moves voice"
         case .messageContains:
             return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
         }
@@ -540,27 +540,37 @@ struct Rule: Identifiable, Codable, Equatable {
 
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
+
+    var body: some View {
+        VoiceWorkspaceView(ruleStore: app.ruleStore)
+            .environmentObject(app)
+    }
+}
+
+struct VoiceWorkspaceView: View {
+    @EnvironmentObject var app: AppModel
+    @ObservedObject var ruleStore: RuleStore
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         HSplitView {
             RuleListView(
                 rules: rulesBinding,
-                selectedRuleID: selectedRuleIDBinding,
+                selectedRuleID: appSelectionBinding,
                 onAddNew: {
                     let sid = serverIds.first ?? ""
                     let cid = app.availableTextChannelsByServer[sid]?.first?.id ?? ""
-                    app.ruleStore.addNewRule(serverId: sid, channelId: cid)
+                    ruleStore.addNewRule(serverId: sid, channelId: cid)
                 },
                 onDeleteOffsets: { offsets in
-                    app.ruleStore.deleteRules(at: offsets, undoManager: undoManager)
+                    ruleStore.deleteRules(at: offsets, undoManager: undoManager)
                 },
                 onDeleteRuleID: { ruleID in
-                    app.ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
+                    ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
                 },
                 onDeleteSelected: {
-                    if let selected = app.ruleStore.selectedRuleID {
-                        app.ruleStore.deleteRule(id: selected, undoManager: undoManager)
+                    if let selected = ruleStore.selectedRuleID {
+                        ruleStore.deleteRule(id: selected, undoManager: undoManager)
                     }
                 }
             )
@@ -569,64 +579,75 @@ struct VoiceView: View {
             Group {
                 if let selectedRuleBinding {
                     RuleEditorView(rule: selectedRuleBinding)
-                        .id(app.ruleStore.selectedRuleID) // Force view recreation when selection changes
+                        .id(ruleStore.selectedRuleID)
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "list.bullet.rectangle")
                             .font(.largeTitle)
                             .foregroundStyle(.secondary)
-                        Text("Select a Notification Rule")
+                        Text("Select an Action Rule")
                             .font(.headline)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .glassCard(cornerRadius: 22, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
+                    .background(.clear)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onChange(of: app.ruleStore.rules) { _ in
-            app.ruleStore.scheduleAutoSave()
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.white.opacity(0.04))
+        )
+        .padding(12)
+        .onChange(of: ruleStore.rules) { _ in
+            if let selected = ruleStore.selectedRuleID,
+               !ruleStore.rules.contains(where: { $0.id == selected }) {
+                ruleStore.selectedRuleID = nil
+            }
+            ruleStore.scheduleAutoSave()
         }
     }
 
     private var rulesBinding: Binding<[Rule]> {
         Binding(
-            get: { app.ruleStore.rules },
-            set: { app.ruleStore.rules = $0 }
+            get: { ruleStore.rules },
+            set: { ruleStore.rules = $0 }
         )
     }
 
-    private var selectedRuleIDBinding: Binding<UUID?> {
+    private var appSelectionBinding: Binding<UUID?> {
         Binding(
-            get: { app.ruleStore.selectedRuleID },
-            set: { app.ruleStore.selectedRuleID = $0 }
+            get: { ruleStore.selectedRuleID },
+            set: { ruleStore.selectedRuleID = $0 }
         )
     }
 
     private var selectedRuleBinding: Binding<Rule>? {
-        guard let selectedRuleID = app.ruleStore.selectedRuleID,
-              app.ruleStore.rules.contains(where: { $0.id == selectedRuleID })
+        guard let selectedRuleID = ruleStore.selectedRuleID,
+              let index = ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
         else {
             return nil
         }
 
         return Binding(
             get: {
-                // Always look up the current selected rule ID, not the captured one
-                guard let currentSelectedID = app.ruleStore.selectedRuleID,
-                      let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
-                    return Rule(id: selectedRuleID)
-                }
-                return app.ruleStore.rules[idx]
+                ruleStore.rules[index]
             },
             set: { updatedRule in
-                // Always look up the current selected rule ID, not the captured one
-                guard let currentSelectedID = app.ruleStore.selectedRuleID,
-                      let idx = app.ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
+                guard ruleStore.rules.indices.contains(index),
+                      ruleStore.rules[index].id == selectedRuleID else {
+                    if let refreshedIndex = ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) {
+                        ruleStore.rules[refreshedIndex] = updatedRule
+                    }
                     return
                 }
-                app.ruleStore.rules[idx] = updatedRule
+                ruleStore.rules[index] = updatedRule
             }
         )
     }
@@ -647,44 +668,61 @@ struct RuleListView: View {
     let onDeleteSelected: () -> Void
 
     var body: some View {
-        List(selection: $selectedRuleID) {
-            ForEach($rules) { $rule in
-                RuleRowView(rule: $rule)
-                    .tag(rule.id)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            onDeleteRuleID(rule.id)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+        VStack(spacing: 0) {
+            RulePaneHeader(
+                title: "Actions",
+                subtitle: "Build reusable flows from triggers, filters, and outputs.",
+                systemImage: "point.3.filled.connected.trianglepath.dotted"
+            )
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Button(action: onAddNew) {
+                        Label("New Rule", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    LazyVStack(spacing: 10) {
+                        ForEach($rules) { $rule in
+                            RuleRowView(
+                                rule: $rule,
+                                isSelected: selectedRuleID == rule.id,
+                                onSelect: {
+                                    withAnimation(.snappy(duration: 0.12)) {
+                                        selectedRuleID = rule.id
+                                    }
+                                },
+                                onDelete: { onDeleteRuleID(rule.id) }
+                            )
                         }
                     }
-            }
-            .onDelete(perform: onDeleteOffsets)
-        }
-        .listStyle(.inset)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
-        .navigationTitle("Server Notifier")
-        .toolbar {
-            ToolbarItem {
-                Button(action: onAddNew) {
-                    Label("Add New Notification", systemImage: "plus")
+
+                    Button(role: .destructive, action: onDeleteSelected) {
+                        Label("Delete Selected", systemImage: "trash")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(selectedRuleID == nil)
                 }
-            }
-            ToolbarItem {
-                Button(role: .destructive, action: onDeleteSelected) {
-                    Label("Delete", systemImage: "trash")
-                }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selectedRuleID == nil)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
         }
+        .background(rulePaneBackground)
+    }
+
+    private var rulePaneBackground: some View {
+        Rectangle()
+            .fill(.white.opacity(0.04))
     }
 }
 
 struct RuleRowView: View {
     @Binding var rule: Rule
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -698,8 +736,28 @@ struct RuleRowView: View {
             Spacer()
             Toggle("Enabled", isOn: $rule.isEnabled)
                 .labelsHidden()
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.caption.bold())
+            }
+            .buttonStyle(.borderless)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(selectionBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(isSelected ? .white.opacity(0.28) : .white.opacity(0.12), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture(perform: onSelect)
+    }
+
+    private var selectionBackground: some ShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(.thinMaterial)
+        }
+        return AnyShapeStyle(Color.white.opacity(0.05))
     }
 }
 
@@ -718,61 +776,94 @@ struct RuleEditorView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    TextField("Rule Name", text: $rule.name)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.title2.weight(.semibold))
+        HStack(alignment: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                RulePaneHeader(
+                    title: "Block Library",
+                    subtitle: "Reusable building blocks for this rule flow.",
+                    systemImage: "square.stack.3d.up.fill"
+                )
 
-                    RuleGroupSection(title: "When", systemImage: "bolt.fill") {
-                        TriggerSectionView(
-                            triggerType: $rule.trigger,
-                            triggerServerId: $rule.triggerServerId,
-                            triggerVoiceChannelId: $rule.triggerVoiceChannelId,
-                            triggerMessageContains: $rule.triggerMessageContains,
-                            replyToDMs: $rule.replyToDMs,
-                            includeStageChannels: $rule.includeStageChannels,
-                            serverIds: serverIds,
-                            serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
-                        )
-                    }
-
-                    RuleGroupSection(title: "If", systemImage: "line.3.horizontal.decrease.circle") {
-                        ConditionsSectionView(
-                            conditions: $rule.conditions,
-                            serverIds: serverIds,
-                            serverName: serverName(for:),
-                            voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
-                        )
-                    }
-
-                    RuleGroupSection(title: "Do", systemImage: "paperplane.fill") {
-                        ActionsSectionView(
-                            actions: $rule.actions,
-                            serverIds: serverIds,
-                            serverName: serverName(for:),
-                            textChannelsByServer: app.availableTextChannelsByServer
-                        )
-                    }
+                ScrollView {
+                    RuleBuilderLibraryView(
+                        serverIds: serverIds,
+                        onAddCondition: addCondition(_:),
+                        onAddAction: addAction(_:),
+                        focusTrigger: { applyTriggerDefaults(for: rule.trigger) }
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.top, 20)
+                    .padding(.bottom, 16)
                 }
-                .frame(maxWidth: 700)
-                .padding(.vertical, 24)
-                .frame(width: geometry.size.width)
             }
+            .frame(minWidth: 250, idealWidth: 270, maxWidth: 300)
+            .background(rulePaneBackground)
+
+            Rectangle()
+                .fill(.white.opacity(0.10))
+                .frame(width: 1)
+
+            VStack(spacing: 0) {
+                RulePaneHeader(
+                    title: rule.name.isEmpty ? "Action Rule" : rule.name,
+                    subtitle: rule.triggerSummary,
+                    systemImage: "point.3.filled.connected.trianglepath.dotted"
+                )
+
+                TextField("Rule Name", text: $rule.name)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.title2.weight(.semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 16)
+                .background(rulePaneBackground)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow) {
+                            TriggerSectionView(
+                                triggerType: $rule.trigger,
+                                triggerServerId: $rule.triggerServerId,
+                                triggerVoiceChannelId: $rule.triggerVoiceChannelId,
+                                triggerMessageContains: $rule.triggerMessageContains,
+                                replyToDMs: $rule.replyToDMs,
+                                includeStageChannels: $rule.includeStageChannels,
+                                serverIds: serverIds,
+                                serverName: serverName(for:),
+                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                            )
+                        }
+
+                        RuleFlowArrow()
+
+                        RuleCanvasSection(title: "Filter Blocks", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
+                            ConditionsSectionView(
+                                conditions: $rule.conditions,
+                                serverIds: serverIds,
+                                serverName: serverName(for:),
+                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                            )
+                        }
+
+                        RuleFlowArrow()
+
+                        RuleCanvasSection(title: "Action Blocks", systemImage: "paperplane.fill", accent: .mint) {
+                            ActionsSectionView(
+                                actions: $rule.actions,
+                                serverIds: serverIds,
+                                serverName: serverName(for:),
+                                textChannelsByServer: app.availableTextChannelsByServer
+                            )
+                        }
+                    }
+                    .frame(maxWidth: 880, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
+                }
+            }
+            .background(rulePaneBackground)
         }
         .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    app.ruleStore.save()
-                } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                }
-                .help("Save all rules")
-            }
-        }
         .onAppear {
             initializeRuleDefaultsIfNeeded()
         }
@@ -782,6 +873,31 @@ struct RuleEditorView: View {
         .onChange(of: rule.trigger) { newTrigger in
             applyTriggerDefaults(for: newTrigger)
         }
+    }
+
+    private func addCondition(_ type: ConditionType) {
+        rule.conditions.append(Condition(type: type))
+        app.ruleStore.scheduleAutoSave()
+    }
+
+    private func addAction(_ type: ActionType) {
+        var action = RuleAction()
+        action.type = type
+        action.serverId = serverIds.first ?? ""
+        action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
+        action.message = rule.trigger.defaultMessage
+
+        switch type {
+        case .sendMessage:
+            break
+        case .addLogEntry:
+            action.message = "Rule fired for {username}"
+        case .setStatus:
+            action.statusText = "Handling \(rule.trigger.rawValue.lowercased())"
+        }
+
+        rule.actions.append(action)
+        app.ruleStore.scheduleAutoSave()
     }
 
     private func initializeRuleDefaultsIfNeeded() {
@@ -830,7 +946,7 @@ struct RuleEditorView: View {
             didChange = true
         }
 
-        let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Notification", "Join Notification"])
+        let defaultNames = Set(TriggerType.allCases.map(\.defaultRuleName) + ["New Action", "Join Action"])
         if defaultNames.contains(rule.name) {
             rule.name = newTrigger.defaultRuleName
             didChange = true
@@ -845,6 +961,181 @@ struct RuleEditorView: View {
         if didChange {
             app.ruleStore.scheduleAutoSave()
         }
+    }
+
+    private var rulePaneBackground: some View {
+        Rectangle()
+            .fill(.white.opacity(0.04))
+    }
+}
+
+struct RuleBuilderLibraryView: View {
+    let serverIds: [String]
+    let onAddCondition: (ConditionType) -> Void
+    let onAddAction: (ActionType) -> Void
+    let focusTrigger: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RuleLibrarySection(title: "Start") {
+                RuleLibraryButton(
+                    title: "Trigger Block",
+                    subtitle: "Choose the event that starts this rule",
+                    systemImage: "bolt.fill",
+                    accent: .yellow,
+                    action: focusTrigger
+                )
+            }
+
+            RuleLibrarySection(title: "Filters") {
+                ForEach(ConditionType.allCases) { type in
+                    RuleLibraryButton(
+                        title: type.rawValue,
+                        subtitle: "Add a reusable filter block",
+                        systemImage: type.symbol,
+                        accent: .cyan,
+                        action: { onAddCondition(type) }
+                    )
+                }
+            }
+
+            RuleLibrarySection(title: "Actions") {
+                ForEach(ActionType.allCases) { type in
+                    RuleLibraryButton(
+                        title: type.rawValue,
+                        subtitle: "Insert this output block into the flow",
+                        systemImage: type.symbol,
+                        accent: .mint,
+                        action: { onAddAction(type) }
+                    )
+                }
+            }
+
+            if serverIds.isEmpty {
+                Text("Connect the bot to Discord to unlock server and channel pickers in action blocks.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .padding(.vertical, 4)
+    }
+}
+
+struct RulePaneHeader: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 66, alignment: .bottomLeading)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.white.opacity(0.10))
+                .frame(height: 1)
+        }
+    }
+}
+
+struct RuleLibrarySection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                content
+            }
+        }
+    }
+}
+
+struct RuleLibraryButton: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let accent: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(accent)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(accent)
+            }
+            .padding(12)
+            .glassCard(cornerRadius: 18, tint: .white.opacity(0.05), stroke: .white.opacity(0.14))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct RuleCanvasSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(accent)
+                Text(title)
+                    .font(.headline)
+                Spacer()
+            }
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: .white.opacity(0.18))
+    }
+}
+
+struct RuleFlowArrow: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Capsule()
+                .fill(.white.opacity(0.18))
+                .frame(width: 44, height: 2)
+            Image(systemName: "arrow.down")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Capsule()
+                .fill(.white.opacity(0.18))
+                .frame(width: 44, height: 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
     }
 }
 
@@ -1029,15 +1320,20 @@ struct ActionsSectionView: View {
                     action.channelId = textChannelsByServer[action.serverId]?.first?.id ?? ""
                     actions = [action]
                 } label: {
-                    Label("Add Action", systemImage: "plus")
+                    Label("Add First Action Block", systemImage: "plus")
                 }
             } else {
-                ActionSectionView(
-                    action: $actions[0],
-                    serverIds: serverIds,
-                    serverName: serverName,
-                    textChannels: textChannelsByServer[actions[0].serverId] ?? []
-                )
+                ForEach($actions) { $action in
+                    ActionSectionView(
+                        action: $action,
+                        serverIds: serverIds,
+                        serverName: serverName,
+                        textChannels: textChannelsByServer[action.serverId] ?? [],
+                        onDelete: {
+                            actions.removeAll { $0.id == action.id }
+                        }
+                    )
+                }
             }
         }
     }
@@ -1049,13 +1345,21 @@ struct ActionSectionView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let textChannels: [GuildTextChannel]
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Action", selection: $action.type) {
-                ForEach(ActionType.allCases) { actionType in
-                    Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
+            HStack {
+                Picker("Action", selection: $action.type) {
+                    ForEach(ActionType.allCases) { actionType in
+                        Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
+                    }
                 }
+                Spacer()
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
             }
 
             switch action.type {
@@ -1105,6 +1409,8 @@ struct ActionSectionView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .padding(12)
+        .glassCard(cornerRadius: 18, tint: .white.opacity(0.06), stroke: .white.opacity(0.16))
         .onAppear {
             if action.serverId.isEmpty {
                 action.serverId = serverIds.first ?? ""
