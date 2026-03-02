@@ -43,13 +43,14 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
   - `!8ball <question>`
   - `!poll "Question" "Option 1" "Option 2"`
   - `!userinfo [@user]`
+  - `!finals <question>`
   - `!setchannel #channel`
   - `!ignorechannel #channel|list|remove #channel`
   - `!notifystatus`
 - Logs view with auto-scroll, clear, and copy functionality
 - Status view showing gateway stats and voice presence information
 - On-device Apple Intelligence replies:
-  - Optional smart DM replies (Beta) when enabled in Settings
+  - Optional smart DM and channel replies (Beta) when enabled in Settings
   - Smart replies on @mentions in guild channels using on-device Apple Intelligence (Beta)
 - Persistent settings and rules saved in Application Support JSON
 
@@ -74,6 +75,7 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 - `!8ball <question>`
 - `!poll "Question" "Option 1" "Option 2"`
 - `!userinfo [@user]`
+- `!finals <question>`
 - `!setchannel #channel`
 - `!ignorechannel #channel|list|remove #channel`
 - `!notifystatus`
@@ -82,10 +84,10 @@ Unknown commands return:
 
 `❓ I don't know that command! Type !help to see all available commands.`
 
-## On-Device AI DM Replies (Beta)
+## On-Device AI Replies (Beta)
 
 - Uses Apple on-device Foundation Models when available.
-- Controlled via Settings toggle: `Enable on-device intelligent DM replies (Beta)`.
+- Controlled via the Apple Intelligence settings toggle.
 - Disabled by default.
 
 ## Build in Xcode
@@ -97,8 +99,49 @@ Unknown commands return:
 
 ## Build Standalone `.app`
 
-Use the helper script to build and package a runnable app bundle:
+Build and archive the app directly from Xcode using your normal signing configuration.
+
+## Software Updates
+
+SwiftBot is now wired for Sparkle-based self-updates in Xcode.
+
+Recommended release flow:
+
+1. Build and sign the app in Xcode using your normal Developer ID setup.
+2. Export a release archive and upload the signed `.zip` or `.dmg` to GitHub Releases.
+3. Host the Sparkle appcast XML at a stable URL such as GitHub Pages.
+4. Set these app target build settings in Xcode:
+   - `SUFeedURL`
+   - `SUPublicEDKey`
+
+Once those are configured, SwiftBot will expose `Check for Updates...` in the app menu and Settings.
+
+### Publishing A Release
+
+The repo is set up so:
+
+- GitHub Releases hosts the signed update archive
+- GitHub Pages hosts the Sparkle appcast at [https://johnwatso.github.io/SwiftBot/appcast.xml](https://johnwatso.github.io/SwiftBot/appcast.xml)
+- [scripts/publish_sparkle_release.sh](/Users/max/Developer/SwiftBot/scripts/publish_sparkle_release.sh) updates `docs/appcast.xml` for the latest release
+
+Suggested release steps:
+
+1. Archive and sign SwiftBot in Xcode.
+2. Export a signed `.app` from Xcode, or export a signed `.zip`.
+3. Create release notes HTML in `docs/release-notes/<version>.html` if you want Sparkle notes.
+4. Run:
 
 ```bash
-./BUILD_APP.sh
+scripts/publish_sparkle_release.sh <version> <exported-app-or-zip> [release-notes-html]
+```
 
+5. If `gh` is installed and authenticated, the script will create/update GitHub Release `v<version>` and upload the asset automatically.
+6. Commit and push the updated `docs/appcast.xml` and any release notes files.
+7. GitHub Pages will deploy automatically from `docs/` via `.github/workflows/pages.yml`.
+
+Notes:
+
+- The helper script expects Sparkle's `generate_appcast` tool to be available after Xcode resolves the Sparkle package.
+- If needed, set `SPARKLE_GENERATE_APPCAST` to the full path of `generate_appcast`.
+- If your Sparkle setup uses an explicit private key file for appcast generation, set `SPARKLE_PRIVATE_KEY_PATH`.
+- If you pass a `.app`, the script creates `release-artifacts/SwiftBot-<version>.zip` automatically using `ditto`.

@@ -30,9 +30,9 @@ struct RootView: View {
     
     private var windowTitle: String {
         if app.status == .running {
-            return "\(app.botUsername) - Discord Bot"
+            return "\(app.botUsername) - SwiftBot"
         } else {
-            return "Discord Bot Dashboard"
+            return "SwiftBot Dashboard"
         }
     }
 }
@@ -99,12 +99,19 @@ struct DashboardSidebar: View {
                         .font(.headline)
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(app.status == .running ? Color.green : Color.secondary)
+                            .fill(app.primaryServiceIsOnline ? Color.green : Color.secondary)
                             .frame(width: 6, height: 6)
-                        Text(app.status == .running ? "Online" : "Offline")
+                        Text(app.primaryServiceStatusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    HStack(spacing: 6) {
+                        Image(systemName: clusterIcon)
+                            .font(.caption2)
+                        Text(app.clusterSnapshot.mode.rawValue)
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -129,11 +136,11 @@ struct DashboardSidebar: View {
             .scrollContentBackground(.hidden)
 
             Group {
-                if app.status == .stopped {
+                if !isPrimaryServiceRunning {
                     Button {
                         Task { await app.startBot() }
                     } label: {
-                        Label("Start Bot", systemImage: "play.circle.fill")
+                        Label(startButtonTitle, systemImage: "play.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -141,7 +148,7 @@ struct DashboardSidebar: View {
                     Button {
                         app.stopBot()
                     } label: {
-                        Label("Stop Bot", systemImage: "stop.circle.fill")
+                        Label(stopButtonTitle, systemImage: "stop.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -152,6 +159,26 @@ struct DashboardSidebar: View {
         }
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+    }
+
+    private var isPrimaryServiceRunning: Bool {
+        app.settings.clusterMode == .worker ? app.isWorkerServiceRunning : app.status != .stopped
+    }
+
+    private var clusterIcon: String {
+        switch app.settings.clusterMode {
+        case .standalone: return "desktopcomputer"
+        case .leader: return "point.3.connected.trianglepath.dotted"
+        case .worker: return "cpu"
+        }
+    }
+
+    private var startButtonTitle: String {
+        app.settings.clusterMode == .worker ? "Start Worker" : "Start Bot"
+    }
+
+    private var stopButtonTitle: String {
+        app.settings.clusterMode == .worker ? "Stop Worker" : "Stop Bot"
     }
 }
 
@@ -220,6 +247,10 @@ struct OverviewView: View {
         Array(app.commandLog.prefix(5))
     }
 
+    private var workerJobCount: Int {
+        app.commandLog.filter { $0.executionRoute == "Worker" || $0.executionRoute == "Remote" }.count
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -235,29 +266,62 @@ struct OverviewView: View {
                 LazyVGrid(columns: [
                     GridItem(.adaptive(minimum: 180), spacing: 12)
                 ], spacing: 12) {
+                    if app.settings.clusterMode == .worker {
+                        DashboardMetricCard(
+                            title: "Status",
+                            value: app.primaryServiceStatusText,
+                            subtitle: app.clusterSnapshot.serverStatusText,
+                            color: .green
+                        )
+                        DashboardMetricCard(
+                            title: "Listen Port",
+                            value: "\(app.clusterSnapshot.listenPort)",
+                            subtitle: "worker HTTP service",
+                            color: .blue
+                        )
+                        DashboardMetricCard(
+                            title: "Jobs Handled",
+                            value: "\(workerJobCount)",
+                            subtitle: "this session",
+                            color: .orange
+                        )
+                        DashboardMetricCard(
+                            title: "Last Route",
+                            value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized,
+                            subtitle: app.clusterSnapshot.lastJobNode,
+                            color: .red
+                        )
+                    } else {
+                        DashboardMetricCard(
+                            title: "Status",
+                            value: app.status.rawValue.capitalized,
+                            subtitle: app.uptime?.text ?? "--",
+                            color: .green
+                        )
+                        DashboardMetricCard(
+                            title: "Servers",
+                            value: "\(app.connectedServers.count)",
+                            subtitle: "servers connected",
+                            color: .blue
+                        )
+                        DashboardMetricCard(
+                            title: "In Voice",
+                            value: "\(app.activeVoice.count)",
+                            subtitle: "users right now",
+                            color: .orange
+                        )
+                        DashboardMetricCard(
+                            title: "Commands Run",
+                            value: "\(app.stats.commandsRun)",
+                            subtitle: "this session",
+                            color: .red
+                        )
+                    }
                     DashboardMetricCard(
-                        title: "Status",
-                        value: app.status.rawValue.capitalized,
-                        subtitle: app.uptime?.text ?? "--",
-                        color: .green
-                    )
-                    DashboardMetricCard(
-                        title: "Servers",
-                        value: "\(app.connectedServers.count)",
-                        subtitle: "servers connected",
-                        color: .blue
-                    )
-                    DashboardMetricCard(
-                        title: "In Voice",
-                        value: "\(app.activeVoice.count)",
-                        subtitle: "users right now",
-                        color: .orange
-                    )
-                    DashboardMetricCard(
-                        title: "Commands Run",
-                        value: "\(app.stats.commandsRun)",
-                        subtitle: "this session",
-                        color: .red
+                        title: "Cluster Mode",
+                        value: app.clusterSnapshot.mode.rawValue,
+                        subtitle: app.clusterSnapshot.lastJobSummary,
+                        color: .indigo
                     )
                 }
 
@@ -292,8 +356,13 @@ struct OverviewView: View {
                 }
 
                 HStack(spacing: 12) {
-                    DashboardPanel(title: "Currently In Voice") {
-                        if app.activeVoice.isEmpty {
+                    DashboardPanel(title: app.settings.clusterMode == .worker ? "Worker Activity" : "Currently In Voice") {
+                        if app.settings.clusterMode == .worker {
+                            InfoRow(label: "Server", value: app.clusterSnapshot.serverStatusText)
+                            InfoRow(label: "Last Job", value: app.clusterSnapshot.lastJobSummary)
+                            InfoRow(label: "Last Node", value: app.clusterSnapshot.lastJobNode)
+                            InfoRow(label: "Diagnostics", value: app.clusterSnapshot.diagnostics)
+                        } else if app.activeVoice.isEmpty {
                             PlaceholderPanelLine(text: "No one is in voice right now")
                         } else {
                             ForEach(app.activeVoice) { member in
@@ -307,10 +376,11 @@ struct OverviewView: View {
                     }
 
                     DashboardPanel(title: "Bot Info") {
-                        InfoRow(label: "Uptime", value: app.uptime?.text ?? "--")
+                        InfoRow(label: "Uptime", value: app.settings.clusterMode == .worker ? "--" : (app.uptime?.text ?? "--"))
                         InfoRow(label: "Prefix", value: app.settings.prefix)
                         InfoRow(label: "Errors", value: "\(app.stats.errors)")
-                        InfoRow(label: "State", value: app.status.rawValue.capitalized)
+                        InfoRow(label: "State", value: app.settings.clusterMode == .worker ? app.primaryServiceStatusText : app.status.rawValue.capitalized)
+                        InfoRow(label: "Cluster", value: app.clusterSnapshot.mode.rawValue)
                     }
                 }
             }
@@ -1032,6 +1102,8 @@ struct CommandsView: View {
                 TableColumn("Server") { Text($0.server) }
                 TableColumn("Command") { Text($0.command) }
                 TableColumn("Channel") { Text($0.channel) }
+                TableColumn("Route") { Text($0.executionRoute) }
+                TableColumn("Executed On") { Text($0.executionNode) }
                 TableColumn("Status") { entry in
                     Text(entry.ok ? "OK" : "ERROR")
                         .foregroundStyle(entry.ok ? .green : .red)
@@ -1112,6 +1184,42 @@ struct StatusView: View {
                     InfoRow(label: "Servers", value: "\(app.connectedServers.count)")
                 }
 
+                RuleGroupSection(title: "Cluster", systemImage: "point.3.connected.trianglepath.dotted") {
+                    InfoRow(label: "Mode", value: app.clusterSnapshot.mode.rawValue)
+                    InfoRow(label: "Node", value: app.clusterSnapshot.nodeName)
+                    InfoRow(label: "Worker URL", value: app.clusterSnapshot.workerBaseURL.isEmpty ? "-" : app.clusterSnapshot.workerBaseURL)
+                    InfoRow(label: "Listen Port", value: "\(app.clusterSnapshot.listenPort)")
+                    InfoRow(label: "Server", value: app.clusterSnapshot.serverStatusText)
+                    InfoRow(label: "Worker", value: app.clusterSnapshot.workerStatusText)
+                    InfoRow(label: "Last Job Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized)
+                    InfoRow(label: "Last Job", value: app.clusterSnapshot.lastJobSummary)
+                    InfoRow(label: "Last Job Node", value: app.clusterSnapshot.lastJobNode)
+
+                    HStack {
+                        Button("Refresh") {
+                            app.refreshClusterStatus()
+                        }
+                        .buttonStyle(.bordered)
+
+                        if app.clusterSnapshot.mode == .worker {
+                            Button("Copy Local Worker URL") {
+                                let localURL = "http://\(app.clusterSnapshot.nodeName):\(app.clusterSnapshot.listenPort)"
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(localURL, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
+                RuleGroupSection(title: "Cluster Diagnostics", systemImage: "stethoscope") {
+                    Text(app.clusterSnapshot.diagnostics)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 RuleGroupSection(title: "Voice", systemImage: "person.3.sequence") {
                     InfoRow(label: "Voice State Events", value: "\(app.voiceStateEventCount)")
                     InfoRow(label: "Active Voice Users", value: "\(app.activeVoice.count)")
@@ -1142,10 +1250,18 @@ struct StatusView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var updater: AppUpdater
     @Binding var showToken: Bool
     @State private var prefixDraft = "!"
+    @State private var clusterNodeNameDraft = ""
+    @State private var workerBaseURLDraft = ""
+    @State private var listenPortDraft = ""
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
+    
+    private var localWorkerURL: String {
+        "http://\(clusterNodeNameDraft.isEmpty ? "this-mac" : clusterNodeNameDraft):\(listenPortDraft.isEmpty ? "38787" : listenPortDraft)"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1173,10 +1289,108 @@ struct SettingsView: View {
 
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
+                Section("Cluster") {
+                    Picker("Mode", selection: $app.settings.clusterMode) {
+                        ForEach(ClusterMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    TextField("Node Name", text: $clusterNodeNameDraft)
+
+                    if app.settings.clusterMode == .leader {
+                        TextField("Worker Base URL", text: $workerBaseURLDraft)
+                    } else if app.settings.clusterMode == .worker {
+                        LabeledContent("Worker URL") {
+                            Text(localWorkerURL)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    TextField("Listen Port", text: $listenPortDraft)
+
+                    Text(app.settings.clusterMode.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("Refresh Cluster Status") {
+                            app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            app.settings.clusterWorkerBaseURL = workerBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                            app.refreshClusterStatus()
+                        }
+                        .buttonStyle(.bordered)
+
+                        if app.settings.clusterMode == .worker {
+                            Button("Copy Worker URL") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(localWorkerURL, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    Text(app.settings.clusterMode == .worker ? app.clusterSnapshot.serverStatusText : app.clusterSnapshot.workerStatusText)
+                        .font(.caption)
+                        .foregroundStyle((app.clusterSnapshot.workerState == .connected || app.clusterSnapshot.serverState == .listening) ? .green : .secondary)
+                }
+
+                Section("Software Updates") {
+                    LabeledContent("Updater") {
+                        Text(updater.isConfigured ? "Configured" : "Not Configured")
+                            .foregroundStyle(updater.isConfigured ? .green : .secondary)
+                    }
+
+                    LabeledContent("Feed URL Found") {
+                        Text(updater.feedURLString.isEmpty ? "No" : "Yes")
+                            .foregroundStyle(updater.feedURLString.isEmpty ? Color.secondary : Color.green)
+                    }
+
+                    LabeledContent("Public Key Found") {
+                        Text(updater.hasPublicKey ? "Yes" : "No")
+                            .foregroundStyle(updater.hasPublicKey ? Color.green : Color.secondary)
+                    }
+
+                    if updater.isConfigured {
+                        LabeledContent("Feed URL") {
+                            Text(updater.feedURLString)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+
+                        Button("Check for Updates...") {
+                            updater.checkForUpdates()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!updater.canCheckForUpdates)
+                    } else {
+                        Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LabeledContent("Bundle") {
+                        Text(updater.bundlePath)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+
                 Button("Save") {
                     app.settings.prefix = prefixDraft
+                    app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    app.settings.clusterWorkerBaseURL = workerBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
                     app.saveSettings()
                     prefixDraft = app.settings.prefix
+                    clusterNodeNameDraft = app.settings.clusterNodeName
+                    workerBaseURLDraft = app.settings.clusterWorkerBaseURL
+                    listenPortDraft = "\(app.settings.clusterListenPort)"
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -1184,6 +1398,9 @@ struct SettingsView: View {
             }
             .onAppear {
                 prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
+                clusterNodeNameDraft = app.settings.clusterNodeName
+                workerBaseURLDraft = app.settings.clusterWorkerBaseURL
+                listenPortDraft = "\(app.settings.clusterListenPort)"
             }
             .onChange(of: app.settings.prefix) { newValue in
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
@@ -1197,6 +1414,18 @@ struct SettingsView: View {
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
+
+    private var appleIntelligenceImage: NSImage? {
+        if let bundled = NSImage(named: NSImage.Name("AppleIntelligence")) {
+            return bundled
+        }
+
+        guard let imageURL = Bundle.main.url(forResource: "AppleIntelligence", withExtension: "jpg") else {
+            return NSImage(named: NSImage.Name("Apple_AI"))
+        }
+
+        return NSImage(contentsOf: imageURL) ?? NSImage(named: NSImage.Name("Apple_AI"))
+    }
     
     var body: some View {
         ScrollView {
@@ -1207,7 +1436,7 @@ struct AIBotsView: View {
                 // Apple Intelligence Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
-                        if let nsImage = NSImage(named: NSImage.Name("Apple_AI")) {
+                        if let nsImage = appleIntelligenceImage {
                             Image(nsImage: nsImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -1229,7 +1458,7 @@ struct AIBotsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Apple Intelligence")
                                 .font(.headline)
-                            Text("On-Device DM Replies")
+                            Text("On-Device DM & Channel Replies")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1273,7 +1502,7 @@ struct AIBotsView: View {
                             Text("• Uses Apple Intelligence Foundation Models running locally")
                             Text("• Requires macOS 26.0 or later with Apple Intelligence support")
                             Text("• Completely private - no data sent to external servers")
-                            Text("• Responds intelligently to direct messages when enabled")
+                            Text("• Responds to direct messages and server mentions when enabled")
                             Text("• Custom system prompt defines the AI's personality and behavior")
                         }
                         .font(.caption)

@@ -21,12 +21,14 @@ final class AppModel: ObservableObject {
     @Published var lastGatewayEventName: String = "-"
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
+    @Published var clusterSnapshot = ClusterSnapshot()
 
     var logs = LogStore()
     let ruleStore = RuleStore()
 
     private let store = ConfigStore()
     private let service = DiscordService()
+    private let cluster = ClusterCoordinator()
     private let ruleEngine: RuleEngine
     private var serviceCallbacksConfigured = false
     private var uptimeTask: Task<Void, Never>?
@@ -67,11 +69,39 @@ final class AppModel: ObservableObject {
             }
 
             await service.setRuleEngine(ruleEngine)
+            await cluster.configureHandlers(
+                aiHandler: { [weak self] message, username in
+                    guard let self else { return nil }
+                    return await self.service.generateSmartDMReply(message: message, username: username)
+                },
+                wikiHandler: { [weak self] query in
+                    guard let self else { return nil }
+                    return await self.service.lookupFinalsWiki(query: query)
+                },
+                onSnapshot: { [weak self] snapshot in
+                    let model = self
+                    await MainActor.run {
+                        model?.clusterSnapshot = snapshot
+                    }
+                },
+                onJobLog: { [weak self] entry in
+                    let model = self
+                    await MainActor.run {
+                        model?.commandLog.insert(entry, at: 0)
+                    }
+                }
+            )
             await service.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
                 endpoint: settings.localAIEndpoint,
                 model: settings.localAIModel,
                 systemPrompt: settings.localAISystemPrompt
+            )
+            await cluster.applySettings(
+                mode: settings.clusterMode,
+                nodeName: settings.clusterNodeName,
+                workerBaseURL: settings.clusterWorkerBaseURL,
+                listenPort: settings.clusterListenPort
             )
             await configureServiceCallbacks()
             if settings.autoStart, !settings.token.isEmpty {
@@ -96,6 +126,12 @@ final class AppModel: ObservableObject {
                 model: settings.localAIModel,
                 systemPrompt: settings.localAISystemPrompt
             )
+            await cluster.applySettings(
+                mode: settings.clusterMode,
+                nodeName: settings.clusterNodeName,
+                workerBaseURL: settings.clusterWorkerBaseURL,
+                listenPort: settings.clusterListenPort
+            )
 
             do {
                 try await store.save(settings)
@@ -108,6 +144,19 @@ final class AppModel: ObservableObject {
     }
 
     func startBot() async {
+        await cluster.applySettings(
+            mode: settings.clusterMode,
+            nodeName: settings.clusterNodeName,
+            workerBaseURL: settings.clusterWorkerBaseURL,
+            listenPort: settings.clusterListenPort
+        )
+
+        if settings.clusterMode == .worker {
+            status = .stopped
+            logs.append("Worker mode active. Discord connection is disabled on this node.")
+            return
+        }
+
         guard !settings.token.isEmpty else {
             logs.append("⚠️ Token is empty; cannot start bot")
             return
@@ -163,7 +212,57 @@ final class AppModel: ObservableObject {
         botAvatarHash = nil
         Task { await pluginManager.removeAll() }
         status = .stopped
+        Task { await cluster.stopAll() }
         logs.append("Bot stopped")
+    }
+
+    func refreshClusterStatus() {
+        Task {
+            await cluster.applySettings(
+                mode: settings.clusterMode,
+                nodeName: settings.clusterNodeName,
+                workerBaseURL: settings.clusterWorkerBaseURL,
+                listenPort: settings.clusterListenPort
+            )
+            await cluster.refreshWorkerHealth()
+            let snapshot = await cluster.currentSnapshot()
+            await MainActor.run {
+                self.clusterSnapshot = snapshot
+            }
+        }
+    }
+
+    func refreshClusterStatusNow() async -> ClusterSnapshot {
+        await cluster.applySettings(
+            mode: settings.clusterMode,
+            nodeName: settings.clusterNodeName,
+            workerBaseURL: settings.clusterWorkerBaseURL,
+            listenPort: settings.clusterListenPort
+        )
+        await cluster.refreshWorkerHealth()
+        let snapshot = await cluster.currentSnapshot()
+        self.clusterSnapshot = snapshot
+        return snapshot
+    }
+
+    var isWorkerServiceRunning: Bool {
+        guard settings.clusterMode == .worker else { return false }
+        switch clusterSnapshot.serverState {
+        case .starting, .listening, .connected:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var primaryServiceStatusText: String {
+        settings.clusterMode == .worker
+            ? (isWorkerServiceRunning ? "Worker Online" : "Worker Offline")
+            : (status == .running ? "Online" : "Offline")
+    }
+
+    var primaryServiceIsOnline: Bool {
+        settings.clusterMode == .worker ? isWorkerServiceRunning : status == .running
     }
 
     private func configureServiceCallbacks() async {
@@ -277,7 +376,7 @@ final class AppModel: ObservableObject {
             }
 
             if settings.localAIDMReplyEnabled,
-               let aiReply = await service.generateSmartDMReply(message: content, username: username) {
+               let aiReply = await cluster.generateAIReply(message: content, username: username) {
                 try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
                 return
             }
@@ -301,7 +400,7 @@ final class AppModel: ObservableObject {
            !content.hasPrefix(prefix) {
             let prompt = contentWithoutBotMention(content)
             if !prompt.isEmpty,
-               let aiReply = await service.generateSmartDMReply(message: prompt, username: username) {
+               let aiReply = await cluster.generateAIReply(message: prompt, username: username) {
                 try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
                 return
             }
@@ -311,10 +410,21 @@ final class AppModel: ObservableObject {
 
         stats.commandsRun += 1
         let commandText = String(content.dropFirst(prefix.count))
+        let commandName = commandText.split(separator: " ").first.map { String($0).lowercased() } ?? ""
         let result = await executeCommand(commandText, username: username, channelId: channelId, raw: map)
         let serverName = commandServerName(from: map)
+        let executionDetails = await commandExecutionDetails(for: commandName)
         addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "\(username): \(content)"))
-        commandLog.insert(CommandLogEntry(time: Date(), user: username, server: serverName, command: content, channel: channelId, ok: result), at: 0)
+        commandLog.insert(CommandLogEntry(
+            time: Date(),
+            user: username,
+            server: serverName,
+            command: content,
+            channel: channelId,
+            executionRoute: executionDetails.route,
+            executionNode: executionDetails.node,
+            ok: result
+        ), at: 0)
         logs.append(result ? "✅ Command success: \(content)" : "❌ Command failed: \(content)")
         if !result { stats.errors += 1 }
     }
@@ -327,7 +437,7 @@ final class AppModel: ObservableObject {
 
         switch command {
         case "help":
-            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus")
+            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)finals <question>, \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus")
         case "ping":
             return await send(channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
         case "roll":
@@ -340,6 +450,12 @@ final class AppModel: ObservableObject {
             return await send(channelId, "📊 Poll created! Add reactions to vote.")
         case "userinfo":
             return await send(channelId, "👤 User: \(username)")
+        case "finals", "wiki":
+            let query = tokens.dropFirst().joined(separator: " ")
+            return await finalsWikiLookup(query: query, channelId: channelId)
+        case "cluster", "worker":
+            let action = tokens.dropFirst().first?.lowercased() ?? "status"
+            return await clusterCommand(action: action, channelId: channelId)
         case "setchannel":
             return await setNotificationChannel(for: raw, currentChannelId: channelId)
         case "ignorechannel":
@@ -491,6 +607,88 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             return false
+        }
+    }
+
+    private func finalsWikiLookup(query: String, channelId: String) async -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return await send(channelId, "📘 Usage: \(effectivePrefix())finals <weapon, gadget, map, mode, patch, or topic>")
+        }
+
+        guard let result = await cluster.lookupFinalsWiki(query: trimmedQuery) else {
+            return await send(channelId, "❌ I couldn't find a relevant THE FINALS Wiki page for \"\(trimmedQuery)\".")
+        }
+
+        let summary = summarizedWikiExtract(result.extract)
+        let body = summary.isEmpty
+            ? "📘 **\(result.title)**\n\(result.url)"
+            : "📘 **\(result.title)**\n\(summary)\n\(result.url)"
+
+        return await send(channelId, body)
+    }
+
+    private func summarizedWikiExtract(_ extract: String, limit: Int = 420) -> String {
+        let cleaned = extract
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleaned.count > limit else { return cleaned }
+
+        let cutoffIndex = cleaned.index(cleaned.startIndex, offsetBy: limit)
+        let prefix = String(cleaned[..<cutoffIndex])
+        if let sentenceEnd = prefix.lastIndex(where: { ".!?".contains($0) }) {
+            return String(prefix[...sentenceEnd])
+        }
+
+        return prefix + "..."
+    }
+
+    private func clusterCommand(action: String, channelId: String) async -> Bool {
+        let normalized = ["test", "refresh", "check", "remote", "probe"].contains(action) ? action : "status"
+        let snapshot = await clusterSnapshotForCommand(action: normalized)
+        let workerURL = snapshot.workerBaseURL.isEmpty ? "-" : snapshot.workerBaseURL
+
+        let message = """
+        🧭 **Cluster \(normalized.capitalized)**
+        Mode: \(snapshot.mode.rawValue)
+        Node: \(snapshot.nodeName)
+        Server: \(snapshot.serverStatusText)
+        Worker: \(snapshot.workerStatusText)
+        Worker URL: \(workerURL)
+        Last Job: \(snapshot.lastJobSummary) [\(snapshot.lastJobRoute.rawValue)]
+        Last Job Node: \(snapshot.lastJobNode)
+        Diagnostics: \(snapshot.diagnostics)
+        """
+
+        return await send(channelId, message)
+    }
+
+    private func clusterSnapshotForCommand(action: String) async -> ClusterSnapshot {
+        switch action {
+        case "test", "refresh", "check":
+            return await refreshClusterStatusNow()
+        case "remote", "probe":
+            _ = await cluster.probeWorker()
+            let snapshot = await cluster.currentSnapshot()
+            clusterSnapshot = snapshot
+            return snapshot
+        default:
+            return clusterSnapshot
+        }
+    }
+
+    private func commandExecutionDetails(for commandName: String) async -> (route: String, node: String) {
+        let leaderNode = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch commandName {
+        case "finals", "wiki", "cluster", "worker":
+            let snapshot = await cluster.currentSnapshot()
+            return (snapshot.lastJobRoute.rawValue.capitalized, snapshot.lastJobNode)
+        default:
+            return ("Leader", leaderNode)
         }
     }
 

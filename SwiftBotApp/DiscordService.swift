@@ -6,6 +6,8 @@ import FoundationModels
 actor DiscordService {
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
+    private let finalsWikiAPI = URL(string: "https://www.thefinals.wiki/api.php")!
+    private let duckDuckGoHTML = URL(string: "https://duckduckgo.com/html/")!
     private var socket: URLSessionWebSocketTask?
     private var heartbeatTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
@@ -45,6 +47,26 @@ actor DiscordService {
 
     func generateSmartDMReply(message: String, username: String) async -> String? {
         await generateLocalAIDMReply(userMessage: message, username: username)
+    }
+
+    func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return nil }
+
+        if let direct = await fetchDirectFinalsWikiPage(query: trimmedQuery) {
+            return direct
+        }
+
+        if let title = await searchFinalsWikiTitle(query: trimmedQuery),
+           let result = await fetchFinalsWikiSummary(title: title) {
+            return result
+        }
+
+        if let result = await searchFinalsWikiViaSiteSearch(query: trimmedQuery) {
+            return result
+        }
+
+        return await searchFinalsWikiViaWeb(query: trimmedQuery)
     }
 
     func connect(token: String) async {
@@ -122,7 +144,7 @@ actor DiscordService {
     }
 
     private func sendHeartbeat() async {
-        let payload: [String: Any?] = ["op": 1, "d": sequence]
+        let payload: [String: Any] = ["op": 1, "d": sequence as Any]
         await sendRaw(payload)
     }
 
@@ -420,7 +442,7 @@ actor DiscordService {
         guard localAIDMReplyEnabled else { return nil }
 
         let systemPrompt = localAISystemPrompt.isEmpty
-            ? "You are a friendly Discord DM assistant. Reply briefly and naturally."
+            ? "You are a friendly Discord assistant. Reply briefly and naturally."
             : localAISystemPrompt
 
 #if canImport(FoundationModels)
@@ -446,6 +468,276 @@ actor DiscordService {
 #endif
 
         return nil
+    }
+
+    private func searchFinalsWikiTitle(query: String) async -> String? {
+        var components = URLComponents(url: finalsWikiAPI, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "list", value: "search"),
+            URLQueryItem(name: "srsearch", value: query),
+            URLQueryItem(name: "srlimit", value: "1"),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "utf8", value: "1"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+
+        guard let url = components?.url else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+
+            let decoded = try JSONDecoder().decode(MediaWikiSearchResponse.self, from: data)
+            return decoded.query?.search.first?.title
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchFinalsWikiSummary(title: String) async -> FinalsWikiLookupResult? {
+        var components = URLComponents(url: finalsWikiAPI, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "prop", value: "extracts|info"),
+            URLQueryItem(name: "exintro", value: "1"),
+            URLQueryItem(name: "explaintext", value: "1"),
+            URLQueryItem(name: "inprop", value: "url"),
+            URLQueryItem(name: "redirects", value: "1"),
+            URLQueryItem(name: "titles", value: title),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "utf8", value: "1"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+
+        guard let url = components?.url else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+
+            let decoded = try JSONDecoder().decode(MediaWikiPageResponse.self, from: data)
+            guard let page = decoded.query?.pages.values.first,
+                  page.missing == nil else { return nil }
+
+            let summary = page.extract?
+                .replacingOccurrences(of: "\n+", with: "\n", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            let fallbackURL = "https://www.thefinals.wiki/wiki/" + title.replacingOccurrences(of: " ", with: "_")
+            return FinalsWikiLookupResult(
+                title: page.title,
+                extract: summary,
+                url: page.fullurl ?? fallbackURL
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchDirectFinalsWikiPage(query: String) async -> FinalsWikiLookupResult? {
+        for candidate in directFinalsWikiCandidateURLs(for: query) {
+            if let result = await fetchFinalsWikiPage(at: candidate) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    private func directFinalsWikiCandidateURLs(for query: String) -> [URL] {
+        let cleaned = query
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+
+        let variants = [
+            cleaned,
+            cleaned.localizedCapitalized,
+            cleaned.uppercased(),
+            cleaned.lowercased()
+        ]
+
+        var urls: [URL] = []
+        var seen: Set<String> = []
+        for variant in variants {
+            let slug = variant
+                .replacingOccurrences(of: " ", with: "_")
+                .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+            guard !slug.isEmpty else { continue }
+            let absolute = "https://www.thefinals.wiki/wiki/\(slug)"
+            if seen.insert(absolute).inserted, let url = URL(string: absolute) {
+                urls.append(url)
+            }
+        }
+        return urls
+    }
+
+    private func fetchFinalsWikiPage(at pageURL: URL) async -> FinalsWikiLookupResult? {
+        do {
+            var request = URLRequest(url: pageURL)
+            request.setValue("SwiftBot/1.0 (+https://www.thefinals.wiki/wiki/Main_Page)", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let title = extractHTMLTitle(from: html)
+            if let title, !isMeaningfulFinalsWikiTitle(title) {
+                return nil
+            }
+
+            let extract = extractSummaryParagraph(from: html)
+            let resolvedURL = extractCanonicalWikiPageURL(from: html) ?? pageURL
+            return FinalsWikiLookupResult(
+                title: title ?? resolvedURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " "),
+                extract: extract,
+                url: resolvedURL.absoluteString
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func searchFinalsWikiViaSiteSearch(query: String) async -> FinalsWikiLookupResult? {
+        var components = URLComponents(string: "https://www.thefinals.wiki/wiki/Special:Search")
+        components?.queryItems = [
+            URLQueryItem(name: "search", value: query)
+        ]
+
+        guard let url = components?.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let hrefMatches = html.matches(for: "href=\\\"(/wiki/[^\\\"#?]+)\\\"")
+            for href in hrefMatches {
+                guard let pageURL = URL(string: "https://www.thefinals.wiki\(href)"),
+                      isAcceptableFinalsWikiPage(pageURL),
+                      let result = await fetchFinalsWikiPage(at: pageURL) else { continue }
+                return result
+            }
+        } catch {
+            return nil
+        }
+
+        return nil
+    }
+
+    private func searchFinalsWikiViaWeb(query: String) async -> FinalsWikiLookupResult? {
+        guard let pageURL = await searchFinalsWikiPageURL(query: query) else { return nil }
+        return await fetchFinalsWikiPage(at: pageURL)
+    }
+
+    private func searchFinalsWikiPageURL(query: String) async -> URL? {
+        var components = URLComponents(url: duckDuckGoHTML, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "q", value: "site:thefinals.wiki/wiki \(query)")
+        ]
+
+        guard let url = components?.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let matches = html.matches(for: #"https?%3A%2F%2Fwww\.thefinals\.wiki%2Fwiki%2F[^"&<]+"#)
+            for encoded in matches {
+                let decoded = encoded.removingPercentEncoding ?? encoded
+                if let url = URL(string: decoded),
+                   isAcceptableFinalsWikiPage(url) {
+                    return url
+                }
+            }
+
+            let directMatches = html.matches(for: #"https://www\.thefinals\.wiki/wiki/[^"'&< ]+"#)
+            for match in directMatches {
+                if let url = URL(string: match),
+                   isAcceptableFinalsWikiPage(url) {
+                    return url
+                }
+            }
+        } catch {
+            return nil
+        }
+
+        return nil
+    }
+
+    private func isAcceptableFinalsWikiPage(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        if !path.hasPrefix("/wiki/") { return false }
+        if path.contains("special:") || path.contains("/file:") || path.hasSuffix("/main_page") {
+            return false
+        }
+        return true
+    }
+
+    private func extractHTMLTitle(from html: String) -> String? {
+        guard let rawTitle = html.firstMatch(for: #"<title>(.*?)</title>"#) else { return nil }
+        let cleaned = decodeHTMLEntities(rawTitle)
+            .replacingOccurrences(of: " - THE FINALS Wiki", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private func isMeaningfulFinalsWikiTitle(_ title: String) -> Bool {
+        let lowered = title.lowercased()
+        return !lowered.contains("search results") &&
+            !lowered.contains("create the page") &&
+            !lowered.contains("main page")
+    }
+
+    private func extractCanonicalWikiPageURL(from html: String) -> URL? {
+        guard let canonical = html.firstMatch(for: #"<link[^>]+rel=\"canonical\"[^>]+href=\"([^\"]+)\""#) else {
+            return nil
+        }
+        return URL(string: decodeHTMLEntities(canonical))
+    }
+
+    private func extractSummaryParagraph(from html: String) -> String {
+        let paragraphs = html.matches(for: #"<p\b[^>]*>(.*?)</p>"#)
+        for paragraph in paragraphs {
+            let stripped = stripHTML(paragraph)
+                .replacingOccurrences(of: "\\[[^\\]]+\\]", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if stripped.count >= 40,
+               !stripped.lowercased().contains("retrieved from"),
+               !stripped.lowercased().hasPrefix("main page:") {
+                return stripped
+            }
+        }
+
+        return ""
+    }
+
+    private func stripHTML(_ html: String) -> String {
+        let withoutTags = html.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+        return decodeHTMLEntities(withoutTags)
+    }
+
+    private func decodeHTMLEntities(_ text: String) -> String {
+        guard let data = text.data(using: .utf8),
+              let attributed = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.html],
+                documentAttributes: nil
+              ) else {
+            return text
+        }
+        return attributed.string
     }
 
     private func formatDuration(seconds: Int?) -> String {
@@ -481,5 +773,49 @@ actor DiscordService {
         } catch {
             // noop, routed to reconnect by receive loop if needed.
         }
+    }
+}
+
+private extension String {
+    func matches(for pattern: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+        let range = NSRange(startIndex..<endIndex, in: self)
+        return regex.matches(in: self, options: [], range: range).compactMap { match in
+            guard let range = Range(match.range(at: match.numberOfRanges > 1 ? 1 : 0), in: self) else { return nil }
+            return String(self[range])
+        }
+    }
+
+    func firstMatch(for pattern: String) -> String? {
+        matches(for: pattern).first
+    }
+}
+
+private struct MediaWikiSearchResponse: Decodable {
+    let query: SearchQuery?
+
+    struct SearchQuery: Decodable {
+        let search: [SearchHit]
+    }
+
+    struct SearchHit: Decodable {
+        let title: String
+    }
+}
+
+private struct MediaWikiPageResponse: Decodable {
+    let query: PageQuery?
+
+    struct PageQuery: Decodable {
+        let pages: [String: Page]
+    }
+
+    struct Page: Decodable {
+        let title: String
+        let extract: String?
+        let fullurl: String?
+        let missing: String?
     }
 }

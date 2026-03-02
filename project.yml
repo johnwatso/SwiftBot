@@ -5,8 +5,12 @@ settings:
   base:
     SWIFT_VERSION: 5.9
     MACOSX_DEPLOYMENT_TARGET: 13.0
-    PRODUCT_BUNDLE_IDENTIFIER: com.john.swiftbot
+    PRODUCT_BUNDLE_IDENTIFIER: com.maxhewett.swiftbot
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.8.0
 targets:
   SwiftBot:
     type: application
@@ -29,9 +33,14 @@ targets:
         INFOPLIST_KEY_CFBundleName: SwiftBot
         INFOPLIST_KEY_LSMinimumSystemVersion: 13.0
         INFOPLIST_KEY_NSHighResolutionCapable: YES
+        INFOPLIST_KEY_SUEnableAutomaticChecks: YES
+        INFOPLIST_KEY_SUFeedURL: "https://johnwatso.github.io/SwiftBot/appcast.xml"
+        INFOPLIST_KEY_SUPublicEDKey: ""
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0
         CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: Sparkle
 schemes:
   SwiftBot:
     build:
