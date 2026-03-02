@@ -22,10 +22,11 @@ struct RootView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(SwiftBotGlassBackground())
             .navigationTitle(windowTitle)
         }
         .navigationSplitViewStyle(.balanced)
+        .background(SwiftBotGlassBackground())
     }
     
     private var windowTitle: String {
@@ -116,24 +117,26 @@ struct DashboardSidebar: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .sidebarProfileCard()
 
-            List(selection: $selection) {
-                Section("Main") {
-                    SidebarRow(item: .overview, selection: $selection)
-                    SidebarRow(item: .voice, selection: $selection, count: app.activeVoice.count)
-                    SidebarRow(item: .commands, selection: $selection)
-                    SidebarRow(item: .logs, selection: $selection)
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    SidebarSection(title: "Main") {
+                        SidebarRow(item: .overview, selection: $selection)
+                        SidebarRow(item: .voice, selection: $selection, count: app.activeVoice.count)
+                        SidebarRow(item: .commands, selection: $selection)
+                        SidebarRow(item: .logs, selection: $selection)
+                    }
 
-                Section("Config") {
-                    SidebarRow(item: .settings, selection: $selection)
-                    SidebarRow(item: .aiBots, selection: $selection)
-                    SidebarRow(item: .status, selection: $selection)
+                    SidebarSection(title: "Config") {
+                        SidebarRow(item: .settings, selection: $selection)
+                        SidebarRow(item: .aiBots, selection: $selection)
+                        SidebarRow(item: .status, selection: $selection)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
 
             Group {
                 if !isPrimaryServiceRunning {
@@ -158,7 +161,7 @@ struct DashboardSidebar: View {
             .controlSize(.large)
         }
         .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(Color.clear)
     }
 
     private var isPrimaryServiceRunning: Bool {
@@ -204,11 +207,31 @@ struct SidebarRow: View {
                         .background(Color.accentColor.opacity(0.20), in: Capsule())
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .modifier(SidebarSelectionModifier(isSelected: selection == item))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .tag(item)
+    }
+}
+
+struct SidebarSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+
+            VStack(alignment: .leading, spacing: 4) {
+                content
+            }
+        }
     }
 }
 
@@ -385,6 +408,7 @@ struct OverviewView: View {
                 }
             }
             .padding(20)
+            .background(SwiftBotGlassBackground().opacity(0.55))
         }
     }
 }
@@ -556,7 +580,7 @@ struct VoiceView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.regularMaterial)
+                    .glassCard(cornerRadius: 22, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -638,6 +662,9 @@ struct RuleListView: View {
             .onDelete(perform: onDeleteOffsets)
         }
         .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
         .navigationTitle("Server Notifier")
         .toolbar {
             ToolbarItem {
@@ -834,7 +861,7 @@ struct RuleGroupSection<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.18))
     }
 }
 
@@ -954,7 +981,7 @@ struct ConditionRowView: View {
             conditionEditor
         }
         .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
     }
 
     @ViewBuilder
@@ -1062,7 +1089,11 @@ struct ActionSectionView: View {
                     TextEditor(text: $action.message)
                         .frame(minHeight: 120)
                         .padding(6)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                        )
                 }
             case .addLogEntry:
                 TextField("Log message", text: $action.message)
@@ -1110,10 +1141,7 @@ struct CommandsView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-            )
+            .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
         }
         .padding(20)
     }
@@ -1150,11 +1178,7 @@ struct LogsView: View {
                     }
                     .padding(12)
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-                )
+                .glassCard(cornerRadius: 20, tint: .black.opacity(0.04), stroke: .white.opacity(0.16))
                 .onChange(of: app.logs.lines.count) { _ in
                     if app.logs.autoScroll, let last = app.logs.lines.indices.last {
                         proxy.scrollTo(last, anchor: .bottom)
@@ -1406,7 +1430,10 @@ struct SettingsView: View {
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
         }
         .padding(20)
     }
@@ -1483,10 +1510,10 @@ struct AIBotsView: View {
                                 .font(.system(.body, design: .monospaced))
                                 .frame(height: 120)
                                 .padding(8)
-                                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.20), lineWidth: 1)
                                 )
                                 .disabled(!app.settings.localAIDMReplyEnabled)
                                 .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.5)
@@ -1509,7 +1536,11 @@ struct AIBotsView: View {
                         .foregroundStyle(.secondary)
                     }
                     .padding(12)
-                    .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                    )
                     
                     HStack {
                         Spacer()
@@ -1520,7 +1551,7 @@ struct AIBotsView: View {
                     }
                 }
                 .padding(20)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
                 
                 // Placeholder for future AI integrations
                 VStack(alignment: .leading, spacing: 16) {
@@ -1529,7 +1560,11 @@ struct AIBotsView: View {
                             .font(.title2)
                             .foregroundStyle(.green)
                             .frame(width: 44, height: 44)
-                            .background(.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .background(.green.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                            )
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text("External AI Services")
@@ -1547,7 +1582,7 @@ struct AIBotsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(20)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
                 .opacity(0.6)
             }
             .padding(20)
@@ -1607,11 +1642,7 @@ struct DashboardMetricCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(color.opacity(0.85), lineWidth: 1.5)
-        )
+        .glassCard(cornerRadius: 22, tint: color.opacity(0.10), stroke: color.opacity(0.28))
     }
 }
 
@@ -1648,11 +1679,7 @@ struct DashboardPanel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 }
 
@@ -1672,7 +1699,11 @@ struct PanelLine: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tone.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(tone.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        )
     }
 }
 
@@ -1689,7 +1720,11 @@ struct PlaceholderPanelLine: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        )
     }
 }
 
@@ -1706,5 +1741,139 @@ struct InfoRow: View {
                 .fontWeight(.semibold)
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct SwiftBotGlassBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            if colorScheme == .dark {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.06, green: 0.08, blue: 0.11),
+                        Color(red: 0.08, green: 0.12, blue: 0.17),
+                        Color(red: 0.10, green: 0.09, blue: 0.16)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 520, height: 520)
+                    .blur(radius: 80)
+                    .offset(x: -260, y: -220)
+
+                Circle()
+                    .fill(Color.cyan.opacity(0.14))
+                    .frame(width: 420, height: 420)
+                    .blur(radius: 70)
+                    .offset(x: 280, y: -160)
+
+                Circle()
+                    .fill(Color.blue.opacity(0.10))
+                    .frame(width: 480, height: 480)
+                    .blur(radius: 75)
+                    .offset(x: 220, y: 260)
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.95, green: 0.98, blue: 1.0),
+                        Color(red: 0.89, green: 0.95, blue: 0.98),
+                        Color(red: 0.96, green: 0.93, blue: 0.98)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                Circle()
+                    .fill(Color.white.opacity(0.45))
+                    .frame(width: 520, height: 520)
+                    .blur(radius: 70)
+                    .offset(x: -260, y: -220)
+
+                Circle()
+                    .fill(Color.cyan.opacity(0.18))
+                    .frame(width: 420, height: 420)
+                    .blur(radius: 55)
+                    .offset(x: 280, y: -160)
+
+                Circle()
+                    .fill(Color.blue.opacity(0.12))
+                    .frame(width: 480, height: 480)
+                    .blur(radius: 65)
+                    .offset(x: 220, y: 260)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct SwiftBotGlassCardModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let tint: Color
+    let stroke: Color
+
+    func body(content: Content) -> some View {
+        content
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.55), .white.opacity(0.04)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .allowsHitTesting(false)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(stroke, lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 10)
+    }
+}
+
+private struct SidebarSelectionModifier: ViewModifier {
+    let isSelected: Bool
+
+    func body(content: Content) -> some View {
+        if isSelected {
+            content
+                .glassEffect(.regular.interactive(true), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                        .allowsHitTesting(false)
+                )
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .white.opacity(0.18)) -> some View {
+        modifier(SwiftBotGlassCardModifier(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
+    }
+
+    func sidebarProfileCard() -> some View {
+        glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.24))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [.white.opacity(0.08), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .allowsHitTesting(false)
+            )
     }
 }
