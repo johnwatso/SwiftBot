@@ -1,0 +1,4 @@
+*.pbxproj linguist-generated
+*.xcscheme linguist-generated
+*.xcworkspacedata linguist-generated
+*.md linguist-documentation
