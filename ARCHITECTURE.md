@@ -43,7 +43,7 @@ This document provides a high-level overview of the SwiftBot application archite
   - Heartbeat management
   - Voice state tracking
   - Rule action execution
-  - On-device AI DM replies (when enabled)
+  - On-device AI replies for DMs and guild mentions (when enabled)
 
 ### 4. Data Models
 - **File:** `Models.swift`

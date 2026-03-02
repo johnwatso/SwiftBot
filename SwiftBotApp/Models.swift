@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Combine
+import Network
 
 // MARK: - EventBus System
 
@@ -148,12 +149,66 @@ struct BotSettings: Codable, Hashable {
     var prefix: String = "!"
     var autoStart: Bool = false
     var guildSettings: [String: GuildSettings] = [:]
+    var clusterMode: ClusterMode = .standalone
+    var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
+    var clusterWorkerBaseURL: String = ""
+    var clusterListenPort: Int = 38787
 
-    // Local AI DM auto-reply settings (OpenAI-compatible local endpoint)
+    // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
-    var localAISystemPrompt: String = "You are a friendly Discord DM assistant. Reply briefly and naturally."
+    var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
+}
+
+enum ClusterMode: String, Codable, CaseIterable, Identifiable {
+    case standalone = "Standalone"
+    case leader = "Leader"
+    case worker = "Worker"
+
+    var id: String { rawValue }
+
+    var description: String {
+        switch self {
+        case .standalone:
+            return "Runs Discord and heavy tasks locally."
+        case .leader:
+            return "Owns Discord traffic and can offload heavy work to a worker."
+        case .worker:
+            return "Runs job services only. No Discord connection."
+        }
+    }
+}
+
+enum ClusterConnectionState: String {
+    case inactive
+    case starting
+    case listening
+    case connected
+    case degraded
+    case stopped
+    case failed
+}
+
+enum ClusterJobRoute: String {
+    case local
+    case remote
+    case unavailable
+}
+
+struct ClusterSnapshot: Hashable {
+    var mode: ClusterMode = .standalone
+    var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
+    var listenPort: Int = 38787
+    var workerBaseURL: String = ""
+    var serverState: ClusterConnectionState = .inactive
+    var workerState: ClusterConnectionState = .inactive
+    var serverStatusText: String = "Disabled"
+    var workerStatusText: String = "Local only"
+    var lastJobRoute: ClusterJobRoute = .local
+    var lastJobSummary: String = "No remote jobs yet"
+    var lastJobNode: String = Host.current().localizedName ?? "SwiftBot Node"
+    var diagnostics: String = "No diagnostics yet"
 }
 
 enum BotStatus: String {
@@ -194,6 +249,8 @@ struct CommandLogEntry: Identifiable, Hashable {
     let server: String
     let command: String
     let channel: String
+    let executionRoute: String
+    let executionNode: String
     let ok: Bool
 }
 
@@ -211,6 +268,12 @@ struct VoiceEventLogEntry: Identifiable, Hashable {
     let id = UUID()
     let time: Date
     let description: String
+}
+
+struct FinalsWikiLookupResult: Codable, Hashable {
+    let title: String
+    let extract: String
+    let url: String
 }
 
 struct GuildVoiceChannel: Identifiable, Hashable {
@@ -492,12 +555,12 @@ final class WeeklySummaryPlugin: BotPlugin {
     init() {}
     
     func register(on bus: EventBus) async {
-        let joinToken = await bus.subscribe(VoiceJoined.self) { _ in
+        let joinToken = bus.subscribe(VoiceJoined.self) { _ in
             // No-op for accumulation; could log here if needed
         }
         tokens.append(joinToken)
         
-        let leftToken = await bus.subscribe(VoiceLeft.self) { [weak self] event in
+        let leftToken = bus.subscribe(VoiceLeft.self) { [weak self] event in
             guard let self = self else { return }
             self.voiceDurations[event.userId, default: 0] += max(0, event.durationSeconds)
         }
@@ -506,7 +569,7 @@ final class WeeklySummaryPlugin: BotPlugin {
     
     func unregister(from bus: EventBus) async {
         for token in tokens {
-            await bus.unsubscribe(token)
+            bus.unsubscribe(token)
         }
         tokens.removeAll()
     }
@@ -525,4 +588,3 @@ final class WeeklySummaryPlugin: BotPlugin {
         return "Weekly Voice Summary:\n" + summaryLines.joined(separator: "\n")
     }
 }
-

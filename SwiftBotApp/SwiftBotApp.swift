@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct SwiftBotApp: App {
     @StateObject private var appModel = AppModel()
+    @StateObject private var updater = AppUpdater()
 
     private func applyAppIconIfAvailable() {
         if let image = NSImage(named: "AppIcon") {
@@ -21,11 +22,20 @@ struct SwiftBotApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appModel)
+                .environmentObject(updater)
                 .frame(minWidth: 1200, minHeight: 760)
                 .onAppear {
                     applyAppIconIfAvailable()
                 }
         }
         .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    updater.checkForUpdates()
+                }
+                .disabled(!updater.canCheckForUpdates)
+            }
+        }
     }
 }

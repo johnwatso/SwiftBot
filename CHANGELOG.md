@@ -31,13 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Renamed the source folder to `SwiftBotApp/`
 - Renamed the Xcode project to `SwiftBot.xcodeproj`
 - Renamed the app entry file to `SwiftBotApp.swift`
-- Updated the SwiftPM package, Xcode target, scheme, build script, and docs to use `SwiftBot`
+- Updated the SwiftPM package, Xcode target, scheme, and docs to use `SwiftBot`
 - Updated storage and Discord client identifier strings to use `SwiftBot`
 
 **Files Modified:**
 - `Package.swift`
 - `project.yml`
-- `BUILD_APP.sh`
 - `SwiftBot.xcodeproj`
 - `SwiftBotApp/SwiftBotApp.swift`
 - `SwiftBotApp/Persistence.swift`
@@ -131,4 +130,4 @@ This file serves as a reference for:
 - Gateway connection with voice presence tracking
 - Server notification rules engine
 - Command system with prefix support
-- On-device AI DM replies (Beta)
+- On-device AI replies for DMs and channel mentions (Beta)
