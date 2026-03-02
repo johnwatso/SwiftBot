@@ -1,42 +1,42 @@
-name: DiscordBotApp
+name: SwiftBot
 options:
   createIntermediateGroups: true
 settings:
   base:
     SWIFT_VERSION: 5.9
     MACOSX_DEPLOYMENT_TARGET: 13.0
-    PRODUCT_BUNDLE_IDENTIFIER: com.john.discordbotapp
+    PRODUCT_BUNDLE_IDENTIFIER: com.john.swiftbot
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
-  DiscordBotApp:
+  SwiftBot:
     type: application
     platform: macOS
     deploymentTarget: "13.0"
     sources:
-      - path: DiscordBotApp
+      - path: SwiftBotApp
         excludes:
           - Resources
           - .DS_Store
     resources:
-      - path: DiscordBotApp/Resources
+      - path: SwiftBotApp/Resources
         excludes:
           - .DS_Store
     settings:
       base:
-        PRODUCT_NAME: DiscordBotApp
+        PRODUCT_NAME: SwiftBot
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: DiscordBotApp
-        INFOPLIST_KEY_CFBundleName: DiscordBotApp
+        INFOPLIST_KEY_CFBundleDisplayName: SwiftBot
+        INFOPLIST_KEY_CFBundleName: SwiftBot
         INFOPLIST_KEY_LSMinimumSystemVersion: 13.0
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0
         CODE_SIGN_STYLE: Automatic
 schemes:
-  DiscordBotApp:
+  SwiftBot:
     build:
       targets:
-        DiscordBotApp: all
+        SwiftBot: all
     run:
       config: Debug
     archive:

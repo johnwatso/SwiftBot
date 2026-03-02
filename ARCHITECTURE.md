@@ -1,6 +1,6 @@
 # Technical Architecture
 
-This document provides a high-level overview of the DiscordBot Native application architecture for AI assistants and developers.
+This document provides a high-level overview of the SwiftBot application architecture for AI assistants and developers.
 
 ## Project Overview
 
@@ -13,7 +13,7 @@ This document provides a high-level overview of the DiscordBot Native applicatio
 ## Core Components
 
 ### 1. Application Layer
-- **File:** `DiscordBotNativeApp.swift`
+- **File:** `SwiftBotApp.swift`
 - **Purpose:** SwiftUI App entry point
 - **Key:** Initializes `AppModel` as `@StateObject`
 
@@ -65,7 +65,7 @@ This document provides a high-level overview of the DiscordBot Native applicatio
 - **Actors:**
   - `ConfigStore` - Saves/loads `BotSettings` to JSON
   - `RuleConfigStore` - Saves/loads `[Rule]` array to JSON
-- **Storage Location:** `~/Library/Application Support/DiscordBotNative/`
+- **Storage Location:** `~/Library/Application Support/SwiftBot/`
 - **Files:** `settings.json`, `rules.json`
 - **Class:** `LogStore` (@MainActor) - In-memory log with 500 line limit
 
@@ -225,9 +225,9 @@ protocol BotPlugin {
 
 ### Build Target Structure
 ```
-DiscordBotApp.xcodeproj
-└── DiscordBotApp (target)
-    ├── DiscordBotNativeApp.swift (entry point)
+SwiftBot.xcodeproj
+└── SwiftBot (target)
+    ├── SwiftBotApp.swift (entry point)
     ├── AppModel.swift (main state)
     ├── Models.swift (data models + EventBus + plugins)
     ├── DiscordService.swift (Discord API)
@@ -236,10 +236,6 @@ DiscordBotApp.xcodeproj
     └── Resources/
         └── AppIcon.png
 ```
-
-### Deprecated Files (Can Remove)
-- `EventBus.swift` - Consolidated into Models.swift
-- `StarterPlugin.swift` - Consolidated into Models.swift
 
 ## Testing Strategy
 

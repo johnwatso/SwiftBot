@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-02
+
+#### Repository Cleanup
+**Issue:** The repository contained generated build output, user-specific workspace data, and obsolete duplicate files from earlier project structure changes.
+
+**Solution:** Removed non-source artifacts and stale files from the repo:
+- Deleted generated output directories: `Dist/`, `.build/`, `.swiftpm/`
+- Deleted obsolete duplicate files: root `EventBus.swift`, `SwiftBotApp/EventBus.swift`, `SwiftBotApp/StarterPlugin.swift`
+- Deleted unused leftover project folders: `SwiftBot/`, `SwiftBot.xcodeproj`
+- Deleted user-specific metadata: `.DS_Store`, `xcuserdata`
+- Added `.gitignore` rules to keep generated and user-local files out of version control
+
+**Files Modified:**
+- `.gitignore` - Added ignore rules for generated and user-local files
+- `ARCHITECTURE.md` - Removed stale deprecated-files section
+
+### Changed - 2026-03-02
+
+#### Project Rename
+**Issue:** The app, package, and project metadata still used the old `DiscordBotApp` naming.
+
+**Solution:** Renamed the active app target and related references from `DiscordBotApp` to `SwiftBot`:
+- Renamed the source folder to `SwiftBotApp/`
+- Renamed the Xcode project to `SwiftBot.xcodeproj`
+- Renamed the app entry file to `SwiftBotApp.swift`
+- Updated the SwiftPM package, Xcode target, scheme, build script, and docs to use `SwiftBot`
+- Updated storage and Discord client identifier strings to use `SwiftBot`
+
+**Files Modified:**
+- `Package.swift`
+- `project.yml`
+- `BUILD_APP.sh`
+- `SwiftBot.xcodeproj`
+- `SwiftBotApp/SwiftBotApp.swift`
+- `SwiftBotApp/Persistence.swift`
+- `SwiftBotApp/DiscordService.swift`
+- `README.md`
+- `ARCHITECTURE.md`
+- `AI_GUIDE.md`
+
 ### Fixed - 2026-03-02
 
 #### Build Errors - EventBus Type Resolution
@@ -17,12 +57,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Moved `Event` protocol, `SubscriptionToken`, `EventBus` class to top of `Models.swift`
 - Moved event types (`VoiceJoined`, `VoiceLeft`, `MessageReceived`) to `Models.swift`
 - Moved `WeeklySummaryPlugin` class from `StarterPlugin.swift` to `Models.swift`
-- Deprecated `EventBus.swift` and `StarterPlugin.swift` (can be removed from project)
+- Removed the old `EventBus.swift` and `StarterPlugin.swift` files after consolidation
 
 **Files Modified:**
 - `Models.swift` - Added EventBus system and WeeklySummaryPlugin
-- `EventBus.swift` - Replaced with deprecation notice
-- `StarterPlugin.swift` - Replaced with deprecation notice
 
 #### Server Notifier Rules Mirroring
 **Issue:** When editing one notification rule, changes would affect other rules, making them appear to "mirror" each other.
@@ -65,11 +103,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Manager: `PluginManager` class in `Models.swift`
 - Current Plugins:
   - `WeeklySummaryPlugin` - Tracks voice channel usage time
-
-### Known Deprecated Files
-These files have been consolidated into other files and can be safely removed:
-- `EventBus.swift` - Content moved to `Models.swift`
-- `StarterPlugin.swift` - Content moved to `Models.swift`
 
 ---
 

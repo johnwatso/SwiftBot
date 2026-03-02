@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_PATH="$ROOT_DIR/DiscordBotApp.xcodeproj"
-SCHEME_NAME="DiscordBotApp"
+PROJECT_PATH="$ROOT_DIR/SwiftBot.xcodeproj"
+SCHEME_NAME="SwiftBot"
 CONFIGURATION="${1:-Debug}"
 
 if [[ ! -d "$PROJECT_PATH" ]]; then
@@ -17,7 +17,7 @@ xcodebuild \
   -scheme "$SCHEME_NAME" \
   -configuration "$CONFIGURATION" \
   -destination "platform=macOS" \
-  build > /tmp/discordbotapp-build.log
+  build > /tmp/swiftbot-build.log
 
 echo "Resolving build output paths..."
 BUILD_SETTINGS="$(xcodebuild \
@@ -41,7 +41,7 @@ if [[ ! -d "$SOURCE_APP_PATH" ]]; then
   exit 1
 fi
 
-APP_PATH="$ROOT_DIR/Dist/DiscordBotApp.app"
+APP_PATH="$ROOT_DIR/Dist/SwiftBot.app"
 mkdir -p "$ROOT_DIR/Dist"
 rm -rf "$APP_PATH"
 cp -R "$SOURCE_APP_PATH" "$APP_PATH"

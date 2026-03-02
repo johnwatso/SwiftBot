@@ -9,7 +9,7 @@ This file provides quick answers to common questions and tasks for AI assistants
 - **UI:** `RootView.swift` contains all views
 - **Models:** Split between `Models.swift` (system) and `RootView.swift` (UI-specific)
 - **Discord API:** `DiscordService.swift` (actor)
-- **Storage:** JSON files in `~/Library/Application Support/DiscordBotNative/`
+- **Storage:** JSON files in `~/Library/Application Support/SwiftBot/`
 
 ## Common Tasks
 
@@ -250,7 +250,7 @@ When modifying this project, update these files:
 
 ### Settings not persisting
 1. Check `ConfigStore.save()` is called
-2. Verify `~/Library/Application Support/DiscordBotNative/` exists
+2. Verify `~/Library/Application Support/SwiftBot/` exists
 3. Check file permissions
 4. Look at Logs for save errors
 
