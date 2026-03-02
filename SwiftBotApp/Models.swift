@@ -274,6 +274,20 @@ struct FinalsWikiLookupResult: Codable, Hashable {
     let title: String
     let extract: String
     let url: String
+    let weaponStats: FinalsWeaponStats?
+}
+
+struct FinalsWeaponStats: Codable, Hashable {
+    let type: String?
+    let bodyDamage: String?
+    let headshotDamage: String?
+    let fireRate: String?
+    let dropoffStart: String?
+    let dropoffEnd: String?
+    let minimumDamage: String?
+    let magazineSize: String?
+    let shortReload: String?
+    let longReload: String?
 }
 
 struct GuildVoiceChannel: Identifiable, Hashable {
@@ -376,7 +390,7 @@ final class RuleStore: ObservableObject {
             if let loaded, !loaded.isEmpty {
                 rules = loaded
             } else {
-                rules = [Rule(name: "Join Notification")]
+                rules = [Rule(name: "Join Action")]
             }
             selectedRuleID = nil
         }
@@ -386,7 +400,7 @@ final class RuleStore: ObservableObject {
         var action = RuleAction()
         action.serverId = serverId
         action.channelId = channelId
-        var rule = Rule(name: "New Notification")
+        var rule = Rule(name: "New Action")
         rule.triggerServerId = serverId
         rule.actions = [action]
         rules.append(rule)

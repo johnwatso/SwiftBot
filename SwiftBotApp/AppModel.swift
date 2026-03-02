@@ -437,7 +437,7 @@ final class AppModel: ObservableObject {
 
         switch command {
         case "help":
-            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)finals <question>, \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus")
+            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)finals <question>, \(prefix)weapon <name>, \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus")
         case "ping":
             return await send(channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
         case "roll":
@@ -450,7 +450,7 @@ final class AppModel: ObservableObject {
             return await send(channelId, "📊 Poll created! Add reactions to vote.")
         case "userinfo":
             return await send(channelId, "👤 User: \(username)")
-        case "finals", "wiki":
+        case "finals", "wiki", "weapon":
             let query = tokens.dropFirst().joined(separator: " ")
             return await finalsWikiLookup(query: query, channelId: channelId)
         case "cluster", "worker":
@@ -620,12 +620,63 @@ final class AppModel: ObservableObject {
             return await send(channelId, "❌ I couldn't find a relevant THE FINALS Wiki page for \"\(trimmedQuery)\".")
         }
 
-        let summary = summarizedWikiExtract(result.extract)
-        let body = summary.isEmpty
-            ? "📘 **\(result.title)**\n\(result.url)"
-            : "📘 **\(result.title)**\n\(summary)\n\(result.url)"
+        let body: String
+        if let weaponStats = result.weaponStats {
+            body = formattedWeaponStats(result: result, stats: weaponStats)
+        } else {
+            let summary = summarizedWikiExtract(result.extract)
+            body = summary.isEmpty
+                ? "📘 **\(result.title)**\n\(result.url)"
+                : "📘 **\(result.title)**\n\(summary)\n\(result.url)"
+        }
 
         return await send(channelId, body)
+    }
+
+    private func formattedWeaponStats(result: FinalsWikiLookupResult, stats: FinalsWeaponStats) -> String {
+        var lines: [String] = []
+
+        if let type = stats.type, !type.isEmpty {
+            lines.append("📘 **\(result.title)** • \(type)")
+        } else {
+            lines.append("📘 **\(result.title)**")
+        }
+
+        let damageLine = [
+            stats.bodyDamage.map { "Body \($0)" },
+            stats.headshotDamage.map { "Head \($0)" }
+        ].compactMap { $0 }.joined(separator: " • ")
+        if !damageLine.isEmpty {
+            lines.append("Damage: \(damageLine)")
+        }
+
+        if let fireRate = stats.fireRate, !fireRate.isEmpty {
+            lines.append("Fire Rate: \(fireRate)")
+        }
+
+        let falloffLine = [
+            stats.dropoffStart.map { "Start \($0)" },
+            stats.dropoffEnd.map { "End \($0)" },
+            stats.minimumDamage.map { "Min \($0)" }
+        ].compactMap { $0 }.joined(separator: " • ")
+        if !falloffLine.isEmpty {
+            lines.append("Falloff: \(falloffLine)")
+        }
+
+        if let magazineSize = stats.magazineSize, !magazineSize.isEmpty {
+            lines.append("Magazine: \(magazineSize)")
+        }
+
+        let reloadLine = [
+            stats.shortReload.map { "Short \($0)" },
+            stats.longReload.map { "Long \($0)" }
+        ].compactMap { $0 }.joined(separator: " • ")
+        if !reloadLine.isEmpty {
+            lines.append("Reload: \(reloadLine)")
+        }
+
+        lines.append(result.url)
+        return lines.joined(separator: "\n")
     }
 
     private func summarizedWikiExtract(_ extract: String, limit: Int = 420) -> String {
