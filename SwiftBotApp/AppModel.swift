@@ -60,12 +60,6 @@ final class AppModel: ObservableObject {
                 migrated = true
             }
 
-            // Beta feature should default to off, including older saved configs.
-            if loadedSettings.localAIDMReplyEnabled {
-                loadedSettings.localAIDMReplyEnabled = false
-                migrated = true
-            }
-
             settings = loadedSettings
 
             if migrated {
@@ -301,6 +295,18 @@ final class AppModel: ObservableObject {
             isDirectMessage: isDM
         ))
 
+        if !isDM,
+           settings.localAIDMReplyEnabled,
+           isMentioningBot(map),
+           !content.hasPrefix(prefix) {
+            let prompt = contentWithoutBotMention(content)
+            if !prompt.isEmpty,
+               let aiReply = await service.generateSmartDMReply(message: prompt, username: username) {
+                try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
+                return
+            }
+        }
+
         guard content.hasPrefix(prefix) else { return }
 
         stats.commandsRun += 1
@@ -443,6 +449,40 @@ final class AppModel: ObservableObject {
             return String(token.dropFirst(2).dropLast())
         }
         return token.allSatisfy(\.isNumber) ? token : nil
+    }
+
+    private func isMentioningBot(_ raw: [String: DiscordJSON]) -> Bool {
+        guard let botUserId else { return false }
+        guard case let .array(mentions)? = raw["mentions"] else { return false }
+
+        for mention in mentions {
+            guard case let .object(user) = mention,
+                  case let .string(id)? = user["id"] else { continue }
+            if id == botUserId {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func contentWithoutBotMention(_ content: String) -> String {
+        guard let botUserId else {
+            return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let patterns = [
+            "<@\(botUserId)>",
+            "<@!\(botUserId)>"
+        ]
+
+        let stripped = patterns.reduce(content) { partial, pattern in
+            partial.replacingOccurrences(of: pattern, with: " ")
+        }
+
+        return stripped
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func send(_ channelId: String, _ message: String) async -> Bool {
@@ -816,4 +856,3 @@ final class AppModel: ObservableObject {
         return "\(m)m \(s)s"
     }
 }
-
