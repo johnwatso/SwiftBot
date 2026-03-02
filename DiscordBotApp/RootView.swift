@@ -17,6 +17,7 @@ struct RootView: View {
                 case .commands: CommandsView()
                 case .logs: LogsView()
                 case .settings: SettingsView(showToken: $showToken)
+                case .aiBots: AIBotsView()
                 case .status: StatusView()
                 }
             }
@@ -120,6 +121,7 @@ struct DashboardSidebar: View {
 
                 Section("Config") {
                     SidebarRow(item: .settings, selection: $selection)
+                    SidebarRow(item: .aiBots, selection: $selection)
                     SidebarRow(item: .status, selection: $selection)
                 }
             }
@@ -189,6 +191,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case commands = "Commands"
     case logs = "Logs"
     case settings = "Settings"
+    case aiBots = "AI Bots"
     case status = "Status"
 
     var id: String { rawValue }
@@ -200,6 +203,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .commands: return "terminal.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .settings: return "gearshape.2.fill"
+        case .aiBots: return "sparkles.rectangle.stack.fill"
         case .status: return "waveform.path.ecg"
         }
     }
@@ -1169,16 +1173,6 @@ struct SettingsView: View {
 
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
-                Section("On-Device AI DM Replies") {
-                    Toggle("Enable on-device intelligent DM replies (Beta)", isOn: $app.settings.localAIDMReplyEnabled)
-                    TextField("System Prompt", text: $app.settings.localAISystemPrompt)
-                        .disabled(!app.settings.localAIDMReplyEnabled)
-
-                    Text("Uses Apple Intelligence Foundation Models locally on this Mac.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
                 Button("Save") {
                     app.settings.prefix = prefixDraft
                     app.saveSettings()
@@ -1198,6 +1192,126 @@ struct SettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(20)
+    }
+}
+
+struct AIBotsView: View {
+    @EnvironmentObject var app: AppModel
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("AI Bots")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                
+                // Apple Intelligence Section
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Image("Apple_AI")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Apple Intelligence")
+                                .font(.headline)
+                            Text("On-Device DM Replies")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $app.settings.localAIDMReplyEnabled)
+                            .labelsHidden()
+                    }
+                    
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Configuration")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("System Prompt")
+                                .font(.caption.weight(.medium))
+                            TextEditor(text: $app.settings.localAISystemPrompt)
+                                .font(.system(.body, design: .monospaced))
+                                .frame(height: 120)
+                                .padding(8)
+                                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                                )
+                                .disabled(!app.settings.localAIDMReplyEnabled)
+                                .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.5)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("How It Works", systemImage: "info.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.blue)
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("• Uses Apple Intelligence Foundation Models running locally")
+                            Text("• Requires macOS 26.0 or later with Apple Intelligence support")
+                            Text("• Completely private - no data sent to external servers")
+                            Text("• Responds intelligently to direct messages when enabled")
+                            Text("• Custom system prompt defines the AI's personality and behavior")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    
+                    HStack {
+                        Spacer()
+                        Button("Save AI Settings") {
+                            app.saveSettings()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                
+                // Placeholder for future AI integrations
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "network")
+                            .font(.title2)
+                            .foregroundStyle(.green)
+                            .frame(width: 44, height: 44)
+                            .background(.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("External AI Services")
+                                .font(.headline)
+                            Text("Coming Soon")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    Text("Future support for external AI services like OpenAI, Anthropic, and local LLM servers will be added here.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .opacity(0.6)
+            }
+            .padding(20)
+            .frame(maxWidth: 800)
+            .frame(maxWidth: .infinity)
+        }
     }
 }
 
