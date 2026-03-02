@@ -117,6 +117,24 @@ DOWNLOAD_BASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}"
 DOWNLOAD_URL="${DOWNLOAD_BASE_URL}/${ASSET_NAME}"
 PAGES_BASE_URL="https://${OWNER}.github.io/${REPO}"
 
+if [[ "$ARCHIVE_PATH" == *.zip ]]; then
+  if ! unzip -p "$ARCHIVE_PATH" "*/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "Could not inspect Info.plist inside archive: $ARCHIVE_PATH" >&2
+    exit 1
+  fi
+
+  BUNDLE_VERSION="$(unzip -p "$ARCHIVE_PATH" "*/Contents/Info.plist" | plutil -extract CFBundleVersion raw -o - - 2>/dev/null || true)"
+  if [[ -z "${BUNDLE_VERSION:-}" ]]; then
+    echo "Archive is missing CFBundleVersion. Sparkle requires a numeric build version." >&2
+    exit 1
+  fi
+
+  if ! [[ "$BUNDLE_VERSION" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+    echo "CFBundleVersion must be numeric for Sparkle updates. Found: $BUNDLE_VERSION" >&2
+    exit 1
+  fi
+fi
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
