@@ -96,7 +96,7 @@ make_archive_if_needed() {
   local output_path="$RELEASES_DIR/SwiftBot-${VERSION}.zip"
 
   if [[ -d "$input_path" && "$input_path" == *.app ]]; then
-    echo "Packaging exported app into $(basename "$output_path")..."
+    echo "Packaging exported app into $(basename "$output_path")..." >&2
     ditto -c -k --sequesterRsrc --keepParent "$input_path" "$output_path"
     printf '%s\n' "$output_path"
     return 0
