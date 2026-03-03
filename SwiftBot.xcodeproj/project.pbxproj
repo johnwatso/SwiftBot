@@ -13,9 +13,7 @@
 		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
 		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
 		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
-		5015DDB32F555F2700618C6D /* AppleIntelligence.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */; };
 		538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35480F12EB2C7DFB546BD550 /* RootView.swift */; };
-		5A15DDB32F555F2700618C6D /* ollama.icns in Resources */ = {isa = PBXBuildFile; fileRef = 5A15DDB22F555F2700618C6D /* ollama.icns */; };
 		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
 		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
@@ -33,9 +31,7 @@
 		35480F12EB2C7DFB546BD550 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		44A31413B04848EB75D50EFA /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5015DDB02F554EF200618C6D /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SwiftBot.icon; sourceTree = SOURCE_ROOT; };
-		5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = AppleIntelligence.jpg; sourceTree = "<group>"; };
 		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
-		5A15DDB22F555F2700618C6D /* ollama.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = ollama.icns; sourceTree = "<group>"; };
 		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
@@ -61,20 +57,10 @@
 			isa = PBXGroup;
 			children = (
 				5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */,
-				5015DDB12F555F1800618C6D /* Assets */,
 				5015DDB02F554EF200618C6D /* SwiftBot.icon */,
 				B1576087F628D0A5598994F5 /* SwiftBotApp */,
 				94552BCD00E80365B7E02046 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		5015DDB12F555F1800618C6D /* Assets */ = {
-			isa = PBXGroup;
-			children = (
-				5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */,
-				5A15DDB22F555F2700618C6D /* ollama.icns */,
-			);
-			path = Assets;
 			sourceTree = "<group>";
 		};
 		94552BCD00E80365B7E02046 /* Products */ = {
@@ -164,8 +150,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				9A8B7C601122334455667788 /* SwiftBot.icon in Resources */,
-				5015DDB32F555F2700618C6D /* AppleIntelligence.jpg in Resources */,
-				5A15DDB32F555F2700618C6D /* ollama.icns in Resources */,
 				0A6B7D101122334455667788 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

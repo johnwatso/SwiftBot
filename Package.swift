@@ -7,7 +7,8 @@ let package = Package(
         .macOS("26.0")
     ],
     products: [
-        .executable(name: "SwiftBot", targets: ["SwiftBot"])
+        .executable(name: "SwiftBot", targets: ["SwiftBot"]),
+        .executable(name: "SparklePublisher", targets: ["SparklePublisher"])
     ],
     dependencies: [
         .package(path: "Sources/UpdateEngine")
@@ -22,6 +23,10 @@ let package = Package(
             resources: [
                 .process("Resources")
             ]
+        ),
+        .executableTarget(
+            name: "SparklePublisher",
+            path: "Tools/SparklePublisher"
         )
     ]
 )

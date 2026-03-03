@@ -1,19 +1,19 @@
 .DS_Store
 
+# SwiftPM and build output
 .build/
 .swiftpm/
+build/
 Dist/
+release-artifacts/
 
+# Xcode user-local state
 xcuserdata/
 *.xcuserstate
 
+# Legacy project user state
 /DiscordBotApp.xcodeproj/project.xcworkspace/xcuserdata/
 /DiscordBotApp.xcodeproj/xcuserdata/
-.build
-.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
+
+# Local tooling metadata
 .shiphook
-.DS_Store
-release-artifacts

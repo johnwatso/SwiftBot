@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-04
+
+#### Repository Hygiene + Release Tooling Consolidation
+**Issue:** Generated build artifacts and stale non-source configuration/files were tracked in git, and release publishing logic lived entirely in a large shell script.
+
+**Solution:**
+- Removed tracked `build/` output from version control and added `build/` ignore coverage.
+- Added a Swift CLI release tool at `Tools/SparklePublisher` and converted `scripts/publish_sparkle_release.sh` into a thin wrapper that calls it.
+- Removed stale `project.yml` to avoid drift against the checked-in Xcode project.
+- Removed unused root-level `Assets/AppleIntelligence.jpg` and `Assets/ollama.icns` project/resource wiring.
+- Fixed README release-script link to a repository-relative path.
+
+**Impact:** No runtime feature changes. Build/release flow is cleaner, easier to maintain, and less likely to reintroduce generated artifact noise in git history.
+
 ### Known Issues - 2026-03-03
 
 #### AI Bots Provider Icon Rendering
