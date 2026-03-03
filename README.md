@@ -102,6 +102,11 @@ Unknown commands return:
 - Disabled by default.
 - Implementation inspiration/reference: [Apple-Intelligence-API by gouwsxander](https://github.com/gouwsxander/Apple-Intelligence-API).
 
+## Known Issues
+
+- `AI Bots` provider icons (Apple Intelligence / Ollama) may render inconsistently or fall back incorrectly on some builds.
+- Current status: tracking as a known UI issue; functionality is unaffected.
+
 ## High Availability / Cluster Options
 
 SwiftBot includes cluster operating modes for routing workload, but it is not full automatic HA/failover.

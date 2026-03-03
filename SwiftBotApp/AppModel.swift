@@ -25,6 +25,9 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
+    @Published var appleIntelligenceOnline = false
+    @Published var ollamaOnline = false
+    @Published var ollamaDetectedModel: String?
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
@@ -76,6 +79,10 @@ final class AppModel: ObservableObject {
                 loadedSettings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
                 migrated = true
             }
+            if loadedSettings.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                loadedSettings.ollamaBaseURL = "http://localhost:11434"
+                migrated = true
+            }
             if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
@@ -85,6 +92,10 @@ final class AppModel: ObservableObject {
                 applyDiscordCacheSnapshot(cachedDiscord)
                 logs.append("Loaded cached Discord metadata (\(cachedDiscord.connectedServers.count) servers)")
             }
+            if settings.localAIProvider == .ollama {
+                detectOllamaModel()
+            }
+            await refreshAIStatus()
             for target in settings.patchy.sourceTargets where target.source == .steam {
                 resolveSteamNameIfNeeded(for: target)
             }
@@ -118,7 +129,9 @@ final class AppModel: ObservableObject {
             )
             await service.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
-                endpoint: settings.localAIEndpoint,
+                provider: settings.localAIProvider,
+                preferredProvider: settings.preferredAIProvider,
+                endpoint: localAIEndpointForService(),
                 model: settings.localAIModel,
                 systemPrompt: settings.localAISystemPrompt
             )
@@ -148,7 +161,9 @@ final class AppModel: ObservableObject {
         Task {
             await service.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
-                endpoint: settings.localAIEndpoint,
+                provider: settings.localAIProvider,
+                preferredProvider: settings.preferredAIProvider,
+                endpoint: localAIEndpointForService(),
                 model: settings.localAIModel,
                 systemPrompt: settings.localAISystemPrompt
             )
@@ -163,11 +178,60 @@ final class AppModel: ObservableObject {
             do {
                 try await store.save(settings)
                 logs.append("✅ Settings saved")
+                await refreshAIStatus()
             } catch {
                 stats.errors += 1
                 logs.append("❌ Failed saving settings: \(error.localizedDescription)")
             }
         }
+    }
+
+    func detectOllamaModel() {
+        let base = normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
+        Task {
+            guard let model = await service.detectOllamaModel(baseURL: base) else {
+                await MainActor.run {
+                    self.logs.append("⚠️ Ollama model auto-detect failed.")
+                }
+                await refreshAIStatus()
+                return
+            }
+
+            await MainActor.run {
+                if self.settings.localAIModel != model {
+                    self.settings.localAIModel = model
+                    self.saveSettings()
+                }
+                self.logs.append("✅ Ollama model detected: \(model)")
+            }
+            await refreshAIStatus()
+        }
+    }
+
+    func refreshAIStatus() async {
+        let status = await service.currentAIStatus(
+            ollamaBaseURL: normalizedOllamaBaseURL(from: settings.ollamaBaseURL),
+            ollamaModelHint: settings.localAIModel
+        )
+        appleIntelligenceOnline = status.appleOnline
+        ollamaOnline = status.ollamaOnline
+        ollamaDetectedModel = status.ollamaModel
+    }
+
+    private func normalizedOllamaBaseURL(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "http://localhost:11434" }
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            return trimmed
+        }
+        return "http://\(trimmed)"
+    }
+
+    private func localAIEndpointForService() -> String {
+        if settings.localAIProvider == .ollama {
+            return normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
+        }
+        return settings.localAIEndpoint
     }
 
     func addPatchyTarget(_ target: PatchySourceTarget) {
