@@ -10,3 +10,5 @@ xcuserdata/
 /DiscordBotApp.xcodeproj/project.xcworkspace/xcuserdata/
 /DiscordBotApp.xcodeproj/xcuserdata/
 .build
+.DS_Store
+.DS_Store
