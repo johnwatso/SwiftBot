@@ -8,6 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed - 2026-03-03
 
+#### UpdateEngine Source Hardening (Standalone)
+**Issue:** AMD summary extraction could fall back to `"No release notes available."` despite valid release-note content, and Intel Arc support was missing from built-in sources.
+
+**Solution:** Updated only the standalone `Sources/UpdateEngine` module to improve parser reliability and restore Intel as a first-class source:
+- AMD (`AMDService`)
+  - Reworked summary extraction priority to: `Highlights` -> `Fixed Issues` -> first meaningful paragraph.
+  - Replaced brittle section regex parsing with heading-aware extraction.
+  - Improved HTML cleanup for summary content:
+    - removes `script/style` blocks
+    - handles `<br>` as newlines
+    - preserves list hierarchy for bullets/sub-bullets
+    - strips remaining tags while preserving text content
+- Intel (`IntelService` + `IntelUpdateSource`)
+  - Added new standalone Intel Arc source conforming to `UpdateSource`.
+  - Uses `sourceKey/cacheKey = intel-default` and identifier-based caching via `identifier = version`.
+  - Extracts version, release date, release-notes URL, and summary from Intel Arc driver page payloads.
+  - Includes resilient fetch strategy for Intel page variants and descriptive parse errors.
+  - Uses Intel Arc logo PNG thumbnail.
+- Tester updates
+  - Added Intel option to `UpdateEngineTester` CLI.
+  - Added Intel option to `UpdateEngineUITester`.
+
+**Verification:**
+- `swift build --package-path Sources/UpdateEngine` passed.
+- `swift test --package-path Sources/UpdateEngine` passed.
+- `swift run --package-path Sources/UpdateEngine UpdateEngineTester --source amd --no-save` passed.
+- `swift run --package-path Sources/UpdateEngine UpdateEngineTester --source intel --no-save` passed.
+
+**Important:** No integration into `SwiftBotApp` runtime was performed. No bot startup, runtime polling, Discord event wiring, or existing runtime behavior was changed.
+
+### Changed - 2026-03-03
+
 #### UpdateEngine Standalone Stabilization
 **Issue:** `Sources/UpdateEngine` mixed prototype UI/runtime files with core logic, used version-only change checks, and lacked a clean package API boundary.
 

@@ -11,12 +11,30 @@ let package = Package(
         .library(
             name: "UpdateEngine",
             targets: ["UpdateEngine"]
+        ),
+        .executable(
+            name: "UpdateEngineTester",
+            targets: ["UpdateEngineTester"]
+        ),
+        .executable(
+            name: "UpdateEngineUITester",
+            targets: ["UpdateEngineUITester"]
         )
     ],
     targets: [
         .target(
             name: "UpdateEngine",
             path: "Sources/UpdateEngineCore"
+        ),
+        .executableTarget(
+            name: "UpdateEngineTester",
+            dependencies: ["UpdateEngine"],
+            path: "Sources/UpdateEngineTester"
+        ),
+        .executableTarget(
+            name: "UpdateEngineUITester",
+            dependencies: ["UpdateEngine"],
+            path: "Sources/UpdateEngineUITester"
         ),
         .testTarget(
             name: "UpdateEngineTests",

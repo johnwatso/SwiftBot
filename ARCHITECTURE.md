@@ -92,11 +92,17 @@ This document provides a high-level overview of the SwiftBot application archite
   - `UpdateChecker` actor for identifier comparison and save
   - `VersionStore` async protocol (`JSONVersionStore`, `InMemoryVersionStore`)
   - `CacheKeyBuilder` for base and scoped keys (including per-guild keys)
-- **Built-in source implementations:** `NVIDIAUpdateSource`, `AMDUpdateSource`, `SteamNewsUpdateSource`
+- **Built-in source implementations:**
+  - `NVIDIAUpdateSource`
+  - `AMDUpdateSource` (summary extraction prioritizes Highlights, then Fixed Issues, then first meaningful paragraph)
+  - `IntelUpdateSource` (`cacheKey`/`sourceKey` = `intel-default`, identifier = vendor version)
+  - `SteamNewsUpdateSource`
 - **Architectural decisions:**
   - Vendor-agnostic source abstraction via protocols.
   - Identifier-based caching (stable item IDs) instead of version-only comparisons.
   - Runtime-owned scoping (for example `guild:<id>:<sourceKey>`) to support future per-guild polling.
+  - Source modules handle vendor-specific parsing/networking while keeping `UpdateChecker` + `VersionStore` generic.
+  - UpdateEngine remains infrastructure-only until a future runtime scheduler/poller layer is added.
 
 ## Data Flow
 
