@@ -8,6 +8,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed - 2026-03-03
 
+#### Patchy Runtime Integration + Dashboard Redesign
+**Issue:** Patch delivery and configuration UX was fragmented, and UpdateEngine formatting was not the sole payload source in runtime delivery flows.
+
+**Solution:** Integrated Patchy into `SwiftBotApp` runtime with a dedicated monitoring dashboard and source-target model:
+- Added Patchy to Main navigation and introduced a dedicated monitor panel:
+  - grouped SourceTargets by source (AMD, NVIDIA, Intel Arc, Steam)
+  - per-target actions: test send, edit, enable/disable, delete
+  - focused modal editor (source/server/channel/mentions/enabled)
+- Added runtime scheduler in `AppModel`:
+  - global Start Monitoring toggle
+  - hourly polling cycle (plus manual debug check)
+  - fetch-once-per-source-group fan-out delivery to configured targets
+- Enforced UpdateEngine embed JSON as source of truth for Discord sends:
+  - send path uses `embedJSON` directly when valid/non-empty
+  - fallback message only when embed JSON is missing/invalid
+  - role mention support with sanitized numeric role IDs and allowed mentions
+  - detailed send diagnostics (HTTP status + response snippet)
+- Added raw payload Discord REST API method:
+  - `sendMessage(channelId:payload:token:)`
+  - content helper delegates to payload API
+
+**Impact:** Patchy now behaves like a dedicated monitor dashboard with runtime-owned scheduling and clean per-target delivery.
+
+### Changed - 2026-03-03
+
+#### Offline Discord Metadata Cache + Steam App Name Resolution
+**Issue:** Patchy target editing depended on live gateway state; Steam targets showed only App IDs without friendly names.
+
+**Solution:**
+- Added persistent Discord metadata cache (`discord-cache.json`) for:
+  - servers
+  - voice/text channels
+  - roles
+  - known user display names
+- App startup now loads cached metadata and keeps it available when bot is offline/stopped.
+- Added Steam app-name resolution from App ID (Steam Store API) with local cache in settings:
+  - names resolve automatically when Steam targets are added/updated/checked
+  - Patchy list rows show `Steam • <name> (<appID>)` when available
+
+**Impact:** Configuration remains editable offline, and Steam targets are clearer to manage.
+
+### Changed - 2026-03-03
+
 #### UpdateEngine Source Hardening (Standalone)
 **Issue:** AMD summary extraction could fall back to `"No release notes available."` despite valid release-note content, and Intel Arc support was missing from built-in sources.
 

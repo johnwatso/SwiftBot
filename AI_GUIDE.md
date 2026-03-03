@@ -10,12 +10,13 @@ This file provides quick answers to common questions and tasks for AI assistants
 - **Models:** Split between `Models.swift` (system) and `RootView.swift` (UI-specific)
 - **Discord API:** `DiscordService.swift` (actor)
 - **Storage:** JSON files in `~/Library/Application Support/SwiftBot/`
-- **UpdateEngine Module:** Standalone Swift Package in `Sources/UpdateEngine`, not wired into `SwiftBotApp` runtime yet
+- **Patchy Monitor:** SourceTarget-based monitoring UI + hourly runtime scheduler in `AppModel.swift`
+- **UpdateEngine Module:** Swift package in `Sources/UpdateEngine`, used by Patchy runtime for source fetch/check logic
 
-## UpdateEngine (Standalone, Not Integrated)
+## UpdateEngine + Patchy Runtime
 
 - **Purpose:** Standalone update detection infrastructure that is vendor-agnostic and reusable across future sources (GPU vendors, Steam, and other feeds).
-- **Status:** Not integrated into SwiftBot runtime. Do not wire it into bot startup, runtime polling, or existing command/event flow.
+- **Status:** Integrated into SwiftBot runtime for Patchy monitoring and delivery, while keeping core UpdateEngine abstractions reusable and isolated.
 - **Current core abstractions:**
   - `UpdateSource` protocol (`sourceKey`, `fetchLatest()`)
   - `UpdateItem` protocol (`sourceKey`, `identifier`, `version`)
@@ -26,10 +27,10 @@ This file provides quick answers to common questions and tasks for AI assistants
   - `AMDUpdateSource` (summary prioritizes Highlights, then Fixed Issues, then first meaningful paragraph)
   - `IntelUpdateSource` (identifier = Intel version, cache key `intel-default`)
   - `SteamNewsUpdateSource`
-- **Intended future integration path:**
-  1. Runtime polling layer fetches updates from configured sources.
-  2. Runtime composes per-guild cache keys and checks identifiers independently per guild.
-  3. Notifications are sent only after successful delivery, then cache is committed.
+- **Current integration path:**
+  1. `AppModel` Patchy scheduler checks configured SourceTargets hourly.
+  2. Runtime groups targets by source, fetches once per group, then fan-outs delivery.
+  3. Discord send path uses UpdateEngine embed JSON directly (fallback text only if embed is missing/invalid).
 - **Architecture direction to preserve:**
   - Keep UpdateEngine vendor/source agnostic.
   - Keep source fetching, change detection, and delivery transport separate.
@@ -121,6 +122,18 @@ struct BotSettings: Codable, Hashable {
 Toggle("My New Setting", isOn: $app.settings.myNewSetting)
 ```
 
+### Patchy SourceTarget Editing
+
+- **View:** `PatchyView.swift`
+- **Runtime orchestration:** `AppModel.swift`
+- **Key runtime methods:**
+  - `addPatchyTarget(_:)`
+  - `updatePatchyTarget(_:)`
+  - `togglePatchyTargetEnabled(_:)`
+  - `runPatchyManualCheck()`
+  - `sendPatchyTest(targetID:)`
+  - `sendPatchyNotificationDetailed(...)`
+
 ### Adding a New View Tab
 
 **Location:** `RootView.swift` → `RootView` body
@@ -210,6 +223,14 @@ case .myAction:
 ```
 
 ## Common Gotchas
+
+### ❌ Don't: Rebuild Patchy Discord embeds manually
+**Problem:** Reconstructing content can drift from UpdateEngine formatting.
+**Solution:** Use UpdateEngine `embedJSON` payloads directly in send path and only fallback to text when embed JSON is invalid/missing.
+
+### ❌ Don't: Assume live gateway data for config UIs
+**Problem:** Offline editing becomes impossible if metadata is cleared on stop/disconnect.
+**Solution:** Keep and persist cached Discord metadata (`discord-cache.json`) and use it in selectors while offline.
 
 ### ❌ Don't: Add files without adding to Xcode target
 **Problem:** Swift files not in the build target won't compile with the rest of the project.  
@@ -344,8 +365,9 @@ Before marking changes complete:
 ### Swift Documentation
 - Concurrency: https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html
 - SwiftUI: https://developer.apple.com/documentation/swiftui
+- Apple Intelligence API reference project: https://github.com/gouwsxander/Apple-Intelligence-API
 
 ---
 
-**Last Updated:** 2026-03-02  
+**Last Updated:** 2026-03-03  
 **Purpose:** Quick reference for AI assistants and developers

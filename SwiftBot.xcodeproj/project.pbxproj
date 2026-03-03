@@ -10,6 +10,7 @@
 		0A6B7D101122334455667788 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 0A6B7D201122334455667788 /* Resources */; };
 		11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D441122334455667788 /* ClusterCoordinator.swift */; };
 		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
+		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
 		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
 		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
 		5015DDB32F555F2700618C6D /* AppleIntelligence.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */; };
@@ -17,6 +18,8 @@
 		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
 		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
+		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
+		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
 		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
 		F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9564766EDA4C18D06A84BCB /* Persistence.swift */; };
 /* End PBXBuildFile section */
@@ -33,6 +36,8 @@
 		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
 		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
+		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
 		EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp.swift; sourceTree = "<group>"; };
 		F9564766EDA4C18D06A84BCB /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -43,6 +48,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1F7A11C22D33445566778899 /* Sparkle in Frameworks */,
+				2A8C10001122334455667788 /* UpdateEngine in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,6 +88,8 @@
 				6337960E98AEBC0A19A67531 /* AppModel.swift */,
 				8D8E9F101122334455667788 /* AppUpdater.swift */,
 				11C22D441122334455667788 /* ClusterCoordinator.swift */,
+				A7B811001122334455667788 /* PatchyView.swift */,
+				A7B813001122334455667788 /* PatchyViewModel.swift */,
 				EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */,
 				0B3205CAA1A44F7E79578277 /* DiscordService.swift */,
 				010969C7B6435248430DD012 /* Models.swift */,
@@ -110,6 +118,7 @@
 			name = SwiftBot;
 			packageProductDependencies = (
 				1F7A11C22D33445566778898 /* Sparkle */,
+				2A8C10101122334455667788 /* UpdateEngine */,
 			);
 			productName = SwiftBot;
 			productReference = 44A31413B04848EB75D50EFA /* SwiftBot.app */;
@@ -123,11 +132,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-					38CB9D1B9F4C791831BD4560 = {
-						ProvisioningStyle = Automatic;
-					};
-				};
 			};
 			buildConfigurationList = 81CA7B1A81AF2F66208AC01D /* Build configuration list for PBXProject "SwiftBot" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -141,6 +145,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -170,6 +175,8 @@
 			files = (
 				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
 				8D8E9F001122334455667788 /* AppUpdater.swift in Sources */,
+				A7B810001122334455667788 /* PatchyView.swift in Sources */,
+				A7B812001122334455667788 /* PatchyViewModel.swift in Sources */,
 				11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */,
 				20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */,
 				73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */,
@@ -180,6 +187,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Sources/UpdateEngine;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		19DDEE98357561AC9EA8526F /* Debug */ = {
@@ -310,10 +324,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 14;
-				DEVELOPMENT_TEAM = FHXMYC956U;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -338,8 +352,9 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.4.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.maxhewett.swiftbot;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
@@ -355,10 +370,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 14;
-				DEVELOPMENT_TEAM = FHXMYC956U;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -383,8 +398,9 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.4.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.maxhewett.swiftbot;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
@@ -434,6 +450,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		2A8C10101122334455667788 /* UpdateEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */;
+			productName = UpdateEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -13,6 +13,7 @@ struct RootView: View {
             Group {
                 switch selection {
                 case .overview: OverviewView()
+                case .patchy: PatchyView()
                 case .voice: VoiceView()
                 case .commands: CommandsView()
                 case .logs: LogsView()
@@ -123,6 +124,7 @@ struct DashboardSidebar: View {
                 VStack(alignment: .leading, spacing: 16) {
                     SidebarSection(title: "Main") {
                         SidebarRow(item: .overview, selection: $selection)
+                        SidebarRow(item: .patchy, selection: $selection)
                         SidebarRow(item: .voice, selection: $selection, count: app.activeVoice.count)
                         SidebarRow(item: .commands, selection: $selection)
                         SidebarRow(item: .logs, selection: $selection)
@@ -237,6 +239,7 @@ struct SidebarSection<Content: View>: View {
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
+    case patchy = "Patchy"
     case voice = "Actions"
     case commands = "Commands"
     case logs = "Logs"
@@ -249,6 +252,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
+        case .patchy: return "shippingbox.fill"
         case .voice: return "point.3.filled.connected.trianglepath.dotted"
         case .commands: return "terminal.fill"
         case .logs: return "list.bullet.clipboard.fill"
