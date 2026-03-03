@@ -10,18 +10,18 @@
 		0A6B7D101122334455667788 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 0A6B7D201122334455667788 /* Resources */; };
 		11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D441122334455667788 /* ClusterCoordinator.swift */; };
 		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
-		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
 		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
 		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
+		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
 		5015DDB32F555F2700618C6D /* AppleIntelligence.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */; };
-		5A15DDB32F555F2700618C6D /* ollama.icns in Resources */ = {isa = PBXBuildFile; fileRef = 5A15DDB22F555F2700618C6D /* ollama.icns */; };
 		538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35480F12EB2C7DFB546BD550 /* RootView.swift */; };
+		5A15DDB32F555F2700618C6D /* ollama.icns in Resources */ = {isa = PBXBuildFile; fileRef = 5A15DDB22F555F2700618C6D /* ollama.icns */; };
 		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
 		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
+		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
-		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
 		F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9564766EDA4C18D06A84BCB /* Persistence.swift */; };
 /* End PBXBuildFile section */
 
@@ -34,8 +34,8 @@
 		44A31413B04848EB75D50EFA /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5015DDB02F554EF200618C6D /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SwiftBot.icon; sourceTree = SOURCE_ROOT; };
 		5015DDB22F555F2700618C6D /* AppleIntelligence.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = AppleIntelligence.jpg; sourceTree = "<group>"; };
-		5A15DDB22F555F2700618C6D /* ollama.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = ollama.icns; sourceTree = "<group>"; };
 		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
+		5A15DDB22F555F2700618C6D /* ollama.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = ollama.icns; sourceTree = "<group>"; };
 		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
@@ -148,7 +148,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */,
+				2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -191,13 +191,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Sources/UpdateEngine;
-		};
-/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		19DDEE98357561AC9EA8526F /* Debug */ = {
@@ -355,7 +348,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -401,7 +394,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -438,6 +431,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Sources/UpdateEngine;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -457,7 +457,7 @@
 		};
 		2A8C10101122334455667788 /* UpdateEngine */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 2A8C10201122334455667788 /* XCLocalSwiftPackageReference "UpdateEngine" */;
+			package = 2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */;
 			productName = UpdateEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
