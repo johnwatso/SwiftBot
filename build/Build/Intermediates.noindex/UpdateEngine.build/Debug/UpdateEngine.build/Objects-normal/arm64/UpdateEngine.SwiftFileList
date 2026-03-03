@@ -1,0 +1,12 @@
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Core/CacheKeyBuilder.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Core/UpdateChecker.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Core/UpdateItem.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Core/UpdateSource.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Formatting/EmbedFormatter.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Models/ReleaseNotes.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Services/AMDService.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Services/IntelService.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Services/NVIDIAService.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Services/SteamService.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Sources/BuiltInUpdateSources.swift
+/Users/john/Development/Github/SwiftBot/Sources/UpdateEngine/Sources/UpdateEngineCore/Storage/VersionStore.swift

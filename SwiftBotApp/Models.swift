@@ -159,6 +159,51 @@ struct BotSettings: Codable, Hashable {
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
     var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
+    var patchy = PatchySettings()
+}
+
+enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
+    case nvidia = "NVIDIA"
+    case amd = "AMD"
+    case intel = "Intel Arc"
+    case steam = "Steam"
+
+    var id: String { rawValue }
+}
+
+struct PatchyDeliveryTarget: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var isEnabled: Bool = true
+    var name: String = "Target"
+    var serverId: String = ""
+    var channelId: String = ""
+    var roleIDs: [String] = []
+}
+
+struct PatchySourceTarget: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var isEnabled: Bool = true
+    var source: PatchySourceKind = .nvidia
+    var steamAppID: String = "570"
+    var serverId: String = ""
+    var channelId: String = ""
+    var roleIDs: [String] = []
+    var lastCheckedAt: Date?
+    var lastRunAt: Date?
+    var lastStatus: String = "Never checked"
+}
+
+struct PatchySettings: Codable, Hashable {
+    var monitoringEnabled: Bool = false
+    var showDebug: Bool = false
+    var sourceTargets: [PatchySourceTarget] = []
+    var steamAppNames: [String: String] = [:]
+
+    // Legacy fields kept for migration compatibility.
+    var source: PatchySourceKind = .nvidia
+    var steamAppID: String = "570"
+    var saveAfterFetch: Bool = true
+    var targets: [PatchyDeliveryTarget] = []
 }
 
 enum ClusterMode: String, Codable, CaseIterable, Identifiable {
@@ -290,14 +335,28 @@ struct FinalsWeaponStats: Codable, Hashable {
     let longReload: String?
 }
 
-struct GuildVoiceChannel: Identifiable, Hashable {
+struct GuildVoiceChannel: Identifiable, Hashable, Codable {
     let id: String
     let name: String
 }
 
-struct GuildTextChannel: Identifiable, Hashable {
+struct GuildTextChannel: Identifiable, Hashable, Codable {
     let id: String
     let name: String
+}
+
+struct GuildRole: Identifiable, Hashable, Codable {
+    let id: String
+    let name: String
+}
+
+struct DiscordCacheSnapshot: Codable, Hashable {
+    var updatedAt: Date = Date()
+    var connectedServers: [String: String] = [:]
+    var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
+    var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
+    var availableRolesByServer: [String: [GuildRole]] = [:]
+    var usernamesById: [String: String] = [:]
 }
 
 struct UptimeInfo {

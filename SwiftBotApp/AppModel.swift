@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UpdateEngine
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -14,6 +15,8 @@ final class AppModel: ObservableObject {
     @Published var connectedServers: [String: String] = [:]
     @Published var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
+    @Published var availableRolesByServer: [String: [GuildRole]] = [:]
+    @Published var knownUsersById: [String: String] = [:]
     @Published var gatewayEventCount = 0
     @Published var voiceStateEventCount = 0
     @Published var readyEventCount = 0
@@ -22,11 +25,15 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
+    @Published var patchyDebugLogs: [String] = []
+    @Published var patchyIsCycleRunning = false
+    @Published var patchyLastCycleAt: Date?
 
     var logs = LogStore()
     let ruleStore = RuleStore()
 
     private let store = ConfigStore()
+    private let discordCacheStore = DiscordCacheStore()
     private let service = DiscordService()
     private let cluster = ClusterCoordinator()
     private let ruleEngine: RuleEngine
@@ -34,10 +41,13 @@ final class AppModel: ObservableObject {
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
     private var usernamesById: [String: String] = [:]
+    private var discordCacheSaveTask: Task<Void, Never>?
     private var dmUsersSeen: Set<String> = []
     let eventBus = EventBus()
     private let pluginManager: PluginManager
     private var weeklyPlugin: WeeklySummaryPlugin?
+    private let patchyChecker: UpdateChecker?
+    private var patchyMonitorTask: Task<Void, Never>?
     private var botUserId: String?
     @Published var botUsername: String = "OnlineBot"
     @Published var botDiscriminator: String?
@@ -52,6 +62,11 @@ final class AppModel: ObservableObject {
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
         self.pluginManager = PluginManager(bus: eventBus)
+        if let store = try? JSONVersionStore(fileURL: PatchyRuntime.checkerStoreURL()) {
+            self.patchyChecker = UpdateChecker(store: store)
+        } else {
+            self.patchyChecker = nil
+        }
 
         Task {
             var loadedSettings = await store.load()
@@ -61,8 +76,18 @@ final class AppModel: ObservableObject {
                 loadedSettings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
                 migrated = true
             }
+            if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
+                migrated = true
+            }
 
             settings = loadedSettings
+            if let cachedDiscord = await discordCacheStore.load() {
+                applyDiscordCacheSnapshot(cachedDiscord)
+                logs.append("Loaded cached Discord metadata (\(cachedDiscord.connectedServers.count) servers)")
+            }
+            for target in settings.patchy.sourceTargets where target.source == .steam {
+                resolveSteamNameIfNeeded(for: target)
+            }
 
             if migrated {
                 try? await store.save(loadedSettings)
@@ -104,6 +129,7 @@ final class AppModel: ObservableObject {
                 listenPort: settings.clusterListenPort
             )
             await configureServiceCallbacks()
+            configurePatchyMonitoring()
             if settings.autoStart, !settings.token.isEmpty {
                 await startBot()
             }
@@ -132,6 +158,7 @@ final class AppModel: ObservableObject {
                 workerBaseURL: settings.clusterWorkerBaseURL,
                 listenPort: settings.clusterListenPort
             )
+            configurePatchyMonitoring()
 
             do {
                 try await store.save(settings)
@@ -141,6 +168,225 @@ final class AppModel: ObservableObject {
                 logs.append("❌ Failed saving settings: \(error.localizedDescription)")
             }
         }
+    }
+
+    func addPatchyTarget(_ target: PatchySourceTarget) {
+        settings.patchy.sourceTargets.append(target)
+        saveSettings()
+        resolveSteamNameIfNeeded(for: target)
+    }
+
+    func updatePatchyTarget(_ target: PatchySourceTarget) {
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == target.id }) else { return }
+        settings.patchy.sourceTargets[idx] = target
+        saveSettings()
+        resolveSteamNameIfNeeded(for: target)
+    }
+
+    func deletePatchyTarget(_ targetID: UUID) {
+        settings.patchy.sourceTargets.removeAll { $0.id == targetID }
+        saveSettings()
+    }
+
+    func togglePatchyTargetEnabled(_ targetID: UUID) {
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
+        settings.patchy.sourceTargets[idx].isEnabled.toggle()
+        saveSettings()
+    }
+
+    func runPatchyManualCheck() {
+        Task {
+            await runPatchyMonitoringCycle(trigger: "Manual")
+        }
+    }
+
+    func sendPatchyTest(targetID: UUID) {
+        Task {
+            guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
+            guard !target.channelId.isEmpty else {
+                appendPatchyLog("Test send skipped: target channel is empty.")
+                return
+            }
+
+            do {
+                resolveSteamNameIfNeeded(for: target)
+                let source = try PatchyRuntime.makeSource(from: target)
+                let item = try await source.fetchLatest()
+                let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
+                let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                let delivery = await sendPatchyNotificationDetailed(
+                    channelId: target.channelId,
+                    message: fallback,
+                    embedJSON: mapped.embedJSON,
+                    roleIDs: target.roleIDs
+                )
+
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastRunAt = Date()
+                    entry.lastStatus = delivery.detail
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
+            } catch {
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = "Patchy test failed: \(error.localizedDescription)"
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Patchy test failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func configurePatchyMonitoring() {
+        patchyMonitorTask?.cancel()
+        patchyMonitorTask = nil
+
+        guard settings.patchy.monitoringEnabled else {
+            appendPatchyLog("Patchy monitoring paused.")
+            return
+        }
+
+        patchyMonitorTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runPatchyMonitoringCycle(trigger: "Startup")
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+                if Task.isCancelled { break }
+                await self.runPatchyMonitoringCycle(trigger: "Scheduled")
+            }
+        }
+        appendPatchyLog("Patchy monitoring started (hourly).")
+    }
+
+    private struct PatchySourceGroupKey: Hashable {
+        let source: PatchySourceKind
+        let steamAppID: String
+    }
+
+    private func runPatchyMonitoringCycle(trigger: String) async {
+        guard !patchyIsCycleRunning else { return }
+        guard let patchyChecker else {
+            appendPatchyLog("Patchy checker unavailable. Cycle skipped.")
+            return
+        }
+
+        let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty }
+        guard !enabledTargets.isEmpty else {
+            appendPatchyLog("Patchy cycle (\(trigger)) skipped: no enabled targets.")
+            patchyLastCycleAt = Date()
+            return
+        }
+
+        patchyIsCycleRunning = true
+        defer {
+            patchyIsCycleRunning = false
+            patchyLastCycleAt = Date()
+        }
+
+        let grouped = Dictionary(grouping: enabledTargets) { target in
+            PatchySourceGroupKey(
+                source: target.source,
+                steamAppID: target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+
+        for (_, targets) in grouped {
+            guard let referenceTarget = targets.first else { continue }
+
+            do {
+                resolveSteamNameIfNeeded(for: referenceTarget)
+                let source = try PatchyRuntime.makeSource(from: referenceTarget)
+                let item = try await source.fetchLatest()
+                let change = try await patchyChecker.check(item: item)
+                try await patchyChecker.save(item: item)
+                let mapped = PatchyRuntime.map(item: item, change: change)
+
+                for target in targets {
+                    updatePatchyTargetRuntimeState(id: target.id) { entry in
+                        entry.lastCheckedAt = Date()
+                        entry.lastStatus = mapped.statusSummary
+                    }
+                }
+
+                if change.isNewItem {
+                    let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                    for target in targets {
+                        let delivery = await sendPatchyNotificationDetailed(
+                            channelId: target.channelId,
+                            message: fallback,
+                            embedJSON: mapped.embedJSON,
+                            roleIDs: target.roleIDs
+                        )
+                        updatePatchyTargetRuntimeState(id: target.id) { entry in
+                            entry.lastRunAt = Date()
+                            entry.lastStatus = delivery.detail
+                        }
+                    }
+                }
+            } catch {
+                for target in targets {
+                    updatePatchyTargetRuntimeState(id: target.id) { entry in
+                        entry.lastCheckedAt = Date()
+                        entry.lastStatus = "Patchy check failed: \(error.localizedDescription)"
+                    }
+                }
+                appendPatchyLog("Patchy cycle \(referenceTarget.source.rawValue) failed: \(error.localizedDescription)")
+            }
+        }
+
+        persistSettingsQuietly()
+    }
+
+    private func updatePatchyTargetRuntimeState(id: UUID, apply: (inout PatchySourceTarget) -> Void) {
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == id }) else { return }
+        var target = settings.patchy.sourceTargets[idx]
+        apply(&target)
+        settings.patchy.sourceTargets[idx] = target
+    }
+
+    private func appendPatchyLog(_ line: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let final = "[\(stamp)] \(line)"
+        patchyDebugLogs.insert(final, at: 0)
+        if patchyDebugLogs.count > 200 {
+            patchyDebugLogs.removeLast(patchyDebugLogs.count - 200)
+        }
+        logs.append("Patchy: \(line)")
+    }
+
+    private func persistSettingsQuietly() {
+        let snapshot = settings
+        Task {
+            do {
+                try await store.save(snapshot)
+            } catch {
+                await MainActor.run {
+                    self.logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func migrateLegacyPatchySettingsIfNeeded(_ loaded: inout BotSettings) -> Bool {
+        guard loaded.patchy.sourceTargets.isEmpty, !loaded.patchy.targets.isEmpty else {
+            return false
+        }
+
+        let migratedTargets = loaded.patchy.targets.map { legacy in
+            PatchySourceTarget(
+                isEnabled: legacy.isEnabled,
+                source: loaded.patchy.source,
+                steamAppID: loaded.patchy.steamAppID,
+                serverId: legacy.serverId,
+                channelId: legacy.channelId,
+                roleIDs: legacy.roleIDs
+            )
+        }
+
+        loaded.patchy.sourceTargets = migratedTargets
+        return true
     }
 
     func startBot() async {
@@ -168,12 +414,8 @@ final class AppModel: ObservableObject {
 
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
-        connectedServers.removeAll()
-        availableVoiceChannelsByServer.removeAll()
-        availableTextChannelsByServer.removeAll()
         activeVoice.removeAll()
         joinTimes.removeAll()
-        usernamesById.removeAll()
         dmUsersSeen.removeAll()
         gatewayEventCount = 0
         voiceStateEventCount = 0
@@ -196,12 +438,8 @@ final class AppModel: ObservableObject {
         Task { await service.disconnect() }
         uptimeTask?.cancel()
         uptime = nil
-        connectedServers.removeAll()
-        availableVoiceChannelsByServer.removeAll()
-        availableTextChannelsByServer.removeAll()
         activeVoice.removeAll()
         joinTimes.removeAll()
-        usernamesById.removeAll()
         dmUsersSeen.removeAll()
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
@@ -351,7 +589,7 @@ final class AppModel: ObservableObject {
         else { return }
 
         if case let .string(userId)? = author["id"] {
-            usernamesById[userId] = username
+            cacheUsername(userId: userId, username: username)
         }
 
         // Ignore messages from bots (including this bot) to prevent reply loops.
@@ -610,6 +848,67 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func sendPatchyNotificationDetailed(
+        channelId: String,
+        message: String,
+        embedJSON: String?,
+        roleIDs: [String]
+    ) async -> (ok: Bool, detail: String) {
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            let detail = "Patchy send failed. status=- token missing."
+            logs.append("❌ \(detail)")
+            return (false, detail)
+        }
+
+        let cleanedRoleIDs = roleIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+        let roleMentionText = cleanedRoleIDs.map { "<@&\($0)>" }.joined(separator: " ")
+        let allowedMentions: [String: Any]? = cleanedRoleIDs.isEmpty ? nil : [
+            "parse": [],
+            "roles": cleanedRoleIDs
+        ]
+
+        var payload: [String: Any] = [:]
+        var usingEmbedPayload = false
+        if let rawEmbedJSON = embedJSON?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawEmbedJSON.isEmpty,
+           let data = rawEmbedJSON.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let embeds = object["embeds"] as? [Any],
+           !embeds.isEmpty {
+            payload["embeds"] = embeds
+            if !roleMentionText.isEmpty {
+                payload["content"] = roleMentionText
+            }
+            if let allowedMentions {
+                payload["allowed_mentions"] = allowedMentions
+            }
+            usingEmbedPayload = true
+        } else {
+            let fallbackBody = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            let content = [roleMentionText, fallbackBody].filter { !$0.isEmpty }.joined(separator: " ")
+            payload["content"] = content.isEmpty ? "Patchy update available." : content
+            if let allowedMentions {
+                payload["allowed_mentions"] = allowedMentions
+            }
+        }
+
+        do {
+            let response = try await service.sendMessage(channelId: channelId, payload: payload, token: token)
+            let mode = usingEmbedPayload ? "embed" : "fallback"
+            let detail = "Patchy send succeeded (\(mode), status=\(response.statusCode))."
+            logs.append("✅ \(detail)")
+            return (true, detail)
+        } catch {
+            let diagnostic = patchyErrorDiagnostic(from: error)
+            let detail = "Patchy send failed (\(usingEmbedPayload ? "embed" : "fallback")). \(diagnostic)"
+            logs.append("❌ \(detail)")
+            return (false, detail)
+        }
+    }
+
     private func finalsWikiLookup(query: String, channelId: String) async -> Bool {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
@@ -865,17 +1164,17 @@ final class AppModel: ObservableObject {
     private func voiceDisplayName(from map: [String: DiscordJSON], userId: String) -> String {
         if case let .object(member)? = map["member"] {
             if case let .string(nick)? = member["nick"], !nick.isEmpty {
-                usernamesById[userId] = nick
+                cacheUsername(userId: userId, username: nick)
                 return nick
             }
 
             if case let .object(user)? = member["user"] {
                 if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                    usernamesById[userId] = globalName
+                    cacheUsername(userId: userId, username: globalName)
                     return globalName
                 }
                 if case let .string(username)? = user["username"], !username.isEmpty {
-                    usernamesById[userId] = username
+                    cacheUsername(userId: userId, username: username)
                     return username
                 }
             }
@@ -883,11 +1182,11 @@ final class AppModel: ObservableObject {
 
         if case let .object(user)? = map["user"] {
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                usernamesById[userId] = globalName
+                cacheUsername(userId: userId, username: globalName)
                 return globalName
             }
             if case let .string(username)? = user["username"], !username.isEmpty {
-                usernamesById[userId] = username
+                cacheUsername(userId: userId, username: username)
                 return username
             }
         }
@@ -1003,6 +1302,23 @@ final class AppModel: ObservableObject {
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    private func parseRoles(from guildMap: [String: DiscordJSON]) -> [GuildRole] {
+        guard case let .array(roles)? = guildMap["roles"] else { return [] }
+
+        var result: [GuildRole] = []
+        for role in roles {
+            guard case let .object(roleMap) = role,
+                  case let .string(roleId)? = roleMap["id"],
+                  case let .string(roleName)? = roleMap["name"]
+            else { continue }
+
+            if roleName == "@everyone" { continue }
+            result.append(GuildRole(id: roleId, name: roleName))
+        }
+
+        return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private func handleReady(_ raw: DiscordJSON?) {
         guard case let .object(map)? = raw else { return }
         guard case let .array(guilds)? = map["guilds"] else { return }
@@ -1021,6 +1337,7 @@ final class AppModel: ObservableObject {
 
             connectedServers[guildId] = guildName
         }
+        scheduleDiscordCacheSave()
         // TODO: Emit UserJoinedServer events when GUILD_MEMBER_ADD events are handled (future implementation)
     }
 
@@ -1039,7 +1356,10 @@ final class AppModel: ObservableObject {
         connectedServers[guildId] = guildName
         availableVoiceChannelsByServer[guildId] = parseVoiceChannels(from: map)
         availableTextChannelsByServer[guildId] = parseTextChannels(from: map)
+        availableRolesByServer[guildId] = parseRoles(from: map)
+        cacheGuildMembers(from: map)
         syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
+        scheduleDiscordCacheSave()
     }
 
     private func handleGuildDelete(_ raw: DiscordJSON?) {
@@ -1050,8 +1370,24 @@ final class AppModel: ObservableObject {
         connectedServers[guildId] = nil
         availableVoiceChannelsByServer[guildId] = nil
         availableTextChannelsByServer[guildId] = nil
+        availableRolesByServer[guildId] = nil
         activeVoice.removeAll { $0.guildId == guildId }
         joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
+        scheduleDiscordCacheSave()
+    }
+
+    private func patchyErrorDiagnostic(from error: Error) -> String {
+        let ns = error as NSError
+        let statusCode = ns.userInfo["statusCode"] as? Int ?? ns.code
+        let body = (ns.userInfo["responseBody"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedBody: String
+        if body.count > 220 {
+            trimmedBody = String(body.prefix(220)) + "..."
+        } else {
+            trimmedBody = body
+        }
+        let bodySnippet = trimmedBody.isEmpty ? "-" : trimmedBody
+        return "status=\(statusCode), error=\(error.localizedDescription), response=\(bodySnippet)"
     }
 
     private func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) {
@@ -1083,6 +1419,119 @@ final class AppModel: ObservableObject {
                     joinedAt: joinedAt
                 )
             )
+        }
+    }
+
+    private func cacheGuildMembers(from guildMap: [String: DiscordJSON]) {
+        guard case let .array(members)? = guildMap["members"] else { return }
+
+        for member in members {
+            guard case let .object(memberMap) = member else { continue }
+            if case let .string(nick)? = memberMap["nick"], !nick.isEmpty,
+               case let .object(user)? = memberMap["user"],
+               case let .string(userId)? = user["id"] {
+                cacheUsername(userId: userId, username: nick)
+                continue
+            }
+
+            guard case let .object(user)? = memberMap["user"],
+                  case let .string(userId)? = user["id"] else { continue }
+
+            if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
+                cacheUsername(userId: userId, username: globalName)
+            } else if case let .string(username)? = user["username"], !username.isEmpty {
+                cacheUsername(userId: userId, username: username)
+            }
+        }
+    }
+
+    private func cacheUsername(userId: String, username: String) {
+        let cleaned = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        if usernamesById[userId] == cleaned { return }
+        usernamesById[userId] = cleaned
+        knownUsersById = usernamesById
+        scheduleDiscordCacheSave()
+    }
+
+    private func applyDiscordCacheSnapshot(_ snapshot: DiscordCacheSnapshot) {
+        connectedServers = snapshot.connectedServers
+        availableVoiceChannelsByServer = snapshot.availableVoiceChannelsByServer
+        availableTextChannelsByServer = snapshot.availableTextChannelsByServer
+        availableRolesByServer = snapshot.availableRolesByServer
+        usernamesById = snapshot.usernamesById
+        knownUsersById = snapshot.usernamesById
+    }
+
+    private func buildDiscordCacheSnapshot() -> DiscordCacheSnapshot {
+        DiscordCacheSnapshot(
+            updatedAt: Date(),
+            connectedServers: connectedServers,
+            availableVoiceChannelsByServer: availableVoiceChannelsByServer,
+            availableTextChannelsByServer: availableTextChannelsByServer,
+            availableRolesByServer: availableRolesByServer,
+            usernamesById: usernamesById
+        )
+    }
+
+    private func scheduleDiscordCacheSave() {
+        let snapshot = buildDiscordCacheSnapshot()
+        discordCacheSaveTask?.cancel()
+        discordCacheSaveTask = Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
+            do {
+                try await discordCacheStore.save(snapshot)
+            } catch {
+                await MainActor.run {
+                    self.logs.append("❌ Failed saving Discord cache: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func resolveSteamNameIfNeeded(for target: PatchySourceTarget) {
+        guard target.source == .steam else { return }
+        let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appID.isEmpty else { return }
+        if let existing = settings.patchy.steamAppNames[appID], !existing.isEmpty {
+            return
+        }
+
+        Task {
+            if let name = await fetchSteamAppName(appID: appID) {
+                await MainActor.run {
+                    self.settings.patchy.steamAppNames[appID] = name
+                    self.persistSettingsQuietly()
+                }
+            }
+        }
+    }
+
+    private func fetchSteamAppName(appID: String) async -> String? {
+        guard let url = URL(string: "https://store.steampowered.com/api/appdetails?appids=\(appID)&l=english") else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let appNode = root[appID] as? [String: Any],
+                let success = appNode["success"] as? Bool, success,
+                let dataNode = appNode["data"] as? [String: Any],
+                let name = dataNode["name"] as? String
+            else {
+                return nil
+            }
+
+            let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned.isEmpty ? nil : cleaned
+        } catch {
+            return nil
         }
     }
 

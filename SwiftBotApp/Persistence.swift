@@ -52,6 +52,32 @@ actor RuleConfigStore {
     }
 }
 
+actor DiscordCacheStore {
+    private let url: URL
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(filename: String = "discord-cache.json") {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        self.url = folder.appendingPathComponent(filename)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
+    func load() -> DiscordCacheSnapshot? {
+        guard let data = try? Data(contentsOf: url),
+              let snapshot = try? decoder.decode(DiscordCacheSnapshot.self, from: data)
+        else { return nil }
+        return snapshot
+    }
+
+    func save(_ snapshot: DiscordCacheSnapshot) throws {
+        let data = try encoder.encode(snapshot)
+        try data.write(to: url, options: .atomic)
+    }
+}
+
 @MainActor
 final class LogStore: ObservableObject {
     @Published var lines: [String] = []

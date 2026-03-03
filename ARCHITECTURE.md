@@ -29,6 +29,8 @@ This document provides a high-level overview of the SwiftBot application archite
   - Voice presence tracking
   - Rule engine coordination
   - Plugin management via `PluginManager`
+  - Patchy monitoring scheduler and delivery orchestration
+  - Discord metadata caching for offline configuration
 - **Key Properties:**
   - `eventBus: EventBus` - Event system for plugins
   - `ruleStore: RuleStore` - Notification rules
@@ -66,26 +68,29 @@ This document provides a high-level overview of the SwiftBot application archite
 - **Actors:**
   - `ConfigStore` - Saves/loads `BotSettings` to JSON
   - `RuleConfigStore` - Saves/loads `[Rule]` array to JSON
+  - `DiscordCacheStore` - Saves/loads cached Discord metadata (`DiscordCacheSnapshot`)
 - **Storage Location:** `~/Library/Application Support/SwiftBot/`
-- **Files:** `settings.json`, `rules.json`
+- **Files:** `settings.json`, `rules.json`, `discord-cache.json`
 - **Class:** `LogStore` (@MainActor) - In-memory log with 500 line limit
 
 ### 6. User Interface
 - **File:** `RootView.swift`
-- **Main View:** `RootView` - TabView container
-- **Tabs:**
+- **Main View:** `RootView` - `NavigationSplitView` container
+- **Sidebar Sections:**
   - **Overview** - Activity feed, stats, server info
-  - **Server Notifier** - Rule builder (HSplitView: list + editor)
+  - **Patchy** - SourceTarget monitor panel with grouped targets and modal editor
+  - **Actions** - Rule builder (HSplitView: list + editor)
   - **Commands** - Command history log
   - **Logs** - System logs with auto-scroll
-  - **Settings** - Bot token, prefix, AI settings
+  - **Settings** - Bot token, prefix, cluster and AI settings
+  - **AI Bots** - AI bot configuration panel
   - **Status** - Gateway stats, voice presence
 
-### 7. UpdateEngine Package (Standalone)
+### 7. UpdateEngine Package + Patchy Runtime Use
 - **Path:** `Sources/UpdateEngine`
 - **Package Product:** `UpdateEngine` (library target)
-- **Status:** Standalone infrastructure only. Not wired into `SwiftBotApp` startup, polling, or Discord event handling.
-- **Purpose:** Provide reusable update-source abstractions and identifier-based change detection for future integration.
+- **Status:** Integrated for Patchy source monitoring and Discord delivery. Core package remains source-agnostic.
+- **Purpose:** Provide reusable update-source abstractions and identifier-based change detection used by Patchy runtime scheduling.
 - **Core API Surface:**
   - `UpdateSource` protocol (`sourceKey`, `fetchLatest()`)
   - `UpdateItem` protocol (`sourceKey`, `identifier`, `version`)
@@ -100,9 +105,9 @@ This document provides a high-level overview of the SwiftBot application archite
 - **Architectural decisions:**
   - Vendor-agnostic source abstraction via protocols.
   - Identifier-based caching (stable item IDs) instead of version-only comparisons.
-  - Runtime-owned scoping (for example `guild:<id>:<sourceKey>`) to support future per-guild polling.
+  - Runtime-owned scheduling/delivery in `SwiftBotApp` (not in UpdateEngine core).
   - Source modules handle vendor-specific parsing/networking while keeping `UpdateChecker` + `VersionStore` generic.
-  - UpdateEngine remains infrastructure-only until a future runtime scheduler/poller layer is added.
+  - Patchy runtime uses UpdateEngine outputs (`embedJSON`) as Discord payload source of truth.
 
 ## Data Flow
 
@@ -283,6 +288,7 @@ SwiftBot.xcodeproj
 - Log entries capped at 500 items (LogStore)
 - Activity events capped at 20 items (AppModel)
 - Voice log capped at 200 items (AppModel)
+- Patchy debug log capped in-memory (AppModel)
 
 ### Network
 - Single WebSocket connection per bot instance

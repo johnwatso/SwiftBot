@@ -22,20 +22,31 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 - Native SwiftUI desktop UI pages:
   - Overview
-  - Server Notifier
+  - Patchy
+  - Actions
   - Commands
   - Logs
   - Settings
+  - AI Bots
   - Status
 - Discord Gateway (`wss://gateway.discord.gg/?v=10&encoding=json`) connection
   - Handles hello, heartbeat, identify, reconnect, and invalid session flow
 - Discord REST sending via `https://discord.com/api/v10`
-- Server Notifier rule engine:
+- Actions rule engine:
   - Triggers: user joins/leaves/moves voice, message contains
   - Conditions: server, voice channel, username contains, minimum duration
   - Actions: send message, add log entry, set status
 - Per-guild notification channel configuration and ignore/monitor lists
 - Voice presence tracking (join/move/leave) with session timing and recent activity panels
+- Patchy monitoring dashboard:
+  - SourceTarget-based configuration grouped by source (AMD, NVIDIA, Intel Arc, Steam)
+  - Per-target server/channel/role mention routing
+  - Hourly runtime scheduler with manual debug check support
+  - Discord embed-first delivery using UpdateEngine `embedJSON` with text fallback only when embed JSON is missing/invalid
+  - Steam App ID name resolution and local name cache
+- Offline Discord metadata cache:
+  - Caches servers, channels, roles, and known users locally
+  - Patchy target editing still works while bot is offline
 - Command system with prefix and commands:
   - `!help`
   - `!ping`
@@ -52,7 +63,7 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 - On-device Apple Intelligence replies:
   - Optional smart DM and channel replies (Beta) when enabled in Settings
   - Smart replies on @mentions in guild channels using on-device Apple Intelligence (Beta)
-- Persistent settings and rules saved in Application Support JSON
+- Persistent settings, rules, and Discord metadata saved in Application Support JSON
 
 ## Roadmap / Want To Add
 
@@ -89,6 +100,7 @@ Unknown commands return:
 - Uses Apple on-device Foundation Models when available.
 - Controlled via the Apple Intelligence settings toggle.
 - Disabled by default.
+- Implementation inspiration/reference: [Apple-Intelligence-API by gouwsxander](https://github.com/gouwsxander/Apple-Intelligence-API).
 
 ## High Availability / Cluster Options
 
@@ -104,12 +116,12 @@ Current limitations:
 - No active-active Discord leaders.
 - No replicated cross-node state store.
 
-## UpdateEngine (Planned Integration)
+## UpdateEngine Integration
 
 `UpdateEngine` is a standalone Swift package in `Sources/UpdateEngine` that provides reusable update-source infrastructure for driver/news feeds.
 
-- Current state: standalone and testable on its own.
-- Intended direction: integrate into SwiftBot runtime as a polling/scheduling layer that checks sources, tracks identifier-based changes, and posts notifications through normal bot delivery flow.
+- Current state: integrated into SwiftBot runtime for Patchy source monitoring and Discord delivery.
+- Runtime scheduling, target grouping, and Discord routing remain owned by `SwiftBotApp`.
 - Built-in sources today: NVIDIA, AMD, Intel Arc, and Steam.
 - Design intent: keep source fetching/parsing separate from runtime delivery and Discord command/event handling.
 
