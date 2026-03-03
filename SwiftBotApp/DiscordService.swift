@@ -3,6 +3,202 @@ import Foundation
 import FoundationModels
 #endif
 
+protocol AIEngine {
+    func generate(messages: [Message]) async -> String?
+}
+
+private enum EngineMessageRole: String {
+    case system
+    case user
+    case assistant
+}
+
+private struct EngineMessage {
+    let role: EngineMessageRole
+    let content: String
+}
+
+private extension Array where Element == Message {
+    func toEngineMessages() -> [EngineMessage] {
+        compactMap { message in
+            let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            let role: EngineMessageRole
+            switch message.role {
+            case .system:
+                role = .system
+            case .assistant:
+                role = .assistant
+            case .user:
+                role = .user
+            }
+            return EngineMessage(role: role, content: trimmed)
+        }
+    }
+}
+
+private func cleanOutput(_ raw: String) -> String {
+    var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let prefixes = ["assistant:", "user:"]
+
+    var shouldContinue = true
+    while shouldContinue {
+        shouldContinue = false
+        let lowered = cleaned.lowercased()
+        for prefix in prefixes where lowered.hasPrefix(prefix) {
+            cleaned = String(cleaned.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            shouldContinue = true
+            break
+        }
+    }
+
+    return cleaned
+}
+
+struct AppleIntelligenceEngine: AIEngine {
+    let defaultSystemPrompt: String
+
+    func generate(messages: [Message]) async -> String? {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let model = SystemLanguageModel.default
+            guard case .available = model.availability else { return nil }
+            let engineMessages = messages.toEngineMessages()
+            guard let lastUserIndex = engineMessages.lastIndex(where: { $0.role == .user }) else { return nil }
+
+            let instructions = engineMessages
+                .last(where: { $0.role == .system })?
+                .content ?? defaultSystemPrompt
+            let prompt = engineMessages[lastUserIndex].content
+            guard !prompt.isEmpty else { return nil }
+
+            var transcriptEntries: [Transcript.Entry] = [
+                .instructions(
+                    Transcript.Instructions(
+                        segments: [.text(Transcript.TextSegment(content: instructions))],
+                        toolDefinitions: []
+                    )
+                )
+            ]
+            for message in engineMessages.prefix(lastUserIndex) {
+                switch message.role {
+                case .system:
+                    continue
+                case .user:
+                    transcriptEntries.append(
+                        .prompt(
+                            Transcript.Prompt(
+                                segments: [.text(Transcript.TextSegment(content: message.content))]
+                            )
+                        )
+                    )
+                case .assistant:
+                    transcriptEntries.append(
+                        .response(
+                            Transcript.Response(
+                                assetIDs: [],
+                                segments: [.text(Transcript.TextSegment(content: message.content))]
+                            )
+                        )
+                    )
+                }
+            }
+
+            let session = LanguageModelSession(
+                model: model,
+                transcript: Transcript(entries: transcriptEntries)
+            )
+            do {
+                let response = try await session.respond(to: prompt)
+                let content = cleanOutput(response.content)
+                return content.isEmpty ? nil : content
+            } catch {
+                return nil
+            }
+        }
+#endif
+        return nil
+    }
+}
+
+struct OllamaEngine: AIEngine {
+    let baseURL: String
+    let preferredModel: String?
+    let session: URLSession
+
+    private struct PayloadMessage: Encodable {
+        let role: String
+        let content: String
+    }
+
+    private struct ChatPayload: Encodable {
+        let model: String
+        let stream: Bool
+        let messages: [PayloadMessage]
+    }
+
+    func generate(messages: [Message]) async -> String? {
+        guard let url = URL(string: "\(baseURL)/api/chat") else { return nil }
+        guard let model = await Self.resolveModel(baseURL: baseURL, preferredModel: preferredModel, session: session) else { return nil }
+
+        let payloadMessages = messages.toEngineMessages().map { message in
+            PayloadMessage(role: message.role.rawValue, content: message.content)
+        }
+
+        guard payloadMessages.contains(where: { $0.role == EngineMessageRole.user.rawValue }) else { return nil }
+
+        let payload = ChatPayload(model: model, stream: false, messages: payloadMessages)
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            guard
+                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let message = object["message"] as? [String: Any],
+                let content = message["content"] as? String
+            else { return nil }
+
+            let cleaned = cleanOutput(content)
+            return cleaned.isEmpty ? nil : cleaned
+        } catch {
+            return nil
+        }
+    }
+
+    static func resolveModel(baseURL: String, preferredModel: String?, session: URLSession) async -> String? {
+        guard let url = URL(string: "\(baseURL)/api/tags") else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            guard
+                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let models = object["models"] as? [[String: Any]],
+                !models.isEmpty
+            else { return nil }
+
+            let names = models.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
+            guard !names.isEmpty else { return nil }
+
+            let preferred = preferredModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !preferred.isEmpty {
+                if let exact = names.first(where: { $0 == preferred }) { return exact }
+                if let starts = names.first(where: { $0.hasPrefix(preferred) }) { return starts }
+            }
+            return names.first
+        } catch {
+            return nil
+        }
+    }
+}
+
 actor DiscordService {
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
@@ -19,6 +215,7 @@ actor DiscordService {
     private var voiceChannelByMemberKey: [String: String] = [:]
     private var voiceJoinTimeByMemberKey: [String: Date] = [:]
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
+    private var channelTypeById: [String: Int] = [:]
 
     private var localAIDMReplyEnabled = false
     private var localAIProvider: AIProvider = .appleIntelligence
@@ -71,8 +268,8 @@ actor DiscordService {
         return (appleOnline, model != nil, model)
     }
 
-    func generateSmartDMReply(message: String, username: String) async -> String? {
-        await generateLocalAIDMReply(userMessage: message, username: username)
+    func generateSmartDMReply(messages: [Message]) async -> String? {
+        await generateLocalAIDMReply(messages: messages)
     }
 
     func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
@@ -119,6 +316,7 @@ actor DiscordService {
         voiceChannelByMemberKey.removeAll()
         voiceJoinTimeByMemberKey.removeAll()
         voiceChannelNamesByGuild.removeAll()
+        channelTypeById.removeAll()
         Task { await onConnectionState?(.stopped) }
     }
 
@@ -130,6 +328,7 @@ actor DiscordService {
                    let payload = try? JSONDecoder().decode(GatewayPayload.self, from: Data(text.utf8)) {
                     sequence = payload.s ?? sequence
                     await handleGatewayPayload(payload, token: token)
+                    seedChannelTypesIfNeeded(payload)
                     seedVoiceChannelsIfNeeded(payload)
                     seedVoiceStateIfNeeded(payload)
                     await processRuleActionsIfNeeded(payload)
@@ -278,6 +477,42 @@ actor DiscordService {
         }
     }
 
+    private func seedChannelTypesIfNeeded(_ payload: GatewayPayload) {
+        guard payload.op == 0 else { return }
+        switch payload.t {
+        case "GUILD_CREATE":
+            guard case let .object(guildMap)? = payload.d,
+                  case let .array(channels)? = guildMap["channels"]
+            else { return }
+            for channel in channels {
+                guard case let .object(channelMap) = channel,
+                      case let .string(channelId)? = channelMap["id"],
+                      case let .int(type)? = channelMap["type"]
+                else { continue }
+                channelTypeById[channelId] = type
+            }
+        case "CHANNEL_CREATE", "CHANNEL_UPDATE":
+            guard case let .object(map)? = payload.d,
+                  case let .string(channelId)? = map["id"],
+                  case let .int(type)? = map["type"]
+            else { return }
+            channelTypeById[channelId] = type
+        case "CHANNEL_DELETE":
+            guard case let .object(map)? = payload.d,
+                  case let .string(channelId)? = map["id"]
+            else { return }
+            channelTypeById[channelId] = nil
+        case "MESSAGE_CREATE":
+            guard case let .object(map)? = payload.d,
+                  case let .string(channelId)? = map["channel_id"],
+                  case let .int(type)? = map["channel_type"]
+            else { return }
+            channelTypeById[channelId] = type
+        default:
+            break
+        }
+    }
+
     private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
@@ -407,15 +642,12 @@ actor DiscordService {
             return nil
         }
 
-        let guildId: String
-        let isDirectMessage: Bool
-        if case let .string(gid)? = map["guild_id"] {
-            guildId = gid
-            isDirectMessage = false
-        } else {
-            guildId = ""
-            isDirectMessage = true
-        }
+        let guildId: String = {
+            if case let .string(gid)? = map["guild_id"] { return gid }
+            return ""
+        }()
+        let channelType = resolvedMessageChannelType(from: map, channelId: channelId)
+        let isDirectMessage = (channelType == 1 || channelType == 3)
 
         return VoiceRuleEvent(
             kind: .message,
@@ -429,6 +661,13 @@ actor DiscordService {
             messageContent: content,
             isDirectMessage: isDirectMessage
         )
+    }
+
+    private func resolvedMessageChannelType(from map: [String: DiscordJSON], channelId: String) -> Int? {
+        if case let .int(type)? = map["channel_type"] {
+            return type
+        }
+        return channelTypeById[channelId]
     }
 
     private func parseUsername(from map: [String: DiscordJSON], userId: String) -> String {
@@ -452,7 +691,24 @@ actor DiscordService {
                event.isDirectMessage,
                localAIDMReplyEnabled,
                let userMessage = event.messageContent,
-               let aiReply = await generateLocalAIDMReply(userMessage: userMessage, username: event.username) {
+               let aiReply = await generateLocalAIDMReply(messages: [
+                    Message(
+                        channelID: event.channelId,
+                        userID: "system",
+                        username: "System",
+                        content: localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? "You are a friendly Discord assistant. Reply briefly and naturally."
+                            : localAISystemPrompt,
+                        role: .system
+                    ),
+                    Message(
+                        channelID: event.channelId,
+                        userID: event.userId,
+                        username: event.username,
+                        content: userMessage,
+                        role: .user
+                    )
+               ]) {
                 rendered = aiReply
             } else {
                 rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
@@ -504,114 +760,48 @@ actor DiscordService {
         return "Channel \(channelId.suffix(5))"
     }
 
-    private func generateLocalAIDMReply(userMessage: String, username: String) async -> String? {
+    private func generateLocalAIDMReply(messages: [Message]) async -> String? {
         guard localAIDMReplyEnabled else { return nil }
 
-        let systemPrompt = localAISystemPrompt.isEmpty
+        let systemPrompt = localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "You are a friendly Discord assistant. Reply briefly and naturally."
             : localAISystemPrompt
+        let cleanedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard cleanedMessages.contains(where: { $0.role == .user }) else { return nil }
+
+        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
+        let ollamaEngine = OllamaEngine(
+            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
+            preferredModel: localAIModel,
+            session: session
+        )
 
         let preferred = localPreferredAIProvider
         if preferred == .apple {
-            if let reply = await generateAppleReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt) {
-                return reply
+            if let reply = await appleEngine.generate(messages: cleanedMessages) {
+                let cleaned = cleanOutput(reply)
+                return cleaned.isEmpty ? nil : cleaned
             }
-            return await generateOllamaReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt)
+            if let reply = await ollamaEngine.generate(messages: cleanedMessages) {
+                let cleaned = cleanOutput(reply)
+                return cleaned.isEmpty ? nil : cleaned
+            }
+            return nil
         } else {
-            if let reply = await generateOllamaReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt) {
-                return reply
+            if let reply = await ollamaEngine.generate(messages: cleanedMessages) {
+                let cleaned = cleanOutput(reply)
+                return cleaned.isEmpty ? nil : cleaned
             }
-            return await generateAppleReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt)
-        }
-    }
-
-    private func generateAppleReply(userMessage: String, username: String, systemPrompt: String) async -> String? {
-#if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            switch model.availability {
-            case .available:
-                break
-            default:
-                return nil
+            if let reply = await appleEngine.generate(messages: cleanedMessages) {
+                let cleaned = cleanOutput(reply)
+                return cleaned.isEmpty ? nil : cleaned
             }
-
-            let prompt = "Message from \(username): \(userMessage)"
-            let session = LanguageModelSession(model: model, instructions: Instructions(systemPrompt))
-            do {
-                let response = try await session.respond(to: prompt)
-                let content = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                return content.isEmpty ? nil : content
-            } catch {
-                return nil
-            }
-        }
-#endif
-        return nil
-    }
-
-    private func generateOllamaReply(userMessage: String, username: String, systemPrompt: String) async -> String? {
-        let base = normalizedOllamaBaseURL(localAIEndpoint)
-        guard let url = URL(string: "\(base)/api/chat") else { return nil }
-
-        let chosenModel = await detectOllamaModel(baseURL: base, preferredModel: localAIModel)
-        guard let model = chosenModel, !model.isEmpty else { return nil }
-
-        let payload: [String: Any] = [
-            "model": model,
-            "stream": false,
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": "Message from \(username): \(userMessage)"]
-            ]
-        ]
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 20
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-            guard
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let message = object["message"] as? [String: Any],
-                let content = message["content"] as? String
-            else { return nil }
-
-            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        } catch {
             return nil
         }
     }
 
     private func detectOllamaModel(baseURL: String, preferredModel: String?) async -> String? {
-        guard let url = URL(string: "\(baseURL)/api/tags") else { return nil }
-
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-            guard
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let models = object["models"] as? [[String: Any]],
-                !models.isEmpty
-            else { return nil }
-
-            let names = models.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
-            guard !names.isEmpty else { return nil }
-
-            let preferred = preferredModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !preferred.isEmpty {
-                if let exact = names.first(where: { $0 == preferred }) { return exact }
-                if let starts = names.first(where: { $0.hasPrefix(preferred) }) { return starts }
-            }
-            return names.first
-        } catch {
-            return nil
-        }
+        await OllamaEngine.resolveModel(baseURL: baseURL, preferredModel: preferredModel, session: session)
     }
 
     private func normalizedOllamaBaseURL(_ raw: String) -> String {

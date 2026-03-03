@@ -37,15 +37,16 @@ final class AppModel: ObservableObject {
 
     private let store = ConfigStore()
     private let discordCacheStore = DiscordCacheStore()
+    private let discordCache = DiscordCache()
     private let service = DiscordService()
     private let cluster = ClusterCoordinator()
     private let ruleEngine: RuleEngine
     private var serviceCallbacksConfigured = false
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
-    private var usernamesById: [String: String] = [:]
     private var discordCacheSaveTask: Task<Void, Never>?
-    private var dmUsersSeen: Set<String> = []
+    private let conversationStore = ConversationStore()
+    lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
     private let pluginManager: PluginManager
     private var weeklyPlugin: WeeklySummaryPlugin?
@@ -89,7 +90,8 @@ final class AppModel: ObservableObject {
 
             settings = loadedSettings
             if let cachedDiscord = await discordCacheStore.load() {
-                applyDiscordCacheSnapshot(cachedDiscord)
+                await discordCache.replace(with: cachedDiscord)
+                await syncPublishedDiscordCacheFromService()
                 logs.append("Loaded cached Discord metadata (\(cachedDiscord.connectedServers.count) servers)")
             }
             if settings.localAIProvider == .ollama {
@@ -106,9 +108,9 @@ final class AppModel: ObservableObject {
 
             await service.setRuleEngine(ruleEngine)
             await cluster.configureHandlers(
-                aiHandler: { [weak self] message, username in
+                aiHandler: { [weak self] messages in
                     guard let self else { return nil }
-                    return await self.service.generateSmartDMReply(message: message, username: username)
+                    return await self.service.generateSmartDMReply(messages: messages)
                 },
                 wikiHandler: { [weak self] query in
                     guard let self else { return nil }
@@ -480,7 +482,6 @@ final class AppModel: ObservableObject {
         uptime = UptimeInfo(startedAt: Date())
         activeVoice.removeAll()
         joinTimes.removeAll()
-        dmUsersSeen.removeAll()
         gatewayEventCount = 0
         voiceStateEventCount = 0
         readyEventCount = 0
@@ -504,7 +505,6 @@ final class AppModel: ObservableObject {
         uptime = nil
         activeVoice.removeAll()
         joinTimes.removeAll()
-        dmUsersSeen.removeAll()
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
@@ -617,7 +617,7 @@ final class AppModel: ObservableObject {
             await handleVoiceStateUpdate(payload.d)
         case "READY":
             readyEventCount += 1
-            handleReady(payload.d)
+            await handleReady(payload.d)
             logs.append("READY received")
             if case let .object(map)? = payload.d,
                case let .object(user)? = map["user"] {
@@ -636,9 +636,11 @@ final class AppModel: ObservableObject {
             }
         case "GUILD_CREATE":
             guildCreateEventCount += 1
-            handleGuildCreate(payload.d)
+            await handleGuildCreate(payload.d)
+        case "CHANNEL_CREATE":
+            await handleChannelCreate(payload.d)
         case "GUILD_DELETE":
-            handleGuildDelete(payload.d)
+            await handleGuildDelete(payload.d)
         default:
             break
         }
@@ -652,59 +654,107 @@ final class AppModel: ObservableObject {
               case let .string(channelId)? = map["channel_id"]
         else { return }
 
-        if case let .string(userId)? = author["id"] {
-            cacheUsername(userId: userId, username: username)
-        }
+        let userId: String = {
+            if case let .string(id)? = author["id"] { return id }
+            return "unknown-user"
+        }()
+        let messageId: String = {
+            if case let .string(id)? = map["id"] { return id }
+            return UUID().uuidString
+        }()
+        let isBot = (author["bot"] == .bool(true))
+        let channelType = await resolvedChannelType(from: map, channelID: channelId)
+        let isDMChannel = (channelType == 1 || channelType == 3)
+        let isGuildTextChannel = (channelType == 0)
+
+        let guildID: String? = {
+            if case let .string(id)? = map["guild_id"] { return id }
+            return nil
+        }()
+        await upsertDiscordCacheFromMessage(
+            map: map,
+            guildID: guildID,
+            channelID: channelId,
+            channelType: channelType,
+            userID: userId,
+            fallbackUsername: username
+        )
 
         // Ignore messages from bots (including this bot) to prevent reply loops.
-        if case let .bool(isBot)? = author["bot"], isBot {
+        if isBot {
             return
         }
 
         let prefix = effectivePrefix()
-        let isDM = map["guild_id"] == nil || map["guild_id"] == .null
-        if isDM, !content.hasPrefix(prefix) {
-            let dmUserKey: String
-            if case let .string(userId)? = author["id"] {
-                dmUserKey = userId
-            } else {
-                dmUserKey = username
+        if isDMChannel, !settings.behavior.allowDMs {
+            _ = await send(channelId, "DM support is disabled. If you need help, use \(prefix)help in a server channel.")
+            return
+        }
+
+        if isDMChannel, !content.hasPrefix(prefix) {
+            if settings.localAIDMReplyEnabled {
+                let scope = MemoryScope.directMessageUser(userId)
+                let messages = await aiMessagesForScope(
+                    scope: scope,
+                    currentUserID: userId,
+                    currentContent: content
+                )
+                if let aiReply = await cluster.generateAIReply(messages: messages) {
+                    await conversationStore.append(
+                        scope: scope,
+                        messageID: messageId,
+                        userID: userId,
+                        content: content,
+                        role: .user
+                    )
+                    let sent = await send(channelId, aiReply)
+                    if sent {
+                        await appendAssistantMessage(scope: scope, content: aiReply)
+                    }
+                    return
+                }
             }
 
-            if !dmUsersSeen.contains(dmUserKey) {
-                dmUsersSeen.insert(dmUserKey)
-                try? await service.sendMessage(channelId: channelId, content: "👋 Hey there! If you need help, type \(prefix)help to see what I can do!", token: settings.token)
-                return
-            }
-
-            if settings.localAIDMReplyEnabled,
-               let aiReply = await cluster.generateAIReply(message: content, username: username) {
-                try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
-                return
-            }
-
-            try? await service.sendMessage(channelId: channelId, content: "If you need help, type \(prefix)help.", token: settings.token)
+            _ = await send(channelId, "If you need help, type \(prefix)help.")
             return
         }
 
         await eventBus.publish(MessageReceived(
-            guildId: (map["guild_id"] != nil && map["guild_id"] != .null) ? ( ( { () -> String in if case let .string(gid)? = map["guild_id"] { return gid } else { return "" } }() ) ) : nil,
+            guildId: guildID,
             channelId: channelId,
-            userId: ( { () -> String in if case let .string(uid)? = author["id"] { return uid } else { return "" } }() ),
+            userId: userId,
             username: username,
             content: content,
-            isDirectMessage: isDM
+            isDirectMessage: isDMChannel
         ))
 
-        if !isDM,
+        if isGuildTextChannel,
            settings.localAIDMReplyEnabled,
+           settings.behavior.useAIInGuildChannels,
            isMentioningBot(map),
            !content.hasPrefix(prefix) {
             let prompt = contentWithoutBotMention(content)
-            if !prompt.isEmpty,
-               let aiReply = await cluster.generateAIReply(message: prompt, username: username) {
-                try? await service.sendMessage(channelId: channelId, content: aiReply, token: settings.token)
-                return
+            if !prompt.isEmpty {
+                let scope = MemoryScope.guildTextChannel(channelId)
+                let messages = await aiMessagesForScope(
+                    scope: scope,
+                    currentUserID: userId,
+                    currentContent: prompt
+                )
+                if let aiReply = await cluster.generateAIReply(messages: messages) {
+                    await conversationStore.append(
+                        scope: scope,
+                        messageID: messageId,
+                        userID: userId,
+                        content: prompt,
+                        role: .user
+                    )
+                    let sent = await send(channelId, aiReply)
+                    if sent {
+                        await appendAssistantMessage(scope: scope, content: aiReply)
+                    }
+                    return
+                }
             }
         }
 
@@ -901,6 +951,132 @@ final class AppModel: ObservableObject {
         return stripped
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func resolvedChannelType(from map: [String: DiscordJSON], channelID: String) async -> Int? {
+        if case let .int(type)? = map["channel_type"] {
+            return type
+        }
+        return await discordCache.channelType(for: channelID)
+    }
+
+    private func upsertDiscordCacheFromMessage(
+        map: [String: DiscordJSON],
+        guildID: String?,
+        channelID: String,
+        channelType: Int?,
+        userID: String,
+        fallbackUsername: String
+    ) async {
+        if let guildID {
+            await discordCache.upsertGuild(id: guildID, name: nil)
+        }
+
+        if let channelType {
+            await discordCache.setChannelType(channelID: channelID, type: channelType)
+        }
+
+        if let guildID,
+           case let .string(name)? = map["channel_name"] {
+            let resolvedType = channelType ?? 0
+            await discordCache.upsertChannel(
+                guildID: guildID,
+                channelID: channelID,
+                name: name,
+                type: resolvedType
+            )
+        }
+
+        let preferredName: String = {
+            if case let .object(member)? = map["member"],
+               case let .string(nick)? = member["nick"],
+               !nick.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return nick
+            }
+            if case let .object(author)? = map["author"] {
+                if case let .string(globalName)? = author["global_name"],
+                   !globalName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return globalName
+                }
+                if case let .string(username)? = author["username"],
+                   !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return username
+                }
+            }
+            return fallbackUsername
+        }()
+
+        await discordCache.upsertUser(id: userID, preferredName: preferredName)
+        await syncPublishedDiscordCacheFromService()
+        scheduleDiscordCacheSave()
+    }
+
+    private func displayNameForUserID(_ userID: String) async -> String {
+        if let name = await discordCache.userName(for: userID), !name.isEmpty {
+            return name
+        }
+        if userID == "system" {
+            return "System"
+        }
+        return "User \(userID.suffix(4))"
+    }
+
+    private func aiMessagesForScope(
+        scope: MemoryScope,
+        currentUserID: String,
+        currentContent: String
+    ) async -> [Message] {
+        var recent = await conversationStore.recentMessages(for: scope, limit: 20)
+        recent.append(
+            MemoryRecord(
+                id: UUID().uuidString,
+                scope: scope,
+                userID: currentUserID,
+                content: currentContent,
+                timestamp: Date(),
+                role: .user
+            )
+        )
+
+        var conversationalMessages: [Message] = []
+        conversationalMessages.reserveCapacity(recent.count)
+        for record in recent {
+            let resolvedUsername = await displayNameForUserID(record.userID)
+            conversationalMessages.append(
+                Message(
+                    id: record.id,
+                    channelID: record.scope.id,
+                    userID: record.userID,
+                    username: resolvedUsername,
+                    content: record.content,
+                    timestamp: record.timestamp,
+                    role: record.role
+                )
+            )
+        }
+
+        let systemPrompt = settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "You are a friendly Discord assistant. Reply briefly and naturally."
+            : settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let systemMessage = Message(
+            channelID: scope.id,
+            userID: "system",
+            username: "System",
+            content: systemPrompt,
+            role: .system
+        )
+        return [systemMessage] + conversationalMessages
+    }
+
+    private func appendAssistantMessage(scope: MemoryScope, content: String) async {
+        let assistantID = botUserId ?? "swiftbot"
+        await discordCache.upsertUser(id: assistantID, preferredName: botUsername)
+        await conversationStore.append(
+            scope: scope,
+            userID: assistantID,
+            content: content,
+            role: .assistant
+        )
     }
 
     private func send(_ channelId: String, _ message: String) async -> Bool {
@@ -1127,7 +1303,7 @@ final class AppModel: ObservableObject {
         let key = "\(guildId)-\(userId)"
         let now = Date()
         let previous = activeVoice.first(where: { $0.userId == userId && $0.guildId == guildId })
-        let displayName = voiceDisplayName(from: map, userId: userId)
+        let displayName = await voiceDisplayName(from: map, userId: userId)
 
         lastVoiceStateAt = now
 
@@ -1225,20 +1401,20 @@ final class AppModel: ObservableObject {
         case move
     }
 
-    private func voiceDisplayName(from map: [String: DiscordJSON], userId: String) -> String {
+    private func voiceDisplayName(from map: [String: DiscordJSON], userId: String) async -> String {
         if case let .object(member)? = map["member"] {
             if case let .string(nick)? = member["nick"], !nick.isEmpty {
-                cacheUsername(userId: userId, username: nick)
+                await discordCache.upsertUser(id: userId, preferredName: nick)
                 return nick
             }
 
             if case let .object(user)? = member["user"] {
                 if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                    cacheUsername(userId: userId, username: globalName)
+                    await discordCache.upsertUser(id: userId, preferredName: globalName)
                     return globalName
                 }
                 if case let .string(username)? = user["username"], !username.isEmpty {
-                    cacheUsername(userId: userId, username: username)
+                    await discordCache.upsertUser(id: userId, preferredName: username)
                     return username
                 }
             }
@@ -1246,16 +1422,16 @@ final class AppModel: ObservableObject {
 
         if case let .object(user)? = map["user"] {
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                cacheUsername(userId: userId, username: globalName)
+                await discordCache.upsertUser(id: userId, preferredName: globalName)
                 return globalName
             }
             if case let .string(username)? = user["username"], !username.isEmpty {
-                cacheUsername(userId: userId, username: username)
+                await discordCache.upsertUser(id: userId, preferredName: username)
                 return username
             }
         }
 
-        if let cached = usernamesById[userId], !cached.isEmpty {
+        if let cached = await discordCache.userName(for: userId), !cached.isEmpty {
             return cached
         }
 
@@ -1383,7 +1559,21 @@ final class AppModel: ObservableObject {
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private func handleReady(_ raw: DiscordJSON?) {
+    private func parseChannelTypes(from guildMap: [String: DiscordJSON]) -> [String: Int] {
+        guard case let .array(channels)? = guildMap["channels"] else { return [:] }
+
+        var result: [String: Int] = [:]
+        for channel in channels {
+            guard case let .object(channelMap) = channel,
+                  case let .string(channelId)? = channelMap["id"],
+                  case let .int(type)? = channelMap["type"]
+            else { continue }
+            result[channelId] = type
+        }
+        return result
+    }
+
+    private func handleReady(_ raw: DiscordJSON?) async {
         guard case let .object(map)? = raw else { return }
         guard case let .array(guilds)? = map["guilds"] else { return }
 
@@ -1392,49 +1582,74 @@ final class AppModel: ObservableObject {
                   case let .string(guildId)? = guildMap["id"]
             else { continue }
 
-            let guildName: String
+            let guildName: String?
             if case let .string(name)? = guildMap["name"] {
                 guildName = name
             } else {
-                guildName = "Server \(guildId.suffix(4))"
+                guildName = nil
             }
-
-            connectedServers[guildId] = guildName
+            await discordCache.upsertGuild(id: guildId, name: guildName)
         }
+        await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
         // TODO: Emit UserJoinedServer events when GUILD_MEMBER_ADD events are handled (future implementation)
     }
 
-    private func handleGuildCreate(_ raw: DiscordJSON?) {
+    private func handleGuildCreate(_ raw: DiscordJSON?) async {
         guard case let .object(map)? = raw,
               case let .string(guildId)? = map["id"]
         else { return }
 
-        let guildName: String
+        let guildName: String?
         if case let .string(name)? = map["name"] {
             guildName = name
         } else {
-            guildName = "Server \(guildId.suffix(4))"
+            guildName = nil
         }
 
-        connectedServers[guildId] = guildName
-        availableVoiceChannelsByServer[guildId] = parseVoiceChannels(from: map)
-        availableTextChannelsByServer[guildId] = parseTextChannels(from: map)
-        availableRolesByServer[guildId] = parseRoles(from: map)
-        cacheGuildMembers(from: map)
-        syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
+        await discordCache.upsertGuild(id: guildId, name: guildName)
+        await discordCache.setGuildVoiceChannels(guildID: guildId, channels: parseVoiceChannels(from: map))
+        await discordCache.setGuildTextChannels(guildID: guildId, channels: parseTextChannels(from: map))
+        await discordCache.setGuildRoles(guildID: guildId, roles: parseRoles(from: map))
+        await discordCache.mergeChannelTypes(parseChannelTypes(from: map))
+        await cacheGuildMembers(from: map)
+        await syncPublishedDiscordCacheFromService()
+        await syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
         scheduleDiscordCacheSave()
     }
 
-    private func handleGuildDelete(_ raw: DiscordJSON?) {
+    private func handleChannelCreate(_ raw: DiscordJSON?) async {
+        guard case let .object(map)? = raw,
+              case let .string(channelId)? = map["id"],
+              case let .int(type)? = map["type"]
+        else { return }
+
+        let guildId: String? = {
+            if case let .string(id)? = map["guild_id"] { return id }
+            return nil
+        }()
+        await discordCache.setChannelType(channelID: channelId, type: type)
+        let name: String = {
+            if case let .string(value)? = map["name"] { return value }
+            return type == 1 ? "Direct Message" : (type == 3 ? "Group DM" : "Channel")
+        }()
+        await discordCache.upsertChannel(
+            guildID: guildId,
+            channelID: channelId,
+            name: name,
+            type: type
+        )
+        await syncPublishedDiscordCacheFromService()
+        scheduleDiscordCacheSave()
+    }
+
+    private func handleGuildDelete(_ raw: DiscordJSON?) async {
         guard case let .object(map)? = raw,
               case let .string(guildId)? = map["id"]
         else { return }
 
-        connectedServers[guildId] = nil
-        availableVoiceChannelsByServer[guildId] = nil
-        availableTextChannelsByServer[guildId] = nil
-        availableRolesByServer[guildId] = nil
+        await discordCache.removeGuild(id: guildId)
+        await syncPublishedDiscordCacheFromService()
         activeVoice.removeAll { $0.guildId == guildId }
         joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
         scheduleDiscordCacheSave()
@@ -1454,7 +1669,7 @@ final class AppModel: ObservableObject {
         return "status=\(statusCode), error=\(error.localizedDescription), response=\(bodySnippet)"
     }
 
-    private func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) {
+    private func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {
         guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
 
         activeVoice.removeAll { $0.guildId == guildId }
@@ -1467,7 +1682,7 @@ final class AppModel: ObservableObject {
                   case let .string(channelId)? = stateMap["channel_id"]
             else { continue }
 
-            let username = voiceDisplayName(from: stateMap, userId: userId)
+            let username = await voiceDisplayName(from: stateMap, userId: userId)
             let key = "\(guildId)-\(userId)"
             let joinedAt = now
             joinTimes[key] = joinedAt
@@ -1486,7 +1701,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func cacheGuildMembers(from guildMap: [String: DiscordJSON]) {
+    private func cacheGuildMembers(from guildMap: [String: DiscordJSON]) async {
         guard case let .array(members)? = guildMap["members"] else { return }
 
         for member in members {
@@ -1494,7 +1709,7 @@ final class AppModel: ObservableObject {
             if case let .string(nick)? = memberMap["nick"], !nick.isEmpty,
                case let .object(user)? = memberMap["user"],
                case let .string(userId)? = user["id"] {
-                cacheUsername(userId: userId, username: nick)
+                await discordCache.upsertUser(id: userId, preferredName: nick)
                 continue
             }
 
@@ -1502,49 +1717,29 @@ final class AppModel: ObservableObject {
                   case let .string(userId)? = user["id"] else { continue }
 
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                cacheUsername(userId: userId, username: globalName)
+                await discordCache.upsertUser(id: userId, preferredName: globalName)
             } else if case let .string(username)? = user["username"], !username.isEmpty {
-                cacheUsername(userId: userId, username: username)
+                await discordCache.upsertUser(id: userId, preferredName: username)
             }
         }
     }
 
-    private func cacheUsername(userId: String, username: String) {
-        let cleaned = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        if usernamesById[userId] == cleaned { return }
-        usernamesById[userId] = cleaned
-        knownUsersById = usernamesById
-        scheduleDiscordCacheSave()
-    }
-
-    private func applyDiscordCacheSnapshot(_ snapshot: DiscordCacheSnapshot) {
+    private func syncPublishedDiscordCacheFromService() async {
+        let snapshot = await discordCache.currentSnapshot()
         connectedServers = snapshot.connectedServers
         availableVoiceChannelsByServer = snapshot.availableVoiceChannelsByServer
         availableTextChannelsByServer = snapshot.availableTextChannelsByServer
         availableRolesByServer = snapshot.availableRolesByServer
-        usernamesById = snapshot.usernamesById
         knownUsersById = snapshot.usernamesById
     }
 
-    private func buildDiscordCacheSnapshot() -> DiscordCacheSnapshot {
-        DiscordCacheSnapshot(
-            updatedAt: Date(),
-            connectedServers: connectedServers,
-            availableVoiceChannelsByServer: availableVoiceChannelsByServer,
-            availableTextChannelsByServer: availableTextChannelsByServer,
-            availableRolesByServer: availableRolesByServer,
-            usernamesById: usernamesById
-        )
-    }
-
     private func scheduleDiscordCacheSave() {
-        let snapshot = buildDiscordCacheSnapshot()
         discordCacheSaveTask?.cancel()
         discordCacheSaveTask = Task {
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard !Task.isCancelled else { return }
             do {
+                let snapshot = await self.discordCache.currentSnapshot()
                 try await discordCacheStore.save(snapshot)
             } catch {
                 await MainActor.run {
@@ -1616,5 +1811,108 @@ final class AppModel: ObservableObject {
         let m = interval / 60
         let s = interval % 60
         return "\(m)m \(s)s"
+    }
+}
+
+@MainActor
+final class MemoryViewModel: ObservableObject {
+    @Published private(set) var summaries: [MemorySummary] = []
+    @Published private(set) var scopeDisplayNames: [MemoryScope: String] = [:]
+
+    private let store: ConversationStore
+    private let discordCache: DiscordCache
+    private var storeUpdatesTask: Task<Void, Never>?
+    private var cacheUpdatesTask: Task<Void, Never>?
+
+    init(store: ConversationStore, discordCache: DiscordCache) {
+        self.store = store
+        self.discordCache = discordCache
+
+        storeUpdatesTask = Task { [weak self] in
+            guard let self else { return }
+            await self.reloadSummaries()
+            let updates = await store.updates
+            for await _ in updates {
+                if Task.isCancelled { break }
+                await self.reloadSummaries()
+            }
+        }
+
+        cacheUpdatesTask = Task { [weak self] in
+            guard let self else { return }
+            let updates = await discordCache.updates
+            for await _ in updates {
+                if Task.isCancelled { break }
+                await self.refreshDisplayNames()
+            }
+        }
+    }
+
+    deinit {
+        storeUpdatesTask?.cancel()
+        cacheUpdatesTask?.cancel()
+    }
+
+    var totalMessages: Int {
+        summaries.reduce(0) { $0 + $1.messageCount }
+    }
+
+    func clearAll() {
+        Task { await store.clearAll() }
+    }
+
+    func clear(scope: MemoryScope) {
+        Task { await store.clear(scope: scope) }
+    }
+
+    func clear(channelID: String) {
+        clear(scope: .guildTextChannel(channelID))
+    }
+
+    func displayName(for summary: MemorySummary) -> String {
+        if let cached = scopeDisplayNames[summary.scope], !cached.isEmpty {
+            return cached
+        }
+        return fallbackTitle(for: summary.scope)
+    }
+
+    private func reloadSummaries() async {
+        summaries = await store.summaries()
+        await refreshDisplayNames()
+    }
+
+    private func refreshDisplayNames() async {
+        let current = summaries
+        var updated: [MemoryScope: String] = [:]
+        for summary in current {
+            updated[summary.scope] = await resolvedTitle(for: summary.scope)
+        }
+        scopeDisplayNames = updated
+    }
+
+    private func resolvedTitle(for scope: MemoryScope) async -> String {
+        switch scope.type {
+        case .guildTextChannel:
+            if let channelName = await discordCache.channelName(for: scope.id),
+               !channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "#\(channelName)"
+            }
+            return fallbackTitle(for: scope)
+        case .directMessageUser:
+            if let userName = await discordCache.userName(for: scope.id),
+               !userName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "DM: \(userName)"
+            }
+            return fallbackTitle(for: scope)
+        }
+    }
+
+    private func fallbackTitle(for scope: MemoryScope) -> String {
+        switch scope.type {
+        case .guildTextChannel:
+            return "Channel \(scope.id)"
+        case .directMessageUser:
+            return "DM User \(scope.id.suffix(4))"
+        }
     }
 }

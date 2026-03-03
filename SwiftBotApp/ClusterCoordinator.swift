@@ -2,7 +2,7 @@ import Foundation
 import Network
 
 actor ClusterCoordinator {
-    typealias AIHandler = @Sendable (String, String) async -> String?
+    typealias AIHandler = @Sendable ([Message]) async -> String?
     typealias WikiHandler = @Sendable (String) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
 
@@ -106,8 +106,8 @@ actor ClusterCoordinator {
         await publishSnapshot()
     }
 
-    func generateAIReply(message: String, username: String) async -> String? {
-        let job = AIJobRequest(message: message, username: username)
+    func generateAIReply(messages: [Message]) async -> String? {
+        let job = AIJobRequest(messages: messages)
         if mode == .leader, let remote = await performRemoteAI(job) {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "AI reply via worker"
@@ -116,7 +116,7 @@ actor ClusterCoordinator {
             return remote.reply
         }
 
-        let local = await aiHandler?(message, username)
+        let local = await aiHandler?(messages)
         snapshot.lastJobRoute = local == nil ? .unavailable : .local
         snapshot.lastJobSummary = local == nil ? "AI reply unavailable" : "AI reply local"
         snapshot.lastJobNode = nodeName
@@ -345,7 +345,7 @@ actor ClusterCoordinator {
         case ("POST", "/v1/ai-reply"):
             guard let aiHandler,
                   let body = try? decoder.decode(AIJobRequest.self, from: request.body),
-                  let reply = await aiHandler(body.message, body.username) else {
+                  let reply = await aiHandler(body.messages) else {
                 await recordJobLog(
                     user: "Remote AI",
                     server: "Cluster",
@@ -359,10 +359,11 @@ actor ClusterCoordinator {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "Served remote AI reply"
             snapshot.lastJobNode = nodeName
-            snapshot.diagnostics = "Handled remote AI reply for \(body.username) on \(nodeName)"
+            let requestUser = body.messages.last(where: { $0.role == .user })?.username ?? "Unknown"
+            snapshot.diagnostics = "Handled remote AI reply for \(requestUser) on \(nodeName)"
             await publishSnapshot()
             await recordJobLog(
-                user: body.username,
+                user: requestUser,
                 server: "Remote AI",
                 command: "AI reply",
                 channel: "worker",
@@ -541,8 +542,7 @@ private struct HTTPRequest {
 }
 
 private struct AIJobRequest: Codable {
-    let message: String
-    let username: String
+    let messages: [Message]
 }
 
 private struct AIJobResponse: Codable {
