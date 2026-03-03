@@ -1,41 +1,69 @@
 import Foundation
 
-import Foundation
+public struct AMDService: Sendable {
+    public struct DriverInfo: Sendable {
+        public let releaseNotes: ReleaseNotes
+        public let embedJSON: String
+        public let rawDebug: String
+        public let releaseIdentifier: String
 
-struct AMDService {
-    struct DriverInfo {
-        let releaseNotes: ReleaseNotes
-        let embedJSON: String
-        let rawDebug: String
+        public init(
+            releaseNotes: ReleaseNotes,
+            embedJSON: String,
+            rawDebug: String,
+            releaseIdentifier: String
+        ) {
+            self.releaseNotes = releaseNotes
+            self.embedJSON = embedJSON
+            self.rawDebug = rawDebug
+            self.releaseIdentifier = releaseIdentifier
+        }
     }
 
-    private let sitemapURL = URL(string: "https://www.amd.com/en.sitemap.xml")!
-    private let userAgent = "Mozilla/5.0 (UpdateEngine)"
-    private let formatter = EmbedFormatter()
+    private let session: URLSession
+    private let sitemapURL: URL
+    private let userAgent: String
+    private let formatter: EmbedFormatter
 
-    func fetchLatestDriver() async throws -> DriverInfo {
+    public init(
+        session: URLSession = .shared,
+        sitemapURL: URL = URL(string: "https://www.amd.com/en.sitemap.xml")!,
+        userAgent: String = "Mozilla/5.0 (UpdateEngine)",
+        formatter: EmbedFormatter = EmbedFormatter()
+    ) {
+        self.session = session
+        self.sitemapURL = sitemapURL
+        self.userAgent = userAgent
+        self.formatter = formatter
+    }
+
+    public func fetchLatestDriver() async throws -> DriverInfo {
         let sitemapRequest = makeRequest(url: sitemapURL)
-        let (sitemapData, _) = try await URLSession.shared.data(for: sitemapRequest)
-        let rawSitemap = String(data: sitemapData, encoding: .utf8) ?? ""
+        let (sitemapData, sitemapResponse) = try await session.data(for: sitemapRequest)
+        try validateHTTP(sitemapResponse)
 
+        let rawSitemap = String(data: sitemapData, encoding: .utf8) ?? ""
         let entries = parseSitemapEntries(from: rawSitemap)
+
         guard let latestEntry = entries.max(by: { $0.lastModified < $1.lastModified }) else {
             throw AMDServiceError.noReleaseNotesFound
         }
 
         let releaseRequest = makeRequest(url: latestEntry.url)
-        let (releaseData, _) = try await URLSession.shared.data(for: releaseRequest)
+        let (releaseData, releaseResponse) = try await session.data(for: releaseRequest)
+        try validateHTTP(releaseResponse)
+
         let rawReleaseHTML = String(data: releaseData, encoding: .utf8) ?? ""
 
         let detectedVersion = firstCapture(
             pattern: #"Adrenalin Edition\s*([0-9]+(?:\.[0-9]+)+)\s*Release Notes"#,
             in: rawReleaseHTML
         )
+
         let version = detectedVersion ?? latestEntry.version.replacingOccurrences(of: "-", with: ".")
         let releaseDate = extractReleaseDate(from: rawReleaseHTML, fallback: latestEntry.lastModified)
         let sections = parseStructuredSections(from: rawReleaseHTML)
 
-        // Build ReleaseNotes model
         let releaseNotes = ReleaseNotes(
             title: "AMD Software: Adrenalin Edition \(version) Release Notes",
             author: "AMD Radeon Drivers",
@@ -46,10 +74,7 @@ struct AMDService {
             thumbnailURL: "https://cdn.patchbot.io/games/140/amd-gpu-drivers_sm.webp",
             color: 16711680
         )
-        
-        // Format using unified formatter
-        let embedJSON = formatter.format(releaseNotes: releaseNotes)
-        
+
         let debugRaw = """
         AMD sitemap XML:
         \(rawSitemap)
@@ -60,8 +85,9 @@ struct AMDService {
 
         return DriverInfo(
             releaseNotes: releaseNotes,
-            embedJSON: embedJSON,
-            rawDebug: debugRaw
+            embedJSON: formatter.format(releaseNotes: releaseNotes),
+            rawDebug: debugRaw,
+            releaseIdentifier: latestEntry.url.absoluteString
         )
     }
 
@@ -74,12 +100,12 @@ struct AMDService {
 
     private func parseSitemapEntries(from xml: String) -> [SitemapEntry] {
         let pattern = #"(?is)<url>\s*<loc>(https://www\.amd\.com/en/resources/support-articles/release-notes/RN-RAD-WIN-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})\.html)</loc>\s*<lastmod>([^<]+)</lastmod>\s*</url>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return []
         }
 
         let xmlRange = NSRange(xml.startIndex..<xml.endIndex, in: xml)
-        let matches = regex.matches(in: xml, options: [], range: xmlRange)
+        let matches = regex.matches(in: xml, range: xmlRange)
 
         return matches.compactMap { match in
             guard
@@ -101,12 +127,12 @@ struct AMDService {
     }
 
     private func extractReleaseDate(from html: String, fallback: Date) -> String {
-        if let published = firstCapture(pattern: #""datePublished"\s*:\s*"([^"]+)""#, in: html),
+        if let published = firstCapture(pattern: #"\"datePublished\"\s*:\s*\"([^\"]+)\""#, in: html),
            let parsed = parseISODate(published) {
             return formatDate(parsed)
         }
 
-        if let updated = firstCapture(pattern: #"(?is)<meta\s+property="og:updated_time"\s+content="([^"]+)""#, in: html),
+        if let updated = firstCapture(pattern: #"(?is)<meta\s+property=\"og:updated_time\"\s+content=\"([^\"]+)\""#, in: html),
            let parsed = parseDateWithZoneOffset(updated) {
             return formatDate(parsed)
         }
@@ -115,9 +141,6 @@ struct AMDService {
     }
 
     private func parseStructuredSections(from html: String) -> [ReleaseSection] {
-        var sections: [ReleaseSection] = []
-        
-        // Section headers to look for
         let sectionHeaders = [
             "Highlights",
             "New Game Support",
@@ -125,57 +148,48 @@ struct AMDService {
             "Known Issues",
             "Improvements"
         ]
-        
-        for header in sectionHeaders {
-            if let section = extractSection(header: header, from: html) {
-                sections.append(section)
-            }
-        }
-        
-        return sections
+
+        return sectionHeaders.compactMap { extractSection(header: $0, from: html) }
     }
-    
+
     private func extractSection(header: String, from html: String) -> ReleaseSection? {
-        // Pattern to capture section content between h2 headers
-        let sectionPattern = #"(?is)<h2><a id="\#(header.replacingOccurrences(of: " ", with: "_"))"></a>\#(header)</h2>(.*?)(?:<h2>|$)"#
-        
+        let anchor = header.replacingOccurrences(of: " ", with: "_")
+        let sectionPattern = #"(?is)<h2><a id="# + anchor + #""></a>"# + header + #"</h2>(.*?)(?:<h2>|$)"#
+
         guard let sectionContent = firstCapture(pattern: sectionPattern, in: html) else {
             return nil
         }
-        
-        // Parse bullets with hierarchy
+
         let bullets = parseBulletsWithHierarchy(from: sectionContent)
-        
-        if bullets.isEmpty {
+        guard !bullets.isEmpty else {
             return nil
         }
-        
+
         return ReleaseSection(title: header, bullets: bullets)
     }
-    
+
     private func parseBulletsWithHierarchy(from html: String) -> [Bullet] {
         var bullets: [Bullet] = []
-        
-        // Pattern for main list items with optional nested lists
-        let mainBulletPattern = #"(?is)<li>\s*(?:<b>)?([^<]+)(?:</b>)?\s*(?:<ul>(.*?)</ul>)?\s*</li>"#
-        
-        guard let regex = try? NSRegularExpression(pattern: mainBulletPattern, options: []) else {
+        let mainPattern = #"(?is)<li>\s*(?:<b>)?([^<]+)(?:</b>)?\s*(?:<ul>(.*?)</ul>)?\s*</li>"#
+
+        guard let regex = try? NSRegularExpression(pattern: mainPattern) else {
             return []
         }
-        
+
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = regex.matches(in: html, options: [], range: range)
-        
+        let matches = regex.matches(in: html, range: range)
+
         for match in matches {
-            guard match.numberOfRanges > 1,
-                  let textRange = Range(match.range(at: 1), in: html) else {
+            guard
+                match.numberOfRanges > 1,
+                let textRange = Range(match.range(at: 1), in: html)
+            else {
                 continue
             }
-            
+
             let mainText = cleanHTML(String(html[textRange]))
-            
-            // Extract sub-bullets if present
             var subBullets: [String] = []
+
             if match.numberOfRanges > 2,
                let nestedRange = Range(match.range(at: 2), in: html) {
                 let nestedHTML = String(html[nestedRange])
@@ -183,18 +197,18 @@ struct AMDService {
                     .map(cleanHTML)
                     .filter { !$0.isEmpty }
             }
-            
+
             if !mainText.isEmpty {
                 bullets.append(Bullet(text: mainText, subBullets: subBullets))
             }
         }
-        
+
         return bullets
     }
-    
+
     private func fallbackSection(from html: String) -> ReleaseSection {
         if let description = firstCapture(
-            pattern: #"(?is)<meta\s+property="og:description"\s+content="([^"]+)""#,
+            pattern: #"(?is)<meta\s+property=\"og:description\"\s+content=\"([^\"]+)\""#,
             in: html
         ) {
             let clean = cleanHTML(description)
@@ -205,7 +219,7 @@ struct AMDService {
                 )
             }
         }
-        
+
         return ReleaseSection(
             title: "Release Information",
             bullets: [Bullet(text: "No release notes available.")]
@@ -218,12 +232,10 @@ struct AMDService {
         if let date = withFractional.date(from: value) {
             return date
         }
+
         let regular = ISO8601DateFormatter()
         regular.formatOptions = [.withInternetDateTime]
-        if let date = regular.date(from: value) {
-            return date
-        }
-        return nil
+        return regular.date(from: value)
     }
 
     private func parseDateWithZoneOffset(_ value: String) -> Date? {
@@ -241,29 +253,36 @@ struct AMDService {
     }
 
     private func firstCapture(pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return nil
         }
+
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard
-            let match = regex.firstMatch(in: text, options: [], range: range),
+            let match = regex.firstMatch(in: text, range: range),
             match.numberOfRanges > 1,
             let captureRange = Range(match.range(at: 1), in: text)
         else {
             return nil
         }
+
         return String(text[captureRange])
     }
 
     private func allCaptures(pattern: String, in text: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return []
         }
+
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return regex.matches(in: text, options: [], range: range).compactMap { match in
-            guard match.numberOfRanges > 1, let captureRange = Range(match.range(at: 1), in: text) else {
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard
+                match.numberOfRanges > 1,
+                let captureRange = Range(match.range(at: 1), in: text)
+            else {
                 return nil
             }
+
             return String(text[captureRange])
         }
     }
@@ -276,17 +295,32 @@ struct AMDService {
     }
 
     private func decodeHTMLEntities(_ text: String) -> String {
-        guard let data = text.data(using: .utf8) else {
-            return text
-        }
-        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.html,
-            .characterEncoding: String.Encoding.utf8.rawValue
+        var output = text
+        let entities: [(String, String)] = [
+            ("&nbsp;", " "),
+            ("&amp;", "&"),
+            ("&quot;", "\""),
+            ("&#39;", "'"),
+            ("&apos;", "'"),
+            ("&lt;", "<"),
+            ("&gt;", ">")
         ]
-        guard let attributed = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
-            return text
+
+        for (entity, value) in entities {
+            output = output.replacingOccurrences(of: entity, with: value)
         }
-        return attributed.string
+
+        return output
+    }
+
+    private func validateHTTP(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw AMDServiceError.invalidResponse
+        }
+
+        guard (200...299).contains(http.statusCode) else {
+            throw AMDServiceError.httpError(statusCode: http.statusCode)
+        }
     }
 }
 
@@ -296,11 +330,17 @@ private struct SitemapEntry {
     let lastModified: Date
 }
 
-private enum AMDServiceError: LocalizedError {
+public enum AMDServiceError: LocalizedError, Sendable {
+    case invalidResponse
+    case httpError(statusCode: Int)
     case noReleaseNotesFound
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
+        case .invalidResponse:
+            return "AMD endpoint returned an invalid response object."
+        case .httpError(let statusCode):
+            return "AMD endpoint request failed with HTTP \(statusCode)."
         case .noReleaseNotesFound:
             return "No AMD Radeon Adrenalin release notes were found."
         }

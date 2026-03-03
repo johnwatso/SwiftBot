@@ -10,6 +10,25 @@ This file provides quick answers to common questions and tasks for AI assistants
 - **Models:** Split between `Models.swift` (system) and `RootView.swift` (UI-specific)
 - **Discord API:** `DiscordService.swift` (actor)
 - **Storage:** JSON files in `~/Library/Application Support/SwiftBot/`
+- **UpdateEngine Module:** Standalone Swift Package in `Sources/UpdateEngine`, not wired into `SwiftBotApp` runtime yet
+
+## UpdateEngine (Standalone, Not Integrated)
+
+- **Purpose:** Prototype update detection infrastructure that is vendor-agnostic and reusable across future sources (GPU vendors, Steam, and other feeds).
+- **Status:** Not integrated into SwiftBot runtime. Do not wire it into bot startup, runtime polling, or existing command/event flow.
+- **Current core abstractions:**
+  - `UpdateSource` protocol (`sourceKey`, `fetchLatest()`)
+  - `UpdateItem` protocol (`sourceKey`, `identifier`, `version`)
+  - `VersionStore` protocol with async `JSONVersionStore` and `InMemoryVersionStore`
+  - `UpdateChecker` actor + `CacheKeyBuilder` for identifier-based checks and scoped keys (global or per-guild)
+- **Intended future integration path:**
+  1. Runtime polling layer fetches updates from configured sources.
+  2. Runtime composes per-guild cache keys and checks identifiers independently per guild.
+  3. Notifications are sent only after successful delivery, then cache is committed.
+- **Architecture direction to preserve:**
+  - Keep UpdateEngine vendor/source agnostic.
+  - Keep source fetching, change detection, and delivery transport separate.
+  - Keep identifier-based caching as the primary change detector (not version-string-only comparison).
 
 ## Common Tasks
 
