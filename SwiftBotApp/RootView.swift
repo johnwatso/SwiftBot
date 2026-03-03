@@ -16,10 +16,11 @@ struct RootView: View {
                 case .patchy: PatchyView()
                 case .voice: VoiceView()
                 case .commands: CommandsView()
+                case .wikiBridge: WikiBridgeView()
                 case .logs: LogsView()
                 case .settings: SettingsView(showToken: $showToken)
                 case .aiBots: AIBotsView()
-                case .status: StatusView()
+                case .diagnostics: DiagnosticsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -123,18 +124,22 @@ struct DashboardSidebar: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    SidebarSection(title: "Main") {
+                    SidebarSection(title: "Dashboard") {
                         SidebarRow(item: .overview, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .patchy, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .voice, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace, count: app.activeVoice.count)
-                        SidebarRow(item: .commands, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
 
-                    SidebarSection(title: "Config") {
-                        SidebarRow(item: .settings, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                    SidebarSection(title: "Automation") {
+                        SidebarRow(item: .commands, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .voice, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace, count: app.activeVoice.count)
+                        SidebarRow(item: .patchy, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .wikiBridge, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                    }
+
+                    SidebarSection(title: "System") {
                         SidebarRow(item: .aiBots, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .status, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .settings, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .diagnostics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -256,9 +261,9 @@ struct SidebarSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
                 .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -273,10 +278,11 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case patchy = "Patchy"
     case voice = "Actions"
     case commands = "Commands"
+    case wikiBridge = "WikiBridge"
     case logs = "Logs"
     case settings = "Settings"
     case aiBots = "AI Bots"
-    case status = "Status"
+    case diagnostics = "Diagnostics"
 
     var id: String { rawValue }
 
@@ -286,10 +292,11 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .patchy: return "shippingbox.fill"
         case .voice: return "point.3.filled.connected.trianglepath.dotted"
         case .commands: return "terminal.fill"
+        case .wikiBridge: return "book.pages.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .settings: return "gearshape.2.fill"
         case .aiBots: return "sparkles.rectangle.stack.fill"
-        case .status: return "waveform.path.ecg"
+        case .diagnostics: return "waveform.path.ecg"
         }
     }
 }
@@ -1531,88 +1538,6 @@ struct LogsView: View {
     }
 }
 
-struct StatusView: View {
-    @EnvironmentObject var app: AppModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Status")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-
-                RuleGroupSection(title: "Gateway", systemImage: "network") {
-                    InfoRow(label: "Connection", value: app.status.rawValue.capitalized)
-                    InfoRow(label: "Total Events", value: "\(app.gatewayEventCount)")
-                    InfoRow(label: "Last Event", value: app.lastGatewayEventName)
-                    InfoRow(label: "READY Events", value: "\(app.readyEventCount)")
-                    InfoRow(label: "GUILD_CREATE Events", value: "\(app.guildCreateEventCount)")
-                    InfoRow(label: "Servers", value: "\(app.connectedServers.count)")
-                }
-
-                RuleGroupSection(title: "Cluster", systemImage: "point.3.connected.trianglepath.dotted") {
-                    InfoRow(label: "Mode", value: app.clusterSnapshot.mode.rawValue)
-                    InfoRow(label: "Node", value: app.clusterSnapshot.nodeName)
-                    InfoRow(label: "Worker URL", value: app.clusterSnapshot.workerBaseURL.isEmpty ? "-" : app.clusterSnapshot.workerBaseURL)
-                    InfoRow(label: "Listen Port", value: "\(app.clusterSnapshot.listenPort)")
-                    InfoRow(label: "Server", value: app.clusterSnapshot.serverStatusText)
-                    InfoRow(label: "Worker", value: app.clusterSnapshot.workerStatusText)
-                    InfoRow(label: "Last Job Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized)
-                    InfoRow(label: "Last Job", value: app.clusterSnapshot.lastJobSummary)
-                    InfoRow(label: "Last Job Node", value: app.clusterSnapshot.lastJobNode)
-
-                    HStack {
-                        Button("Refresh") {
-                            app.refreshClusterStatus()
-                        }
-                        .buttonStyle(.bordered)
-
-                        if app.clusterSnapshot.mode == .worker {
-                            Button("Copy Local Worker URL") {
-                                let localURL = "http://\(app.clusterSnapshot.nodeName):\(app.clusterSnapshot.listenPort)"
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(localURL, forType: .string)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-
-                RuleGroupSection(title: "Cluster Diagnostics", systemImage: "stethoscope") {
-                    Text(app.clusterSnapshot.diagnostics)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                RuleGroupSection(title: "Voice", systemImage: "person.3.sequence") {
-                    InfoRow(label: "Voice State Events", value: "\(app.voiceStateEventCount)")
-                    InfoRow(label: "Active Voice Users", value: "\(app.activeVoice.count)")
-                    InfoRow(label: "Last Voice Event", value: app.lastVoiceStateSummary)
-                    InfoRow(label: "Last Voice Timestamp", value: app.lastVoiceStateAt?.formatted(date: .omitted, time: .standard) ?? "-")
-
-                    if app.activeVoice.isEmpty {
-                        Text("No active voice users currently tracked.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(app.activeVoice.prefix(20)) { member in
-                            PanelLine(
-                                title: "\(member.username) in \(member.channelName)",
-                                subtitle: "Server: \(app.connectedServers[member.guildId] ?? member.guildId)",
-                                tone: .blue
-                            )
-                        }
-                    }
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: 860)
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
-
 struct SettingsView: View {
     @EnvironmentObject var app: AppModel
     @EnvironmentObject var updater: AppUpdater
@@ -2340,7 +2265,7 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .white.opacity(0.18)) -> some View {
         modifier(SwiftBotGlassCardModifier(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
     }

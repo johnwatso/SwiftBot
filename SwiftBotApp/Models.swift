@@ -163,6 +163,7 @@ struct BotSettings: Codable, Hashable {
     var ollamaBaseURL: String = "http://localhost:11434"
     var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
     var behavior = BotBehaviorSettings()
+    var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
 
     private enum CodingKeys: String, CodingKey {
@@ -182,6 +183,7 @@ struct BotSettings: Codable, Hashable {
         case ollamaBaseURL
         case localAISystemPrompt
         case behavior
+        case wikiBot
         case patchy
     }
 
@@ -205,6 +207,7 @@ struct BotSettings: Codable, Hashable {
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly Discord assistant. Reply briefly and naturally."
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
+        wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
     }
 }
@@ -212,6 +215,14 @@ struct BotSettings: Codable, Hashable {
 struct BotBehaviorSettings: Codable, Hashable {
     var allowDMs: Bool = false
     var useAIInGuildChannels: Bool = true
+}
+
+struct WikiBotSettings: Codable, Hashable {
+    var isEnabled: Bool = true
+    var allowFinalsCommand: Bool = true
+    var allowWikiAlias: Bool = true
+    var allowWeaponCommand: Bool = true
+    var includeWeaponStats: Bool = true
 }
 
 enum AIProvider: String, Codable, CaseIterable, Identifiable {

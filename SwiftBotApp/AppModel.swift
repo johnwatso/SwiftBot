@@ -803,6 +803,18 @@ final class AppModel: ObservableObject {
         case "userinfo":
             return await send(channelId, "👤 User: \(username)")
         case "finals", "wiki", "weapon":
+            guard settings.wikiBot.isEnabled else {
+                return await send(channelId, "📘 Wiki Bot is disabled. Enable it from the Wiki Bot page.")
+            }
+            if command == "finals", !settings.wikiBot.allowFinalsCommand {
+                return await send(channelId, "📘 The \(prefix)finals command is disabled.")
+            }
+            if command == "wiki", !settings.wikiBot.allowWikiAlias {
+                return await send(channelId, "📘 The \(prefix)wiki alias is disabled.")
+            }
+            if command == "weapon", !settings.wikiBot.allowWeaponCommand {
+                return await send(channelId, "📘 The \(prefix)weapon command is disabled.")
+            }
             let query = tokens.dropFirst().joined(separator: " ")
             return await finalsWikiLookup(query: query, channelId: channelId)
         case "cluster", "worker":
@@ -1160,7 +1172,7 @@ final class AppModel: ObservableObject {
         }
 
         let body: String
-        if let weaponStats = result.weaponStats {
+        if settings.wikiBot.includeWeaponStats, let weaponStats = result.weaponStats {
             body = formattedWeaponStats(result: result, stats: weaponStats)
         } else {
             let summary = summarizedWikiExtract(result.extract)
