@@ -1782,21 +1782,7 @@ struct SettingsView: View {
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
-    @State private var promptEditorHeight: CGFloat = 108
-
-    private var appleIntelligenceImage: NSImage? {
-        guard let imageURL = Bundle.main.url(forResource: "AIAppleLogo", withExtension: "png") else {
-            return nil
-        }
-        return NSImage(contentsOf: imageURL)
-    }
-
-    private var ollamaImage: NSImage? {
-        guard let imageURL = Bundle.main.url(forResource: "AIOllamaLogo", withExtension: "png") else {
-            return nil
-        }
-        return NSImage(contentsOf: imageURL)
-    }
+    @FocusState private var systemPromptFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -1805,6 +1791,7 @@ struct AIBotsView: View {
                     .font(.system(size: 30, weight: .bold, design: .rounded))
 
                 overviewCard
+                MemoryOverviewView(viewModel: app.memoryViewModel)
                 configurationCard
             }
             .padding(20)
@@ -1833,7 +1820,7 @@ struct AIBotsView: View {
                 .font(.title3.weight(.semibold))
 
             HStack(alignment: .top, spacing: 12) {
-                providerIcon(image: appleIntelligenceImage, fallbackSystemImage: "apple.intelligence")
+                providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Apple Intelligence")
                         .font(.headline.weight(.semibold))
@@ -1848,7 +1835,7 @@ struct AIBotsView: View {
             Divider()
 
             HStack(alignment: .top, spacing: 12) {
-                providerIcon(image: ollamaImage, fallbackSystemImage: "server.rack")
+                providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Ollama")
                         .font(.headline)
@@ -1886,6 +1873,16 @@ struct AIBotsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
+                Text("Bot Behavior")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Toggle("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
+                    .toggleStyle(.switch)
+                Toggle("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
+                    .toggleStyle(.switch)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Primary AI Engine")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1900,12 +1897,10 @@ struct AIBotsView: View {
 
             if app.settings.preferredAIProvider == .ollama {
                 HStack(spacing: 10) {
-                    TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
-                        .textFieldStyle(.roundedBorder)
+                    materialTextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
                         .frame(maxWidth: 340)
 
-                    TextField("Model", text: $app.settings.localAIModel)
-                        .textFieldStyle(.roundedBorder)
+                    materialTextField("Model", text: $app.settings.localAIModel)
                         .frame(maxWidth: 260)
 
                     Button("Auto Detect Model") {
@@ -1918,32 +1913,7 @@ struct AIBotsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("System Prompt")
                     .font(.caption.weight(.medium))
-                TextEditor(text: $app.settings.localAISystemPrompt)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(height: promptEditorHeight)
-                    .padding(8)
-                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                    )
-                    .disabled(!app.settings.localAIDMReplyEnabled)
-                    .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.5)
-                HStack {
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.trailing, 8)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { value in
-                            let next = promptEditorHeight + value.translation.height
-                            promptEditorHeight = min(max(next, 92), 240)
-                        }
-                )
+                systemPromptEditor
             }
 
             HStack {
@@ -1959,10 +1929,10 @@ struct AIBotsView: View {
     }
 
     @ViewBuilder
-    private func providerIcon(image: NSImage?, fallbackSystemImage: String) -> some View {
+    private func providerIcon(imageName: String, fallbackSystemImage: String) -> some View {
         AIIconContainer {
-            if let image {
-                Image(nsImage: image)
+            if Bundle.main.url(forResource: imageName, withExtension: "png") != nil {
+                Image(imageName)
                     .resizable()
                     .renderingMode(.original)
                     .scaledToFit()
@@ -1974,6 +1944,55 @@ struct AIBotsView: View {
                     .padding(10)
             }
         }
+    }
+
+    private var systemPromptEditor: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.regularMaterial)
+
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.separator.opacity(systemPromptFocused ? 0.55 : 0.34), lineWidth: 1)
+
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .padding(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(.quaternary.opacity(systemPromptFocused ? 0.82 : 0.56), lineWidth: 1)
+                        .padding(6)
+                )
+
+            TextEditor(text: $app.settings.localAISystemPrompt)
+                .font(.system(.body, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.hidden)
+                .background(Color.clear)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .focused($systemPromptFocused)
+                .disabled(!app.settings.localAIDMReplyEnabled)
+                .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.55)
+        }
+        .frame(minHeight: 148, idealHeight: 172, maxHeight: 220)
+        .shadow(color: .black.opacity(systemPromptFocused ? 0.20 : 0.09), radius: systemPromptFocused ? 18 : 10, x: 0, y: systemPromptFocused ? 9 : 4)
+        .shadow(color: Color.accentColor.opacity(systemPromptFocused ? 0.16 : 0), radius: systemPromptFocused ? 14 : 0, x: 0, y: 0)
+        .animation(.easeInOut(duration: 0.20), value: systemPromptFocused)
+    }
+
+    private func materialTextField(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(.quaternary.opacity(0.56), lineWidth: 1)
+                    )
+            )
     }
 
     private func statusRow(isOnline: Bool) -> some View {
@@ -2005,6 +2024,55 @@ struct AIBotsView: View {
         if app.settings.localAIProvider != mapped {
             app.settings.localAIProvider = mapped
         }
+    }
+}
+
+struct MemoryOverviewView: View {
+    @ObservedObject var viewModel: MemoryViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                Text("Conversation Memory")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Text("\(viewModel.totalMessages) messages")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Button("Clear All") {
+                    viewModel.clearAll()
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.summaries.isEmpty)
+            }
+
+            if viewModel.summaries.isEmpty {
+                Text("No channel memory yet. Messages will appear here as conversations are processed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.summaries.prefix(10)) { summary in
+                    HStack(spacing: 12) {
+                        Text(viewModel.displayName(for: summary))
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Text("\(summary.messageCount)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Button("Clear") {
+                            viewModel.clear(scope: summary.scope)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(20)
+        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 }
 

@@ -162,7 +162,56 @@ struct BotSettings: Codable, Hashable {
     var localAIModel: String = "local-model"
     var ollamaBaseURL: String = "http://localhost:11434"
     var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
+    var behavior = BotBehaviorSettings()
     var patchy = PatchySettings()
+
+    private enum CodingKeys: String, CodingKey {
+        case token
+        case prefix
+        case autoStart
+        case guildSettings
+        case clusterMode
+        case clusterNodeName
+        case clusterWorkerBaseURL
+        case clusterListenPort
+        case localAIDMReplyEnabled
+        case localAIProvider
+        case preferredAIProvider
+        case localAIEndpoint
+        case localAIModel
+        case ollamaBaseURL
+        case localAISystemPrompt
+        case behavior
+        case patchy
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
+        prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "!"
+        autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
+        guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
+        clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
+        clusterNodeName = try container.decodeIfPresent(String.self, forKey: .clusterNodeName) ?? (Host.current().localizedName ?? "SwiftBot Node")
+        clusterWorkerBaseURL = try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURL) ?? ""
+        clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
+        localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
+        localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
+        preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
+        localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
+        localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
+        ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
+        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly Discord assistant. Reply briefly and naturally."
+        behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
+        patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+    }
+}
+
+struct BotBehaviorSettings: Codable, Hashable {
+    var allowDMs: Bool = false
+    var useAIInGuildChannels: Bool = true
 }
 
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
@@ -177,6 +226,216 @@ enum AIProviderPreference: String, Codable, CaseIterable, Identifiable {
     case ollama = "Ollama"
 
     var id: String { rawValue }
+}
+
+enum MessageRole: String, Codable, Hashable, Sendable {
+    case user
+    case assistant
+    case system
+}
+
+enum MemoryScopeType: String, Codable, Hashable, Sendable {
+    case guildTextChannel
+    case directMessageUser
+}
+
+struct MemoryScope: Hashable, Codable, Sendable {
+    let id: String
+    let type: MemoryScopeType
+
+    static func guildTextChannel(_ channelID: String) -> MemoryScope {
+        MemoryScope(id: channelID, type: .guildTextChannel)
+    }
+
+    static func directMessageUser(_ userID: String) -> MemoryScope {
+        MemoryScope(id: userID, type: .directMessageUser)
+    }
+}
+
+struct Message: Identifiable, Codable, Hashable, Sendable {
+    let id: String
+    let channelID: String
+    let userID: String
+    let username: String
+    let content: String
+    let timestamp: Date
+    let role: MessageRole
+
+    init(
+        id: String = UUID().uuidString,
+        channelID: String,
+        userID: String,
+        username: String,
+        content: String,
+        timestamp: Date = Date(),
+        role: MessageRole
+    ) {
+        self.id = id
+        self.channelID = channelID
+        self.userID = userID
+        self.username = username
+        self.content = content
+        self.timestamp = timestamp
+        self.role = role
+    }
+}
+
+struct MemorySummary: Identifiable, Hashable, Sendable {
+    let scope: MemoryScope
+    let messageCount: Int
+    let lastMessageAt: Date?
+
+    var id: String { "\(scope.type.rawValue):\(scope.id)" }
+}
+
+struct MemoryRecord: Identifiable, Hashable, Sendable {
+    let id: String
+    let scope: MemoryScope
+    let userID: String
+    let content: String
+    let timestamp: Date
+    let role: MessageRole
+}
+
+actor ConversationStore {
+    private var messagesByScope: [MemoryScope: [MemoryRecord]] = [:]
+    private var updateContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+
+    var updates: AsyncStream<Void> {
+        AsyncStream { continuation in
+            let id = UUID()
+            updateContinuations[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.removeUpdateContinuation(id) }
+            }
+        }
+    }
+
+    func append(_ message: Message) {
+        let scope = MemoryScope.guildTextChannel(message.channelID)
+        let record = MemoryRecord(
+            id: message.id,
+            scope: scope,
+            userID: message.userID,
+            content: message.content,
+            timestamp: message.timestamp,
+            role: message.role
+        )
+        messagesByScope[scope, default: []].append(record)
+        emitUpdate()
+    }
+
+    func append(_ messages: [Message]) {
+        guard !messages.isEmpty else { return }
+        for message in messages {
+            let scope = MemoryScope.guildTextChannel(message.channelID)
+            let record = MemoryRecord(
+                id: message.id,
+                scope: scope,
+                userID: message.userID,
+                content: message.content,
+                timestamp: message.timestamp,
+                role: message.role
+            )
+            messagesByScope[scope, default: []].append(record)
+        }
+        emitUpdate()
+    }
+
+    func append(
+        scope: MemoryScope,
+        messageID: String = UUID().uuidString,
+        userID: String,
+        content: String,
+        timestamp: Date = Date(),
+        role: MessageRole
+    ) {
+        let record = MemoryRecord(
+            id: messageID,
+            scope: scope,
+            userID: userID,
+            content: content,
+            timestamp: timestamp,
+            role: role
+        )
+        messagesByScope[scope, default: []].append(record)
+        emitUpdate()
+    }
+
+    func messages(for scope: MemoryScope) -> [MemoryRecord] {
+        messagesByScope[scope] ?? []
+    }
+
+    func recentMessages(for scope: MemoryScope, limit: Int) -> [MemoryRecord] {
+        guard limit > 0 else { return [] }
+        let scopedMessages = messagesByScope[scope] ?? []
+        return Array(scopedMessages.suffix(limit))
+    }
+
+    func messages(for channelID: String) -> [MemoryRecord] {
+        messages(for: .guildTextChannel(channelID))
+    }
+
+    func recentMessages(for channelID: String, limit: Int) -> [MemoryRecord] {
+        recentMessages(for: .guildTextChannel(channelID), limit: limit)
+    }
+
+    func summaries() -> [MemorySummary] {
+        messagesByScope.map { scope, messages in
+            MemorySummary(
+                scope: scope,
+                messageCount: messages.count,
+                lastMessageAt: messages.last?.timestamp
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.messageCount != rhs.messageCount {
+                return lhs.messageCount > rhs.messageCount
+            }
+            if lhs.lastMessageAt != rhs.lastMessageAt {
+                switch (lhs.lastMessageAt, rhs.lastMessageAt) {
+                case let (left?, right?):
+                    return left > right
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    break
+                }
+            }
+            if lhs.scope.type != rhs.scope.type {
+                return lhs.scope.type.rawValue < rhs.scope.type.rawValue
+            }
+            return lhs.scope.id < rhs.scope.id
+        }
+    }
+
+    func clear(scope: MemoryScope) {
+        guard messagesByScope[scope] != nil else { return }
+        messagesByScope.removeValue(forKey: scope)
+        emitUpdate()
+    }
+
+    func clear(channelID: String) {
+        clear(scope: .guildTextChannel(channelID))
+    }
+
+    func clearAll() {
+        guard !messagesByScope.isEmpty else { return }
+        messagesByScope.removeAll()
+        emitUpdate()
+    }
+
+    private func emitUpdate() {
+        for continuation in updateContinuations.values {
+            continuation.yield(())
+        }
+    }
+
+    private func removeUpdateContinuation(_ id: UUID) {
+        updateContinuations.removeValue(forKey: id)
+    }
 }
 
 enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
@@ -374,6 +633,235 @@ struct DiscordCacheSnapshot: Codable, Hashable {
     var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     var availableRolesByServer: [String: [GuildRole]] = [:]
     var usernamesById: [String: String] = [:]
+    var channelTypesById: [String: Int] = [:]
+
+    private enum CodingKeys: String, CodingKey {
+        case updatedAt
+        case connectedServers
+        case availableVoiceChannelsByServer
+        case availableTextChannelsByServer
+        case availableRolesByServer
+        case usernamesById
+        case channelTypesById
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        connectedServers = try container.decodeIfPresent([String: String].self, forKey: .connectedServers) ?? [:]
+        availableVoiceChannelsByServer = try container.decodeIfPresent([String: [GuildVoiceChannel]].self, forKey: .availableVoiceChannelsByServer) ?? [:]
+        availableTextChannelsByServer = try container.decodeIfPresent([String: [GuildTextChannel]].self, forKey: .availableTextChannelsByServer) ?? [:]
+        availableRolesByServer = try container.decodeIfPresent([String: [GuildRole]].self, forKey: .availableRolesByServer) ?? [:]
+        usernamesById = try container.decodeIfPresent([String: String].self, forKey: .usernamesById) ?? [:]
+        channelTypesById = try container.decodeIfPresent([String: Int].self, forKey: .channelTypesById) ?? [:]
+    }
+}
+
+actor DiscordCache {
+    private var snapshot: DiscordCacheSnapshot
+    private var updateContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+
+    init(snapshot: DiscordCacheSnapshot = DiscordCacheSnapshot()) {
+        self.snapshot = snapshot
+    }
+
+    var updates: AsyncStream<Void> {
+        AsyncStream { continuation in
+            let id = UUID()
+            updateContinuations[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.removeUpdateContinuation(id) }
+            }
+        }
+    }
+
+    func replace(with snapshot: DiscordCacheSnapshot) {
+        self.snapshot = snapshot
+        emitUpdate()
+    }
+
+    func currentSnapshot() -> DiscordCacheSnapshot {
+        var copy = snapshot
+        copy.updatedAt = Date()
+        return copy
+    }
+
+    func guildName(for guildID: String) -> String? {
+        snapshot.connectedServers[guildID]
+    }
+
+    func userName(for userID: String) -> String? {
+        snapshot.usernamesById[userID]
+    }
+
+    func channelName(for channelID: String) -> String? {
+        for channels in snapshot.availableTextChannelsByServer.values {
+            if let channel = channels.first(where: { $0.id == channelID }) {
+                return channel.name
+            }
+        }
+        for channels in snapshot.availableVoiceChannelsByServer.values {
+            if let channel = channels.first(where: { $0.id == channelID }) {
+                return channel.name
+            }
+        }
+        return nil
+    }
+
+    func channelType(for channelID: String) -> Int? {
+        snapshot.channelTypesById[channelID]
+    }
+
+    func setChannelType(channelID: String, type: Int) {
+        snapshot.channelTypesById[channelID] = type
+        emitUpdate()
+    }
+
+    func mergeChannelTypes(_ channelTypes: [String: Int]) {
+        guard !channelTypes.isEmpty else { return }
+        var didChange = false
+        for (channelID, type) in channelTypes {
+            if snapshot.channelTypesById[channelID] != type {
+                snapshot.channelTypesById[channelID] = type
+                didChange = true
+            }
+        }
+        if didChange {
+            emitUpdate()
+        }
+    }
+
+    func allGuildNames() -> [String: String] {
+        snapshot.connectedServers
+    }
+
+    func voiceChannelsByGuild() -> [String: [GuildVoiceChannel]] {
+        snapshot.availableVoiceChannelsByServer
+    }
+
+    func textChannelsByGuild() -> [String: [GuildTextChannel]] {
+        snapshot.availableTextChannelsByServer
+    }
+
+    func rolesByGuild() -> [String: [GuildRole]] {
+        snapshot.availableRolesByServer
+    }
+
+    func allUserNames() -> [String: String] {
+        snapshot.usernamesById
+    }
+
+    func upsertGuild(id guildID: String, name: String?) {
+        let fallback = "Server \(guildID.suffix(4))"
+        let candidate = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        snapshot.connectedServers[guildID] = candidate.isEmpty ? fallback : candidate
+        emitUpdate()
+    }
+
+    func removeGuild(id guildID: String) {
+        let textChannels = snapshot.availableTextChannelsByServer[guildID] ?? []
+        let voiceChannels = snapshot.availableVoiceChannelsByServer[guildID] ?? []
+        for channel in textChannels {
+            snapshot.channelTypesById[channel.id] = nil
+        }
+        for channel in voiceChannels {
+            snapshot.channelTypesById[channel.id] = nil
+        }
+        snapshot.connectedServers[guildID] = nil
+        snapshot.availableVoiceChannelsByServer[guildID] = nil
+        snapshot.availableTextChannelsByServer[guildID] = nil
+        snapshot.availableRolesByServer[guildID] = nil
+        emitUpdate()
+    }
+
+    func setGuildVoiceChannels(guildID: String, channels: [GuildVoiceChannel]) {
+        let oldChannels = snapshot.availableVoiceChannelsByServer[guildID] ?? []
+        for channel in oldChannels {
+            snapshot.channelTypesById[channel.id] = nil
+        }
+        snapshot.availableVoiceChannelsByServer[guildID] = channels
+        for channel in channels {
+            snapshot.channelTypesById[channel.id] = 2
+        }
+        emitUpdate()
+    }
+
+    func setGuildTextChannels(guildID: String, channels: [GuildTextChannel]) {
+        let oldChannels = snapshot.availableTextChannelsByServer[guildID] ?? []
+        for channel in oldChannels {
+            snapshot.channelTypesById[channel.id] = nil
+        }
+        snapshot.availableTextChannelsByServer[guildID] = channels
+        for channel in channels {
+            snapshot.channelTypesById[channel.id] = 0
+        }
+        emitUpdate()
+    }
+
+    func setGuildRoles(guildID: String, roles: [GuildRole]) {
+        snapshot.availableRolesByServer[guildID] = roles
+        emitUpdate()
+    }
+
+    func upsertChannel(guildID: String?, channelID: String, name: String, type: Int) {
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        snapshot.channelTypesById[channelID] = type
+
+        if type == 1 || type == 3 {
+            emitUpdate()
+            return
+        }
+        guard let guildID else {
+            emitUpdate()
+            return
+        }
+
+        if type == 0 || type == 5 {
+            var channels = snapshot.availableTextChannelsByServer[guildID] ?? []
+            if let index = channels.firstIndex(where: { $0.id == channelID }) {
+                channels[index] = GuildTextChannel(id: channelID, name: cleaned)
+            } else {
+                channels.append(GuildTextChannel(id: channelID, name: cleaned))
+            }
+            channels.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            snapshot.availableTextChannelsByServer[guildID] = channels
+            emitUpdate()
+            return
+        }
+
+        if type == 2 || type == 13 {
+            var channels = snapshot.availableVoiceChannelsByServer[guildID] ?? []
+            if let index = channels.firstIndex(where: { $0.id == channelID }) {
+                channels[index] = GuildVoiceChannel(id: channelID, name: cleaned)
+            } else {
+                channels.append(GuildVoiceChannel(id: channelID, name: cleaned))
+            }
+            channels.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            snapshot.availableVoiceChannelsByServer[guildID] = channels
+            emitUpdate()
+        }
+    }
+
+    func upsertUser(id userID: String, preferredName: String?) {
+        let cleaned = (preferredName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        if snapshot.usernamesById[userID] == cleaned { return }
+        snapshot.usernamesById[userID] = cleaned
+        emitUpdate()
+    }
+
+    private func emitUpdate() {
+        for continuation in updateContinuations.values {
+            continuation.yield(())
+        }
+    }
+
+    private func removeUpdateContinuation(_ id: UUID) {
+        updateContinuations.removeValue(forKey: id)
+    }
 }
 
 struct UptimeInfo {
