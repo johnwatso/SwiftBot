@@ -1,0 +1,4 @@
+module UpdateEngine {
+header "UpdateEngine-Swift.h"
+export *
+}

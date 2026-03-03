@@ -156,10 +156,27 @@ struct BotSettings: Codable, Hashable {
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
+    var localAIProvider: AIProvider = .appleIntelligence
+    var preferredAIProvider: AIProviderPreference = .apple
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
+    var ollamaBaseURL: String = "http://localhost:11434"
     var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
     var patchy = PatchySettings()
+}
+
+enum AIProvider: String, Codable, CaseIterable, Identifiable {
+    case appleIntelligence = "Apple Intelligence"
+    case ollama = "Ollama"
+
+    var id: String { rawValue }
+}
+
+enum AIProviderPreference: String, Codable, CaseIterable, Identifiable {
+    case apple = "Apple Intelligence"
+    case ollama = "Ollama"
+
+    var id: String { rawValue }
 }
 
 enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {

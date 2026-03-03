@@ -42,6 +42,7 @@ struct RootView: View {
 struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel
     @Binding var selection: SidebarItem
+    @Namespace private var selectionHighlightNamespace
 
     var body: some View {
         VStack(spacing: 14) {
@@ -123,17 +124,17 @@ struct DashboardSidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     SidebarSection(title: "Main") {
-                        SidebarRow(item: .overview, selection: $selection)
-                        SidebarRow(item: .patchy, selection: $selection)
-                        SidebarRow(item: .voice, selection: $selection, count: app.activeVoice.count)
-                        SidebarRow(item: .commands, selection: $selection)
-                        SidebarRow(item: .logs, selection: $selection)
+                        SidebarRow(item: .overview, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .patchy, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .voice, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace, count: app.activeVoice.count)
+                        SidebarRow(item: .commands, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
 
                     SidebarSection(title: "Config") {
-                        SidebarRow(item: .settings, selection: $selection)
-                        SidebarRow(item: .aiBots, selection: $selection)
-                        SidebarRow(item: .status, selection: $selection)
+                        SidebarRow(item: .settings, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .aiBots, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .status, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -190,11 +191,14 @@ struct DashboardSidebar: View {
 struct SidebarRow: View {
     let item: SidebarItem
     @Binding var selection: SidebarItem
+    let selectionHighlightNamespace: Namespace.ID
     var count: Int?
 
     var body: some View {
         Button {
-            selection = item
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selection = item
+            }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: item.icon)
@@ -211,11 +215,38 @@ struct SidebarRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .modifier(SidebarSelectionModifier(isSelected: selection == item))
+            .background {
+                if selection == item {
+                    SidebarSelectionHighlight()
+                        .matchedGeometryEffect(id: "sidebarSelectionHighlight", in: selectionHighlightNamespace)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .tag(item)
+    }
+}
+
+private struct SidebarSelectionHighlight: View {
+    @Environment(\.controlActiveState) private var controlActiveState
+
+    private var highlightMaterial: Material {
+        controlActiveState == .active ? .ultraThinMaterial : .bar
+    }
+
+    private var strokeOpacity: Double {
+        controlActiveState == .active ? 0.16 : 0.10
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(highlightMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(.white.opacity(strokeOpacity), lineWidth: 1)
+            )
     }
 }
 
@@ -1751,154 +1782,246 @@ struct SettingsView: View {
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
+    @State private var promptEditorHeight: CGFloat = 108
 
     private var appleIntelligenceImage: NSImage? {
-        if let bundled = NSImage(named: NSImage.Name("AppleIntelligence")) {
-            return bundled
+        guard let imageURL = Bundle.main.url(forResource: "AIAppleLogo", withExtension: "png") else {
+            return nil
         }
-
-        guard let imageURL = Bundle.main.url(forResource: "AppleIntelligence", withExtension: "jpg") else {
-            return NSImage(named: NSImage.Name("Apple_AI"))
-        }
-
-        return NSImage(contentsOf: imageURL) ?? NSImage(named: NSImage.Name("Apple_AI"))
+        return NSImage(contentsOf: imageURL)
     }
-    
+
+    private var ollamaImage: NSImage? {
+        guard let imageURL = Bundle.main.url(forResource: "AIOllamaLogo", withExtension: "png") else {
+            return nil
+        }
+        return NSImage(contentsOf: imageURL)
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 30) {
                 Text("AI Bots")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                
-                // Apple Intelligence Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        if let nsImage = appleIntelligenceImage {
-                            Image(nsImage: nsImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 44, height: 44)
-                                .cornerRadius(10)
-                        } else {
-                            // Fallback
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.blue.gradient)
-                                    .frame(width: 44, height: 44)
-                                
-                                Image(systemName: "sparkles")
-                                    .font(.title2.weight(.semibold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Apple Intelligence")
-                                .font(.headline)
-                            Text("On-Device DM & Channel Replies")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: $app.settings.localAIDMReplyEnabled)
-                            .labelsHidden()
-                    }
-                    
-                    Divider()
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Configuration")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("System Prompt")
-                                .font(.caption.weight(.medium))
-                            TextEditor(text: $app.settings.localAISystemPrompt)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(height: 120)
-                                .padding(8)
-                                .background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .strokeBorder(.white.opacity(0.20), lineWidth: 1)
-                                )
-                                .disabled(!app.settings.localAIDMReplyEnabled)
-                                .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.5)
-                        }
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("How It Works", systemImage: "info.circle.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.blue)
-                        
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("• Uses Apple Intelligence Foundation Models running locally")
-                            Text("• Requires macOS 26.0 or later with Apple Intelligence support")
-                            Text("• Completely private - no data sent to external servers")
-                            Text("• Responds to direct messages and server mentions when enabled")
-                            Text("• Custom system prompt defines the AI's personality and behavior")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(12)
-                    .background(.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                    )
-                    
-                    HStack {
-                        Spacer()
-                        Button("Save AI Settings") {
-                            app.saveSettings()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .padding(20)
-                .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-                
-                // Placeholder for future AI integrations
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "network")
-                            .font(.title2)
-                            .foregroundStyle(.green)
-                            .frame(width: 44, height: 44)
-                            .background(.green.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                            )
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("External AI Services")
-                                .font(.headline)
-                            Text("Coming Soon")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        Spacer()
-                    }
-                    
-                    Text("Future support for external AI services like OpenAI, Anthropic, and local LLM servers will be added here.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
-                .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
-                .opacity(0.6)
+
+                overviewCard
+                configurationCard
             }
             .padding(20)
             .frame(maxWidth: 800)
             .frame(maxWidth: .infinity)
         }
+        .task {
+            await app.refreshAIStatus()
+            syncProviderSelectionFromPreference()
+        }
+        .onChange(of: app.settings.preferredAIProvider) { _, _ in
+            syncProviderSelectionFromPreference()
+            Task { await app.refreshAIStatus() }
+            if app.settings.preferredAIProvider == .ollama {
+                app.detectOllamaModel()
+            }
+        }
+        .onChange(of: app.settings.ollamaBaseURL) { _, _ in
+            Task { await app.refreshAIStatus() }
+        }
+    }
+
+    private var overviewCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("AI Engines")
+                .font(.title3.weight(.semibold))
+
+            HStack(alignment: .top, spacing: 12) {
+                providerIcon(image: appleIntelligenceImage, fallbackSystemImage: "apple.intelligence")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Apple Intelligence")
+                        .font(.headline.weight(.semibold))
+                    Text("System-native engine")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                statusStack(isOnline: app.appleIntelligenceOnline, isPrimary: app.settings.preferredAIProvider == .apple)
+            }
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 12) {
+                providerIcon(image: ollamaImage, fallbackSystemImage: "server.rack")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Ollama")
+                        .font(.headline)
+                    if let model = app.ollamaDetectedModel, !model.isEmpty {
+                        Text("Active model: \(model)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    let host = app.settings.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !host.isEmpty {
+                        Text("Server: \(host)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                statusStack(isOnline: app.ollamaOnline, isPrimary: app.settings.preferredAIProvider == .ollama)
+            }
+        }
+        .padding(20)
+        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    private var configurationCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Configuration")
+                .font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("AI Replies")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Toggle("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
+                    .toggleStyle(.switch)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Primary AI Engine")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Picker("Primary AI Engine", selection: $app.settings.preferredAIProvider) {
+                    ForEach(AIProviderPreference.allCases) { provider in
+                        Text(provider.rawValue).tag(provider)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 260, alignment: .leading)
+            }
+
+            if app.settings.preferredAIProvider == .ollama {
+                HStack(spacing: 10) {
+                    TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 340)
+
+                    TextField("Model", text: $app.settings.localAIModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 260)
+
+                    Button("Auto Detect Model") {
+                        app.detectOllamaModel()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("System Prompt")
+                    .font(.caption.weight(.medium))
+                TextEditor(text: $app.settings.localAISystemPrompt)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(height: promptEditorHeight)
+                    .padding(8)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                    )
+                    .disabled(!app.settings.localAIDMReplyEnabled)
+                    .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.5)
+                HStack {
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.trailing, 8)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 8)
+                        .onChanged { value in
+                            let next = promptEditorHeight + value.translation.height
+                            promptEditorHeight = min(max(next, 92), 240)
+                        }
+                )
+            }
+
+            HStack {
+                Spacer()
+                Button("Save AI Settings") {
+                    app.saveSettings()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    @ViewBuilder
+    private func providerIcon(image: NSImage?, fallbackSystemImage: String) -> some View {
+        AIIconContainer {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .padding(9)
+            } else {
+                Image(systemName: fallbackSystemImage)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+            }
+        }
+    }
+
+    private func statusRow(isOnline: Bool) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isOnline ? Color.green : Color.red)
+                .frame(width: 8, height: 8)
+            Text(isOnline ? "Online" : "Offline")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func statusStack(isOnline: Bool, isPrimary: Bool) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            statusRow(isOnline: isOnline)
+            Text(isPrimary ? "Primary" : "Fallback")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background((isPrimary ? Color.accentColor : Color.white).opacity(0.14), in: Capsule())
+                .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
+        }
+    }
+
+    private func syncProviderSelectionFromPreference() {
+        let mapped: AIProvider = (app.settings.preferredAIProvider == .apple) ? .appleIntelligence : .ollama
+        if app.settings.localAIProvider != mapped {
+            app.settings.localAIProvider = mapped
+        }
+    }
+}
+
+struct AIIconContainer<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+            content
+        }
+        .frame(width: 44, height: 44)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 
@@ -2146,24 +2269,6 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
                     .allowsHitTesting(false)
             )
             .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 10)
-    }
-}
-
-private struct SidebarSelectionModifier: ViewModifier {
-    let isSelected: Bool
-
-    func body(content: Content) -> some View {
-        if isSelected {
-            content
-                .glassEffect(.regular.interactive(true), in: Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                        .allowsHitTesting(false)
-                )
-        } else {
-            content
-        }
     }
 }
 

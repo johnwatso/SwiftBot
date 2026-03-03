@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Known Issues - 2026-03-03
+
+#### AI Bots Provider Icon Rendering
+**Issue:** Apple Intelligence and Ollama provider logos in `AI Bots` are still rendering inconsistently in some builds/environments (including incorrect fallback behavior).
+
+**Status:** Open and tracked as a UI issue for follow-up. Core AI provider functionality and reply routing are unaffected.
+
 ### Changed - 2026-03-03
 
 #### Patchy Runtime Integration + Dashboard Redesign

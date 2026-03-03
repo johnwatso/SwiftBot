@@ -21,6 +21,10 @@ actor DiscordService {
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
 
     private var localAIDMReplyEnabled = false
+    private var localAIProvider: AIProvider = .appleIntelligence
+    private var localPreferredAIProvider: AIProviderPreference = .apple
+    private var localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
+    private var localAIModel = "local-model"
     private var localAISystemPrompt = ""
 
     private let session = URLSession(configuration: .default)
@@ -40,9 +44,31 @@ actor DiscordService {
         ruleEngine = engine
     }
 
-    func configureLocalAIDMReplies(enabled: Bool, endpoint: String, model: String, systemPrompt: String) {
+    func configureLocalAIDMReplies(
+        enabled: Bool,
+        provider: AIProvider,
+        preferredProvider: AIProviderPreference,
+        endpoint: String,
+        model: String,
+        systemPrompt: String
+    ) {
         localAIDMReplyEnabled = enabled
+        localAIProvider = provider
+        localPreferredAIProvider = preferredProvider
+        localAIEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        localAIModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func detectOllamaModel(baseURL: String) async -> String? {
+        await detectOllamaModel(baseURL: baseURL, preferredModel: nil)
+    }
+
+    func currentAIStatus(ollamaBaseURL: String, ollamaModelHint: String?) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?) {
+        let appleOnline = isAppleIntelligenceAvailable()
+        let normalized = normalizedOllamaBaseURL(ollamaBaseURL)
+        let model = await detectOllamaModel(baseURL: normalized, preferredModel: ollamaModelHint)
+        return (appleOnline, model != nil, model)
     }
 
     func generateSmartDMReply(message: String, username: String) async -> String? {
@@ -485,6 +511,21 @@ actor DiscordService {
             ? "You are a friendly Discord assistant. Reply briefly and naturally."
             : localAISystemPrompt
 
+        let preferred = localPreferredAIProvider
+        if preferred == .apple {
+            if let reply = await generateAppleReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt) {
+                return reply
+            }
+            return await generateOllamaReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt)
+        } else {
+            if let reply = await generateOllamaReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt) {
+                return reply
+            }
+            return await generateAppleReply(userMessage: userMessage, username: username, systemPrompt: systemPrompt)
+        }
+    }
+
+    private func generateAppleReply(userMessage: String, username: String, systemPrompt: String) async -> String? {
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             let model = SystemLanguageModel.default
@@ -506,8 +547,92 @@ actor DiscordService {
             }
         }
 #endif
-
         return nil
+    }
+
+    private func generateOllamaReply(userMessage: String, username: String, systemPrompt: String) async -> String? {
+        let base = normalizedOllamaBaseURL(localAIEndpoint)
+        guard let url = URL(string: "\(base)/api/chat") else { return nil }
+
+        let chosenModel = await detectOllamaModel(baseURL: base, preferredModel: localAIModel)
+        guard let model = chosenModel, !model.isEmpty else { return nil }
+
+        let payload: [String: Any] = [
+            "model": model,
+            "stream": false,
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": "Message from \(username): \(userMessage)"]
+            ]
+        ]
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            guard
+                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let message = object["message"] as? [String: Any],
+                let content = message["content"] as? String
+            else { return nil }
+
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        } catch {
+            return nil
+        }
+    }
+
+    private func detectOllamaModel(baseURL: String, preferredModel: String?) async -> String? {
+        guard let url = URL(string: "\(baseURL)/api/tags") else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            guard
+                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let models = object["models"] as? [[String: Any]],
+                !models.isEmpty
+            else { return nil }
+
+            let names = models.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
+            guard !names.isEmpty else { return nil }
+
+            let preferred = preferredModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !preferred.isEmpty {
+                if let exact = names.first(where: { $0 == preferred }) { return exact }
+                if let starts = names.first(where: { $0.hasPrefix(preferred) }) { return starts }
+            }
+            return names.first
+        } catch {
+            return nil
+        }
+    }
+
+    private func normalizedOllamaBaseURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "http://localhost:11434" }
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            return trimmed
+        }
+        return "http://\(trimmed)"
+    }
+
+    private func isAppleIntelligenceAvailable() -> Bool {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let model = SystemLanguageModel.default
+            if case .available = model.availability {
+                return true
+            }
+        }
+#endif
+        return false
     }
 
     private func searchFinalsWikiTitle(query: String) async -> String? {
