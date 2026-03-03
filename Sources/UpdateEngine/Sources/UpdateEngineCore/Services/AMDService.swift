@@ -54,15 +54,16 @@ public struct AMDService: Sendable {
         try validateHTTP(releaseResponse)
 
         let rawReleaseHTML = String(data: releaseData, encoding: .utf8) ?? ""
+        let cleanedReleaseHTML = removeScriptAndStyleBlocks(rawReleaseHTML)
 
         let detectedVersion = firstCapture(
             pattern: #"Adrenalin Edition\s*([0-9]+(?:\.[0-9]+)+)\s*Release Notes"#,
-            in: rawReleaseHTML
+            in: cleanedReleaseHTML
         )
 
         let version = detectedVersion ?? latestEntry.version.replacingOccurrences(of: "-", with: ".")
-        let releaseDate = extractReleaseDate(from: rawReleaseHTML, fallback: latestEntry.lastModified)
-        let sections = parseStructuredSections(from: rawReleaseHTML)
+        let releaseDate = extractReleaseDate(from: cleanedReleaseHTML, fallback: latestEntry.lastModified)
+        let sections = parseSummarySections(from: cleanedReleaseHTML)
 
         let releaseNotes = ReleaseNotes(
             title: "AMD Software: Adrenalin Edition \(version) Release Notes",
@@ -70,7 +71,7 @@ public struct AMDService: Sendable {
             url: latestEntry.url.absoluteString,
             version: version,
             date: releaseDate,
-            sections: sections.isEmpty ? [fallbackSection(from: rawReleaseHTML)] : Array(sections.prefix(3)),
+            sections: sections,
             thumbnailURL: "https://cdn.patchbot.io/games/140/amd-gpu-drivers_sm.webp",
             color: 16711680
         )
@@ -140,78 +141,207 @@ public struct AMDService: Sendable {
         return formatDate(fallback)
     }
 
-    private func parseStructuredSections(from html: String) -> [ReleaseSection] {
-        let sectionHeaders = [
-            "Highlights",
-            "New Game Support",
-            "Fixed Issues",
-            "Known Issues",
-            "Improvements"
-        ]
+    private func parseSummarySections(from html: String) -> [ReleaseSection] {
+        if let highlights = extractSection(headerCandidates: ["Highlights"], from: html) {
+            return [highlights]
+        }
 
-        return sectionHeaders.compactMap { extractSection(header: $0, from: html) }
+        if let fixedIssues = extractSection(headerCandidates: ["Fixed Issues"], from: html)
+            ?? extractNamedListSection(named: "Fixed Issues", from: html) {
+            return [fixedIssues]
+        }
+
+        if let firstParagraph = firstMeaningfulParagraph(in: html) {
+            return [
+                ReleaseSection(
+                    title: "Release Information",
+                    bullets: [Bullet(text: firstParagraph)]
+                )
+            ]
+        }
+
+        return [fallbackSection(from: html)]
     }
 
-    private func extractSection(header: String, from html: String) -> ReleaseSection? {
-        let anchor = header.replacingOccurrences(of: " ", with: "_")
-        let sectionPattern = #"(?is)<h2><a id="# + anchor + #""></a>"# + header + #"</h2>(.*?)(?:<h2>|$)"#
-
-        guard let sectionContent = firstCapture(pattern: sectionPattern, in: html) else {
+    private func extractSection(headerCandidates: [String], from html: String) -> ReleaseSection? {
+        guard let section = extractSectionBlock(headerCandidates: headerCandidates, from: html) else {
             return nil
         }
 
-        let bullets = parseBulletsWithHierarchy(from: sectionContent)
+        let bullets = parseBulletsWithHierarchy(from: section.content)
+        if !bullets.isEmpty {
+            return ReleaseSection(title: section.title, bullets: bullets)
+        }
+
+        guard let paragraph = firstMeaningfulParagraph(in: section.content) else {
+            return nil
+        }
+
+        return ReleaseSection(title: section.title, bullets: [Bullet(text: paragraph)])
+    }
+
+    private func extractNamedListSection(named name: String, from html: String) -> ReleaseSection? {
+        let escapedName = NSRegularExpression.escapedPattern(for: name)
+        let pattern = #"(?is)<li[^>]*>\s*(?:<(?:b|strong)[^>]*>)?\s*"# + escapedName + #"\s*(?:</(?:b|strong)>)?\s*(<ul[^>]*>.*?</ul>)\s*</li>"#
+
+        guard let sublistHTML = firstCapture(pattern: pattern, in: html) else {
+            return nil
+        }
+
+        let bullets = parseBulletsWithHierarchy(from: sublistHTML)
         guard !bullets.isEmpty else {
             return nil
         }
 
-        return ReleaseSection(title: header, bullets: bullets)
+        return ReleaseSection(title: name, bullets: bullets)
+    }
+
+    private func extractSectionBlock(headerCandidates: [String], from html: String) -> SectionBlock? {
+        guard let regex = try? NSRegularExpression(pattern: #"(?is)<h[1-6][^>]*>(.*?)</h[1-6]>"#) else {
+            return nil
+        }
+
+        let headers = regex.matches(in: html, range: NSRange(html.startIndex..<html.endIndex, in: html)).compactMap { match -> HeaderMatch? in
+            guard
+                match.numberOfRanges > 1,
+                let bodyRange = Range(match.range(at: 1), in: html),
+                let fullRange = Range(match.range(at: 0), in: html)
+            else {
+                return nil
+            }
+
+            let rawTitle = String(html[bodyRange])
+            let normalizedTitle = normalizeHeaderTitle(cleanHTML(rawTitle, preserveNewlines: false))
+            return HeaderMatch(title: cleanHTML(rawTitle, preserveNewlines: false), normalizedTitle: normalizedTitle, range: fullRange)
+        }
+
+        guard !headers.isEmpty else {
+            return nil
+        }
+
+        let normalizedCandidates = Set(headerCandidates.map(normalizeHeaderTitle))
+        guard let matchedIndex = headers.firstIndex(where: { normalizedCandidates.contains($0.normalizedTitle) }) else {
+            return nil
+        }
+
+        let match = headers[matchedIndex]
+        let contentStart = match.range.upperBound
+        let contentEnd = matchedIndex + 1 < headers.count ? headers[matchedIndex + 1].range.lowerBound : html.endIndex
+        guard contentStart < contentEnd else {
+            return nil
+        }
+
+        let content = String(html[contentStart..<contentEnd])
+        let title = headerCandidates.first(where: { normalizeHeaderTitle($0) == match.normalizedTitle }) ?? match.title
+        return SectionBlock(title: title, content: content)
+    }
+
+    private func normalizeHeaderTitle(_ title: String) -> String {
+        title
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "", options: .regularExpression)
     }
 
     private func parseBulletsWithHierarchy(from html: String) -> [Bullet] {
-        var bullets: [Bullet] = []
-        let mainPattern = #"(?is)<li>\s*(?:<b>)?([^<]+)(?:</b>)?\s*(?:<ul>(.*?)</ul>)?\s*</li>"#
+        let sanitized = removeScriptAndStyleBlocks(html)
+            .replacingOccurrences(of: #"(?is)<br\s*/?>"#, with: "\n", options: .regularExpression)
 
-        guard let regex = try? NSRegularExpression(pattern: mainPattern) else {
+        guard let regex = try? NSRegularExpression(pattern: #"(?is)<[^>]+>"#) else {
             return []
         }
 
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = regex.matches(in: html, range: range)
+        let range = NSRange(sanitized.startIndex..<sanitized.endIndex, in: sanitized)
+        let matches = regex.matches(in: sanitized, range: range)
+
+        var bullets: [Bullet] = []
+        var listDepth = 0
+        var isInListItem = false
+        var currentText = ""
+        var cursor = sanitized.startIndex
+
+        func flushCurrentText() {
+            let text = normalizeListText(currentText)
+            currentText = ""
+            guard !text.isEmpty else {
+                return
+            }
+
+            if listDepth > 1, !bullets.isEmpty {
+                let parent = bullets.removeLast()
+                let updated = Bullet(text: parent.text, subBullets: parent.subBullets + [text])
+                bullets.append(updated)
+            } else {
+                bullets.append(Bullet(text: text))
+            }
+        }
 
         for match in matches {
             guard
-                match.numberOfRanges > 1,
-                let textRange = Range(match.range(at: 1), in: html)
+                let tagRange = Range(match.range(at: 0), in: sanitized)
             else {
                 continue
             }
 
-            let mainText = cleanHTML(String(html[textRange]))
-            var subBullets: [String] = []
-
-            if match.numberOfRanges > 2,
-               let nestedRange = Range(match.range(at: 2), in: html) {
-                let nestedHTML = String(html[nestedRange])
-                subBullets = allCaptures(pattern: #"(?is)<li>(.*?)</li>"#, in: nestedHTML)
-                    .map(cleanHTML)
-                    .filter { !$0.isEmpty }
+            if cursor < tagRange.lowerBound, isInListItem {
+                currentText += String(sanitized[cursor..<tagRange.lowerBound])
             }
 
-            if !mainText.isEmpty {
-                bullets.append(Bullet(text: mainText, subBullets: subBullets))
+            let tag = String(sanitized[tagRange])
+            let tagName = parseTagName(tag)
+            let isClosing = tag.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("</")
+
+            switch tagName {
+            case "br":
+                if isInListItem {
+                    currentText += "\n"
+                }
+            case "ul", "ol":
+                if isClosing {
+                    listDepth = max(0, listDepth - 1)
+                } else {
+                    if isInListItem {
+                        flushCurrentText()
+                    }
+                    listDepth += 1
+                }
+            case "li":
+                if isClosing {
+                    flushCurrentText()
+                    isInListItem = false
+                } else {
+                    isInListItem = true
+                    currentText = ""
+                }
+            default:
+                break
             }
+
+            cursor = tagRange.upperBound
+        }
+
+        if cursor < sanitized.endIndex, isInListItem {
+            currentText += String(sanitized[cursor..<sanitized.endIndex])
+        }
+        if isInListItem {
+            flushCurrentText()
         }
 
         return bullets
     }
 
     private func fallbackSection(from html: String) -> ReleaseSection {
+        if let firstParagraph = firstMeaningfulParagraph(in: html) {
+            return ReleaseSection(
+                title: "Release Information",
+                bullets: [Bullet(text: firstParagraph)]
+            )
+        }
+
         if let description = firstCapture(
             pattern: #"(?is)<meta\s+property=\"og:description\"\s+content=\"([^\"]+)\""#,
             in: html
         ) {
-            let clean = cleanHTML(description)
+            let clean = cleanHTML(description, preserveNewlines: false)
             if !clean.isEmpty {
                 return ReleaseSection(
                     title: "Release Information",
@@ -224,6 +354,68 @@ public struct AMDService: Sendable {
             title: "Release Information",
             bullets: [Bullet(text: "No release notes available.")]
         )
+    }
+
+    private func firstMeaningfulParagraph(in html: String) -> String? {
+        let pattern = #"(?is)<p[^>]*>(.*?)</p>"#
+        for paragraph in allCaptures(pattern: pattern, in: html) {
+            let text = cleanHTML(paragraph, preserveNewlines: true)
+            guard isMeaningfulParagraph(text) else {
+                continue
+            }
+            return text
+        }
+
+        let fallback = cleanHTML(html, preserveNewlines: true)
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: isMeaningfulParagraph)
+        return fallback
+    }
+
+    private func isMeaningfulParagraph(_ text: String) -> Bool {
+        guard text.count >= 20 else {
+            return false
+        }
+
+        let lower = text.lowercased()
+        if lower.hasPrefix("last updated") {
+            return false
+        }
+        return true
+    }
+
+    private func parseTagName(_ tag: String) -> String {
+        var token = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.hasPrefix("<"), token.count >= 2 else {
+            return ""
+        }
+
+        token.removeFirst()
+        if token.hasPrefix("/") {
+            token.removeFirst()
+        }
+
+        let characters = token.prefix { character in
+            character.isLetter || character.isNumber
+        }
+        return String(characters).lowercased()
+    }
+
+    private func normalizeListText(_ raw: String) -> String {
+        let decoded = decodeHTMLEntities(raw)
+        let withoutTags = decoded.replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
+        let compactSpaces = withoutTags.replacingOccurrences(of: #"[ \t]+"#, with: " ", options: .regularExpression)
+        let compactNewlines = compactSpaces
+            .replacingOccurrences(of: #" *\n *"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{2,}"#, with: "\n", options: .regularExpression)
+        return compactNewlines.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func removeScriptAndStyleBlocks(_ html: String) -> String {
+        html
+            .replacingOccurrences(of: #"(?is)<script[^>]*>.*?</script>"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?is)<style[^>]*>.*?</style>"#, with: "", options: .regularExpression)
     }
 
     private func parseISODate(_ value: String) -> Date? {
@@ -287,11 +479,22 @@ public struct AMDService: Sendable {
         }
     }
 
-    private func cleanHTML(_ raw: String) -> String {
-        let noTags = raw.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-        let decoded = decodeHTMLEntities(noTags)
-        let compact = decoded.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-        return compact.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func cleanHTML(_ raw: String, preserveNewlines: Bool) -> String {
+        var text = removeScriptAndStyleBlocks(raw)
+        text = text.replacingOccurrences(of: #"(?is)<br\s*/?>"#, with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(?is)</(p|div|h[1-6]|li|tr|table|section|article)>"#, with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(?is)<[^>]+>"#, with: " ", options: .regularExpression)
+        text = decodeHTMLEntities(text)
+
+        if preserveNewlines {
+            text = text.replacingOccurrences(of: #"[ \t]+"#, with: " ", options: .regularExpression)
+            text = text.replacingOccurrences(of: #" *\n *"#, with: "\n", options: .regularExpression)
+            text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        } else {
+            text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        }
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func decodeHTMLEntities(_ text: String) -> String {
@@ -310,6 +513,23 @@ public struct AMDService: Sendable {
             output = output.replacingOccurrences(of: entity, with: value)
         }
 
+        if let numericRegex = try? NSRegularExpression(pattern: #"&#([0-9]{1,7});"#) {
+            let matches = numericRegex.matches(in: output, range: NSRange(output.startIndex..<output.endIndex, in: output)).reversed()
+            for match in matches {
+                guard
+                    match.numberOfRanges > 1,
+                    let valueRange = Range(match.range(at: 1), in: output),
+                    let fullRange = Range(match.range(at: 0), in: output),
+                    let value = Int(output[valueRange]),
+                    let scalar = UnicodeScalar(value)
+                else {
+                    continue
+                }
+
+                output.replaceSubrange(fullRange, with: String(scalar))
+            }
+        }
+
         return output
     }
 
@@ -322,6 +542,17 @@ public struct AMDService: Sendable {
             throw AMDServiceError.httpError(statusCode: http.statusCode)
         }
     }
+}
+
+private struct HeaderMatch {
+    let title: String
+    let normalizedTitle: String
+    let range: Range<String.Index>
+}
+
+private struct SectionBlock {
+    let title: String
+    let content: String
 }
 
 private struct SitemapEntry {

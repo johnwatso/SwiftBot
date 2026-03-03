@@ -52,6 +52,29 @@ public struct AMDUpdateSource: UpdateSource, Sendable {
     }
 }
 
+/// Intel Arc driver update source.
+public struct IntelUpdateSource: UpdateSource, Sendable {
+    public var cacheKey: String { "intel-default" }
+    public var sourceKey: String { cacheKey }
+    private let service: IntelService
+
+    public init(service: IntelService = IntelService()) {
+        self.service = service
+    }
+
+    public func fetchLatest() async throws -> any UpdateItem {
+        let info = try await service.fetchLatestDriver()
+        return DriverUpdateItem(
+            sourceKey: sourceKey,
+            identifier: info.releaseIdentifier,
+            version: info.releaseNotes.version,
+            releaseNotes: info.releaseNotes,
+            embedJSON: info.embedJSON,
+            rawDebug: info.rawDebug
+        )
+    }
+}
+
 /// Steam news update source for a specific app.
 public struct SteamNewsUpdateSource: UpdateSource, Sendable {
     public let appID: String
