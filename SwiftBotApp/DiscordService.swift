@@ -272,6 +272,15 @@ actor DiscordService {
         await generateLocalAIDMReply(messages: messages)
     }
 
+    func lookupWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
+        switch source.kind {
+        case .finals:
+            return await lookupFinalsWiki(query: query)
+        case .mediaWiki:
+            return await lookupGenericMediaWiki(query: query, source: source)
+        }
+    }
+
     func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return nil }
@@ -296,6 +305,26 @@ actor DiscordService {
         }
 
         return await searchFinalsWikiViaWeb(query: trimmedQuery)
+    }
+
+    private func lookupGenericMediaWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return nil }
+        guard
+            let baseURL = normalizedWikiBaseURL(from: source.baseURL),
+            let apiURL = mediaWikiAPIURL(baseURL: baseURL, apiPath: source.apiPath)
+        else {
+            return nil
+        }
+
+        if let direct = await fetchGenericWikiPage(baseURL: baseURL, query: trimmedQuery) {
+            return direct
+        }
+
+        guard let title = await searchMediaWikiTitle(query: trimmedQuery, apiURL: apiURL) else {
+            return nil
+        }
+        return await fetchMediaWikiSummary(title: title, apiURL: apiURL, baseURL: baseURL)
     }
 
     func connect(token: String) async {
@@ -823,6 +852,122 @@ actor DiscordService {
         }
 #endif
         return false
+    }
+
+    private func normalizedWikiBaseURL(from raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let candidate = (trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")) ? trimmed : "https://\(trimmed)"
+        return URL(string: candidate)
+    }
+
+    private func mediaWikiAPIURL(baseURL: URL, apiPath: String) -> URL? {
+        let trimmedPath = apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = trimmedPath.isEmpty ? "/api.php" : (trimmedPath.hasPrefix("/") ? trimmedPath : "/\(trimmedPath)")
+        return URL(string: normalizedPath, relativeTo: baseURL)?.absoluteURL
+    }
+
+    private func searchMediaWikiTitle(query: String, apiURL: URL) async -> String? {
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "list", value: "search"),
+            URLQueryItem(name: "srsearch", value: query),
+            URLQueryItem(name: "srlimit", value: "1"),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "utf8", value: "1"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+
+        guard let url = components?.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+
+            let decoded = try JSONDecoder().decode(MediaWikiSearchResponse.self, from: data)
+            return decoded.query?.search.first?.title
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchMediaWikiSummary(title: String, apiURL: URL, baseURL: URL) async -> FinalsWikiLookupResult? {
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "prop", value: "extracts|info"),
+            URLQueryItem(name: "exintro", value: "1"),
+            URLQueryItem(name: "explaintext", value: "1"),
+            URLQueryItem(name: "inprop", value: "url"),
+            URLQueryItem(name: "redirects", value: "1"),
+            URLQueryItem(name: "titles", value: title),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "utf8", value: "1"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+
+        guard let url = components?.url else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+
+            let decoded = try JSONDecoder().decode(MediaWikiPageResponse.self, from: data)
+            guard let page = decoded.query?.pages.values.first,
+                  page.missing == nil else { return nil }
+
+            let summary = page.extract?
+                .replacingOccurrences(of: "\n+", with: "\n", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let fallbackURL = baseURL
+                .appendingPathComponent("wiki")
+                .appendingPathComponent(title.replacingOccurrences(of: " ", with: "_"))
+                .absoluteString
+
+            return FinalsWikiLookupResult(
+                title: page.title,
+                extract: summary,
+                url: page.fullurl ?? fallbackURL,
+                weaponStats: nil
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchGenericWikiPage(baseURL: URL, query: String) async -> FinalsWikiLookupResult? {
+        let slug = query
+            .replacingOccurrences(of: " ", with: "_")
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+        guard !slug.isEmpty else { return nil }
+
+        let pageURL = baseURL
+            .appendingPathComponent("wiki")
+            .appendingPathComponent(slug)
+
+        do {
+            var request = URLRequest(url: pageURL)
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let title = extractHTMLTitle(from: html) ?? query
+            let extract = extractSummaryParagraph(from: html)
+            let resolvedURL = extractCanonicalWikiPageURL(from: html)?.absoluteString ?? pageURL.absoluteString
+
+            return FinalsWikiLookupResult(
+                title: title,
+                extract: extract,
+                url: resolvedURL,
+                weaponStats: nil
+            )
+        } catch {
+            return nil
+        }
     }
 
     private func searchFinalsWikiTitle(query: String) async -> String? {

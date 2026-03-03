@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     private let service = DiscordService()
     private let cluster = ClusterCoordinator()
     private let ruleEngine: RuleEngine
+    private let wikiContextCache = WikiContextCache()
     private var serviceCallbacksConfigured = false
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
@@ -87,6 +88,9 @@ final class AppModel: ObservableObject {
             if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
+            if migrateLegacyWikiBridgeSettingsIfNeeded(&loadedSettings) {
+                migrated = true
+            }
 
             settings = loadedSettings
             if let cachedDiscord = await discordCacheStore.load() {
@@ -112,9 +116,9 @@ final class AppModel: ObservableObject {
                     guard let self else { return nil }
                     return await self.service.generateSmartDMReply(messages: messages)
                 },
-                wikiHandler: { [weak self] query in
+                wikiHandler: { [weak self] query, source in
                     guard let self else { return nil }
-                    return await self.service.lookupFinalsWiki(query: query)
+                    return await self.service.lookupWiki(query: query, source: source)
                 },
                 onSnapshot: { [weak self] snapshot in
                     let model = self
@@ -159,6 +163,7 @@ final class AppModel: ObservableObject {
         } else {
             settings.prefix = trimmedPrefix
         }
+        settings.wikiBot.normalizeSources()
 
         Task {
             await service.configureLocalAIDMReplies(
@@ -240,6 +245,56 @@ final class AppModel: ObservableObject {
         settings.patchy.sourceTargets.append(target)
         saveSettings()
         resolveSteamNameIfNeeded(for: target)
+    }
+
+    func addWikiBridgeSourceTarget(_ target: WikiBridgeSourceTarget) {
+        settings.wikiBot.sourceTargets.append(target)
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+    }
+
+    func updateWikiBridgeSourceTarget(_ target: WikiBridgeSourceTarget) {
+        guard let idx = settings.wikiBot.sourceTargets.firstIndex(where: { $0.id == target.id }) else { return }
+        settings.wikiBot.sourceTargets[idx] = target
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+    }
+
+    func deleteWikiBridgeSourceTarget(_ targetID: UUID) {
+        settings.wikiBot.sourceTargets.removeAll { $0.id == targetID }
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+    }
+
+    func toggleWikiBridgeSourceTargetEnabled(_ targetID: UUID) {
+        guard let idx = settings.wikiBot.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
+        settings.wikiBot.sourceTargets[idx].isEnabled.toggle()
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+    }
+
+    func setWikiBridgeDefaultSource(_ targetID: UUID) {
+        guard settings.wikiBot.sourceTargets.contains(where: { $0.id == targetID }) else { return }
+        settings.wikiBot.defaultSourceID = targetID
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+    }
+
+    func testWikiBridgeSource(targetID: UUID) {
+        Task {
+            guard let target = settings.wikiBot.sourceTargets.first(where: { $0.id == targetID }) else { return }
+            let testQuery = target.kind == .finals ? "AKM" : "Main Page"
+            let result = await service.lookupWiki(query: testQuery, source: target)
+            updateWikiBridgeSourceRuntimeState(id: targetID) { entry in
+                entry.lastLookupAt = Date()
+                if let result {
+                    entry.lastStatus = "Resolved: \(result.title)"
+                } else {
+                    entry.lastStatus = "No result for \"\(testQuery)\""
+                }
+            }
+            persistSettingsQuietly()
+        }
     }
 
     func updatePatchyTarget(_ target: PatchySourceTarget) {
@@ -412,6 +467,13 @@ final class AppModel: ObservableObject {
         settings.patchy.sourceTargets[idx] = target
     }
 
+    private func updateWikiBridgeSourceRuntimeState(id: UUID, apply: (inout WikiBridgeSourceTarget) -> Void) {
+        guard let idx = settings.wikiBot.sourceTargets.firstIndex(where: { $0.id == id }) else { return }
+        var target = settings.wikiBot.sourceTargets[idx]
+        apply(&target)
+        settings.wikiBot.sourceTargets[idx] = target
+    }
+
     private func appendPatchyLog(_ line: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let final = "[\(stamp)] \(line)"
@@ -453,6 +515,13 @@ final class AppModel: ObservableObject {
 
         loaded.patchy.sourceTargets = migratedTargets
         return true
+    }
+
+    private func migrateLegacyWikiBridgeSettingsIfNeeded(_ loaded: inout BotSettings) -> Bool {
+        let previousTargets = loaded.wikiBot.sourceTargets.count
+        let previousDefault = loaded.wikiBot.defaultSourceID
+        loaded.wikiBot.normalizeSources()
+        return previousTargets != loaded.wikiBot.sourceTargets.count || previousDefault != loaded.wikiBot.defaultSourceID
     }
 
     func startBot() async {
@@ -789,7 +858,7 @@ final class AppModel: ObservableObject {
 
         switch command {
         case "help":
-            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)finals <question>, \(prefix)weapon <name>, \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus")
+            return await send(channelId, "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user], \(prefix)finals <question>, \(prefix)wiki <question>, \(prefix)weapon <name>, \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus. Use \(prefix)wiki <source>::<query> to target a specific WikiBridge source.")
         case "ping":
             return await send(channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
         case "roll":
@@ -804,7 +873,7 @@ final class AppModel: ObservableObject {
             return await send(channelId, "👤 User: \(username)")
         case "finals", "wiki", "weapon":
             guard settings.wikiBot.isEnabled else {
-                return await send(channelId, "📘 Wiki Bot is disabled. Enable it from the Wiki Bot page.")
+                return await send(channelId, "📘 WikiBridge is disabled. Enable it from the WikiBridge page.")
             }
             if command == "finals", !settings.wikiBot.allowFinalsCommand {
                 return await send(channelId, "📘 The \(prefix)finals command is disabled.")
@@ -816,7 +885,7 @@ final class AppModel: ObservableObject {
                 return await send(channelId, "📘 The \(prefix)weapon command is disabled.")
             }
             let query = tokens.dropFirst().joined(separator: " ")
-            return await finalsWikiLookup(query: query, channelId: channelId)
+            return await finalsWikiLookup(command: command, query: query, channelId: channelId)
         case "cluster", "worker":
             let action = tokens.dropFirst().first?.lowercased() ?? "status"
             return await clusterCommand(action: action, channelId: channelId)
@@ -981,7 +1050,13 @@ final class AppModel: ObservableObject {
         fallbackUsername: String
     ) async {
         if let guildID {
-            await discordCache.upsertGuild(id: guildID, name: nil)
+            let guildName: String?
+            if case let .string(name)? = map["guild_name"] {
+                guildName = name
+            } else {
+                guildName = nil
+            }
+            await discordCache.upsertGuild(id: guildID, name: guildName)
         }
 
         if let channelType {
@@ -1070,14 +1145,31 @@ final class AppModel: ObservableObject {
         let systemPrompt = settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "You are a friendly Discord assistant. Reply briefly and naturally."
             : settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wikiContextEntries = await wikiContextCache.contextEntries(for: currentContent, limit: 3)
+        let wikiContext = renderWikiContext(entries: wikiContextEntries)
+        let combinedPrompt = wikiContext.isEmpty ? systemPrompt : "\(systemPrompt)\n\n\(wikiContext)"
         let systemMessage = Message(
             channelID: scope.id,
             userID: "system",
             username: "System",
-            content: systemPrompt,
+            content: combinedPrompt,
             role: .system
         )
         return [systemMessage] + conversationalMessages
+    }
+
+    private func renderWikiContext(entries: [WikiContextEntry]) -> String {
+        guard !entries.isEmpty else { return "" }
+        var lines: [String] = ["Known Wiki Context (cached):"]
+        for entry in entries {
+            let summary = summarizedWikiExtract(entry.extract, limit: 220)
+            if summary.isEmpty {
+                lines.append("- [\(entry.sourceName)] \(entry.title): \(entry.url)")
+            } else {
+                lines.append("- [\(entry.sourceName)] \(entry.title): \(summary) (\(entry.url))")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func appendAssistantMessage(scope: MemoryScope, content: String) async {
@@ -1161,15 +1253,37 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func finalsWikiLookup(query: String, channelId: String) async -> Bool {
+    private func finalsWikiLookup(command: String, query: String, channelId: String) async -> Bool {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
-            return await send(channelId, "📘 Usage: \(effectivePrefix())finals <weapon, gadget, map, mode, patch, or topic>")
+            return await send(channelId, "📘 Usage: \(effectivePrefix())\(command) <query> (optional source selector: \(effectivePrefix())wiki <source>::<query>)")
         }
 
-        guard let result = await cluster.lookupFinalsWiki(query: trimmedQuery) else {
-            return await send(channelId, "❌ I couldn't find a relevant THE FINALS Wiki page for \"\(trimmedQuery)\".")
+        guard let resolved = resolveWikiSourceAndQuery(command: command, query: trimmedQuery) else {
+            return await send(channelId, "⚠️ No WikiBridge sources are enabled. Add or enable a source in WikiBridge settings.")
         }
+
+        let source = resolved.source
+        let sourceQuery = resolved.query
+        guard !sourceQuery.isEmpty else {
+            return await send(channelId, "📘 Provide a query after the source selector. Example: \(effectivePrefix())wiki \(source.name)::AKM")
+        }
+
+        guard let result = await cluster.lookupWiki(query: sourceQuery, source: source) else {
+            updateWikiBridgeSourceRuntimeState(id: source.id) { entry in
+                entry.lastLookupAt = Date()
+                entry.lastStatus = "No match for \"\(sourceQuery)\""
+            }
+            persistSettingsQuietly()
+            return await send(channelId, "❌ I couldn't find a relevant page on \(source.name) for \"\(sourceQuery)\".")
+        }
+
+        updateWikiBridgeSourceRuntimeState(id: source.id) { entry in
+            entry.lastLookupAt = Date()
+            entry.lastStatus = "Resolved: \(result.title)"
+        }
+        persistSettingsQuietly()
+        await wikiContextCache.store(sourceName: source.name, query: sourceQuery, result: result)
 
         let body: String
         if settings.wikiBot.includeWeaponStats, let weaponStats = result.weaponStats {
@@ -1177,11 +1291,68 @@ final class AppModel: ObservableObject {
         } else {
             let summary = summarizedWikiExtract(result.extract)
             body = summary.isEmpty
-                ? "📘 **\(result.title)**\n\(result.url)"
-                : "📘 **\(result.title)**\n\(summary)\n\(result.url)"
+                ? "📘 **\(result.title)**\nSource: \(source.name)\n\(result.url)"
+                : "📘 **\(result.title)**\nSource: \(source.name)\n\(summary)\n\(result.url)"
         }
 
         return await send(channelId, body)
+    }
+
+    private func resolveWikiSourceAndQuery(command: String, query: String) -> (source: WikiBridgeSourceTarget, query: String)? {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let enabledSources = settings.wikiBot.sourceTargets.filter(\.isEnabled)
+        guard !enabledSources.isEmpty else { return nil }
+
+        if let explicit = parseExplicitWikiSource(in: trimmedQuery, from: enabledSources) {
+            return explicit
+        }
+
+        if (command == "finals" || command == "weapon"),
+           let finals = enabledSources.first(where: { $0.kind == .finals }) {
+            return (finals, trimmedQuery)
+        }
+
+        if let defaultID = settings.wikiBot.defaultSourceID,
+           let defaultSource = enabledSources.first(where: { $0.id == defaultID }) {
+            return (defaultSource, trimmedQuery)
+        }
+
+        return (enabledSources[0], trimmedQuery)
+    }
+
+    private func parseExplicitWikiSource(
+        in query: String,
+        from enabledSources: [WikiBridgeSourceTarget]
+    ) -> (source: WikiBridgeSourceTarget, query: String)? {
+        guard let marker = query.range(of: "::") else { return nil }
+        let rawSource = query[..<marker.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        let remainingQuery = query[marker.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawSource.isEmpty else { return nil }
+
+        let lookupKey = normalizedWikiSourceKey(rawSource)
+        guard !lookupKey.isEmpty else { return nil }
+
+        for source in enabledSources {
+            let nameKey = normalizedWikiSourceKey(source.name)
+            if lookupKey == nameKey || nameKey.hasPrefix(lookupKey) {
+                return (source, remainingQuery)
+            }
+
+            if let host = URL(string: source.baseURL)?.host {
+                let hostKey = normalizedWikiSourceKey(host)
+                if lookupKey == hostKey || hostKey.hasPrefix(lookupKey) {
+                    return (source, remainingQuery)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func normalizedWikiSourceKey(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     private func formattedWeaponStats(result: FinalsWikiLookupResult, stats: FinalsWeaponStats) -> String {

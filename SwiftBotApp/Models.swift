@@ -217,12 +217,104 @@ struct BotBehaviorSettings: Codable, Hashable {
     var useAIInGuildChannels: Bool = true
 }
 
+enum WikiBridgeSourceKind: String, Codable, CaseIterable, Identifiable {
+    case finals = "THE FINALS"
+    case mediaWiki = "MediaWiki"
+
+    var id: String { rawValue }
+}
+
+struct WikiBridgeSourceTarget: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var isEnabled: Bool = true
+    var name: String = "THE FINALS Wiki"
+    var kind: WikiBridgeSourceKind = .finals
+    var baseURL: String = "https://www.thefinals.wiki"
+    var apiPath: String = "/api.php"
+    var lastLookupAt: Date?
+    var lastStatus: String = "Never used"
+
+    static func defaultFinals() -> WikiBridgeSourceTarget {
+        WikiBridgeSourceTarget(
+            id: UUID(),
+            isEnabled: true,
+            name: "THE FINALS Wiki",
+            kind: .finals,
+            baseURL: "https://www.thefinals.wiki",
+            apiPath: "/api.php",
+            lastLookupAt: nil,
+            lastStatus: "Ready"
+        )
+    }
+}
+
 struct WikiBotSettings: Codable, Hashable {
     var isEnabled: Bool = true
     var allowFinalsCommand: Bool = true
     var allowWikiAlias: Bool = true
     var allowWeaponCommand: Bool = true
     var includeWeaponStats: Bool = true
+    var sourceTargets: [WikiBridgeSourceTarget] = []
+    var defaultSourceID: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case allowFinalsCommand
+        case allowWikiAlias
+        case allowWeaponCommand
+        case includeWeaponStats
+        case sourceTargets
+        case defaultSourceID
+    }
+
+    init() {
+        let defaultTarget = WikiBridgeSourceTarget.defaultFinals()
+        sourceTargets = [defaultTarget]
+        defaultSourceID = defaultTarget.id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        allowFinalsCommand = try container.decodeIfPresent(Bool.self, forKey: .allowFinalsCommand) ?? true
+        allowWikiAlias = try container.decodeIfPresent(Bool.self, forKey: .allowWikiAlias) ?? true
+        allowWeaponCommand = try container.decodeIfPresent(Bool.self, forKey: .allowWeaponCommand) ?? true
+        includeWeaponStats = try container.decodeIfPresent(Bool.self, forKey: .includeWeaponStats) ?? true
+        sourceTargets = try container.decodeIfPresent([WikiBridgeSourceTarget].self, forKey: .sourceTargets) ?? []
+        defaultSourceID = try container.decodeIfPresent(UUID.self, forKey: .defaultSourceID)
+        normalizeSources()
+    }
+
+    mutating func normalizeSources() {
+        if sourceTargets.isEmpty {
+            let defaultTarget = WikiBridgeSourceTarget.defaultFinals()
+            sourceTargets = [defaultTarget]
+            defaultSourceID = defaultTarget.id
+            return
+        }
+
+        if let defaultSourceID,
+           sourceTargets.contains(where: { $0.id == defaultSourceID }) {
+            return
+        }
+
+        if let firstEnabled = sourceTargets.first(where: { $0.isEnabled }) {
+            defaultSourceID = firstEnabled.id
+        } else {
+            defaultSourceID = sourceTargets.first?.id
+        }
+    }
+
+    func defaultSource() -> WikiBridgeSourceTarget? {
+        if let defaultSourceID,
+           let explicit = sourceTargets.first(where: { $0.id == defaultSourceID }) {
+            return explicit
+        }
+        if let firstEnabled = sourceTargets.first(where: { $0.isEnabled }) {
+            return firstEnabled
+        }
+        return sourceTargets.first
+    }
 }
 
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
@@ -446,6 +538,93 @@ actor ConversationStore {
 
     private func removeUpdateContinuation(_ id: UUID) {
         updateContinuations.removeValue(forKey: id)
+    }
+}
+
+struct WikiContextEntry: Identifiable, Hashable, Sendable {
+    let id: String
+    let sourceName: String
+    let query: String
+    let title: String
+    let extract: String
+    let url: String
+    let cachedAt: Date
+}
+
+actor WikiContextCache {
+    private var entries: [WikiContextEntry] = []
+    private let maxEntries = 120
+
+    func store(sourceName: String, query: String, result: FinalsWikiLookupResult) {
+        let key = normalizedKey(sourceName) + "|" + normalizedKey(result.title)
+        let entry = WikiContextEntry(
+            id: key,
+            sourceName: sourceName,
+            query: query,
+            title: result.title,
+            extract: result.extract,
+            url: result.url,
+            cachedAt: Date()
+        )
+
+        entries.removeAll { $0.id == key }
+        entries.insert(entry, at: 0)
+        if entries.count > maxEntries {
+            entries.removeLast(entries.count - maxEntries)
+        }
+    }
+
+    func contextEntries(for prompt: String, limit: Int = 3) -> [WikiContextEntry] {
+        let tokens = promptTokens(prompt)
+        let now = Date()
+        let freshnessCutoff = now.addingTimeInterval(-(60 * 60 * 24 * 7))
+        let candidates = entries.filter { $0.cachedAt >= freshnessCutoff }
+        guard !candidates.isEmpty else { return [] }
+
+        let scored: [(WikiContextEntry, Int)] = candidates.map { entry in
+            let haystack = [
+                normalizedKey(entry.sourceName),
+                normalizedKey(entry.query),
+                normalizedKey(entry.title),
+                normalizedKey(entry.extract)
+            ].joined(separator: " ")
+
+            let score = tokens.reduce(0) { partial, token in
+                partial + (haystack.contains(token) ? 1 : 0)
+            }
+            return (entry, score)
+        }
+
+        let matched = scored
+            .filter { $0.1 > 0 }
+            .sorted { lhs, rhs in
+                if lhs.1 == rhs.1 {
+                    return lhs.0.cachedAt > rhs.0.cachedAt
+                }
+                return lhs.1 > rhs.1
+            }
+            .map(\.0)
+
+        if !matched.isEmpty {
+            return Array(matched.prefix(limit))
+        }
+
+        return Array(candidates.prefix(limit))
+    }
+
+    private func promptTokens(_ raw: String) -> [String] {
+        raw
+            .lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 3 }
+    }
+
+    private func normalizedKey(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -767,8 +946,20 @@ actor DiscordCache {
     func upsertGuild(id guildID: String, name: String?) {
         let fallback = "Server \(guildID.suffix(4))"
         let candidate = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        snapshot.connectedServers[guildID] = candidate.isEmpty ? fallback : candidate
-        emitUpdate()
+
+        if !candidate.isEmpty {
+            if snapshot.connectedServers[guildID] != candidate {
+                snapshot.connectedServers[guildID] = candidate
+                emitUpdate()
+            }
+            return
+        }
+
+        // Preserve any known guild name when only an ID is available.
+        if snapshot.connectedServers[guildID] == nil {
+            snapshot.connectedServers[guildID] = fallback
+            emitUpdate()
+        }
     }
 
     func removeGuild(id guildID: String) {

@@ -3,7 +3,7 @@ import Network
 
 actor ClusterCoordinator {
     typealias AIHandler = @Sendable ([Message]) async -> String?
-    typealias WikiHandler = @Sendable (String) async -> FinalsWikiLookupResult?
+    typealias WikiHandler = @Sendable (String, WikiBridgeSourceTarget) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
 
     private let encoder = JSONEncoder()
@@ -127,21 +127,21 @@ actor ClusterCoordinator {
         return local
     }
 
-    func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
-        if mode == .leader, let remote = await performRemoteWikiLookup(query: query) {
+    func lookupWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
+        if mode == .leader, let remote = await performRemoteWikiLookup(query: query, source: source) {
             snapshot.lastJobRoute = .remote
-            snapshot.lastJobSummary = "Wiki lookup via worker"
+            snapshot.lastJobSummary = "Wiki lookup via worker (\(source.name))"
             snapshot.lastJobNode = remote.nodeName
             await publishSnapshot()
             return remote.result
         }
 
-        let local = await wikiHandler?(query)
+        let local = await wikiHandler?(query, source)
         snapshot.lastJobRoute = local == nil ? .unavailable : .local
-        snapshot.lastJobSummary = local == nil ? "Wiki lookup unavailable" : "Wiki lookup local"
+        snapshot.lastJobSummary = local == nil ? "Wiki lookup unavailable" : "Wiki lookup local (\(source.name))"
         snapshot.lastJobNode = nodeName
         if local != nil {
-            snapshot.diagnostics = "Handled wiki lookup locally on \(nodeName)"
+            snapshot.diagnostics = "Handled wiki lookup locally on \(nodeName) for \(source.name)"
         }
         await publishSnapshot()
         return local
@@ -373,10 +373,10 @@ actor ClusterCoordinator {
             let response = AIJobResponse(nodeName: nodeName, reply: reply)
             let bodyData = (try? encoder.encode(response)) ?? Data()
             return httpResponse(status: "200 OK", body: bodyData)
-        case ("POST", "/v1/finals-wiki"):
+        case ("POST", "/v1/wiki-lookup"), ("POST", "/v1/finals-wiki"):
             guard let wikiHandler,
-                  let body = try? decoder.decode(WikiJobRequest.self, from: request.body),
-                  let result = await wikiHandler(body.query) else {
+                  let body = decodeWikiJobRequest(from: request.body),
+                  let result = await wikiHandler(body.query, body.source) else {
                 await recordJobLog(
                     user: "Remote Wiki",
                     server: "Cluster",
@@ -390,12 +390,12 @@ actor ClusterCoordinator {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "Served remote wiki lookup"
             snapshot.lastJobNode = nodeName
-            snapshot.diagnostics = "Handled remote wiki lookup for \"\(body.query)\" on \(nodeName)"
+            snapshot.diagnostics = "Handled remote wiki lookup for \"\(body.query)\" on \(nodeName) (\(body.source.name))"
             await publishSnapshot()
             await recordJobLog(
-                user: "THE FINALS Wiki",
+                user: body.source.name,
                 server: "Remote Wiki",
-                command: "!finals \(body.query)",
+                command: "!wiki \(body.query)",
                 channel: "worker",
                 executionRoute: "Worker",
                 ok: true
@@ -471,8 +471,8 @@ actor ClusterCoordinator {
         }
     }
 
-    private func performRemoteWikiLookup(query: String) async -> WikiJobResponse? {
-        guard let url = URL(string: workerBaseURL + "/v1/finals-wiki") else {
+    private func performRemoteWikiLookup(query: String, source: WikiBridgeSourceTarget) async -> WikiJobResponse? {
+        guard let url = URL(string: workerBaseURL + "/v1/wiki-lookup") else {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Invalid worker URL"
             snapshot.diagnostics = "Remote wiki URL invalid: \(workerBaseURL)"
@@ -484,7 +484,7 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(WikiJobRequest(query: query))
+            request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
@@ -533,6 +533,16 @@ actor ClusterCoordinator {
         )
         await onJobLog?(entry)
     }
+
+    private func decodeWikiJobRequest(from data: Data) -> WikiJobRequest? {
+        if let request = try? decoder.decode(WikiJobRequest.self, from: data) {
+            return request
+        }
+        if let legacy = try? decoder.decode(LegacyWikiJobRequest.self, from: data) {
+            return WikiJobRequest(query: legacy.query, source: .defaultFinals())
+        }
+        return nil
+    }
 }
 
 private struct HTTPRequest {
@@ -551,6 +561,11 @@ private struct AIJobResponse: Codable {
 }
 
 private struct WikiJobRequest: Codable {
+    let query: String
+    let source: WikiBridgeSourceTarget
+}
+
+private struct LegacyWikiJobRequest: Codable {
     let query: String
 }
 
