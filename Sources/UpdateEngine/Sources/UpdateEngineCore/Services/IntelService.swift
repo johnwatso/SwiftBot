@@ -115,7 +115,7 @@ public struct IntelService: Sendable {
             version: parsed.version,
             date: formatDate(parsed.releaseDate),
             sections: [parsed.summarySection],
-            thumbnailURL: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Intel_Arc_logo_%28black%29.svg/512px-Intel_Arc_logo_%28black%29.svg.png",
+            thumbnailURL: "https://cdn.patchbot.io/games/145/intel-gpu-drivers_sm.png",
             color: 0x0071C5
         )
 
