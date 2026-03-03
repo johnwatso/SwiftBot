@@ -88,39 +88,47 @@ struct PatchyView: View {
     }
 
     private var sourceTargetList: some View {
-        List {
-            if app.settings.patchy.sourceTargets.isEmpty {
-                Text("No SourceTargets configured.")
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                if app.settings.patchy.sourceTargets.isEmpty {
+                    Text("No SourceTargets configured.")
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                }
 
-            ForEach(groupedTargets(), id: \.source) { group in
-                Section {
-                    ForEach(group.targets) { target in
-                        PatchyTargetRow(
-                            target: target,
-                            sourceDisplayName: sourceDisplayName(for: target),
-                            serverName: app.connectedServers[target.serverId] ?? "Not set",
-                            channelName: channelName(for: target),
-                            roleSummary: roleSummary(for: target),
-                            onTestSend: { app.sendPatchyTest(targetID: target.id) },
-                            onEdit: {
-                                editorMode = .edit
-                                editorDraft = PatchyTargetDraft(target: target)
-                            },
-                            onToggleEnabled: { app.togglePatchyTargetEnabled(target.id) },
-                            onDelete: { app.deletePatchyTarget(target.id) }
-                        )
-                    }
-                } header: {
-                    HStack(spacing: 8) {
-                        Image(systemName: sourceIcon(group.source))
-                        Text(sourceLabel(group.source))
+                ForEach(groupedTargets(), id: \.source) { group in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: sourceIcon(group.source))
+                            Text(sourceLabel(group.source))
+                                .font(.headline)
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                        LazyVStack(spacing: 12) {
+                            ForEach(group.targets) { target in
+                                PatchTargetCard(
+                                    target: target,
+                                    sourceDisplayName: sourceDisplayName(for: target),
+                                    serverName: serverName(for: target),
+                                    channelName: channelName(for: target),
+                                    roleSummary: roleSummary(for: target),
+                                    onTestSend: { app.sendPatchyTest(targetID: target.id) },
+                                    onEdit: {
+                                        editorMode = .edit
+                                        editorDraft = PatchyTargetDraft(target: target)
+                                    },
+                                    onToggleEnabled: { app.togglePatchyTargetEnabled(target.id) },
+                                    onDelete: { app.deletePatchyTarget(target.id) }
+                                )
+                            }
+                        }
                     }
                 }
             }
+            .padding(.vertical, 4)
         }
-        .listStyle(.inset)
     }
 
     @ViewBuilder
@@ -197,11 +205,26 @@ struct PatchyView: View {
         }
     }
 
-    private func channelName(for target: PatchySourceTarget) -> String {
-        guard let channel = app.availableTextChannelsByServer[target.serverId]?.first(where: { $0.id == target.channelId }) else {
-            return target.channelId.isEmpty ? "Not set" : target.channelId
+    private func serverName(for target: PatchySourceTarget) -> String {
+        let trimmed = target.serverId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Not set" }
+        if let name = app.connectedServers[trimmed], !name.isEmpty {
+            return name
         }
-        return "#\(channel.name)"
+        return "Server \(trimmed.suffix(4))"
+    }
+
+    private func channelName(for target: PatchySourceTarget) -> String {
+        let channelID = target.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !channelID.isEmpty else { return "Not set" }
+
+        if let channel = app.availableTextChannelsByServer[target.serverId]?.first(where: { $0.id == channelID }) {
+            return "#\(channel.name)"
+        }
+        if let channel = app.availableTextChannelsByServer.values.joined().first(where: { $0.id == channelID }) {
+            return "#\(channel.name)"
+        }
+        return "Channel \(channelID.suffix(4))"
     }
 
     private func roleSummary(for target: PatchySourceTarget) -> String {
@@ -221,7 +244,7 @@ private struct PatchySourceGroup {
     let targets: [PatchySourceTarget]
 }
 
-private struct PatchyTargetRow: View {
+private struct PatchTargetCard: View {
     let target: PatchySourceTarget
     let sourceDisplayName: String
     let serverName: String
@@ -233,33 +256,31 @@ private struct PatchyTargetRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: sourceIcon(target.source))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
                 Text(sourceDisplayName)
                     .font(.headline)
                 Spacer()
                 Text(target.isEnabled ? "Enabled" : "Disabled")
-                    .font(.caption)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        target.isEnabled
+                            ? Color.green.opacity(0.18)
+                            : Color.secondary.opacity(0.14),
+                        in: Capsule()
+                    )
                     .foregroundStyle(target.isEnabled ? .green : .secondary)
             }
 
-            HStack {
-                LabeledContent("Server", value: serverName)
-                LabeledContent("Channel", value: channelName)
+            VStack(alignment: .leading, spacing: 8) {
+                PatchTargetDetailRow(label: "Server", value: serverName)
+                PatchTargetDetailRow(label: "Channel", value: channelName)
+                PatchTargetDetailRow(label: "Mentions", value: roleSummary)
+                PatchTargetDetailRow(label: "Last Run", value: timestamp(target.lastRunAt))
             }
             .font(.subheadline)
-
-            LabeledContent("Mentions", value: roleSummary)
-                .font(.subheadline)
-
-            HStack {
-                Text("Last check: \(timestamp(target.lastCheckedAt))")
-                Spacer()
-                Text("Last run: \(timestamp(target.lastRunAt))")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             Text(target.lastStatus)
                 .font(.caption)
@@ -267,7 +288,7 @@ private struct PatchyTargetRow: View {
                 .lineLimit(2)
 
             HStack(spacing: 8) {
-                Button("Test Send", action: onTestSend)
+                Button("Test", action: onTestSend)
                     .buttonStyle(.bordered)
                 Button("Edit", action: onEdit)
                     .buttonStyle(.bordered)
@@ -278,20 +299,31 @@ private struct PatchyTargetRow: View {
                 Spacer()
             }
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.quaternary.opacity(0.45), lineWidth: 1)
+        }
     }
 
     private func timestamp(_ date: Date?) -> String {
         guard let date else { return "Never" }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
+}
 
-    private func sourceIcon(_ source: PatchySourceKind) -> String {
-        switch source {
-        case .amd: return "a.circle.fill"
-        case .nvidia: return "n.square.fill"
-        case .intel: return "i.circle.fill"
-        case .steam: return "gamecontroller.fill"
+private struct PatchTargetDetailRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .multilineTextAlignment(.trailing)
         }
     }
 }
