@@ -162,7 +162,7 @@ The repo is set up so:
 
 - GitHub Releases hosts the signed update archive
 - GitHub Pages hosts the Sparkle appcast at [https://johnwatso.github.io/SwiftBot/appcast.xml](https://johnwatso.github.io/SwiftBot/appcast.xml)
-- [scripts/publish_sparkle_release.sh](/Users/max/Developer/SwiftBot/scripts/publish_sparkle_release.sh) updates `docs/appcast.xml` for the latest release
+- [scripts/publish_sparkle_release.sh](scripts/publish_sparkle_release.sh) updates `docs/appcast.xml` for the latest release
 
 Suggested release steps:
 
@@ -182,6 +182,7 @@ scripts/publish_sparkle_release.sh <version> <exported-app-or-zip> [release-note
 Notes:
 
 - The helper script expects Sparkle's `generate_appcast` tool to be available after Xcode resolves the Sparkle package.
+- The helper script delegates to the Swift CLI target `SparklePublisher`.
 - If needed, set `SPARKLE_GENERATE_APPCAST` to the full path of `generate_appcast`.
 - If your Sparkle setup uses an explicit private key file for appcast generation, set `SPARKLE_PRIVATE_KEY_PATH`.
 - If you pass a `.app`, the script creates `release-artifacts/SwiftBot-<version>.zip` automatically using `ditto`.

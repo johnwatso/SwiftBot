@@ -1,8 +1,0 @@
-Target dependency graph (4 targets)
-Target 'SwiftBot' in project 'SwiftBot'
-➜ Explicit dependency on target 'Sparkle' in project 'Sparkle'
-➜ Explicit dependency on target 'UpdateEngine' in project 'UpdateEngine'
-Target 'UpdateEngine' in project 'UpdateEngine'
-➜ Explicit dependency on target 'UpdateEngine' in project 'UpdateEngine'
-Target 'UpdateEngine' in project 'UpdateEngine' (no dependencies)
-Target 'Sparkle' in project 'Sparkle' (no dependencies)
