@@ -90,6 +90,29 @@ Unknown commands return:
 - Controlled via the Apple Intelligence settings toggle.
 - Disabled by default.
 
+## High Availability / Cluster Options
+
+SwiftBot includes cluster operating modes for routing workload, but it is not full automatic HA/failover.
+
+- `Standalone`: one node runs Discord and local jobs.
+- `Leader`: owns Discord connection and can offload AI/wiki jobs to a worker over HTTP; falls back to local handling if worker is unavailable.
+- `Worker`: runs job services only and does not connect to Discord.
+
+Current limitations:
+
+- No automatic leader election.
+- No active-active Discord leaders.
+- No replicated cross-node state store.
+
+## UpdateEngine (Planned Integration)
+
+`UpdateEngine` is a standalone Swift package in `Sources/UpdateEngine` that provides reusable update-source infrastructure for driver/news feeds.
+
+- Current state: standalone and testable on its own.
+- Intended direction: integrate into SwiftBot runtime as a polling/scheduling layer that checks sources, tracks identifier-based changes, and posts notifications through normal bot delivery flow.
+- Built-in sources today: NVIDIA, AMD, Intel Arc, and Steam.
+- Design intent: keep source fetching/parsing separate from runtime delivery and Discord command/event handling.
+
 ## Build in Xcode
 
 1. Open this folder in Xcode 15+.
