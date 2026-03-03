@@ -142,13 +142,24 @@ public struct AMDService: Sendable {
     }
 
     private func parseSummarySections(from html: String) -> [ReleaseSection] {
-        if let highlights = extractSection(headerCandidates: ["Highlights"], from: html) {
-            return [highlights]
+        if let highlights = extractSections(headerCandidates: ["Highlights"], from: html) {
+            return highlights
         }
 
-        if let fixedIssues = extractSection(headerCandidates: ["Fixed Issues"], from: html)
-            ?? extractNamedListSection(named: "Fixed Issues", from: html) {
+        if let fixedIssues = extractSections(headerCandidates: ["Fixed Issues"], from: html) {
+            return fixedIssues
+        }
+
+        if let knownIssues = extractSections(headerCandidates: ["Known Issues"], from: html) {
+            return knownIssues
+        }
+
+        if let fixedIssues = extractNamedListSection(named: "Fixed Issues", from: html) {
             return [fixedIssues]
+        }
+
+        if let knownIssues = extractNamedListSection(named: "Known Issues", from: html) {
+            return [knownIssues]
         }
 
         if let firstParagraph = firstMeaningfulParagraph(in: html) {
@@ -163,21 +174,24 @@ public struct AMDService: Sendable {
         return [fallbackSection(from: html)]
     }
 
-    private func extractSection(headerCandidates: [String], from html: String) -> ReleaseSection? {
+    private func extractSections(headerCandidates: [String], from html: String) -> [ReleaseSection]? {
         guard let section = extractSectionBlock(headerCandidates: headerCandidates, from: html) else {
             return nil
         }
 
         let bullets = parseBulletsWithHierarchy(from: section.content)
         if !bullets.isEmpty {
-            return ReleaseSection(title: section.title, bullets: bullets)
+            let splitSections = splitBulletsIntoSections(defaultTitle: section.title, bullets: bullets)
+            if !splitSections.isEmpty {
+                return splitSections
+            }
         }
 
         guard let paragraph = firstMeaningfulParagraph(in: section.content) else {
             return nil
         }
 
-        return ReleaseSection(title: section.title, bullets: [Bullet(text: paragraph)])
+        return [ReleaseSection(title: section.title, bullets: [Bullet(text: paragraph)])]
     }
 
     private func extractNamedListSection(named name: String, from html: String) -> ReleaseSection? {
@@ -240,6 +254,52 @@ public struct AMDService: Sendable {
         title
             .lowercased()
             .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "", options: .regularExpression)
+    }
+
+    private func splitBulletsIntoSections(defaultTitle: String, bullets: [Bullet]) -> [ReleaseSection] {
+        var sections: [ReleaseSection] = []
+        var currentTitle = defaultTitle
+        var currentBullets: [Bullet] = []
+
+        func flushCurrentSection() {
+            guard !currentBullets.isEmpty else {
+                return
+            }
+            sections.append(ReleaseSection(title: currentTitle, bullets: currentBullets))
+            currentBullets = []
+        }
+
+        for bullet in bullets {
+            if let sectionTitle = canonicalSectionHeader(from: bullet.text) {
+                flushCurrentSection()
+                currentTitle = sectionTitle
+                currentBullets = bullet.subBullets.map { Bullet(text: $0) }
+                continue
+            }
+
+            currentBullets.append(bullet)
+        }
+
+        flushCurrentSection()
+        return sections
+    }
+
+    private func canonicalSectionHeader(from text: String) -> String? {
+        let trimmed = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+        let normalized = normalizeHeaderTitle(trimmed)
+
+        switch normalized {
+        case "highlights":
+            return "Highlights"
+        case "fixedissues":
+            return "Fixed Issues"
+        case "knownissues":
+            return "Known Issues"
+        default:
+            return nil
+        }
     }
 
     private func parseBulletsWithHierarchy(from html: String) -> [Bullet] {
