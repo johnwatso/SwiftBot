@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-03
+
+#### UpdateEngine Standalone Stabilization
+**Issue:** `Sources/UpdateEngine` mixed prototype UI/runtime files with core logic, used version-only change checks, and lacked a clean package API boundary.
+
+**Solution:** Refactored UpdateEngine into a standalone library target with identifier-based caching and explicit abstractions:
+- Converted package product to library target (`UpdateEngine`) with dedicated source path `Sources/UpdateEngine/Sources/UpdateEngineCore`
+- Introduced explicit core protocols/types:
+  - `UpdateSource` (source abstraction)
+  - `UpdateItem` (identifier + version model)
+  - `VersionStore` async protocol (`JSONVersionStore`, `InMemoryVersionStore`)
+  - `UpdateChecker` actor for identifier-based checks/saves
+  - `CacheKeyBuilder` for scoped cache keys (including per-guild key patterns)
+- Added built-in vendor-agnostic source wrappers:
+  - `NVIDIAUpdateSource`
+  - `AMDUpdateSource`
+  - `SteamNewsUpdateSource`
+- Added package tests (`UpdateCheckerTests`) covering:
+  - first-seen/unchanged/changed flows
+  - per-guild scoped-key independence
+  - identifier-based behavior independent of display version
+- Moved previous prototype app/runtime files into `Sources/UpdateEngine/Legacy/PrototypeApp` to keep them out of the library build surface
+
+**Important:** No integration into `SwiftBotApp` runtime was performed. No bot startup, polling, or Discord event wiring changes were made.
+
+**Files Modified:**
+- `Sources/UpdateEngine/Package.swift`
+- `Sources/UpdateEngine/Sources/UpdateEngineCore/*` (new core library files)
+- `Sources/UpdateEngine/Tests/UpdateEngineTests/UpdateCheckerTests.swift`
+- `Sources/UpdateEngine/Legacy/*` (moved legacy prototype files)
+- `AI_GUIDE.md`
+- `ARCHITECTURE.md`
+- `CHANGELOG.md`
+
 ### Changed - 2026-03-02
 
 #### Repository Cleanup

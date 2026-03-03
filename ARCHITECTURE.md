@@ -9,6 +9,7 @@ This document provides a high-level overview of the SwiftBot application archite
 **Language:** Swift with Concurrency (async/await, actors)  
 **Platform:** macOS 13+  
 **Build System:** Xcode Project + Swift Package Manager
+**Standalone Package (Not Integrated):** `Sources/UpdateEngine`
 
 ## Core Components
 
@@ -79,6 +80,23 @@ This document provides a high-level overview of the SwiftBot application archite
   - **Logs** - System logs with auto-scroll
   - **Settings** - Bot token, prefix, AI settings
   - **Status** - Gateway stats, voice presence
+
+### 7. UpdateEngine Package (Standalone)
+- **Path:** `Sources/UpdateEngine`
+- **Package Product:** `UpdateEngine` (library target)
+- **Status:** Standalone infrastructure only. Not wired into `SwiftBotApp` startup, polling, or Discord event handling.
+- **Purpose:** Provide reusable update-source abstractions and identifier-based change detection for future integration.
+- **Core API Surface:**
+  - `UpdateSource` protocol (`sourceKey`, `fetchLatest()`)
+  - `UpdateItem` protocol (`sourceKey`, `identifier`, `version`)
+  - `UpdateChecker` actor for identifier comparison and save
+  - `VersionStore` async protocol (`JSONVersionStore`, `InMemoryVersionStore`)
+  - `CacheKeyBuilder` for base and scoped keys (including per-guild keys)
+- **Built-in source implementations:** `NVIDIAUpdateSource`, `AMDUpdateSource`, `SteamNewsUpdateSource`
+- **Architectural decisions:**
+  - Vendor-agnostic source abstraction via protocols.
+  - Identifier-based caching (stable item IDs) instead of version-only comparisons.
+  - Runtime-owned scoping (for example `guild:<id>:<sourceKey>`) to support future per-guild polling.
 
 ## Data Flow
 
@@ -270,6 +288,7 @@ SwiftBot.xcodeproj
 - Heartbeat in separate Task
 - All rule evaluation on MainActor
 - File I/O isolated in actors
+- UpdateEngine checker/store APIs are actor-based for async-safe cache access
 
 ## Error Handling
 
@@ -299,6 +318,6 @@ SwiftBot.xcodeproj
 
 ---
 
-**Last Updated:** 2026-03-02  
+**Last Updated:** 2026-03-03  
 **Maintained By:** AI Assistant  
 **Purpose:** Context for code modifications and architectural decisions
