@@ -67,16 +67,30 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ## Roadmap / Want To Add
 
-- ✅ ~~General server notifications (join/leave events, voice activity, session duration)~~ - **Working!**
-- Voice session tracking for analytics and summaries
-- AI patch note summaries using a local LLM
-- Notification channel auto-cleanup (e.g. clear every 24 hours)
-- Weekly server activity summaries based on logged usage
-- Game/wiki data lookup commands (e.g. weapon stats from a game wiki)
-- Improved rule builder UI with drag-and-drop automation
-- Plugin system to extend features modularly
+### ✅ Shipped / Working
+
+- General server notifications (join/leave/move, voice activity, session duration)
+- Voice session tracking with activity timeline/logging
+- Game/wiki lookup command path (`!finals`) with wiki context caching
+- On-device AI reply pipeline improvements (short-history focus, anti-rigid tone defaults, shared prompt composer)
+- Grounded AI context (Server/Channel/Time injection) and speaker attribution
+- Hardened Cluster Security (shared-secret auth, SSRF guards, request body caps)
+- SwiftMesh Phase 1: standby failover mode (health monitoring, promotion, term safety)
+- SwiftMesh Phase 2: conversation replication (incremental sync, pagination, gap-resync, durable cursors)
+- SwiftMesh Phase 3: wiki cache/state sync across nodes for failover continuity
+
+### 🔄 In Progress
+
+- Improved macOS visual design pass (modern SwiftUI + "Liquid Glass" materials/vibrancy)
+- Voice analytics summaries and weekly digest quality improvements
+- Rule builder UX polish and automation ergonomics
+
+### 🧭 Planned / Backlog
+
+- AI patch note summaries using local LLM pipelines
+- Notification channel auto-cleanup policies (e.g. periodic clear/archive)
+- Plugin system for modular feature extensions
 - Web dashboard / remote access with Discord SSO
-- Improved macOS UI design (modern SwiftUI / glass-style interface)
 
 ## Commands
 
@@ -107,19 +121,19 @@ Unknown commands return:
 - `AI Bots` provider icons (Apple Intelligence / Ollama) may render inconsistently or fall back incorrectly on some builds.
 - Current status: tracking as a known UI issue; functionality is unaffected.
 
-## High Availability / Cluster Options
+## High Availability / SwiftMesh Cluster
 
-SwiftBot includes cluster operating modes for routing workload, but it is not full automatic HA/failover.
+SwiftBot includes a robust cluster operating system called **SwiftMesh** for distributed workloads and automatic failover.
 
-- `Standalone`: one node runs Discord and local jobs.
-- `Leader`: owns Discord connection and can offload AI/wiki jobs to a worker over HTTP; falls back to local handling if worker is unavailable.
-- `Worker`: runs job services only and does not connect to Discord.
+- **Standalone**: Single node handling all Discord and job operations.
+- **Leader**: Primary node owning the Discord Gateway connection. Replicates state (conversations, wiki cache, worker registry) to standbys and offloads heavy jobs to workers.
+- **Standby**: Hot-failover node. Monitors leader health via heartbeat. Promotes to Leader automatically after 3 misses, assuming the newest monotonic term.
+- **Worker**: Lightweight node for offloading AI/Wiki jobs. Does not connect to Discord.
 
-Current limitations:
-
-- No automatic leader election.
-- No active-active Discord leaders.
-- No replicated cross-node state store.
+### Failover Features:
+- **Term Monotonicity**: Prevents split-brain scenarios using persisted, incrementing leader epochs.
+- **State Replication**: Real-time incremental push of conversation history and background sync of wiki context.
+- **Dynamic Redirection**: Workers automatically re-register with the new leader upon promotion broadcast.
 
 ## UpdateEngine Integration
 
