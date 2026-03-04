@@ -191,6 +191,7 @@ struct DashboardSidebar: View {
         case .standalone: return "desktopcomputer"
         case .leader: return "point.3.connected.trianglepath.dotted"
         case .worker: return "cpu"
+        case .standby: return "arrow.triangle.2.circlepath"
         }
     }
 

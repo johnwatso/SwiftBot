@@ -136,3 +136,29 @@ final class LogStore: ObservableObject {
         lines.joined(separator: "\n")
     }
 }
+
+actor MeshCursorStore {
+    private let url: URL
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(filename: String = "mesh-cursors.json") {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        self.url = folder.appendingPathComponent(filename)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
+    func load() -> [String: ReplicationCursor] {
+        guard let data = try? Data(contentsOf: url),
+              let cursors = try? decoder.decode([String: ReplicationCursor].self, from: data)
+        else { return [:] }
+        return cursors
+    }
+
+    func save(_ cursors: [String: ReplicationCursor]) throws {
+        let data = try encoder.encode(cursors)
+        try data.write(to: url, options: .atomic)
+    }
+}
