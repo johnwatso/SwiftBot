@@ -1109,16 +1109,25 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .standalone: return "Standalone"
+        case .leader:     return "Primary"
+        case .worker:     return "Worker"
+        case .standby:    return "Fail Over"
+        }
+    }
+
     var description: String {
         switch self {
         case .standalone:
-            return "Runs Discord and heavy tasks locally."
+            return "Runs Discord and all tasks locally. No clustering."
         case .leader:
-            return "Owns Discord traffic, listens for worker registrations, and can offload heavy work."
+            return "Primary node — owns Discord, distributes jobs to Workers, and coordinates the mesh."
         case .worker:
-            return "Runs job services only, connects to the leader address, and registers for jobs."
+            return "Connects to the Primary node, receives and runs offloaded jobs."
         case .standby:
-            return "Hot standby — monitors the leader and automatically promotes to leader on failure."
+            return "Fail Over node — silently monitors the Primary and automatically promotes if it fails. Discord stays offline until promotion."
         }
     }
 }

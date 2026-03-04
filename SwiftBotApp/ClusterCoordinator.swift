@@ -193,14 +193,14 @@ actor ClusterCoordinator {
         case .standby:
             guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
                 snapshot.workerState = .inactive
-                snapshot.workerStatusText = "Leader not configured"
-                snapshot.diagnostics = "Standby requires a Leader Address"
+                snapshot.workerStatusText = "Primary not configured"
+                snapshot.diagnostics = "Fail Over requires a Primary Address"
                 await publishSnapshot()
                 return
             }
             snapshot.workerState = .connected
-            snapshot.workerStatusText = "Monitoring leader (term \(leaderTerm))"
-            snapshot.diagnostics = "Hot standby — watching \(leaderBaseURL)"
+            snapshot.workerStatusText = "Monitoring Primary (term \(leaderTerm))"
+            snapshot.diagnostics = "Fail Over — watching \(leaderBaseURL)"
             await publishSnapshot()
         case .standalone:
             snapshot.workerState = .inactive
@@ -240,16 +240,16 @@ actor ClusterCoordinator {
         case .worker:
             guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
                 snapshot.workerState = .inactive
-                snapshot.workerStatusText = "Leader not configured"
-                snapshot.diagnostics = "Worker requires a Leader Address"
+                snapshot.workerStatusText = "Primary not configured"
+                snapshot.diagnostics = "Worker requires a Primary Address"
                 await publishSnapshot()
                 return
             }
 
             guard let url = URL(string: leaderBaseURL + "/health") else {
                 snapshot.workerState = .failed
-                snapshot.workerStatusText = "Invalid leader address"
-                snapshot.diagnostics = "Leader Address is invalid: \(leaderAddress)"
+                snapshot.workerStatusText = "Invalid Primary address"
+                snapshot.diagnostics = "Primary Address is invalid: \(leaderAddress)"
                 await publishSnapshot()
                 return
             }
@@ -258,18 +258,18 @@ actor ClusterCoordinator {
                 let (_, response) = try await URLSession.shared.data(from: url)
                 if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                     snapshot.workerState = .connected
-                    snapshot.workerStatusText = "Leader reachable"
-                    snapshot.diagnostics = "Leader reachable via \(url.absoluteString)"
+                    snapshot.workerStatusText = "Primary reachable"
+                    snapshot.diagnostics = "Primary reachable via \(url.absoluteString)"
                 } else {
                     let status = (response as? HTTPURLResponse)?.statusCode ?? -1
                     snapshot.workerState = .degraded
-                    snapshot.workerStatusText = "Leader health check failed (\(status))"
-                    snapshot.diagnostics = "Leader health returned HTTP \(status) via \(url.absoluteString)"
+                    snapshot.workerStatusText = "Primary health check failed (\(status))"
+                    snapshot.diagnostics = "Primary health returned HTTP \(status) via \(url.absoluteString)"
                 }
             } catch {
                 snapshot.workerState = .failed
-                snapshot.workerStatusText = "Leader unavailable"
-                snapshot.diagnostics = "Leader health request failed for \(url.absoluteString): \(error.localizedDescription)"
+                snapshot.workerStatusText = "Primary unavailable"
+                snapshot.diagnostics = "Primary health request failed for \(url.absoluteString): \(error.localizedDescription)"
             }
             await publishSnapshot()
         }
@@ -699,13 +699,13 @@ actor ClusterCoordinator {
         let isHealthy = await isWorkerReachable(leaderBaseURL)
         if isHealthy {
             if standbyHealthMisses > 0 {
-                snapshot.diagnostics = "Leader recovered after \(standbyHealthMisses) misses"
+                snapshot.diagnostics = "Primary recovered after \(standbyHealthMisses) misses"
                 await publishSnapshot()
             }
             standbyHealthMisses = 0
         } else {
             standbyHealthMisses += 1
-            snapshot.diagnostics = "Leader health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
+            snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
             await publishSnapshot()
             
             if standbyHealthMisses >= Self.standbyPromotionThreshold {
@@ -720,9 +720,9 @@ actor ClusterCoordinator {
         leaderTerm += 1
         snapshot.mode = .leader
         snapshot.leaderTerm = leaderTerm
-        snapshot.diagnostics = "PROMOTED TO LEADER (Term \(leaderTerm))"
+        snapshot.diagnostics = "PROMOTED TO PRIMARY (Term \(leaderTerm))"
         snapshot.workerState = .connected
-        snapshot.workerStatusText = "Leader (Promoted)"
+        snapshot.workerStatusText = "Primary (Promoted)"
         await publishSnapshot()
 
         // Persist the new term immediately so a restart cannot emit a stale term.
@@ -745,7 +745,7 @@ actor ClusterCoordinator {
         // Notify workers of the new leader
         let workers = Array(registeredWorkers.values)
         if !workers.isEmpty {
-            snapshot.diagnostics = "Promoted to leader. Notifying \(workers.count) workers..."
+            snapshot.diagnostics = "Promoted to Primary. Notifying \(workers.count) workers..."
             await publishSnapshot()
             
             let payload = MeshLeaderChangedPayload(
@@ -845,8 +845,8 @@ actor ClusterCoordinator {
         guard mode == .worker else { return }
         guard let normalizedLeader = normalizedBaseURL(leaderAddress), !normalizedLeader.isEmpty else {
             snapshot.workerState = .inactive
-            snapshot.workerStatusText = "Leader not configured"
-            snapshot.diagnostics = "Set Leader Address to enable worker registration"
+            snapshot.workerStatusText = "Primary not configured"
+            snapshot.diagnostics = "Set Primary Address to enable worker registration"
             return
         }
 
@@ -862,7 +862,7 @@ actor ClusterCoordinator {
         guard mode == .worker else { return }
         guard let url = URL(string: leaderBaseURL + "/cluster/register") else {
             snapshot.workerState = .failed
-            snapshot.workerStatusText = "Invalid leader address"
+            snapshot.workerStatusText = "Invalid Primary address"
             snapshot.diagnostics = "Invalid registration URL: \(leaderBaseURL)"
             await publishSnapshot()
             return
@@ -889,23 +889,23 @@ actor ClusterCoordinator {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 snapshot.workerState = .degraded
                 snapshot.workerStatusText = "Registration failed (\(code))"
-                snapshot.diagnostics = "Leader rejected registration at \(url.absoluteString)"
+                snapshot.diagnostics = "Primary rejected registration at \(url.absoluteString)"
                 await publishSnapshot()
                 return
             }
 
             let ack = try? decoder.decode(WorkerRegistrationResponse.self, from: data)
             snapshot.workerState = .connected
-            snapshot.workerStatusText = "Registered with leader"
+            snapshot.workerStatusText = "Registered with Primary"
             if let ack {
-                snapshot.diagnostics = "Registered with leader \(ack.leaderNodeName) (\(ack.registeredWorkers) workers total)"
+                snapshot.diagnostics = "Registered with Primary \(ack.leaderNodeName) (\(ack.registeredWorkers) workers total)"
             } else {
-                snapshot.diagnostics = "Registered with leader via \(url.absoluteString)"
+                snapshot.diagnostics = "Registered with Primary via \(url.absoluteString)"
             }
             await publishSnapshot()
         } catch {
             snapshot.workerState = .failed
-            snapshot.workerStatusText = "Leader unavailable"
+            snapshot.workerStatusText = "Primary unavailable"
             snapshot.diagnostics = "Registration request failed for \(url.absoluteString): \(error.localizedDescription)"
             await publishSnapshot()
         }
@@ -1344,9 +1344,9 @@ actor ClusterCoordinator {
         leaderAddress = payload.leaderAddress
         snapshot.leaderTerm = leaderTerm
         snapshot.leaderAddress = leaderAddress
-        snapshot.diagnostics = "Leader changed to \(payload.leaderNodeName) at \(payload.leaderAddress) (term \(leaderTerm))"
+        snapshot.diagnostics = "Primary changed to \(payload.leaderNodeName) at \(payload.leaderAddress) (term \(leaderTerm))"
         snapshot.workerState = .starting
-        snapshot.workerStatusText = "Re-registering with new leader"
+        snapshot.workerStatusText = "Re-registering with new Primary"
         await publishSnapshot()
 
         if mode == .worker, let normalizedLeader = normalizedBaseURL(leaderAddress) {
@@ -1457,7 +1457,7 @@ extension ClusterCoordinator {
     /// Increments the miss counter and triggers promotion if threshold is reached.
     func testSimulateLeaderHealthMiss() async {
         standbyHealthMisses += 1
-        snapshot.workerStatusText = "Leader unreachable (\(standbyHealthMisses)/\(Self.standbyPromotionThreshold))"
+        snapshot.workerStatusText = "Primary unreachable (\(standbyHealthMisses)/\(Self.standbyPromotionThreshold))"
         snapshot.diagnostics = "Simulated health miss \(standbyHealthMisses)"
         await publishSnapshot()
         if standbyHealthMisses >= Self.standbyPromotionThreshold {
@@ -1466,6 +1466,7 @@ extension ClusterCoordinator {
     }
 
     func testCurrentMode() -> ClusterMode { mode }
+    func testCurrentSnapshot() -> ClusterSnapshot { snapshot }
     func testCurrentLeaderTerm() -> Int { leaderTerm }
     func testCurrentLeaderAddress() -> String { leaderAddress }
     func testReplicationCursors() -> [String: ReplicationCursor] { replicationCursors }
