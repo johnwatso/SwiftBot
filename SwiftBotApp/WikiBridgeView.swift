@@ -3,17 +3,15 @@ import SwiftUI
 struct WikiBridgeView: View {
     @EnvironmentObject var app: AppModel
 
-    @State private var editorDraft: WikiBridgeSourceDraft?
+    @State private var editorDraft: WikiSourceDraft?
     @State private var editorMode: WikiBridgeEditorMode = .create
 
-    private var effectivePrefix: String {
-        let trimmed = app.settings.prefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "!" : trimmed
-    }
-
-    private var sortedSources: [WikiBridgeSourceTarget] {
-        app.settings.wikiBot.sourceTargets.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+    private var sortedSources: [WikiSource] {
+        app.settings.wikiBot.sources.sorted { lhs, rhs in
+            if lhs.isPrimary != rhs.isPrimary {
+                return lhs.isPrimary && !rhs.isPrimary
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
     }
 
@@ -32,15 +30,15 @@ struct WikiBridgeView: View {
             .frame(maxWidth: .infinity)
         }
         .sheet(item: $editorDraft) { draft in
-            WikiBridgeSourceEditorSheet(
+            WikiSourceEditorSheet(
                 draft: draft,
                 mode: editorMode,
                 onCancel: { editorDraft = nil },
                 onSave: { updated in
                     if editorMode == .create {
-                        app.addWikiBridgeSourceTarget(updated.toTarget())
+                        app.addWikiBridgeSourceTarget(updated.toSource())
                     } else {
-                        app.updateWikiBridgeSourceTarget(updated.toTarget())
+                        app.updateWikiBridgeSourceTarget(updated.toSource())
                     }
                     editorDraft = nil
                 }
@@ -53,15 +51,11 @@ struct WikiBridgeView: View {
             Text("Status")
                 .font(.title3.weight(.semibold))
 
-            let defaultSource = app.settings.wikiBot.defaultSource()
+            let primarySource = app.settings.wikiBot.primarySource()
             InfoRow(label: "WikiBridge", value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled")
-            InfoRow(label: "Default Source", value: defaultSource?.name ?? "Not set")
-            InfoRow(label: "Configured Sources", value: "\(app.settings.wikiBot.sourceTargets.count)")
-            InfoRow(label: "Enabled Sources", value: "\(app.settings.wikiBot.sourceTargets.filter(\.isEnabled).count)")
-            InfoRow(label: "\(effectivePrefix)finals", value: app.settings.wikiBot.allowFinalsCommand ? "Enabled" : "Disabled")
-            InfoRow(label: "\(effectivePrefix)wiki", value: app.settings.wikiBot.allowWikiAlias ? "Enabled" : "Disabled")
-            InfoRow(label: "\(effectivePrefix)weapon", value: app.settings.wikiBot.allowWeaponCommand ? "Enabled" : "Disabled")
-            InfoRow(label: "Weapon Stats Formatting", value: app.settings.wikiBot.includeWeaponStats ? "Enabled" : "Disabled")
+            InfoRow(label: "Primary Source", value: primarySource?.name ?? "Not set")
+            InfoRow(label: "Configured Sources", value: "\(app.settings.wikiBot.sources.count)")
+            InfoRow(label: "Enabled Sources", value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)")
         }
         .padding(20)
         .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
@@ -74,16 +68,6 @@ struct WikiBridgeView: View {
 
             Toggle("Enable WikiBridge", isOn: $app.settings.wikiBot.isEnabled)
                 .toggleStyle(.switch)
-
-            Group {
-                Toggle("Enable \(effectivePrefix)finals command", isOn: $app.settings.wikiBot.allowFinalsCommand)
-                Toggle("Enable \(effectivePrefix)wiki alias", isOn: $app.settings.wikiBot.allowWikiAlias)
-                Toggle("Enable \(effectivePrefix)weapon command", isOn: $app.settings.wikiBot.allowWeaponCommand)
-                Toggle("Include weapon stat blocks in responses", isOn: $app.settings.wikiBot.includeWeaponStats)
-            }
-            .toggleStyle(.switch)
-            .disabled(!app.settings.wikiBot.isEnabled)
-            .opacity(app.settings.wikiBot.isEnabled ? 1.0 : 0.55)
 
             HStack {
                 Spacer()
@@ -105,7 +89,7 @@ struct WikiBridgeView: View {
                 Spacer()
                 Button {
                     editorMode = .create
-                    editorDraft = WikiBridgeSourceDraft.makeNew()
+                    editorDraft = WikiSourceDraft.makeNew()
                 } label: {
                     Label("Add Source", systemImage: "plus")
                 }
@@ -118,25 +102,24 @@ struct WikiBridgeView: View {
                     .padding(.vertical, 8)
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(sortedSources) { target in
-                        WikiBridgeSourceCard(
-                            target: target,
-                            isDefault: app.settings.wikiBot.defaultSourceID == target.id,
-                            onSetDefault: {
-                                app.setWikiBridgeDefaultSource(target.id)
+                    ForEach(sortedSources) { source in
+                        WikiSourceCard(
+                            source: source,
+                            onSetPrimary: {
+                                app.setWikiBridgePrimarySource(source.id)
                             },
                             onTest: {
-                                app.testWikiBridgeSource(targetID: target.id)
+                                app.testWikiBridgeSource(targetID: source.id)
                             },
                             onEdit: {
                                 editorMode = .edit
-                                editorDraft = WikiBridgeSourceDraft(target: target)
+                                editorDraft = WikiSourceDraft(source: source)
                             },
                             onToggleEnabled: {
-                                app.toggleWikiBridgeSourceTargetEnabled(target.id)
+                                app.toggleWikiBridgeSourceTargetEnabled(source.id)
                             },
                             onDelete: {
-                                app.deleteWikiBridgeSourceTarget(target.id)
+                                app.deleteWikiBridgeSourceTarget(source.id)
                             }
                         )
                     }
@@ -148,65 +131,40 @@ struct WikiBridgeView: View {
     }
 }
 
-private struct WikiBridgeSourceCard: View {
-    let target: WikiBridgeSourceTarget
-    let isDefault: Bool
-    let onSetDefault: () -> Void
+private struct WikiSourceCard: View {
+    let source: WikiSource
+    let onSetPrimary: () -> Void
     let onTest: () -> Void
     let onEdit: () -> Void
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text(target.name)
-                    .font(.headline)
-                if isDefault {
-                    Text("Default")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.accentColor.opacity(0.2), in: Capsule())
-                        .foregroundStyle(Color.accentColor)
-                }
-                Spacer()
-                Text(target.isEnabled ? "Enabled" : "Disabled")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        target.isEnabled
-                            ? Color.green.opacity(0.18)
-                            : Color.secondary.opacity(0.14),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(target.isEnabled ? .green : .secondary)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Text(source.name)
+                .font(.headline)
 
-            VStack(alignment: .leading, spacing: 8) {
-                WikiBridgeSourceDetailRow(label: "Type", value: target.kind.rawValue)
-                WikiBridgeSourceDetailRow(label: "Base URL", value: target.baseURL)
-                WikiBridgeSourceDetailRow(label: "API Path", value: target.apiPath)
-                WikiBridgeSourceDetailRow(label: "Last Lookup", value: timestamp(target.lastLookupAt))
-            }
-            .font(.subheadline)
-
-            Text(target.lastStatus)
-                .font(.caption)
+            Text(statusText)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+
+            Text("Commands: \(source.commands.count)")
+                .font(.subheadline)
+            Text("Parsing Rules: \(source.parsingRules.count)")
+                .font(.subheadline)
+            Text("Last Lookup: \(lastLookupLabel)")
+                .font(.subheadline)
 
             HStack(spacing: 8) {
-                if !isDefault {
-                    Button("Set Default", action: onSetDefault)
+                if !source.isPrimary {
+                    Button("Set Primary", action: onSetPrimary)
                         .buttonStyle(.bordered)
                 }
                 Button("Test", action: onTest)
                     .buttonStyle(.bordered)
-                Button("Edit", action: onEdit)
+                Button("Edit Source", action: onEdit)
                     .buttonStyle(.bordered)
-                Button(target.isEnabled ? "Disable" : "Enable", action: onToggleEnabled)
+                Button(source.enabled ? "Disable" : "Enable", action: onToggleEnabled)
                     .buttonStyle(.bordered)
                 Button("Delete", role: .destructive, action: onDelete)
                     .buttonStyle(.bordered)
@@ -221,24 +179,27 @@ private struct WikiBridgeSourceCard: View {
         }
     }
 
-    private func timestamp(_ date: Date?) -> String {
-        guard let date else { return "Never" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+    private var statusText: String {
+        let enabledLabel = source.enabled ? "Enabled" : "Disabled"
+        return source.isPrimary ? "Primary • \(enabledLabel)" : enabledLabel
     }
-}
 
-private struct WikiBridgeSourceDetailRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .multilineTextAlignment(.trailing)
+    private var lastLookupLabel: String {
+        let status = source.lastStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        if status.hasPrefix("Resolved:") {
+            return status.replacingOccurrences(of: "Resolved:", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        if status.hasPrefix("No match for \"") {
+            if let start = status.firstIndex(of: "\""),
+               let end = status[start...].dropFirst().firstIndex(of: "\"") {
+                return String(status[status.index(after: start)..<end])
+            }
+        }
+        if status == "Ready" || status == "Never used" || status.isEmpty {
+            return "Never"
+        }
+        return status
     }
 }
 
@@ -247,85 +208,104 @@ private enum WikiBridgeEditorMode {
     case edit
 }
 
-private struct WikiBridgeSourceDraft: Identifiable {
+private struct WikiSourceDraft: Identifiable {
     var id: UUID
-    var isEnabled: Bool
+    var enabled: Bool
+    var isPrimary: Bool
     var name: String
-    var kind: WikiBridgeSourceKind
     var baseURL: String
     var apiPath: String
+    var commands: [WikiCommand]
+    var formatting: WikiFormatting
+    var parsingRules: [WikiParsingRule]
     var lastLookupAt: Date?
     var lastStatus: String
 
-    init(target: WikiBridgeSourceTarget) {
-        id = target.id
-        isEnabled = target.isEnabled
-        name = target.name
-        kind = target.kind
-        baseURL = target.baseURL
-        apiPath = target.apiPath
-        lastLookupAt = target.lastLookupAt
-        lastStatus = target.lastStatus
+    init(source: WikiSource) {
+        id = source.id
+        enabled = source.enabled
+        isPrimary = source.isPrimary
+        name = source.name
+        baseURL = source.baseURL
+        apiPath = source.apiPath
+        commands = source.commands
+        formatting = source.formatting
+        parsingRules = source.parsingRules
+        lastLookupAt = source.lastLookupAt
+        lastStatus = source.lastStatus
     }
 
-    static func makeNew() -> WikiBridgeSourceDraft {
-        let target = WikiBridgeSourceTarget(
-            id: UUID(),
-            isEnabled: true,
-            name: "New Wiki",
-            kind: .mediaWiki,
-            baseURL: "https://example.fandom.com",
-            apiPath: "/api.php",
-            lastLookupAt: nil,
-            lastStatus: "Ready"
-        )
-        return WikiBridgeSourceDraft(target: target)
+    static func makeNew() -> WikiSourceDraft {
+        WikiSourceDraft(source: WikiSource.genericTemplate())
     }
 
-    func toTarget() -> WikiBridgeSourceTarget {
-        WikiBridgeSourceTarget(
+    func toSource() -> WikiSource {
+        let sanitizedCommands = commands.compactMap { command -> WikiCommand? in
+            let trigger = command.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trigger.isEmpty else { return nil }
+            var updated = command
+            updated.trigger = trigger
+            let endpoint = command.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.endpoint = endpoint.isEmpty ? "search" : endpoint
+            updated.description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            return updated
+        }
+
+        let sanitizedRules = parsingRules.compactMap { rule -> WikiParsingRule? in
+            let pageType = rule.pageType.trimmingCharacters(in: .whitespacesAndNewlines)
+            let templateName = rule.templateName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pageType.isEmpty || !templateName.isEmpty else { return nil }
+            var updated = rule
+            updated.pageType = pageType
+            updated.templateName = templateName
+            return updated
+        }
+
+        let normalizedAPIPath: String = {
+            let trimmed = apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "/api.php" : trimmed
+        }()
+
+        return WikiSource(
             id: id,
-            isEnabled: isEnabled,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-            kind: kind,
             baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-            apiPath: apiPath.trimmingCharacters(in: .whitespacesAndNewlines),
+            apiPath: normalizedAPIPath,
+            enabled: enabled,
+            isPrimary: isPrimary,
+            commands: sanitizedCommands,
+            formatting: formatting,
+            parsingRules: sanitizedRules,
             lastLookupAt: lastLookupAt,
             lastStatus: lastStatus
         )
     }
 }
 
-private struct WikiBridgeSourceEditorSheet: View {
+private struct WikiSourceEditorSheet: View {
+    @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State var draft: WikiBridgeSourceDraft
+    @State var draft: WikiSourceDraft
+    @State private var testQuery: String = "akm"
+    @State private var isRunningTest = false
+    @State private var testResult: FinalsWikiLookupResult?
+    @State private var testError: String?
 
     let mode: WikiBridgeEditorMode
     let onCancel: () -> Void
-    let onSave: (WikiBridgeSourceDraft) -> Void
+    let onSave: (WikiSourceDraft) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(mode == .create ? "Add Wiki Source" : "Edit Wiki Source")
+            Text(mode == .create ? "Add Wiki Source" : "Edit Source")
                 .font(.title3.weight(.semibold))
 
             Form {
-                TextField("Display Name", text: $draft.name)
-                    .textFieldStyle(.roundedBorder)
-
-                Picker("Type", selection: $draft.kind) {
-                    ForEach(WikiBridgeSourceKind.allCases) { sourceKind in
-                        Text(sourceKind.rawValue).tag(sourceKind)
-                    }
-                }
-
-                TextField("Base URL", text: $draft.baseURL)
-                    .textFieldStyle(.roundedBorder)
-
-                TextField("API Path", text: $draft.apiPath)
-                    .textFieldStyle(.roundedBorder)
-
-                Toggle("Enabled", isOn: $draft.isEnabled)
+                sourceSection
+                commandsSection
+                formattingSection
+                parsingRulesSection
+                testQuerySection
             }
             .formStyle(.grouped)
 
@@ -346,25 +326,259 @@ private struct WikiBridgeSourceEditorSheet: View {
             }
         }
         .padding(18)
-        .frame(minWidth: 500, minHeight: 430)
-        .onChange(of: draft.kind) { _, newKind in
-            if newKind == .finals {
-                if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.name == "New Wiki" {
-                    draft.name = "THE FINALS Wiki"
+        .frame(minWidth: 820, minHeight: 700)
+    }
+
+    private var sourceSection: some View {
+        Section {
+            TextField("Display Name", text: $draft.name)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Base URL", text: $draft.baseURL)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("API Path (optional; defaults to /api.php)", text: $draft.apiPath)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Enabled", isOn: $draft.enabled)
+        } header: {
+            Text("Source")
+        }
+    }
+
+    private var commandsSection: some View {
+        Section {
+            HStack {
+                Button {
+                    draft.commands.append(
+                        WikiCommand(
+                            id: UUID(),
+                            trigger: "!wiki",
+                            endpoint: "search",
+                            description: "Search wiki pages",
+                            enabled: true
+                        )
+                    )
+                } label: {
+                    Label("Add Command", systemImage: "plus")
                 }
-                if draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.baseURL == "https://example.fandom.com" {
-                    draft.baseURL = "https://www.thefinals.wiki"
+                Spacer()
+            }
+
+            if draft.commands.isEmpty {
+                Text("No commands configured.")
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    Text("Trigger")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 140, alignment: .leading)
+                    Text("Endpoint")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 190, alignment: .leading)
+                    Text("Enabled")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 70, alignment: .center)
+                    Spacer()
                 }
-                if draft.apiPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    draft.apiPath = "/api.php"
+
+                ForEach($draft.commands) { $command in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            TextField("!wiki", text: $command.trigger)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 140)
+
+                            TextField("search", text: $command.endpoint)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 190)
+
+                            Toggle("", isOn: $command.enabled)
+                                .labelsHidden()
+                                .frame(width: 70)
+
+                            Button(role: .destructive) {
+                                removeCommand(command.id)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+
+                            Spacer()
+                        }
+
+                        HStack(spacing: 8) {
+                            Text("Description")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 90, alignment: .leading)
+                            TextField("Lookup weapon stats", text: $command.description)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        } header: {
+            Text("Commands")
+        }
+    }
+
+    private var formattingSection: some View {
+        Section {
+            Toggle("Include stat blocks", isOn: $draft.formatting.includeStatBlocks)
+            Toggle("Use embeds", isOn: $draft.formatting.useEmbeds)
+            Toggle("Compact mode", isOn: $draft.formatting.compactMode)
+        } header: {
+            Text("Formatting")
+        }
+    }
+
+    private var parsingRulesSection: some View {
+        Section {
+            HStack {
+                Button {
+                    draft.parsingRules.append(
+                        WikiParsingRule(
+                            id: UUID(),
+                            pageType: "pageType",
+                            templateName: "TemplateName"
+                        )
+                    )
+                } label: {
+                    Label("Add Parsing Rule", systemImage: "plus")
+                }
+                Spacer()
+            }
+
+            if draft.parsingRules.isEmpty {
+                Text("No parsing rules configured.")
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    Text("Page Type")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 180, alignment: .leading)
+                    Text("Template")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer()
+                }
+
+                ForEach($draft.parsingRules) { $rule in
+                    HStack(spacing: 8) {
+                        TextField("weapon", text: $rule.pageType)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 180)
+
+                        TextField("Weapon", text: $rule.templateName)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button(role: .destructive) {
+                            removeParsingRule(rule.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        } header: {
+            Text("Parsing Rules")
+        }
+    }
+
+    private var testQuerySection: some View {
+        Section {
+            HStack(spacing: 10) {
+                TextField("akm", text: $testQuery)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Run Test") {
+                    runTestQuery()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRunningTest || draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || testQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if isRunningTest {
+                ProgressView("Testing source...")
+            }
+
+            if let testError, !testError.isEmpty {
+                Text(testError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            if let testResult {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Top Result")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(testResult.title)
+                        .font(.headline)
+                    if !summaryPreview(testResult.extract).isEmpty {
+                        Text(summaryPreview(testResult.extract))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(testResult.url)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        } header: {
+            Text("Test Query")
+        }
+    }
+
+    private func runTestQuery() {
+        let trimmedQuery = testQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            testError = "Enter a test query first."
+            testResult = nil
+            return
+        }
+
+        let source = draft.toSource()
+        isRunningTest = true
+        testError = nil
+        testResult = nil
+
+        Task {
+            let result = await app.runWikiBridgeSourceTestQuery(source: source, query: trimmedQuery)
+            await MainActor.run {
+                isRunningTest = false
+                if let result {
+                    testResult = result
+                } else {
+                    testError = "No results found for \"\(trimmedQuery)\"."
                 }
             }
         }
     }
 
+    private func summaryPreview(_ text: String, limit: Int = 260) -> String {
+        let cleaned = text
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.count > limit else { return cleaned }
+        let idx = cleaned.index(cleaned.startIndex, offsetBy: limit)
+        return String(cleaned[..<idx]) + "..."
+    }
+
+    private func removeCommand(_ id: UUID) {
+        draft.commands.removeAll { $0.id == id }
+    }
+
+    private func removeParsingRule(_ id: UUID) {
+        draft.parsingRules.removeAll { $0.id == id }
+    }
+
     private var isValid: Bool {
         !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !draft.apiPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
