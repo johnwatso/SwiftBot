@@ -1652,49 +1652,59 @@ struct GeneralSettingsView: View {
                 Section("SwiftMesh") {
                     Picker("Mode", selection: $app.settings.clusterMode) {
                         ForEach(ClusterMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Text(mode.displayName).tag(mode)
                         }
                     }
                     .pickerStyle(.menu)
 
                     TextField("Node Name", text: $clusterNodeNameDraft)
 
-                    if app.settings.clusterMode == .worker {
-                        TextField("Leader Address", text: $leaderAddressDraft)
+                    if app.settings.clusterMode == .worker || app.settings.clusterMode == .standby {
+                        TextField("Primary Address", text: $leaderAddressDraft)
+                            .help(app.settings.clusterMode == .standby
+                                ? "Address of the Primary node to monitor for failover."
+                                : "Address of the Primary node to register with.")
 
-                        HStack {
-                            Button("Test Connection") {
-                                app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
-                                app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                app.testWorkerLeaderConnection()
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(app.workerConnectionTestInProgress)
+                        if app.settings.clusterMode == .worker {
+                            HStack {
+                                Button("Test Connection") {
+                                    app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                                    app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    app.testWorkerLeaderConnection()
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(app.workerConnectionTestInProgress)
 
-                            if app.workerConnectionTestInProgress {
-                                ProgressView()
-                                    .controlSize(.small)
+                                if app.workerConnectionTestInProgress {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
                             }
+
+                            Text(app.workerConnectionTestStatus)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    app.workerConnectionTestIsSuccess
+                                        ? .green
+                                        : (app.workerConnectionTestStatus == "Not tested" || app.workerConnectionTestInProgress
+                                            ? .secondary
+                                            : .red)
+                                )
                         }
-
-                        Text(app.workerConnectionTestStatus)
-                            .font(.caption)
-                            .foregroundStyle(
-                                app.workerConnectionTestIsSuccess
-                                    ? .green
-                                    : (app.workerConnectionTestStatus == "Not tested" || app.workerConnectionTestInProgress
-                                        ? .secondary
-                                        : .red)
-                            )
                     }
 
-                    if app.settings.clusterMode == .leader {
+                    if app.settings.clusterMode == .leader || app.settings.clusterMode == .standby {
                         TextField("Listen Port", text: $listenPortDraft)
+                            .help(app.settings.clusterMode == .standby
+                                ? "Port to listen on after promotion to Primary."
+                                : "Port this node listens on for Workers.")
                     }
 
-                    SecureField("Cluster Shared Secret", text: $clusterSharedSecretDraft)
+                    if app.settings.clusterMode != .standalone {
+                        SecureField("Cluster Shared Secret", text: $clusterSharedSecretDraft)
+                    }
 
                     Text(app.settings.clusterMode.description)
                         .font(.caption)
