@@ -404,6 +404,14 @@ actor ClusterCoordinator {
             let payload = HealthResponse(nodeName: nodeName, mode: mode.rawValue, status: "ok")
             let body = (try? encoder.encode(payload)) ?? Data()
             return httpResponse(status: "200 OK", body: body)
+        case ("GET", "/cluster/ping"):
+            let payload = ClusterPingResponse(
+                status: "ok",
+                role: mode == .leader ? "leader" : "worker",
+                node: nodeName
+            )
+            let body = (try? encoder.encode(payload)) ?? Data()
+            return httpResponse(status: "200 OK", body: body)
         case ("POST", "/cluster/register"):
             return await handleWorkerRegistration(request.body)
         case ("GET", "/cluster/status"):
@@ -1030,6 +1038,12 @@ private struct HealthResponse: Codable {
     let nodeName: String
     let mode: String
     let status: String
+}
+
+private struct ClusterPingResponse: Codable {
+    let status: String
+    let role: String
+    let node: String
 }
 
 struct ClusterProbeResponse: Codable {

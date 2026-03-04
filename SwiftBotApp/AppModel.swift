@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UpdateEngine
+import Darwin
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -26,6 +27,9 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
     @Published var clusterNodes: [ClusterNodeStatus] = []
+    @Published var workerConnectionTestStatus: String = "Not tested"
+    @Published var workerConnectionTestIsSuccess = false
+    @Published var workerConnectionTestInProgress = false
     @Published var appleIntelligenceOnline = false
     @Published var ollamaOnline = false
     @Published var ollamaDetectedModel: String?
@@ -601,32 +605,39 @@ final class AppModel: ObservableObject {
 
     func refreshClusterStatus() {
         Task {
-            await cluster.applySettings(
-                mode: settings.clusterMode,
-                nodeName: settings.clusterNodeName,
-                leaderAddress: settings.clusterLeaderAddress,
-                listenPort: settings.clusterListenPort
-            )
-            await cluster.refreshWorkerHealth()
+            await pollClusterStatus()
             let snapshot = await cluster.currentSnapshot()
             await MainActor.run {
                 self.clusterSnapshot = snapshot
+                self.logSwiftMeshStatus(snapshot, context: "Refresh")
             }
-            await pollClusterStatus()
+        }
+    }
+
+    func testWorkerLeaderConnection() {
+        Task {
+            await MainActor.run {
+                self.workerConnectionTestInProgress = true
+                self.workerConnectionTestIsSuccess = false
+                self.workerConnectionTestStatus = "Testing connection..."
+            }
+
+            let outcome = await performWorkerConnectionTest(leaderAddress: settings.clusterLeaderAddress)
+
+            await MainActor.run {
+                self.workerConnectionTestInProgress = false
+                self.workerConnectionTestIsSuccess = outcome.isSuccess
+                self.workerConnectionTestStatus = outcome.message
+                self.logs.append("SwiftMesh worker connection test: \(outcome.message)")
+            }
         }
     }
 
     func refreshClusterStatusNow() async -> ClusterSnapshot {
-        await cluster.applySettings(
-            mode: settings.clusterMode,
-            nodeName: settings.clusterNodeName,
-            leaderAddress: settings.clusterLeaderAddress,
-            listenPort: settings.clusterListenPort
-        )
-        await cluster.refreshWorkerHealth()
+        await pollClusterStatus()
         let snapshot = await cluster.currentSnapshot()
         self.clusterSnapshot = snapshot
-        await pollClusterStatus()
+        logSwiftMeshStatus(snapshot, context: "Refresh")
         return snapshot
     }
 
@@ -1656,6 +1667,124 @@ final class AppModel: ObservableObject {
         return prefix + "..."
     }
 
+    private func logSwiftMeshStatus(_ snapshot: ClusterSnapshot, context: String) {
+        let leader = snapshot.leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let leaderValue = leader.isEmpty ? "-" : leader
+        logs.append(
+            "SwiftMesh [\(context)] mode=\(snapshot.mode.rawValue) server=\(snapshot.serverStatusText) worker=\(snapshot.workerStatusText) leader=\(leaderValue)"
+        )
+    }
+
+    private func performWorkerConnectionTest(leaderAddress rawValue: String) async -> WorkerConnectionTestOutcome {
+        guard let baseURL = normalizedSwiftMeshBaseURL(from: rawValue),
+              let host = baseURL.host else {
+            return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+        }
+
+        let port = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
+        switch testReachability(host: host, port: port) {
+        case .hostUnreachable:
+            return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+        case .reachable:
+            break
+        }
+
+        guard let pingURL = URL(string: baseURL.absoluteString + "/cluster/ping") else {
+            return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+        }
+
+        var request = URLRequest(url: pingURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 3
+        let startedAt = Date()
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let payload = try? JSONDecoder().decode(SwiftMeshPingResponse.self, from: data),
+                  payload.status.caseInsensitiveCompare("ok") == .orderedSame,
+                  payload.role.caseInsensitiveCompare("leader") == .orderedSame else {
+                return WorkerConnectionTestOutcome(message: "Server reachable but not SwiftBot", isSuccess: false)
+            }
+
+            let latencyMs = max(1, Int((Date().timeIntervalSince(startedAt) * 1000).rounded()))
+            return WorkerConnectionTestOutcome(
+                message: "Successful connection with latency: \(latencyMs) ms",
+                isSuccess: true
+            )
+        } catch let error as URLError {
+            switch error.code {
+            case .badURL, .unsupportedURL:
+                return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+            case .cannotFindHost, .dnsLookupFailed, .timedOut, .notConnectedToInternet:
+                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+            case .cannotConnectToHost:
+                return WorkerConnectionTestOutcome(message: "Connection refused", isSuccess: false)
+            default:
+                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+            }
+        } catch {
+            return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+        }
+    }
+
+    private func normalizedSwiftMeshBaseURL(from rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let candidate: String
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            candidate = trimmed
+        } else {
+            candidate = "http://\(trimmed)"
+        }
+
+        guard let url = URL(string: candidate),
+              let scheme = url.scheme,
+              let host = url.host,
+              !scheme.isEmpty,
+              !host.isEmpty else {
+            return nil
+        }
+
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.port = url.port
+        components.path = ""
+        return components.url
+    }
+
+    private func testReachability(host: String, port: Int) -> WorkerReachabilityResult {
+        guard (1...Int(UInt16.max)).contains(port) else {
+            return .hostUnreachable
+        }
+
+        var hints = addrinfo(
+            ai_flags: AI_NUMERICSERV,
+            ai_family: AF_UNSPEC,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: IPPROTO_TCP,
+            ai_addrlen: 0,
+            ai_canonname: nil,
+            ai_addr: nil,
+            ai_next: nil
+        )
+        var resultPointer: UnsafeMutablePointer<addrinfo>?
+        let status = String(port).withCString { portCString in
+            host.withCString { hostCString in
+                getaddrinfo(hostCString, portCString, &hints, &resultPointer)
+            }
+        }
+
+        if let resultPointer {
+            freeaddrinfo(resultPointer)
+        }
+
+        return status == 0 ? .reachable : .hostUnreachable
+    }
+
     private func clusterCommand(action: String, channelId: String) async -> Bool {
         let normalized = ["test", "refresh", "check", "remote", "probe"].contains(action) ? action : "status"
         let snapshot = await clusterSnapshotForCommand(action: normalized)
@@ -2339,6 +2468,22 @@ final class MemoryViewModel: ObservableObject {
             return "DM User \(scope.id.suffix(4))"
         }
     }
+}
+
+private struct WorkerConnectionTestOutcome {
+    let message: String
+    let isSuccess: Bool
+}
+
+private enum WorkerReachabilityResult {
+    case reachable
+    case hostUnreachable
+}
+
+private struct SwiftMeshPingResponse: Decodable {
+    let status: String
+    let role: String
+    let node: String
 }
 
 actor ClusterStatusPollingService {
