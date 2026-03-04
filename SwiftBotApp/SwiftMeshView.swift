@@ -79,15 +79,19 @@ struct SwiftMeshView: View {
     }
 
     private var topologyNodes: [ClusterNodeStatus] {
-        app.clusterNodes.filter { $0.status == .healthy }
+        app.clusterNodes
     }
 }
 
 struct ClusterMapView: View {
     let nodes: [ClusterNodeStatus]
+    private let leaderCardWidth: CGFloat = 210
+    private let workerCardWidth: CGFloat = 190
+    private let compactCardHeight: CGFloat = 92
+    private let mapPadding: CGFloat = 16
 
     private var connectedNodes: [ClusterNodeStatus] {
-        nodes.filter { $0.status == .healthy }
+        nodes
     }
 
     private var leader: ClusterNodeStatus? {
@@ -102,48 +106,43 @@ struct ClusterMapView: View {
     private var topologyKey: String {
         connectedNodes
             .sorted(by: { $0.id < $1.id })
-            .map { "\($0.id)-\($0.status.rawValue)" }
+            .map { "\($0.id)-\($0.status.rawValue)-\($0.jobsActive)-\($0.latencyMs ?? -1)" }
             .joined(separator: "|")
     }
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let radius = max(90, min(size.width, size.height) * 0.34)
+            let layout = topologyLayout(in: size)
 
             ZStack {
                 ForEach(Array(workers.enumerated()), id: \.element.id) { index, worker in
-                    let workerPosition = positionForWorker(
-                        index: index,
-                        count: workers.count,
-                        center: center,
-                        radius: radius
-                    )
+                    let workerPosition = layout.workerPositions[index]
 
                     HeartbeatConnectionView(
-                        start: center,
+                        start: layout.leaderPosition,
                         end: workerPosition,
                         status: worker.status,
-                        activeJobs: worker.jobsActive
+                        activeJobs: worker.jobsActive,
+                        latencyMs: worker.latencyMs
                     )
 
                     ClusterNodeView(node: worker, compact: true)
-                        .frame(width: 190)
+                        .frame(width: workerCardWidth)
                         .position(workerPosition)
                         .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
 
                 if let leader {
                     ClusterNodeView(node: leader, compact: true, highlightLeader: true)
-                        .frame(width: 210)
-                        .position(center)
+                        .frame(width: leaderCardWidth)
+                        .position(layout.leaderPosition)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             .animation(.spring(response: 0.52, dampingFraction: 0.82), value: topologyKey)
         }
-        .frame(height: 420)
+        .frame(height: mapHeight)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -152,14 +151,68 @@ struct ClusterMapView: View {
         .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 6)
     }
 
-    private func positionForWorker(index: Int, count: Int, center: CGPoint, radius: CGFloat) -> CGPoint {
-        guard count > 0 else { return center }
-        let angle = (Double(index) / Double(count)) * (2.0 * Double.pi)
-        return CGPoint(
-            x: center.x + CGFloat(cos(angle)) * radius,
-            y: center.y + CGFloat(sin(angle)) * radius
-        )
+    private func topologyLayout(in size: CGSize) -> ClusterTopologyLayout {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        guard !workers.isEmpty else {
+            return ClusterTopologyLayout(leaderPosition: center, workerPositions: [])
+        }
+
+        // Two-node topology: keep leader above worker to make direction obvious.
+        if workers.count == 1 {
+            let desiredSeparation = max(170, compactCardHeight * 1.9)
+            let maxHalfShift = max(
+                0,
+                (size.height / 2) - (compactCardHeight / 2) - mapPadding
+            )
+            let halfShift = min(desiredSeparation / 2, maxHalfShift)
+            return ClusterTopologyLayout(
+                leaderPosition: CGPoint(x: center.x, y: center.y - halfShift),
+                workerPositions: [CGPoint(x: center.x, y: center.y + halfShift)]
+            )
+        }
+
+        // Three or more nodes: circular worker placement around centered leader.
+        let radius = circularLayoutRadius(for: size, workerCount: workers.count)
+        let points = (0..<workers.count).map { index -> CGPoint in
+            let angle = (Double(index) / Double(workers.count)) * (2.0 * Double.pi) - (Double.pi / 2)
+            return CGPoint(
+                x: center.x + CGFloat(cos(angle)) * radius,
+                y: center.y + CGFloat(sin(angle)) * radius
+            )
+        }
+        return ClusterTopologyLayout(leaderPosition: center, workerPositions: points)
     }
+
+    private func circularLayoutRadius(for size: CGSize, workerCount: Int) -> CGFloat {
+        let baseRadius: CGFloat = 160
+        let minLeaderClearance = ((leaderCardWidth + workerCardWidth) / 2) + 20
+        let minByNeighborSpacing: CGFloat
+        if workerCount > 1 {
+            let minChord = workerCardWidth + 24
+            minByNeighborSpacing = minChord / (2 * CGFloat(sin(.pi / Double(workerCount))))
+        } else {
+            minByNeighborSpacing = 0
+        }
+        let desired = max(baseRadius, minLeaderClearance, minByNeighborSpacing)
+
+        let maxRadiusX = max(80, (size.width / 2) - (workerCardWidth / 2) - mapPadding)
+        let maxRadiusY = max(80, (size.height / 2) - (compactCardHeight / 2) - mapPadding)
+        let maxAllowed = min(maxRadiusX, maxRadiusY)
+        return min(desired, maxAllowed)
+    }
+
+    private var mapHeight: CGFloat {
+        let workerCount = workers.count
+        if workerCount <= 2 { return 460 }
+        if workerCount <= 4 { return 520 }
+        if workerCount <= 6 { return 600 }
+        return 680
+    }
+}
+
+private struct ClusterTopologyLayout {
+    let leaderPosition: CGPoint
+    let workerPositions: [CGPoint]
 }
 
 struct ClusterNodeView: View {
@@ -174,7 +227,9 @@ struct ClusterNodeView: View {
         case .disconnected: return .red
         }
     }
+}
 
+extension ClusterNodeView {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
@@ -182,6 +237,15 @@ struct ClusterNodeView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: compact ? 42 : 46, height: compact ? 42 : 46)
+                    .padding(4)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(iconRingColor, lineWidth: compact ? 2.2 : 2.8)
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.displayName)
@@ -251,6 +315,20 @@ struct ClusterNodeView: View {
         return "\(Int(latencyMs.rounded())) ms"
     }
 
+    private var iconRingColor: Color {
+        switch node.status {
+        case .healthy:
+            if let latency = node.latencyMs, latency >= 140 {
+                return .yellow
+            }
+            return node.jobsActive > 0 ? .green : .gray
+        case .degraded:
+            return .yellow
+        case .disconnected:
+            return .red
+        }
+    }
+
     private func nodeMetric(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
@@ -302,12 +380,14 @@ struct HeartbeatConnectionView: View {
     let end: CGPoint
     let status: ClusterNodeHealthStatus
     let activeJobs: Int
+    let latencyMs: Double?
 
     private var lineColor: Color {
-        switch status {
+        switch visualState {
         case .healthy: return .green
-        case .degraded: return .yellow
+        case .highLatency: return .yellow
         case .disconnected: return .red
+        case .idle: return .gray
         }
     }
 
@@ -316,19 +396,32 @@ struct HeartbeatConnectionView: View {
     }
 
     private var pulseDuration: Double {
-        activeJobs > 0 ? 0.72 : 1.5
+        activeJobs > 0 ? 2.2 : 3.2
     }
 
     private var pulseStep: Double {
-        activeJobs > 0 ? 0.032 : 0.05
+        0.035
+    }
+
+    private var latencyLabel: String {
+        guard let latencyMs else { return "--" }
+        return "\(Int(latencyMs.rounded()))ms"
+    }
+
+    private var visualState: ConnectionVisualState {
+        if status == .disconnected { return .disconnected }
+        if status == .degraded { return .highLatency }
+        if let latencyMs, latencyMs >= 140 { return .highLatency }
+        if activeJobs <= 0 { return .idle }
+        return .healthy
     }
 
     var body: some View {
         ZStack {
             ClusterConnectionShape(start: start, end: end)
                 .stroke(
-                    pulseEnabled ? lineColor.opacity(activeJobs > 0 ? 0.62 : 0.42) : Color.secondary.opacity(0.30),
-                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+                    pulseEnabled ? lineColor.opacity(activeJobs > 0 ? 0.62 : 0.5) : lineColor.opacity(0.5),
+                    style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round)
                 )
 
             if pulseEnabled {
@@ -343,7 +436,23 @@ struct HeartbeatConnectionView: View {
                         .position(point(at: progress))
                 }
             }
+
+            Text(latencyLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.primary.opacity(0.86))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(lineColor.opacity(0.45), lineWidth: 1)
+                )
+                .position(midpoint)
         }
+    }
+
+    private var midpoint: CGPoint {
+        CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
     }
 
     private func point(at progress: Double) -> CGPoint {
@@ -352,6 +461,13 @@ struct HeartbeatConnectionView: View {
             y: start.y + (end.y - start.y) * progress
         )
     }
+}
+
+private enum ConnectionVisualState {
+    case healthy
+    case highLatency
+    case disconnected
+    case idle
 }
 
 struct NodeDetailCard: View {
