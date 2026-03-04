@@ -47,6 +47,7 @@ This document provides a high-level overview of the SwiftBot application archite
   - Voice state tracking
   - Rule action execution
   - On-device AI replies for DMs and guild mentions (when enabled)
+  - Shared AI prompt/message composition path for consistent local reply behavior
 
 ### 4. Data Models
 - **File:** `Models.swift`
@@ -72,6 +73,7 @@ This document provides a high-level overview of the SwiftBot application archite
 - **Storage Location:** `~/Library/Application Support/SwiftBot/`
 - **Files:** `settings.json`, `rules.json`, `discord-cache.json`
 - **Class:** `LogStore` (@MainActor) - In-memory log with 500 line limit
+- **Class:** `MeshCursorStore` (actor) - Durable SwiftMesh replication cursor storage (`mesh-cursors.json`)
 
 ### 6. User Interface
 - **File:** `RootView.swift`
@@ -158,6 +160,7 @@ Update voiceDurations dictionary
 ### Actor Isolation
 - `DiscordService` is an actor for thread-safe WebSocket/REST operations
 - `ConfigStore`, `RuleConfigStore` are actors for safe file I/O
+- `MeshCursorStore` is an actor for safe failover cursor durability
 - `AppModel` uses `@MainActor` for UI binding
 
 ### Async/Await
@@ -228,6 +231,24 @@ RuleEditorView(rule: selectedRuleBinding)
 - macOS 26.0+ required for `SystemLanguageModel`
 - Falls back gracefully if unavailable
 - Controlled by `settings.localAIDMReplyEnabled`
+- Uses a shared prompt-composition path to keep direct and rule-triggered replies consistent
+
+## SwiftMesh High Availability (Current State)
+
+SwiftMesh now has phased HA support beyond basic leader/worker routing:
+
+- **Phase 1 (implemented):**
+  - `standby` mode with leader health monitoring (10s poll, 3-miss promotion)
+  - term-based promotion safety (persisted monotonic `clusterLeaderTerm`)
+  - authenticated leader-change propagation to workers
+- **Phase 2 (implemented):**
+  - incremental conversation replication with per-node durable cursors
+  - gap detection + bounded resync pagination
+  - idempotent merge behavior for duplicate delivery/retry safety
+- **Phase 2.1 (implemented):**
+  - cursor-key hardening from endpoint URL keys to stable node identifiers (`nodeName`)
+- **Phase 3 (implemented):**
+  - wiki cache/state replication across nodes for failover knowledge continuity via background pull protocol (`/v1/mesh/sync/wiki-cache`)
 
 ## Plugin System
 
@@ -260,6 +281,7 @@ SwiftBot.xcodeproj
     ├── AppModel.swift (main state)
     ├── Models.swift (data models + EventBus + plugins)
     ├── DiscordService.swift (Discord API)
+    ├── ClusterCoordinator.swift (SwiftMesh cluster + HTTP server)
     ├── Persistence.swift (storage)
     ├── RootView.swift (all UI)
     └── Resources/
@@ -267,6 +289,12 @@ SwiftBot.xcodeproj
 ```
 
 ## Testing Strategy
+
+### Automated Testing (XCTest)
+- **`Tests/SwiftBotTests/ClusterSecurityTests.swift`** — 6 tests: shared-secret enforcement, SSRF guards, request body caps
+- **`Tests/SwiftBotTests/MeshFailoverTests.swift`** — 7 tests: standby promotion, term monotonicity, worker re-registration
+- **`Tests/SwiftBotTests/MeshSyncTests.swift`** — 5 tests: incremental push, duplicate no-op, resync from cursor, paginated convergence, cursor reset on promotion
+- **Total:** 18 automated tests covering cluster security, failover, and sync behavior
 
 ### Manual Testing
 - Bot connection/disconnection
@@ -320,8 +348,8 @@ SwiftBot.xcodeproj
 ## Security Notes
 
 ### Token Storage
-- Stored in plain text in Application Support
-- No keychain integration (could be improved)
+- Stored in Keychain via `KeychainHelper` (migrated automatically from any legacy disk-stored token on first load)
+- Settings JSON on disk always has token cleared (`token = ""`) — only Keychain holds the live value
 - User responsible for token security
 
 ### Permissions
@@ -330,6 +358,6 @@ SwiftBot.xcodeproj
 
 ---
 
-**Last Updated:** 2026-03-03  
+**Last Updated:** 2026-03-05  
 **Maintained By:** AI Assistant  
 **Purpose:** Context for code modifications and architectural decisions

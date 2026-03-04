@@ -10,8 +10,10 @@ This file provides quick answers to common questions and tasks for AI assistants
 - **Models:** Split between `Models.swift` (system) and `RootView.swift` (UI-specific)
 - **Discord API:** `DiscordService.swift` (actor)
 - **Storage:** JSON files in `~/Library/Application Support/SwiftBot/`
+- **Mesh Cursor Durability:** `mesh-cursors.json` via `MeshCursorStore`
 - **Patchy Monitor:** SourceTarget-based monitoring UI + hourly runtime scheduler in `AppModel.swift`
 - **UpdateEngine Module:** Swift package in `Sources/UpdateEngine`, used by Patchy runtime for source fetch/check logic
+- **SwiftMesh State:** Fully implemented through Phase 3 (failover, conversation replication, wiki-cache sync)
 
 ## UpdateEngine + Patchy Runtime
 
@@ -31,12 +33,42 @@ This file provides quick answers to common questions and tasks for AI assistants
   1. `AppModel` Patchy scheduler checks configured SourceTargets hourly.
   2. Runtime groups targets by source, fetches once per group, then fan-outs delivery.
   3. Discord send path uses UpdateEngine embed JSON directly (fallback text only if embed is missing/invalid).
-- **Architecture direction to preserve:**
-  - Keep UpdateEngine vendor/source agnostic.
-  - Keep source fetching, change detection, and delivery transport separate.
-  - Keep identifier-based caching as the primary change detector (not version-string-only comparison).
+
+## AI Reply Pipeline (Naturalness & Memory)
+
+- **Centralized Logic:** `PromptComposer` in `Models.swift` is the single source of truth for shaping AI responses.
+- **Message Formatting:**
+  - **Speaker Attribution:** All user turns are formatted as `Name: content` to help the AI track multi-user history.
+  - **Trimming:** Assistant messages are capped at 300 characters in the transcript to prevent tone poisoning and token bloat.
+  - **History Window:** 8-turn sliding window provides consistent short-term memory.
+- **Grounded System Prompt:** 
+  - Automatically injects current **Server Name**, **Channel Name**, and **Local Time**.
+  - Merges recent **Wiki Context** if available from the `!finals` command cache.
+- **Fallbacks:** Prefers `AppleIntelligenceEngine` (native) but falls back to `OllamaEngine` (local API) with an identical prompt payload.
+
+## SwiftMesh (High Availability)
+
+- **Architecture:** Monotonic term-based leader election with standby nodes.
+- **Persistence:** Cursors are keyed by stable `nodeName` and saved to `mesh-cursors.json`.
+- **Sync Protocol:**
+  - Incremental `MemoryRecord` push from Leader to Standby/Worker.
+  - Heartbeat-based health monitoring (10s poll, 3-miss promotion threshold).
+  - Split-brain protection via `leaderTerm` validation on all mesh routes.
+  - Gap detection via `fromCursorRecordID` in `MeshSyncPayload` — mismatch triggers resync via `POST /v1/mesh/sync/conversations/resync`.
+  - Paginated resync (`hasMore: Bool`) — standby requests next page immediately until caught up.
+  - Wiki cache sync (Phase 3) — standbys pull `WikiContextEntry` batches from leader via `GET /v1/mesh/sync/wiki-cache`.
+- **Promotion side-effects:** `promoteToLeader()` clears all replication cursors and fires `onCursorsChanged([:])`.
 
 ## Common Tasks
+
+### SwiftMesh Status Checklist
+
+When asked for current SwiftMesh status, use this baseline:
+- **Phase 1 (done):** standby failover, leader-term safety, leader-change propagation.
+- **Phase 2 (done):** conversation incremental sync, gap-resync, pagination, durable cursors.
+- **Phase 2.1 (done):** cursor keying hardened to stable `nodeName` (not endpoint URL).
+- **Phase 3 (done):** wiki cache/state replication via `GET /v1/mesh/sync/wiki-cache`.
+- **All planned SwiftMesh phases shipped.**
 
 ### Adding a New Command
 
@@ -224,6 +256,18 @@ case .myAction:
 
 ## Common Gotchas
 
+### ❌ Don't: Reintroduce split AI prompt builders
+**Problem:** Separate prompt-composition paths cause tone drift and inconsistent reply quality.
+**Solution:** Keep prompt/message shaping in the shared composer path used by all local AI reply entry points.
+
+### ❌ Don't: Key mesh cursors by endpoint URL
+**Problem:** URL changes during failover/reconfiguration can orphan replication state.
+**Solution:** Use stable node identity keys (current implementation uses `nodeName`) and keep writes durable.
+
+### ❌ Don't: Expect cursors to survive promotion
+**Problem:** When a standby promotes to leader it starts a new term — old cursor state is irrelevant.
+**Solution:** `promoteToLeader()` intentionally wipes `replicationCursors` and fires `onCursorsChanged([:])`; this is correct behavior, not a bug.
+
 ### ❌ Don't: Rebuild Patchy Discord embeds manually
 **Problem:** Reconstructing content can drift from UpdateEngine formatting.
 **Solution:** Use UpdateEngine `embedJSON` payloads directly in send path and only fallback to text when embed JSON is invalid/missing.
@@ -369,5 +413,5 @@ Before marking changes complete:
 
 ---
 
-**Last Updated:** 2026-03-03  
+**Last Updated:** 2026-03-05  
 **Purpose:** Quick reference for AI assistants and developers
