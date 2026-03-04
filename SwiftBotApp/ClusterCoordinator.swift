@@ -35,6 +35,10 @@ actor ClusterCoordinator {
     typealias AIHandler = @Sendable ([Message], String?, String?, String?) async -> String?
     typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
+    typealias SyncHandler = @Sendable (MeshSyncPayload) async -> Void
+    typealias MeshHandler = @Sendable (String) async -> Data?
+    /// Returns (records, hasMore) for the given cursor position and batch limit.
+    typealias ConversationFetcher = @Sendable (String?, Int) async -> (records: [MemoryRecord], hasMore: Bool)
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -44,6 +48,7 @@ actor ClusterCoordinator {
     private let registrationStaleAfter: TimeInterval = 20
     private static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
+    private static let maxSyncBatchSize: Int = 500
 
     private var mode: ClusterMode = .standalone
     private var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
@@ -54,26 +59,84 @@ actor ClusterCoordinator {
     private var registeredWorkers: [String: RegisteredWorker] = [:]
     private var workerRegistrationTask: Task<Void, Never>?
 
+    // SwiftMesh failover state
+    private var leaderTerm: Int = 0
+    private var standbyMonitorTask: Task<Void, Never>?
+    private var standbyHealthMisses: Int = 0
+    private static let standbyHealthInterval: TimeInterval = 10.0
+    private static let standbyPromotionThreshold: Int = 3
+
+    // Phase 2: per-node replication cursors (keyed by nodeName, persisted on leader)
+    private var replicationCursors: [String: ReplicationCursor] = [:]
+    private var onCursorsChanged: (@Sendable ([String: ReplicationCursor]) async -> Void)?
+
     private var aiHandler: AIHandler?
     private var wikiHandler: WikiHandler?
+    private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
     private var onSnapshot: (@Sendable (ClusterSnapshot) async -> Void)?
     private var onJobLog: JobLogHandler?
+    private var onSync: SyncHandler?
+    private var meshHandler: MeshHandler?
+    private var onTermChanged: (@Sendable (Int) async -> Void)?
+    private var onPromotion: (@Sendable () async -> Void)?
     private var snapshot = ClusterSnapshot()
 
     func configureHandlers(
         aiHandler: @escaping AIHandler,
         wikiHandler: @escaping WikiHandler,
         onSnapshot: @escaping @Sendable (ClusterSnapshot) async -> Void,
-        onJobLog: @escaping JobLogHandler
+        onJobLog: @escaping JobLogHandler,
+        onSync: @escaping SyncHandler,
+        meshHandler: @escaping MeshHandler,
+        conversationFetcher: @escaping ConversationFetcher,
+        onPromotion: @escaping @Sendable () async -> Void
     ) {
         self.aiHandler = aiHandler
         self.wikiHandler = wikiHandler
         self.onSnapshot = onSnapshot
         self.onJobLog = onJobLog
+        self.onSync = onSync
+        self.meshHandler = meshHandler
+        self.conversationFetcher = conversationFetcher
+        self.onPromotion = onPromotion
     }
 
-    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
+    func setTermChangedHandler(_ handler: @escaping @Sendable (Int) async -> Void) {
+        self.onTermChanged = handler
+    }
+
+    func setCursorsChangedHandler(_ handler: @escaping @Sendable ([String: ReplicationCursor]) async -> Void) {
+        self.onCursorsChanged = handler
+    }
+
+    func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
+        // Only restore cursors from the current or newer term to avoid stale replay.
+        for (nodeName, cursor) in cursors where cursor.leaderTerm >= leaderTerm {
+            replicationCursors[nodeName] = cursor
+        }
+    }
+
+    /// Returns (nodeName, baseURL) pairs for all currently registered workers/nodes.
+    func registeredNodeInfo() -> [(nodeName: String, baseURL: String)] {
+        registeredWorkers.values.map { ($0.nodeName, $0.baseURL) }
+    }
+
+    func currentReplicationCursor(for nodeName: String) -> ReplicationCursor? {
+        replicationCursors[nodeName]
+    }
+
+    func updateReplicationCursor(for nodeName: String, lastSentRecordID: String?, term: Int) async {
+        replicationCursors[nodeName] = ReplicationCursor(leaderTerm: term, lastSentRecordID: lastSentRecordID, updatedAt: Date())
+        await onCursorsChanged?(replicationCursors)
+    }
+
+    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String, leaderTerm: Int = 0) async {
+        // Restore persisted term; never go backwards.
+        if leaderTerm > self.leaderTerm {
+            self.leaderTerm = leaderTerm
+            snapshot.leaderTerm = leaderTerm
+        }
         self.mode = mode
         self.nodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
@@ -95,6 +158,7 @@ actor ClusterCoordinator {
 
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
+        await restartStandbyMonitorIfNeeded()
         await refreshWorkerHealth()
         await publishSnapshot()
     }
@@ -102,9 +166,12 @@ actor ClusterCoordinator {
     func stopAll() async {
         workerRegistrationTask?.cancel()
         workerRegistrationTask = nil
+        standbyMonitorTask?.cancel()
+        standbyMonitorTask = nil
         listener?.cancel()
         listener = nil
         registeredWorkers.removeAll()
+        standbyHealthMisses = 0
         snapshot.serverState = .stopped
         snapshot.serverStatusText = "Stopped"
         snapshot.workerState = .inactive
@@ -117,8 +184,24 @@ actor ClusterCoordinator {
         snapshot
     }
 
+    func currentLeaderTerm() -> Int {
+        leaderTerm
+    }
+
     func refreshWorkerHealth() async {
         switch mode {
+        case .standby:
+            guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+                snapshot.workerState = .inactive
+                snapshot.workerStatusText = "Leader not configured"
+                snapshot.diagnostics = "Standby requires a Leader Address"
+                await publishSnapshot()
+                return
+            }
+            snapshot.workerState = .connected
+            snapshot.workerStatusText = "Monitoring leader (term \(leaderTerm))"
+            snapshot.diagnostics = "Hot standby — watching \(leaderBaseURL)"
+            await publishSnapshot()
         case .standalone:
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "Not applicable"
@@ -540,6 +623,18 @@ actor ClusterCoordinator {
             let response = WikiJobResponse(nodeName: nodeName, result: result)
             let bodyData = (try? encoder.encode(response)) ?? Data()
             return httpResponse(status: "200 OK", body: bodyData)
+        case ("POST", "/v1/mesh/leader-changed"):
+            return await handleMeshLeaderChanged(request.body)
+        case ("GET", "/v1/mesh/workers"):
+            return handleMeshWorkersRequest()
+        case ("POST", "/v1/mesh/sync/worker-registry"):
+            return await handleMeshWorkerRegistrySync(request.body)
+        case ("POST", "/v1/mesh/sync/conversations"):
+            return await handleMeshConversationSync(request.body)
+        case ("POST", "/v1/mesh/sync/conversations/resync"):
+            return await handleMeshConversationResync(request.body)
+        case ("GET", "/v1/mesh/sync/wiki-cache"):
+            return await handleMeshWikiCacheSync()
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -577,6 +672,170 @@ actor ClusterCoordinator {
         var data = Data(header.utf8)
         data.append(body)
         return data
+    }
+
+    private func restartStandbyMonitorIfNeeded() async {
+        standbyMonitorTask?.cancel()
+        standbyMonitorTask = nil
+        standbyHealthMisses = 0
+
+        guard mode == .standby else { return }
+        guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+            return
+        }
+
+        standbyMonitorTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.standbyHealthInterval * 1_000_000_000))
+                if Task.isCancelled { break }
+                await monitorLeaderHealth(leaderBaseURL)
+            }
+        }
+    }
+
+    private func monitorLeaderHealth(_ leaderBaseURL: String) async {
+        guard mode == .standby else { return }
+        
+        let isHealthy = await isWorkerReachable(leaderBaseURL)
+        if isHealthy {
+            if standbyHealthMisses > 0 {
+                snapshot.diagnostics = "Leader recovered after \(standbyHealthMisses) misses"
+                await publishSnapshot()
+            }
+            standbyHealthMisses = 0
+        } else {
+            standbyHealthMisses += 1
+            snapshot.diagnostics = "Leader health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
+            await publishSnapshot()
+            
+            if standbyHealthMisses >= Self.standbyPromotionThreshold {
+                await promoteToLeader()
+            }
+        }
+    }
+    private func promoteToLeader() async {
+        guard mode == .standby else { return }
+
+        mode = .leader
+        leaderTerm += 1
+        snapshot.mode = .leader
+        snapshot.leaderTerm = leaderTerm
+        snapshot.diagnostics = "PROMOTED TO LEADER (Term \(leaderTerm))"
+        snapshot.workerState = .connected
+        snapshot.workerStatusText = "Leader (Promoted)"
+        await publishSnapshot()
+
+        // Persist the new term immediately so a restart cannot emit a stale term.
+        await onTermChanged?(leaderTerm)
+        
+        // Notify AppModel to start bot services
+        await onPromotion?()
+
+        // New term = new epoch: reset all cursors so standby/workers get a full resync.
+        replicationCursors.removeAll()
+        await onCursorsChanged?(replicationCursors)
+
+        // Stop standby monitoring
+        standbyMonitorTask?.cancel()
+        standbyMonitorTask = nil
+
+        // Restart server as leader
+        await restartServerIfNeeded()
+        
+        // Notify workers of the new leader
+        let workers = Array(registeredWorkers.values)
+        if !workers.isEmpty {
+            snapshot.diagnostics = "Promoted to leader. Notifying \(workers.count) workers..."
+            await publishSnapshot()
+            
+            let payload = MeshLeaderChangedPayload(
+                term: leaderTerm,
+                leaderAddress: localWorkerAdvertisedBaseURL(),
+                leaderNodeName: nodeName,
+                sharedSecret: sharedSecret
+            )
+            
+            for worker in workers {
+                await notifyWorkerOfLeaderChange(worker, payload: payload)
+            }
+        }
+    }
+
+    private func notifyWorkerOfLeaderChange(_ worker: RegisteredWorker, payload: MeshLeaderChangedPayload) async {
+        guard let url = URL(string: worker.baseURL + "/v1/mesh/leader-changed") else { return }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !sharedSecret.isEmpty {
+                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
+            request.timeoutInterval = 5
+            request.httpBody = try encoder.encode(payload)
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            // Best effort — worker will re-register on its own next cycle if missed
+        }
+    }
+
+    func pushWorkerRegistryToStandbys() async {
+        guard mode == .leader else { return }
+        let workers = Array(registeredWorkers.values)
+        guard !workers.isEmpty else { return }
+        let entries = workers.map {
+            MeshWorkerRegistryPayload.WorkerEntry(nodeName: $0.nodeName, baseURL: $0.baseURL, listenPort: $0.listenPort)
+        }
+        let payload = MeshWorkerRegistryPayload(workers: entries, leaderTerm: leaderTerm)
+        for worker in workers {
+            await syncToNode(worker, path: "/v1/mesh/sync/worker-registry", payload: payload)
+        }
+    }
+
+    func pushSyncPayloadToNodes(_ payload: MeshSyncPayload) async {
+        guard mode == .leader else { return }
+        let workers = Array(registeredWorkers.values)
+        guard !workers.isEmpty else { return }
+        for worker in workers {
+            await syncToNode(worker, path: "/v1/mesh/sync/conversations", payload: payload)
+        }
+    }
+
+    /// Push an incremental batch to a single node and return whether the delivery succeeded.
+    @discardableResult
+    func pushConversationsToSingleNode(_ baseURL: String, _ payload: MeshSyncPayload) async -> Bool {
+        guard mode == .leader else { return false }
+        guard let worker = registeredWorkers[baseURL.lowercased()] else { return false }
+        guard let url = URL(string: worker.baseURL + "/v1/mesh/sync/conversations") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !sharedSecret.isEmpty { request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret") }
+            request.timeoutInterval = 10
+            request.httpBody = try encoder.encode(payload)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func syncToNode<T: Codable>(_ worker: RegisteredWorker, path: String, payload: T) async {
+        guard let url = URL(string: worker.baseURL + path) else { return }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !sharedSecret.isEmpty {
+                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
+            request.timeoutInterval = 10
+            request.httpBody = try encoder.encode(payload)
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            // best effort
+        }
     }
 
     private func restartWorkerRegistrationIfNeeded() async {
@@ -1071,6 +1330,109 @@ actor ClusterCoordinator {
         }
         return nil
     }
+
+    private func handleMeshLeaderChanged(_ body: Data) async -> Data {
+        guard let payload = try? decoder.decode(MeshLeaderChangedPayload.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        // Split-brain guard: reject stale or equal terms.
+        guard payload.term > leaderTerm else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
+        }
+
+        leaderTerm = payload.term
+        leaderAddress = payload.leaderAddress
+        snapshot.leaderTerm = leaderTerm
+        snapshot.leaderAddress = leaderAddress
+        snapshot.diagnostics = "Leader changed to \(payload.leaderNodeName) at \(payload.leaderAddress) (term \(leaderTerm))"
+        snapshot.workerState = .starting
+        snapshot.workerStatusText = "Re-registering with new leader"
+        await publishSnapshot()
+
+        if mode == .worker, let normalizedLeader = normalizedBaseURL(leaderAddress) {
+            await registerWithLeader(normalizedLeader)
+        }
+
+        return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    /// Leader: return registered workers list for standby to replicate.
+    private func handleMeshWorkersRequest() -> Data {
+        let entries = sortedRegisteredWorkers().map {
+            MeshWorkerRegistryPayload.WorkerEntry(nodeName: $0.nodeName, baseURL: $0.baseURL, listenPort: $0.listenPort)
+        }
+        let payload = MeshWorkerRegistryPayload(workers: entries, leaderTerm: leaderTerm)
+        let body = (try? encoder.encode(payload)) ?? Data()
+        return httpResponse(status: "200 OK", body: body)
+    }
+
+    private func handleMeshWorkerRegistrySync(_ body: Data) async -> Data {
+        guard mode == .standby else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+        }
+
+        guard let payload = try? decoder.decode(MeshWorkerRegistryPayload.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+
+        for worker in payload.workers {
+            let key = worker.baseURL.lowercased()
+            registeredWorkers[key] = RegisteredWorker(
+                nodeName: worker.nodeName,
+                baseURL: worker.baseURL,
+                listenPort: worker.listenPort,
+                lastSeen: Date()
+            )
+        }
+        
+        snapshot.diagnostics = "Synced worker registry (\(payload.workers.count) workers)"
+        await publishSnapshot()
+
+        return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    private func handleMeshConversationSync(_ body: Data) async -> Data {
+        guard let payload = try? decoder.decode(MeshSyncPayload.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        await onSync?(payload)
+        return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    /// Leader handles a standby/worker resync request: return bounded page from the requested cursor.
+    private func handleMeshConversationResync(_ body: Data) async -> Data {
+        guard mode == .leader else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"leader_mode_required"}"#.utf8))
+        }
+        guard let req = try? decoder.decode(MeshResyncRequest.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        guard let fetcher = conversationFetcher else {
+            return httpResponse(status: "503 Service Unavailable", body: Data(#"{"error":"fetcher_unavailable"}"#.utf8))
+        }
+
+        let limit = min(max(1, req.pageSize), Self.maxSyncBatchSize)
+        let (records, hasMore) = await fetcher(req.fromRecordID, limit)
+        let lastID = records.last?.id
+        let payload = MeshSyncPayload(
+            conversations: records,
+            leaderTerm: leaderTerm,
+            cursorRecordID: lastID,
+            hasMore: hasMore,
+            fromCursorRecordID: req.fromRecordID
+        )
+        guard let body = try? encoder.encode(payload) else {
+            return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"encode_failed"}"#.utf8))
+        }
+        return httpResponse(status: "200 OK", body: body)
+    }
+
+    private func handleMeshWikiCacheSync() async -> Data {
+        if let data = await meshHandler?("wiki-cache") {
+            return httpResponse(status: "200 OK", body: data)
+        }
+        return httpResponse(status: "404 Not Found", body: Data(#"{"error":"cache_unavailable"}"#.utf8))
+    }
 }
 
 #if DEBUG
@@ -1090,6 +1452,24 @@ extension ClusterCoordinator {
     func testExceedsHTTPRequestSizeCap(_ contentLength: Int) -> Bool {
         contentLength > Self.maxHTTPRequestSize
     }
+
+    /// Simulates a single leader health miss without making a network call.
+    /// Increments the miss counter and triggers promotion if threshold is reached.
+    func testSimulateLeaderHealthMiss() async {
+        standbyHealthMisses += 1
+        snapshot.workerStatusText = "Leader unreachable (\(standbyHealthMisses)/\(Self.standbyPromotionThreshold))"
+        snapshot.diagnostics = "Simulated health miss \(standbyHealthMisses)"
+        await publishSnapshot()
+        if standbyHealthMisses >= Self.standbyPromotionThreshold {
+            await promoteToLeader()
+        }
+    }
+
+    func testCurrentMode() -> ClusterMode { mode }
+    func testCurrentLeaderTerm() -> Int { leaderTerm }
+    func testCurrentLeaderAddress() -> String { leaderAddress }
+    func testReplicationCursors() -> [String: ReplicationCursor] { replicationCursors }
+    func testMaxSyncBatchSize() -> Int { Self.maxSyncBatchSize }
 }
 #endif
 

@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
 
     private let store = ConfigStore()
     private let discordCacheStore = DiscordCacheStore()
+    private let meshCursorStore = MeshCursorStore()
     private let discordCache = DiscordCache()
     private let service = DiscordService()
     private let cluster = ClusterCoordinator()
@@ -52,7 +53,10 @@ final class AppModel: ObservableObject {
     private var uptimeTask: Task<Void, Never>?
     private var joinTimes: [String: Date] = [:]
     private var discordCacheSaveTask: Task<Void, Never>?
+    private var meshSyncTask: Task<Void, Never>?
     private let conversationStore = ConversationStore()
+    /// Tracks the last MemoryRecord ID the standby successfully merged from the leader.
+    private var localLastMergedRecordID: String?
     private var lastCommandTimeByUserId: [String: Date] = [:]
     private let commandCooldown: TimeInterval = 3.0
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
@@ -158,6 +162,27 @@ final class AppModel: ObservableObject {
                     await MainActor.run {
                         model?.commandLog.insert(entry, at: 0)
                     }
+                },
+                onSync: { [weak self] payload in
+                    guard let self else { return }
+                    await self.handleMeshSync(payload)
+                },
+                meshHandler: { [weak self] type in
+                    guard let self else { return nil }
+                    return await self.handleMeshRequest(type: type)
+                },
+                conversationFetcher: { [weak self] fromRecordID, limit in
+                    guard let self else { return ([], false) }
+                    return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
+                },
+                onPromotion: { [weak self] in
+                    guard let self else { return }
+                    // When promoted to leader, start connecting to Discord.
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        logs.append("🚀 Promoted to leader. Connecting to Discord...")
+                        Task { await self.connectDiscordAfterPromotion() }
+                    }
                 }
             )
             await service.configureLocalAIDMReplies(
@@ -173,8 +198,24 @@ final class AppModel: ObservableObject {
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
                 listenPort: settings.clusterListenPort,
-                sharedSecret: settings.clusterSharedSecret
+                sharedSecret: settings.clusterSharedSecret,
+                leaderTerm: settings.clusterLeaderTerm
             )
+            await cluster.setTermChangedHandler { [weak self] newTerm in
+                guard let self else { return }
+                await MainActor.run { [weak self] in
+                    self?.settings.clusterLeaderTerm = newTerm
+                    self?.saveSettings()
+                }
+            }
+            await cluster.setCursorsChangedHandler { [weak self] cursors in
+                Task { [weak self] in
+                    await self?.saveMeshCursors(cursors)
+                }
+            }
+            let restoredCursors = await meshCursorStore.load()
+            await cluster.applyRestoredCursors(restoredCursors)
+            configureMeshSync()
             await pollClusterStatus()
             await configureServiceCallbacks()
             configurePatchyMonitoring()
@@ -220,6 +261,14 @@ final class AppModel: ObservableObject {
                 stats.errors += 1
                 logs.append("❌ Failed saving settings: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func saveMeshCursors(_ cursors: [String: ReplicationCursor]) async {
+        do {
+            try await meshCursorStore.save(cursors)
+        } catch {
+            logs.append("⚠️ Failed to save mesh cursors: \(error.localizedDescription)")
         }
     }
 
@@ -567,7 +616,8 @@ final class AppModel: ObservableObject {
             nodeName: settings.clusterNodeName,
             leaderAddress: settings.clusterLeaderAddress,
             listenPort: settings.clusterListenPort,
-            sharedSecret: settings.clusterSharedSecret
+            sharedSecret: settings.clusterSharedSecret,
+            leaderTerm: settings.clusterLeaderTerm
         )
 
         if settings.clusterMode == .worker {
@@ -576,11 +626,26 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if settings.clusterMode == .standby {
+            status = .stopped
+            logs.append("Standby mode active. Monitoring leader; Discord connection deferred until promotion.")
+            return
+        }
+
         guard !settings.token.isEmpty else {
             logs.append("⚠️ Token is empty; cannot start bot")
             return
         }
 
+        await connectDiscordInternal()
+    }
+
+    private func connectDiscordAfterPromotion() async {
+        guard !settings.token.isEmpty else { return }
+        await connectDiscordInternal()
+    }
+
+    private func connectDiscordInternal() async {
         if !serviceCallbacksConfigured {
             await configureServiceCallbacks()
         }
@@ -672,14 +737,95 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func configureMeshSync() {
+        meshSyncTask?.cancel()
+        meshSyncTask = nil
+
+        guard settings.clusterMode == .leader || settings.clusterMode == .standby else { return }
+
+        meshSyncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                // Leader pushes, Standby pulls
+                // Sync every 60 seconds
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                if Task.isCancelled { break }
+
+                guard let self else { break }
+
+                if self.settings.clusterMode == .leader {
+                    // 1. Push worker registry to all nodes
+                    await self.cluster.pushWorkerRegistryToStandbys()
+                    // 2. Push incremental conversation batches per node
+                    await self.pushIncrementalConversationsToAllNodes()
+                } else if self.settings.clusterMode == .standby {
+                    // 3. Standby: Pull Wiki Cache from Leader
+                    await self.pullWikiCacheFromLeader()
+                }
+            }
+        }
+    }
+
+    /// Leader: push incremental conversation batches to each registered node using per-node cursors.
+    private func pushIncrementalConversationsToAllNodes() async {
+        let nodes = await cluster.registeredNodeInfo()
+        guard !nodes.isEmpty else { return }
+        let currentTerm = await cluster.currentLeaderTerm()
+        for (nodeName, baseURL) in nodes {
+            let cursor = await cluster.currentReplicationCursor(for: nodeName)
+            let fromID = cursor?.lastSentRecordID
+            let (records, hasMore) = await conversationStore.recordsSince(fromRecordID: fromID, limit: 500)
+            guard !records.isEmpty else { continue }
+            let lastID = records.last?.id
+            let payload = MeshSyncPayload(
+                conversations: records,
+                leaderTerm: currentTerm,
+                cursorRecordID: lastID,
+                hasMore: hasMore,
+                fromCursorRecordID: fromID
+            )
+            let ok = await cluster.pushConversationsToSingleNode(baseURL, payload)
+            if ok {
+                await cluster.updateReplicationCursor(for: nodeName, lastSentRecordID: lastID, term: currentTerm)
+            }
+        }
+    }
+
+    private func pullWikiCacheFromLeader() async {
+        guard let normalizedLeader = await cluster.testNormalizedBaseURL(settings.clusterLeaderAddress),
+              let leaderURL = URL(string: normalizedLeader + "/v1/mesh/sync/wiki-cache") else { return }
+        
+        do {
+            var request = URLRequest(url: leaderURL)
+            request.httpMethod = "GET"
+            if !settings.clusterSharedSecret.isEmpty {
+                request.setValue(settings.clusterSharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
+            request.timeoutInterval = 15
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            
+            if let entries = try? JSONDecoder().decode([WikiContextEntry].self, from: data) {
+                for entry in entries {
+                    await wikiContextCache.upsertEntry(entry)
+                }
+                logs.append("SwiftMesh: pulled \(entries.count) wiki entry(s) from leader")
+            }
+        } catch {
+            // best effort
+        }
+    }
+
     private func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
         await cluster.applySettings(
             mode: mode,
             nodeName: nodeName,
             leaderAddress: leaderAddress,
             listenPort: listenPort,
-            sharedSecret: sharedSecret
+            sharedSecret: sharedSecret,
+            leaderTerm: settings.clusterLeaderTerm
         )
+        configureMeshSync()
         await pollClusterStatus()
     }
 
@@ -844,6 +990,72 @@ final class AppModel: ObservableObject {
             await handleGuildDelete(payload.d)
         default:
             break
+        }
+    }
+
+    private func handleMeshSync(_ payload: MeshSyncPayload) async {
+        // Gap detection: if leader assumed we held cursor X but we actually hold Y, resync from Y.
+        if let expectedFrom = payload.fromCursorRecordID,
+           expectedFrom != localLastMergedRecordID {
+            logs.append("SwiftMesh: gap detected — requesting resync from \(localLastMergedRecordID ?? "start")")
+            await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
+            return
+        }
+
+        // Idempotent merge.
+        for record in payload.conversations {
+            await conversationStore.appendIfNotExists(
+                scope: record.scope,
+                messageID: record.id,
+                userID: record.userID,
+                content: record.content,
+                role: record.role,
+                timestamp: record.timestamp
+            )
+        }
+        if let lastID = payload.conversations.last?.id {
+            localLastMergedRecordID = lastID
+        }
+        if !payload.conversations.isEmpty {
+            logs.append("SwiftMesh: merged \(payload.conversations.count) record(s) (term \(payload.leaderTerm))")
+        }
+        // Fetch next page immediately if more records exist.
+        if payload.hasMore {
+            await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
+        }
+    }
+
+    /// Standby requests a bounded page of records from the leader starting after `fromRecordID`.
+    private func requestResyncFromLeader(fromRecordID: String?) async {
+        guard let normalizedLeader = await cluster.testNormalizedBaseURL(settings.clusterLeaderAddress),
+              let url = URL(string: normalizedLeader + "/v1/mesh/sync/conversations/resync") else { return }
+        let req = MeshResyncRequest(fromRecordID: fromRecordID, pageSize: 500)
+        guard let body = try? JSONEncoder().encode(req) else { return }
+        do {
+            var urlRequest = URLRequest(url: url)
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !settings.clusterSharedSecret.isEmpty {
+                urlRequest.setValue(settings.clusterSharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
+            urlRequest.timeoutInterval = 15
+            urlRequest.httpBody = body
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let payload = try? JSONDecoder().decode(MeshSyncPayload.self, from: data) else { return }
+            await handleMeshSync(payload)
+        } catch {
+            // best effort
+        }
+    }
+
+    private func handleMeshRequest(type: String) async -> Data? {
+        switch type {
+        case "wiki-cache":
+            let all = await wikiContextCache.allEntries()
+            return try? JSONEncoder().encode(all)
+        default:
+            return nil
         }
     }
 

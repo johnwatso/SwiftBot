@@ -150,6 +150,7 @@ struct BotSettings: Codable, Hashable {
     var clusterLeaderAddress: String = ""
     var clusterListenPort: Int = 38787
     var clusterSharedSecret: String = ""
+    var clusterLeaderTerm: Int = 0
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -174,6 +175,7 @@ struct BotSettings: Codable, Hashable {
         case clusterWorkerBaseURLLegacy = "clusterWorkerBaseURL"
         case clusterListenPort
         case clusterSharedSecret
+        case clusterLeaderTerm
         case localAIDMReplyEnabled
         case localAIProvider
         case preferredAIProvider
@@ -200,6 +202,7 @@ struct BotSettings: Codable, Hashable {
             ?? (try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURLLegacy) ?? "")
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
         clusterSharedSecret = try container.decodeIfPresent(String.self, forKey: .clusterSharedSecret) ?? ""
+        clusterLeaderTerm = try container.decodeIfPresent(Int.self, forKey: .clusterLeaderTerm) ?? 0
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
@@ -223,7 +226,9 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterLeaderAddress, forKey: .clusterLeaderAddress)
         try container.encode(clusterListenPort, forKey: .clusterListenPort)
         try container.encode(clusterSharedSecret, forKey: .clusterSharedSecret)
+        try container.encode(clusterLeaderTerm, forKey: .clusterLeaderTerm)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
+
         try container.encode(localAIProvider, forKey: .localAIProvider)
         try container.encode(preferredAIProvider, forKey: .preferredAIProvider)
         try container.encode(localAIEndpoint, forKey: .localAIEndpoint)
@@ -752,7 +757,7 @@ struct MemorySummary: Identifiable, Hashable, Sendable {
     var id: String { "\(scope.type.rawValue):\(scope.id)" }
 }
 
-struct MemoryRecord: Identifiable, Hashable, Sendable {
+struct MemoryRecord: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let scope: MemoryScope
     let userID: String
@@ -844,6 +849,61 @@ actor ConversationStore {
         recentMessages(for: .guildTextChannel(channelID), limit: limit)
     }
 
+    func allRecords() -> [MemoryRecord] {
+        messagesByScope.values.flatMap { $0 }
+    }
+
+    /// All records globally sorted by (timestamp ascending, id ascending) — deterministic sync order.
+    func allRecordsSorted() -> [MemoryRecord] {
+        allRecords().sorted {
+            if $0.timestamp != $1.timestamp { return $0.timestamp < $1.timestamp }
+            return $0.id < $1.id
+        }
+    }
+
+    /// Returns up to `limit` records that come after `fromRecordID` in sorted order.
+    /// Returns `hasMore: true` if additional records exist beyond this page.
+    func recordsSince(fromRecordID: String?, limit: Int) -> (records: [MemoryRecord], hasMore: Bool) {
+        let sorted = allRecordsSorted()
+        let startIndex: Int
+        if let cursorID = fromRecordID,
+           let idx = sorted.firstIndex(where: { $0.id == cursorID }) {
+            startIndex = sorted.index(after: idx)
+        } else {
+            startIndex = sorted.startIndex
+        }
+        guard startIndex < sorted.endIndex else { return ([], false) }
+        let slice = sorted[startIndex...]
+        let batch = Array(slice.prefix(limit))
+        let hasMore = slice.count > limit
+        return (batch, hasMore)
+    }
+
+    /// Appends a record only if no record with the same id already exists (idempotent merge).
+    func appendIfNotExists(scope: MemoryScope, messageID: String, userID: String, content: String, role: MessageRole, timestamp: Date) {
+        let existing = messagesByScope[scope] ?? []
+        guard !existing.contains(where: { $0.id == messageID }) else { return }
+        let record = MemoryRecord(id: messageID, scope: scope, userID: userID, content: content, timestamp: timestamp, role: role)
+        messagesByScope[scope, default: []].append(record)
+        emitUpdate()
+    }
+
+    func allMessages() -> [Message] {
+        messagesByScope.flatMap { scope, records in
+            records.map { record in
+                Message(
+                    id: record.id,
+                    channelID: record.scope.id,
+                    userID: record.userID,
+                    username: "", // will be resolved on other end
+                    content: record.content,
+                    timestamp: record.timestamp,
+                    role: record.role
+                )
+            }
+        }
+    }
+
     func summaries() -> [MemorySummary] {
         messagesByScope.map { scope, messages in
             MemorySummary(
@@ -902,7 +962,7 @@ actor ConversationStore {
     }
 }
 
-struct WikiContextEntry: Identifiable, Hashable, Sendable {
+struct WikiContextEntry: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let sourceName: String
     let query: String
@@ -928,7 +988,11 @@ actor WikiContextCache {
             cachedAt: Date()
         )
 
-        entries.removeAll { $0.id == key }
+        upsertEntry(entry)
+    }
+
+    func upsertEntry(_ entry: WikiContextEntry) {
+        entries.removeAll { $0.id == entry.id }
         entries.insert(entry, at: 0)
         if entries.count > maxEntries {
             entries.removeLast(entries.count - maxEntries)
@@ -971,6 +1035,10 @@ actor WikiContextCache {
         }
 
         return Array(candidates.prefix(limit))
+    }
+
+    func allEntries() -> [WikiContextEntry] {
+        entries
     }
 
     private func promptTokens(_ raw: String) -> [String] {
@@ -1037,6 +1105,7 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
     case standalone = "Standalone"
     case leader = "Leader"
     case worker = "Worker"
+    case standby = "Standby"
 
     var id: String { rawValue }
 
@@ -1048,8 +1117,72 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
             return "Owns Discord traffic, listens for worker registrations, and can offload heavy work."
         case .worker:
             return "Runs job services only, connects to the leader address, and registers for jobs."
+        case .standby:
+            return "Hot standby — monitors the leader and automatically promotes to leader on failure."
         }
     }
+}
+
+// MARK: - SwiftMesh Protocol Types (Phase 1)
+
+/// Sent by the leader to notify workers and standbys that a new leader has taken over.
+/// Workers must reject this if `term` is not newer than their current known term.
+struct MeshLeaderChangedPayload: Codable, Sendable {
+    let term: Int
+    let leaderAddress: String
+    let leaderNodeName: String
+    let sharedSecret: String
+}
+
+/// Sent by the leader to the standby to replicate the registered worker list.
+struct MeshWorkerRegistryPayload: Codable, Sendable {
+    struct WorkerEntry: Codable, Sendable {
+        let nodeName: String
+        let baseURL: String
+        let listenPort: Int
+    }
+    let workers: [WorkerEntry]
+    let leaderTerm: Int
+}
+
+/// Incremental conversation sync payload sent leader → standby.
+/// Records are ordered by (timestamp ascending, id ascending) for deterministic replay.
+struct MeshSyncPayload: Codable, Sendable {
+    let conversations: [MemoryRecord]
+    let leaderTerm: Int
+    /// ID of the last record in this batch — standby stores as its new cursor.
+    let cursorRecordID: String?
+    /// True if more records exist beyond this batch; standby should request resync for next page.
+    let hasMore: Bool
+    /// The cursor the leader assumed this node held when building this batch.
+    /// Node compares against its own lastMergedRecordID to detect gaps.
+    let fromCursorRecordID: String?
+
+    init(conversations: [MemoryRecord], leaderTerm: Int, cursorRecordID: String? = nil, hasMore: Bool = false, fromCursorRecordID: String? = nil) {
+        self.conversations = conversations
+        self.leaderTerm = leaderTerm
+        self.cursorRecordID = cursorRecordID
+        self.hasMore = hasMore
+        self.fromCursorRecordID = fromCursorRecordID
+    }
+}
+
+/// Standby → leader: request a bounded checkpoint batch starting from a cursor.
+struct MeshResyncRequest: Codable, Sendable {
+    /// ID of the last successfully merged record (nil = start from beginning).
+    let fromRecordID: String?
+    let pageSize: Int
+}
+
+/// Leader tracks one cursor per registered node (keyed by node base URL).
+/// Persisted to disk so leader restart does not force blind full-replay.
+struct ReplicationCursor: Codable, Sendable {
+    /// The leader term in which this cursor was last updated.
+    var leaderTerm: Int
+    /// ID of the last record successfully delivered to this node.
+    var lastSentRecordID: String?
+    /// When this cursor was last advanced.
+    var updatedAt: Date
 }
 
 enum ClusterConnectionState: String {
@@ -1286,6 +1419,7 @@ struct ClusterSnapshot: Hashable {
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var listenPort: Int = 38787
     var leaderAddress: String = ""
+    var leaderTerm: Int = 0
     var serverState: ClusterConnectionState = .inactive
     var workerState: ClusterConnectionState = .inactive
     var serverStatusText: String = "Disabled"
