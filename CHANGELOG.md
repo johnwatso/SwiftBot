@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-05
+
+#### SwiftMesh Failover + Replication (Phases 1 / 2 / 2.1 / 3)
+**Issue:** Cluster mode previously lacked automatic failover, durable cross-node state continuity, and knowledge-base (wiki) synchronization.
+
+**Solution:**
+- Added SwiftMesh standby failover mode with term-based promotion safety:
+  - `ClusterMode.standby`
+  - leader health monitor (10s interval, 3-miss promotion threshold)
+  - leader term persistence (`clusterLeaderTerm`) with monotonic restore/update
+  - `POST /v1/mesh/leader-changed` flow for worker re-registration
+- Implemented state replication and consistency:
+  - **Durable Cursors (Phase 2):** Incremental sync with per-node cursors persisted to `mesh-cursors.json`.
+  - **Replication Hardening (Phase 2.1):** Cursors now keyed by stable `nodeName` instead of ephemeral URLs.
+  - **Gap Detection & Resync:** Automatic trigger for POST `/v1/mesh/sync/conversations/resync` when gaps are detected.
+  - **Wiki Cache Sync (Phase 3):** Standbys pull recent `WikiContextEntry` batches from leader via `GET /v1/mesh/sync/wiki-cache`.
+- Added comprehensive test suite:
+  - `MeshFailoverTests` (promotion, term safety, redirection)
+  - `MeshSyncTests` (incremental push, gap resync, pagination convergence)
+  - `WikiSyncTests` (cross-node wiki knowledge replication)
+
+**Impact:** SwiftMesh is now a robust distributed system with automatic leader failover and continuous state replication across all nodes.
+
+### Changed - 2026-03-05
+
+#### AI Reply Pipeline Consolidation + Naturalness Improvements
+**Issue:** Conversational responses felt rigid due to inconsistent history shaping and duplicated prompt-composition paths.
+
+**Solution:**
+- Reduced effective history window and constrained long assistant replay content to reduce tone poisoning.
+- Centralized system prompt/message composition through a shared composer path.
+- Unified direct and rule-triggered local AI reply context handling with consistent prompt enrichment.
+- Added grounded context inputs (server/channel/time) and improved default conversational tone guidance.
+
+**Impact:** Local AI replies are more consistent and natural, with lower prompt drift across reply entry points.
+
+### Docs - 2026-03-05
+
+#### Documentation Sync (README / ARCHITECTURE / AI_GUIDE)
+Updated project docs to reflect current feature status, SwiftMesh phase progress, and current AI pipeline behavior.
+
 ### Changed - 2026-03-04
 
 #### Repository Hygiene + Release Tooling Consolidation
