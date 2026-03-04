@@ -1,7 +1,7 @@
 import Combine
 import Foundation
-import Combine
 import Network
+import Security
 
 // MARK: - EventBus System
 
@@ -51,23 +51,19 @@ final class EventBus {
     
     /// Subscribes to events of the specified type.
     @discardableResult
-    func subscribe<E: Event>(_ type: E.Type, handler: @escaping (E) async -> Void) -> SubscriptionToken {
+    func subscribe<E: Event>(_ type: E.Type, handler: @escaping (E) async -> Void) async -> SubscriptionToken {
         let token = SubscriptionToken()
         let wrappedHandler: (Any) async -> Void = { anyEvent in
             guard let event = anyEvent as? E else { return }
             await handler(event)
         }
-        Task {
-            await storage.add(type: ObjectIdentifier(type), token: token, handler: wrappedHandler)
-        }
+        await storage.add(type: ObjectIdentifier(type), token: token, handler: wrappedHandler)
         return token
     }
-    
+
     /// Unsubscribes from an event using the given subscription token.
-    func unsubscribe(_ token: SubscriptionToken) {
-        Task {
-            await storage.remove(token: token)
-        }
+    func unsubscribe(_ token: SubscriptionToken) async {
+        await storage.remove(token: token)
     }
     
     /// Publishes an event to all subscribers of its type.
@@ -153,6 +149,7 @@ struct BotSettings: Codable, Hashable {
     var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var clusterLeaderAddress: String = ""
     var clusterListenPort: Int = 38787
+    var clusterSharedSecret: String = ""
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -161,7 +158,7 @@ struct BotSettings: Codable, Hashable {
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
     var ollamaBaseURL: String = "http://localhost:11434"
-    var localAISystemPrompt: String = "You are a friendly Discord assistant. Reply briefly and naturally."
+    var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
@@ -176,6 +173,7 @@ struct BotSettings: Codable, Hashable {
         case clusterLeaderAddress
         case clusterWorkerBaseURLLegacy = "clusterWorkerBaseURL"
         case clusterListenPort
+        case clusterSharedSecret
         case localAIDMReplyEnabled
         case localAIProvider
         case preferredAIProvider
@@ -201,13 +199,14 @@ struct BotSettings: Codable, Hashable {
         clusterLeaderAddress = try container.decodeIfPresent(String.self, forKey: .clusterLeaderAddress)
             ?? (try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURLLegacy) ?? "")
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
+        clusterSharedSecret = try container.decodeIfPresent(String.self, forKey: .clusterSharedSecret) ?? ""
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
         localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
         localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
-        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly Discord assistant. Reply briefly and naturally."
+        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
@@ -223,6 +222,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterNodeName, forKey: .clusterNodeName)
         try container.encode(clusterLeaderAddress, forKey: .clusterLeaderAddress)
         try container.encode(clusterListenPort, forKey: .clusterListenPort)
+        try container.encode(clusterSharedSecret, forKey: .clusterSharedSecret)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
         try container.encode(localAIProvider, forKey: .localAIProvider)
         try container.encode(preferredAIProvider, forKey: .preferredAIProvider)
@@ -1909,12 +1909,12 @@ final class WeeklySummaryPlugin: BotPlugin {
     init() {}
     
     func register(on bus: EventBus) async {
-        let joinToken = bus.subscribe(VoiceJoined.self) { _ in
+        let joinToken = await bus.subscribe(VoiceJoined.self) { _ in
             // No-op for accumulation; could log here if needed
         }
         tokens.append(joinToken)
-        
-        let leftToken = bus.subscribe(VoiceLeft.self) { [weak self] event in
+
+        let leftToken = await bus.subscribe(VoiceLeft.self) { [weak self] event in
             guard let self = self else { return }
             self.voiceDurations[event.userId, default: 0] += max(0, event.durationSeconds)
         }
@@ -1923,7 +1923,7 @@ final class WeeklySummaryPlugin: BotPlugin {
     
     func unregister(from bus: EventBus) async {
         for token in tokens {
-            bus.unsubscribe(token)
+            await bus.unsubscribe(token)
         }
         tokens.removeAll()
     }
@@ -1940,5 +1940,119 @@ final class WeeklySummaryPlugin: BotPlugin {
         }
         
         return "Weekly Voice Summary:\n" + summaryLines.joined(separator: "\n")
+    }
+}
+
+/// Single owner for AI prompt composition — tone prompt, context enrichment, and message shaping.
+/// Both AppModel and DiscordService should go through this to ensure consistent prompt structure.
+enum PromptComposer {
+    static let defaultTonePrompt =
+        "You are a friendly, casual Discord bot. Keep replies short and conversational — " +
+        "1 to 3 sentences max unless asked for detail. Use contractions naturally. " +
+        "Don't restate what the user said. Don't open every reply the same way. " +
+        "Match the energy of the conversation."
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .medium
+        return f
+    }()
+
+    /// Builds the fully-enriched system prompt string.
+    static func buildSystemPrompt(
+        base: String,
+        serverName: String?,
+        channelName: String?,
+        wikiContext: String?
+    ) -> String {
+        var prompt = base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultTonePrompt
+            : base.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let wiki = wikiContext, !wiki.isEmpty {
+            prompt += "\n\n\(wiki)"
+        }
+        if let server = serverName, !server.isEmpty {
+            prompt += "\nServer: \(server)"
+        }
+        if let channel = channelName, !channel.isEmpty {
+            prompt += "\nChannel: \(channel)"
+        }
+        prompt += "\nCurrent Time: \(timeFormatter.string(from: Date()))"
+        return prompt
+    }
+
+    /// Prepends a system message and filters empty/system-role messages from history.
+    static func buildMessages(systemPrompt: String, history: [Message]) -> [Message] {
+        let clean = history.filter {
+            !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            $0.role != .system
+        }
+        let systemMessage = Message(
+            channelID: "system",
+            userID: "system",
+            username: "System",
+            content: systemPrompt,
+            role: .system
+        )
+        return [systemMessage] + clean
+    }
+}
+
+/// A simple helper for interacting with the macOS Keychain.
+enum KeychainHelper {
+    private static let service = "com.swiftbot.app"
+    private static let account = "discord-token"
+
+    /// Saves the token to the Keychain.
+    @discardableResult
+    static func saveToken(_ token: String) -> Bool {
+        guard let data = token.data(using: .utf8) else { return false }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data
+        ]
+
+        // Delete any existing item before saving the new one.
+        SecItemDelete(query as CFDictionary)
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        return status == errSecSuccess
+    }
+
+    /// Retrieves the token from the Keychain.
+    static func loadToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var dataTypeRef: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+
+        if status == errSecSuccess, let data = dataTypeRef as? Data {
+            return String(data: data, encoding: .utf8)
+        }
+
+        return nil
+    }
+
+    /// Deletes the token from the Keychain.
+    @discardableResult
+    static func deleteToken() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess
     }
 }

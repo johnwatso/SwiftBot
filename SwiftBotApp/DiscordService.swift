@@ -25,15 +25,20 @@ private extension Array where Element == Message {
             guard !trimmed.isEmpty else { return nil }
 
             let role: EngineMessageRole
+            let finalContent: String
             switch message.role {
             case .system:
                 role = .system
+                finalContent = trimmed
             case .assistant:
                 role = .assistant
+                // Trim long assistant messages so they don't poison subsequent context.
+                finalContent = trimmed.count > 300 ? String(trimmed.prefix(300)) + "…" : trimmed
             case .user:
                 role = .user
+                finalContent = "\(message.username): \(trimmed)"
             }
-            return EngineMessage(role: role, content: trimmed)
+            return EngineMessage(role: role, content: finalContent)
         }
     }
 }
@@ -200,6 +205,7 @@ struct OllamaEngine: AIEngine {
 }
 
 actor DiscordService {
+
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
     private let finalsWikiAPI = URL(string: "https://www.thefinals.wiki/api.php")!
@@ -216,6 +222,10 @@ actor DiscordService {
     private var voiceJoinTimeByMemberKey: [String: Date] = [:]
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
+    private var guildNamesById: [String: String] = [:]
+
+    typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
+    private var historyProvider: HistoryProvider?
 
     private var localAIDMReplyEnabled = false
     private var localAIProvider: AIProvider = .appleIntelligence
@@ -239,6 +249,10 @@ actor DiscordService {
 
     func setRuleEngine(_ engine: RuleEngine) {
         ruleEngine = engine
+    }
+
+    func setHistoryProvider(_ provider: @escaping HistoryProvider) {
+        historyProvider = provider
     }
 
     func configureLocalAIDMReplies(
@@ -268,8 +282,18 @@ actor DiscordService {
         return (appleOnline, model != nil, model)
     }
 
-    func generateSmartDMReply(messages: [Message]) async -> String? {
-        await generateLocalAIDMReply(messages: messages)
+    func generateSmartDMReply(
+        messages: [Message],
+        serverName: String? = nil,
+        channelName: String? = nil,
+        wikiContext: String? = nil
+    ) async -> String? {
+        await generateLocalAIDMReply(
+            messages: messages,
+            serverName: serverName,
+            channelName: channelName,
+            wikiContext: wikiContext
+        )
     }
 
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
@@ -357,6 +381,7 @@ actor DiscordService {
                     sequence = payload.s ?? sequence
                     await handleGatewayPayload(payload, token: token)
                     seedChannelTypesIfNeeded(payload)
+                    seedGuildNameIfNeeded(payload)
                     seedVoiceChannelsIfNeeded(payload)
                     seedVoiceStateIfNeeded(payload)
                     await processRuleActionsIfNeeded(payload)
@@ -477,6 +502,15 @@ actor DiscordService {
             )
         }
         return (http.statusCode, responseBody)
+    }
+
+    private func seedGuildNameIfNeeded(_ payload: GatewayPayload) {
+        guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
+        guard case let .object(guildMap)? = payload.d,
+              case let .string(guildId)? = guildMap["id"],
+              case let .string(guildName)? = guildMap["name"]
+        else { return }
+        guildNamesById[guildId] = guildName
     }
 
     private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) {
@@ -718,26 +752,32 @@ actor DiscordService {
             if event.kind == .message,
                event.isDirectMessage,
                localAIDMReplyEnabled,
-               let userMessage = event.messageContent,
-               let aiReply = await generateLocalAIDMReply(messages: [
-                    Message(
-                        channelID: event.channelId,
-                        userID: "system",
-                        username: "System",
-                        content: localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? "You are a friendly Discord assistant. Reply briefly and naturally."
-                            : localAISystemPrompt,
-                        role: .system
-                    ),
-                    Message(
+               let userMessage = event.messageContent {
+                
+                let scope = MemoryScope.directMessageUser(event.userId)
+                let history = await historyProvider?(scope) ?? []
+                
+                // Ensure the current message is included if not already in history
+                var messagesToProcess = history
+                if !messagesToProcess.contains(where: { $0.content == userMessage && $0.role == .user }) {
+                    messagesToProcess.append(Message(
                         channelID: event.channelId,
                         userID: event.userId,
                         username: event.username,
                         content: userMessage,
                         role: .user
-                    )
-               ]) {
-                rendered = aiReply
+                    ))
+                }
+
+                if let aiReply = await generateLocalAIDMReply(
+                    messages: messagesToProcess,
+                    serverName: guildNamesById[event.guildId],
+                    channelName: "Direct Message"
+                ) {
+                    rendered = aiReply
+                } else {
+                    rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+                }
             } else {
                 rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
             }
@@ -788,14 +828,22 @@ actor DiscordService {
         return "Channel \(channelId.suffix(5))"
     }
 
-    private func generateLocalAIDMReply(messages: [Message]) async -> String? {
+    private func generateLocalAIDMReply(
+        messages: [Message],
+        serverName: String? = nil,
+        channelName: String? = nil,
+        wikiContext: String? = nil
+    ) async -> String? {
         guard localAIDMReplyEnabled else { return nil }
 
-        let systemPrompt = localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "You are a friendly Discord assistant. Reply briefly and naturally."
-            : localAISystemPrompt
-        let cleanedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard cleanedMessages.contains(where: { $0.role == .user }) else { return nil }
+        let systemPrompt = PromptComposer.buildSystemPrompt(
+            base: localAISystemPrompt,
+            serverName: serverName,
+            channelName: channelName,
+            wikiContext: wikiContext
+        )
+        let finalMessages = PromptComposer.buildMessages(systemPrompt: systemPrompt, history: messages)
+        guard finalMessages.contains(where: { $0.role == .user }) else { return nil }
 
         let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
         let ollamaEngine = OllamaEngine(
@@ -806,26 +854,25 @@ actor DiscordService {
 
         let preferred = localPreferredAIProvider
         if preferred == .apple {
-            if let reply = await appleEngine.generate(messages: cleanedMessages) {
+            if let reply = await appleEngine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
             }
-            if let reply = await ollamaEngine.generate(messages: cleanedMessages) {
+            if let reply = await ollamaEngine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
             }
-            return nil
         } else {
-            if let reply = await ollamaEngine.generate(messages: cleanedMessages) {
+            if let reply = await ollamaEngine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
             }
-            if let reply = await appleEngine.generate(messages: cleanedMessages) {
+            if let reply = await appleEngine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
             }
-            return nil
         }
+        return nil
     }
 
     private func detectOllamaModel(baseURL: String, preferredModel: String?) async -> String? {

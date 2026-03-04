@@ -4,6 +4,7 @@ actor ConfigStore {
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var lastToken: String?
 
     init(filename: String = "settings.json") {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -15,13 +16,47 @@ actor ConfigStore {
 
     func load() -> BotSettings {
         guard let data = try? Data(contentsOf: url),
-              let settings = try? decoder.decode(BotSettings.self, from: data)
+              var settings = try? decoder.decode(BotSettings.self, from: data)
         else { return BotSettings() }
+
+        // Migration logic:
+        // 1. Check if Keychain has a token.
+        // 2. If not, and disk settings HAS a token, move it to Keychain and clear from disk.
+        // 3. If Keychain HAS a token, ensure disk settings token is empty.
+
+        if let keychainToken = KeychainHelper.loadToken() {
+            settings.token = keychainToken
+            lastToken = keychainToken
+        } else if !settings.token.isEmpty {
+            // Found token on disk but not in Keychain - migrate it.
+            let tokenToMigrate = settings.token
+            if KeychainHelper.saveToken(tokenToMigrate) {
+                lastToken = tokenToMigrate
+                // Token successfully moved to Keychain.
+                // We'll return the settings with the token, but future saves will clear it from disk.
+            }
+        }
+
         return settings
     }
 
     func save(_ settings: BotSettings) throws {
-        let data = try encoder.encode(settings)
+        var settingsToSave = settings
+
+        // If token has changed, update Keychain.
+        if settings.token != lastToken {
+            if settings.token.isEmpty {
+                KeychainHelper.deleteToken()
+            } else {
+                KeychainHelper.saveToken(settings.token)
+            }
+            lastToken = settings.token
+        }
+
+        // Always clear token from disk-stored settings.
+        settingsToSave.token = ""
+
+        let data = try encoder.encode(settingsToSave)
         try data.write(to: url, options: .atomic)
     }
 }
@@ -83,8 +118,10 @@ final class LogStore: ObservableObject {
     @Published var lines: [String] = []
     @Published var autoScroll = true
 
+    private static let dateFormatter = ISO8601DateFormatter()
+
     func append(_ line: String) {
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let stamp = Self.dateFormatter.string(from: Date())
         lines.append("[\(stamp)] \(line)")
         if lines.count > 500 {
             lines.removeFirst(lines.count - 500)

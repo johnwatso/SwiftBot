@@ -32,7 +32,7 @@ struct HardwareInfo: Sendable, Hashable {
 }
 
 actor ClusterCoordinator {
-    typealias AIHandler = @Sendable ([Message]) async -> String?
+    typealias AIHandler = @Sendable ([Message], String?, String?, String?) async -> String?
     typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
 
@@ -42,11 +42,14 @@ actor ClusterCoordinator {
     private let hardwareInfo = HardwareInfo.current()
     private let workerRegistrationIntervalNanoseconds: UInt64 = 4_000_000_000
     private let registrationStaleAfter: TimeInterval = 20
+    private static let maxHTTPRequestSize = 1_024 * 1024
+    private static let httpReadTimeout: TimeInterval = 5.0
 
     private var mode: ClusterMode = .standalone
     private var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     private var leaderAddress: String = ""
     private var listenPort: Int = 38787
+    private var sharedSecret: String = ""
     private var activeJobs = 0
     private var registeredWorkers: [String: RegisteredWorker] = [:]
     private var workerRegistrationTask: Task<Void, Never>?
@@ -70,13 +73,14 @@ actor ClusterCoordinator {
         self.onJobLog = onJobLog
     }
 
-    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int) async {
+    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
         self.mode = mode
         self.nodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
+        self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
 
         snapshot.mode = mode
         snapshot.nodeName = self.nodeName
@@ -188,8 +192,18 @@ actor ClusterCoordinator {
         }
     }
 
-    func generateAIReply(messages: [Message]) async -> String? {
-        let job = AIJobRequest(messages: messages)
+    func generateAIReply(
+        messages: [Message],
+        serverName: String? = nil,
+        channelName: String? = nil,
+        wikiContext: String? = nil
+    ) async -> String? {
+        let job = AIJobRequest(
+            messages: messages,
+            serverName: serverName,
+            channelName: channelName,
+            wikiContext: wikiContext
+        )
         if mode == .leader, let remote = await performRemoteAI(job) {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "AI reply via worker"
@@ -198,7 +212,7 @@ actor ClusterCoordinator {
             return remote.reply
         }
 
-        let local = await aiHandler?(messages)
+        let local = await aiHandler?(messages, serverName, channelName, wikiContext)
         snapshot.lastJobRoute = local == nil ? .unavailable : .local
         snapshot.lastJobSummary = local == nil ? "AI reply unavailable" : "AI reply local"
         snapshot.lastJobNode = nodeName
@@ -248,7 +262,12 @@ actor ClusterCoordinator {
         for worker in workers {
             guard let url = URL(string: worker.baseURL + "/v1/probe") else { continue }
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                var request = URLRequest(url: url)
+                request.httpMethod = "GET"
+                if !sharedSecret.isEmpty {
+                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+                }
+                let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
                     continue
@@ -344,7 +363,13 @@ actor ClusterCoordinator {
 
     private func readHTTPRequest(_ connection: NWConnection) async throws -> Data {
         var buffer = Data()
-        while true {
+        let start = Date()
+
+        while buffer.count < Self.maxHTTPRequestSize {
+            if Date().timeIntervalSince(start) > Self.httpReadTimeout {
+                throw NWError.posix(.ETIMEDOUT)
+            }
+
             let chunk = try await receiveChunk(from: connection)
             if chunk.isEmpty { break }
             buffer.append(chunk)
@@ -353,11 +378,21 @@ actor ClusterCoordinator {
                 let headerData = buffer[..<headerRange.upperBound]
                 let contentLength = parseContentLength(headerData)
                 let bodyLength = buffer.count - headerRange.upperBound
+                
+                if contentLength > Self.maxHTTPRequestSize {
+                    throw NWError.posix(.EMSGSIZE)
+                }
+
                 if bodyLength >= contentLength {
                     return buffer
                 }
             }
         }
+        
+        if buffer.count >= Self.maxHTTPRequestSize {
+            throw NWError.posix(.EMSGSIZE)
+        }
+        
         return buffer
     }
 
@@ -397,6 +432,14 @@ actor ClusterCoordinator {
     private func processHTTPRequest(_ requestData: Data) async -> Data {
         guard let request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_request"}"#.utf8))
+        }
+
+        // Enforce shared-secret auth on all routes except /health.
+        if !sharedSecret.isEmpty, request.path != "/health" {
+            let provided = request.headers["x-cluster-secret"] ?? ""
+            guard provided == sharedSecret else {
+                return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
+            }
         }
 
         switch (request.method, request.path) {
@@ -445,15 +488,7 @@ actor ClusterCoordinator {
             defer { activeJobs = max(0, activeJobs - 1) }
             guard let aiHandler,
                   let body = try? decoder.decode(AIJobRequest.self, from: request.body),
-                  let reply = await aiHandler(body.messages) else {
-                await recordJobLog(
-                    user: "Remote AI",
-                    server: "Cluster",
-                    command: "POST /v1/ai-reply",
-                    channel: "worker",
-                    executionRoute: "Worker",
-                    ok: false
-                )
+                  let reply = await aiHandler(body.messages, body.serverName, body.channelName, body.wikiContext) else {
                 return httpResponse(status: "503 Service Unavailable", body: Data(#"{"error":"ai_unavailable"}"#.utf8))
             }
             snapshot.lastJobRoute = .remote
@@ -521,7 +556,16 @@ actor ClusterCoordinator {
         guard let requestLine = lines.first else { return nil }
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else { return nil }
-        return HTTPRequest(method: String(parts[0]), path: String(parts[1]), body: body)
+
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let colonIdx = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colonIdx].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colonIdx)...].trimmingCharacters(in: .whitespaces)
+            headers[name] = value
+        }
+
+        return HTTPRequest(method: String(parts[0]), path: String(parts[1]), headers: headers, body: body)
     }
 
     private func httpResponse(status: String, body: Data) -> Data {
@@ -575,6 +619,9 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !sharedSecret.isEmpty {
+                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
             request.timeoutInterval = 3
             request.httpBody = try encoder.encode(payload)
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -676,8 +723,36 @@ actor ClusterCoordinator {
               !host.isEmpty else {
             return nil
         }
+        
+        // SSRF guard: only allow private network ranges or localhost
+        if !isSSRFSafeHost(host) {
+            return nil
+        }
+
         let portSuffix = url.port.map { ":\($0)" } ?? ""
         return "\(scheme)://\(host)\(portSuffix)"
+    }
+
+    private func isSSRFSafeHost(_ host: String) -> Bool {
+        let lowerHost = host.lowercased()
+        if lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "::1" {
+            return true
+        }
+        
+        // Basic private range check for typical home/office networks
+        let privatePrefixes = ["192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."]
+        for prefix in privatePrefixes {
+            if lowerHost.hasPrefix(prefix) {
+                return true
+            }
+        }
+        
+        // Also allow local .local hostnames (Bonjour)
+        if lowerHost.hasSuffix(".local") {
+            return true
+        }
+        
+        return false
     }
 
     private func isWorkerReachable(_ baseURL: String) async -> Bool {
@@ -685,6 +760,9 @@ actor ClusterCoordinator {
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            if !sharedSecret.isEmpty {
+                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
             request.timeoutInterval = 2
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
@@ -710,6 +788,9 @@ actor ClusterCoordinator {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if !sharedSecret.isEmpty {
+                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+                }
                 request.httpBody = try encoder.encode(job)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
@@ -751,6 +832,9 @@ actor ClusterCoordinator {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if !sharedSecret.isEmpty {
+                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+                }
                 request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
@@ -876,6 +960,9 @@ actor ClusterCoordinator {
             let started = Date()
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            if !sharedSecret.isEmpty {
+                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+            }
             request.timeoutInterval = 3
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -986,6 +1073,26 @@ actor ClusterCoordinator {
     }
 }
 
+#if DEBUG
+extension ClusterCoordinator {
+    func testIsSSRFSafeHost(_ host: String) -> Bool {
+        isSSRFSafeHost(host)
+    }
+
+    func testNormalizedBaseURL(_ raw: String) -> String? {
+        normalizedBaseURL(raw)
+    }
+
+    func testProcessHTTPRequest(_ data: Data) async -> Data {
+        await processHTTPRequest(data)
+    }
+
+    func testExceedsHTTPRequestSizeCap(_ contentLength: Int) -> Bool {
+        contentLength > Self.maxHTTPRequestSize
+    }
+}
+#endif
+
 private struct RegisteredWorker: Hashable, Sendable {
     var nodeName: String
     var baseURL: String
@@ -1008,11 +1115,15 @@ private struct WorkerRegistrationResponse: Codable {
 private struct HTTPRequest {
     let method: String
     let path: String
+    let headers: [String: String]
     let body: Data
 }
 
 private struct AIJobRequest: Codable {
     let messages: [Message]
+    let serverName: String?
+    let channelName: String?
+    let wikiContext: String?
 }
 
 private struct AIJobResponse: Codable {

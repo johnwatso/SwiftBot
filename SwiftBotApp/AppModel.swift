@@ -53,6 +53,8 @@ final class AppModel: ObservableObject {
     private var joinTimes: [String: Date] = [:]
     private var discordCacheSaveTask: Task<Void, Never>?
     private let conversationStore = ConversationStore()
+    private var lastCommandTimeByUserId: [String: Date] = [:]
+    private let commandCooldown: TimeInterval = 3.0
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
     private let pluginManager: PluginManager
@@ -82,6 +84,8 @@ final class AppModel: ObservableObject {
         }
 
         Task {
+            await startRateLimitCleanupTask()
+
             var loadedSettings = await store.load()
             var migrated = false
 
@@ -119,10 +123,24 @@ final class AppModel: ObservableObject {
             }
 
             await service.setRuleEngine(ruleEngine)
+            await service.setHistoryProvider { [weak self] scope in
+                guard let self else { return [] }
+                let (messages, _) = await self.aiMessagesForScope(
+                    scope: scope,
+                    currentUserID: "",
+                    currentContent: ""
+                )
+                return messages
+            }
             await cluster.configureHandlers(
-                aiHandler: { [weak self] messages in
+                aiHandler: { [weak self] messages, serverName, channelName, wikiContext in
                     guard let self else { return nil }
-                    return await self.service.generateSmartDMReply(messages: messages)
+                    return await self.service.generateSmartDMReply(
+                        messages: messages,
+                        serverName: serverName,
+                        channelName: channelName,
+                        wikiContext: wikiContext
+                    )
                 },
                 wikiHandler: { [weak self] query, source in
                     guard let self else { return nil }
@@ -154,7 +172,8 @@ final class AppModel: ObservableObject {
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
-                listenPort: settings.clusterListenPort
+                listenPort: settings.clusterListenPort,
+                sharedSecret: settings.clusterSharedSecret
             )
             await pollClusterStatus()
             await configureServiceCallbacks()
@@ -188,7 +207,8 @@ final class AppModel: ObservableObject {
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
-                listenPort: settings.clusterListenPort
+                listenPort: settings.clusterListenPort,
+                sharedSecret: settings.clusterSharedSecret
             )
             configurePatchyMonitoring()
 
@@ -546,7 +566,8 @@ final class AppModel: ObservableObject {
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
             leaderAddress: settings.clusterLeaderAddress,
-            listenPort: settings.clusterListenPort
+            listenPort: settings.clusterListenPort,
+            sharedSecret: settings.clusterSharedSecret
         )
 
         if settings.clusterMode == .worker {
@@ -651,12 +672,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int) async {
+    private func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
         await cluster.applySettings(
             mode: mode,
             nodeName: nodeName,
             leaderAddress: leaderAddress,
-            listenPort: listenPort
+            listenPort: listenPort,
+            sharedSecret: sharedSecret
         )
         await pollClusterStatus()
     }
@@ -825,6 +847,53 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Checks if a user is rate limited.
+    /// - Parameters:
+    ///   - userId: The Discord user ID.
+    ///   - username: The Discord username (for logging).
+    ///   - channelId: The channel ID to send feedback to if DM.
+    ///   - isDM: Whether the message is a DM.
+    /// - Returns: True if the command is allowed, false if rate limited.
+    /// Note: Throttled commands in guild channels are silently dropped.
+    /// DMs receive a "Cooldown active" feedback message.
+    private func checkRateLimit(userId: String, username: String, channelId: String, isDM: Bool) async -> Bool {
+        if let lastTime = lastCommandTimeByUserId[userId] {
+            let elapsed = Date().timeIntervalSince(lastTime)
+            if elapsed < commandCooldown {
+                logs.append("⚠️ Throttling \(username) (elapsed: \(String(format: "%.1fs", elapsed)))")
+                if isDM {
+                    _ = await send(channelId, "Cooldown active. Please wait a few seconds.")
+                }
+                return false
+            }
+        }
+        lastCommandTimeByUserId[userId] = Date()
+        return true
+    }
+
+    private func startRateLimitCleanupTask() async {
+        Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000) // 60 seconds
+                if Task.isCancelled { break }
+                await MainActor.run {
+                    self.cleanupRateLimitCache()
+                }
+            }
+        }
+    }
+
+    private func cleanupRateLimitCache() {
+        let now = Date()
+        let expired = lastCommandTimeByUserId.filter { now.timeIntervalSince($1) > 60.0 }.map { $0.key }
+        for key in expired {
+            lastCommandTimeByUserId.removeValue(forKey: key)
+        }
+        if !expired.isEmpty {
+            logs.append("🧹 Cleaned up \(expired.count) rate limit cache entries")
+        }
+    }
+
     private func handleMessageCreate(_ raw: DiscordJSON?) async {
         guard case let .object(map)? = raw,
               case let .string(content)? = map["content"],
@@ -872,13 +941,27 @@ final class AppModel: ObservableObject {
 
         if isDMChannel, !content.hasPrefix(prefix) {
             if settings.localAIDMReplyEnabled {
+                guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: true) else { return }
+
                 let scope = MemoryScope.directMessageUser(userId)
-                let messages = await aiMessagesForScope(
+                let (messages, wikiContext) = await aiMessagesForScope(
                     scope: scope,
                     currentUserID: userId,
                     currentContent: content
                 )
-                if let aiReply = await cluster.generateAIReply(messages: messages) {
+                
+                var serverName: String? = nil
+                if let gid = guildID {
+                    serverName = await discordCache.guildName(for: gid)
+                }
+                let channelName = await discordCache.channelName(for: channelId)
+
+                if let aiReply = await cluster.generateAIReply(
+                    messages: messages,
+                    serverName: serverName,
+                    channelName: channelName,
+                    wikiContext: wikiContext
+                ) {
                     await conversationStore.append(
                         scope: scope,
                         messageID: messageId,
@@ -914,13 +997,26 @@ final class AppModel: ObservableObject {
            !content.hasPrefix(prefix) {
             let prompt = contentWithoutBotMention(content)
             if !prompt.isEmpty {
+                guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: false) else { return }
+
                 let scope = MemoryScope.guildTextChannel(channelId)
-                let messages = await aiMessagesForScope(
+                let (messages, wikiContext) = await aiMessagesForScope(
                     scope: scope,
                     currentUserID: userId,
                     currentContent: prompt
                 )
-                if let aiReply = await cluster.generateAIReply(messages: messages) {
+                var serverName: String? = nil
+                if let gid = guildID {
+                    serverName = await discordCache.guildName(for: gid)
+                }
+                let channelName = await discordCache.channelName(for: channelId)
+
+                if let aiReply = await cluster.generateAIReply(
+                    messages: messages,
+                    serverName: serverName,
+                    channelName: channelName,
+                    wikiContext: wikiContext
+                ) {
                     await conversationStore.append(
                         scope: scope,
                         messageID: messageId,
@@ -938,6 +1034,8 @@ final class AppModel: ObservableObject {
         }
 
         guard content.hasPrefix(prefix) else { return }
+
+        guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: isDMChannel) else { return }
 
         stats.commandsRun += 1
         let commandText = String(content.dropFirst(prefix.count))
@@ -1291,18 +1389,22 @@ final class AppModel: ObservableObject {
         scope: MemoryScope,
         currentUserID: String,
         currentContent: String
-    ) async -> [Message] {
-        var recent = await conversationStore.recentMessages(for: scope, limit: 20)
-        recent.append(
-            MemoryRecord(
-                id: UUID().uuidString,
-                scope: scope,
-                userID: currentUserID,
-                content: currentContent,
-                timestamp: Date(),
-                role: .user
+    ) async -> (messages: [Message], wikiContext: String) {
+        let maxHistory = 8
+        var recent = await conversationStore.recentMessages(for: scope, limit: maxHistory)
+        
+        if !currentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            recent.append(
+                MemoryRecord(
+                    id: UUID().uuidString,
+                    scope: scope,
+                    userID: currentUserID,
+                    content: currentContent,
+                    timestamp: Date(),
+                    role: .user
+                )
             )
-        )
+        }
 
         var conversationalMessages: [Message] = []
         conversationalMessages.reserveCapacity(recent.count)
@@ -1321,20 +1423,10 @@ final class AppModel: ObservableObject {
             )
         }
 
-        let systemPrompt = settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "You are a friendly Discord assistant. Reply briefly and naturally."
-            : settings.localAISystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let wikiContextEntries = await wikiContextCache.contextEntries(for: currentContent, limit: 3)
         let wikiContext = renderWikiContext(entries: wikiContextEntries)
-        let combinedPrompt = wikiContext.isEmpty ? systemPrompt : "\(systemPrompt)\n\n\(wikiContext)"
-        let systemMessage = Message(
-            channelID: scope.id,
-            userID: "system",
-            username: "System",
-            content: combinedPrompt,
-            role: .system
-        )
-        return [systemMessage] + conversationalMessages
+        
+        return (conversationalMessages, wikiContext)
     }
 
     private func renderWikiContext(entries: [WikiContextEntry]) -> String {
