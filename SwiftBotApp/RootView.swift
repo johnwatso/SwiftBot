@@ -1662,7 +1662,9 @@ struct GeneralSettingsView: View {
 
                         HStack {
                             Button("Test Connection") {
+                                app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                 app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
                                 app.testWorkerLeaderConnection()
                             }
                             .buttonStyle(.bordered)

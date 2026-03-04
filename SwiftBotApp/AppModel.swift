@@ -61,6 +61,7 @@ final class AppModel: ObservableObject {
     private var patchyMonitorTask: Task<Void, Never>?
     private var botUserId: String?
     private let launchedAt = Date()
+    private var clusterNodesRefreshTask: Task<Void, Never>?
     @Published var botUsername: String = "OnlineBot"
     @Published var botDiscriminator: String?
     @Published var botAvatarHash: String?
@@ -131,6 +132,7 @@ final class AppModel: ObservableObject {
                     let model = self
                     await MainActor.run {
                         model?.clusterSnapshot = snapshot
+                        model?.scheduleClusterNodesRefresh()
                     }
                 },
                 onJobLog: { [weak self] entry in
@@ -182,13 +184,12 @@ final class AppModel: ObservableObject {
                 model: settings.localAIModel,
                 systemPrompt: settings.localAISystemPrompt
             )
-            await cluster.applySettings(
+            await applyClusterSettingsRuntime(
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
                 listenPort: settings.clusterListenPort
             )
-            await pollClusterStatus()
             configurePatchyMonitoring()
 
             do {
@@ -639,6 +640,25 @@ final class AppModel: ObservableObject {
         self.clusterSnapshot = snapshot
         logSwiftMeshStatus(snapshot, context: "Refresh")
         return snapshot
+    }
+
+    private func scheduleClusterNodesRefresh() {
+        clusterNodesRefreshTask?.cancel()
+        clusterNodesRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self else { return }
+            await self.pollClusterStatus()
+        }
+    }
+
+    private func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int) async {
+        await cluster.applySettings(
+            mode: mode,
+            nodeName: nodeName,
+            leaderAddress: leaderAddress,
+            listenPort: listenPort
+        )
+        await pollClusterStatus()
     }
 
     func pollClusterStatus() async {
@@ -1720,7 +1740,11 @@ final class AppModel: ObservableObject {
             case .cannotFindHost, .dnsLookupFailed, .timedOut, .notConnectedToInternet:
                 return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
             case .cannotConnectToHost:
-                return WorkerConnectionTestOutcome(message: "Connection refused", isSuccess: false)
+                let portLabel = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
+                return WorkerConnectionTestOutcome(
+                    message: "Connection refused on port \(portLabel) (Leader may be offline or settings not saved)",
+                    isSuccess: false
+                )
             default:
                 return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
             }
