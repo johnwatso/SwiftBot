@@ -7,6 +7,11 @@ struct PatchyView: View {
     @State private var editorMode: PatchyEditorMode = .create
     @State private var debugExpanded = false
 
+    private enum PatchySettingKey {
+        static let monitoringEnabled = "patchy.monitoringEnabled"
+        static let showDebug = "patchy.showDebug"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -53,38 +58,76 @@ struct PatchyView: View {
     }
 
     private var monitoringControls: some View {
-        HStack(spacing: 14) {
-            Toggle("Start Monitoring", isOn: Binding(
-                get: { app.settings.patchy.monitoringEnabled },
-                set: { newValue in
-                    app.settings.patchy.monitoringEnabled = newValue
+        VStack(alignment: .leading, spacing: 10) {
+            SettingsView(
+                sections: patchySettingsSections,
+                values: patchySettingsValues,
+                onChange: { _, _ in
                     app.saveSettings()
                 }
-            ))
-            .toggleStyle(.switch)
+            )
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .frame(minHeight: 118, maxHeight: 168)
 
-            Toggle("Show Debug", isOn: Binding(
-                get: { app.settings.patchy.showDebug },
-                set: { newValue in
-                    app.settings.patchy.showDebug = newValue
-                    app.saveSettings()
+            HStack(spacing: 10) {
+                if let last = app.patchyLastCycleAt {
+                    Text("Last cycle: \(last.formatted(date: .abbreviated, time: .standard))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            ))
-            .toggleStyle(.switch)
 
-            Spacer()
+                if app.patchyIsCycleRunning {
+                    ProgressView()
+                        .controlSize(.small)
+                }
 
-            if let last = app.patchyLastCycleAt {
-                Text("Last cycle: \(last.formatted(date: .abbreviated, time: .standard))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if app.patchyIsCycleRunning {
-                ProgressView()
-                    .controlSize(.small)
+                Spacer()
             }
         }
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    private var patchySettingsSections: [SettingSection] {
+        [
+            SettingSection(
+                title: "Monitoring",
+                settings: [
+                    Setting(
+                        key: PatchySettingKey.monitoringEnabled,
+                        title: "Start Monitoring",
+                        description: "Enable scheduled checks for release updates.",
+                        type: .toggle
+                    ),
+                    Setting(
+                        key: PatchySettingKey.showDebug,
+                        title: "Show Debug",
+                        description: "Show additional diagnostic logs and controls.",
+                        type: .toggle
+                    )
+                ]
+            )
+        ]
+    }
+
+    private var patchySettingsValues: Binding<[String: SettingValue]> {
+        Binding(
+            get: {
+                [
+                    PatchySettingKey.monitoringEnabled: .toggle(app.settings.patchy.monitoringEnabled),
+                    PatchySettingKey.showDebug: .toggle(app.settings.patchy.showDebug)
+                ]
+            },
+            set: { updated in
+                if let enabled = updated[PatchySettingKey.monitoringEnabled]?.boolValue {
+                    app.settings.patchy.monitoringEnabled = enabled
+                }
+                if let showDebug = updated[PatchySettingKey.showDebug]?.boolValue {
+                    app.settings.patchy.showDebug = showDebug
+                }
+            }
+        )
     }
 
     private var sourceTargetList: some View {

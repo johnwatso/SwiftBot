@@ -6,6 +6,10 @@ struct WikiBridgeView: View {
     @State private var editorDraft: WikiSourceDraft?
     @State private var editorMode: WikiBridgeEditorMode = .create
 
+    private enum WikiSettingKey {
+        static let enabled = "wikibridge.enabled"
+    }
+
     private var sortedSources: [WikiSource] {
         app.settings.wikiBot.sources.sorted { lhs, rhs in
             if lhs.isPrimary != rhs.isPrimary {
@@ -66,8 +70,10 @@ struct WikiBridgeView: View {
             Text("Configuration")
                 .font(.title3.weight(.semibold))
 
-            Toggle("Enable WikiBridge", isOn: $app.settings.wikiBot.isEnabled)
-                .toggleStyle(.switch)
+            SettingsView(sections: wikiSettingsSections, values: wikiSettingsValues)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 94, maxHeight: 140)
 
             HStack {
                 Spacer()
@@ -79,6 +85,37 @@ struct WikiBridgeView: View {
         }
         .padding(20)
         .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    private var wikiSettingsSections: [SettingSection] {
+        [
+            SettingSection(
+                title: "WikiBridge",
+                settings: [
+                    Setting(
+                        key: WikiSettingKey.enabled,
+                        title: "Enable WikiBridge",
+                        description: "Allow wiki command routing and source resolution.",
+                        type: .toggle
+                    )
+                ]
+            )
+        ]
+    }
+
+    private var wikiSettingsValues: Binding<[String: SettingValue]> {
+        Binding(
+            get: {
+                [
+                    WikiSettingKey.enabled: .toggle(app.settings.wikiBot.isEnabled)
+                ]
+            },
+            set: { updated in
+                if let enabled = updated[WikiSettingKey.enabled]?.boolValue {
+                    app.settings.wikiBot.isEnabled = enabled
+                }
+            }
+        )
     }
 
     private var sourcesCard: some View {
