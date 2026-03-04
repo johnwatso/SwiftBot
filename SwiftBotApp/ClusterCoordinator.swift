@@ -3,7 +3,7 @@ import Network
 
 actor ClusterCoordinator {
     typealias AIHandler = @Sendable ([Message]) async -> String?
-    typealias WikiHandler = @Sendable (String, WikiBridgeSourceTarget) async -> FinalsWikiLookupResult?
+    typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
 
     private let encoder = JSONEncoder()
@@ -127,7 +127,7 @@ actor ClusterCoordinator {
         return local
     }
 
-    func lookupWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
+    func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         if mode == .leader, let remote = await performRemoteWikiLookup(query: query, source: source) {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "Wiki lookup via worker (\(source.name))"
@@ -471,7 +471,7 @@ actor ClusterCoordinator {
         }
     }
 
-    private func performRemoteWikiLookup(query: String, source: WikiBridgeSourceTarget) async -> WikiJobResponse? {
+    private func performRemoteWikiLookup(query: String, source: WikiSource) async -> WikiJobResponse? {
         guard let url = URL(string: workerBaseURL + "/v1/wiki-lookup") else {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Invalid worker URL"
@@ -562,7 +562,7 @@ private struct AIJobResponse: Codable {
 
 private struct WikiJobRequest: Codable {
     let query: String
-    let source: WikiBridgeSourceTarget
+    let source: WikiSource
 }
 
 private struct LegacyWikiJobRequest: Codable {

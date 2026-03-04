@@ -217,103 +217,440 @@ struct BotBehaviorSettings: Codable, Hashable {
     var useAIInGuildChannels: Bool = true
 }
 
-enum WikiBridgeSourceKind: String, Codable, CaseIterable, Identifiable {
-    case finals = "THE FINALS"
-    case mediaWiki = "MediaWiki"
+struct WikiCommand: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var trigger: String = "!wiki"
+    var endpoint: String = "search"
+    var description: String = ""
+    var enabled: Bool = true
 
-    var id: String { rawValue }
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case trigger
+        case endpoint
+        case description
+        case enabled
+    }
+
+    init(
+        id: UUID = UUID(),
+        trigger: String = "!wiki",
+        endpoint: String = "search",
+        description: String = "",
+        enabled: Bool = true
+    ) {
+        self.id = id
+        self.trigger = trigger
+        self.endpoint = endpoint
+        self.description = description
+        self.enabled = enabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? "!wiki"
+        endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? "search"
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
 }
 
-struct WikiBridgeSourceTarget: Codable, Hashable, Identifiable {
+struct WikiFormatting: Codable, Hashable {
+    var includeStatBlocks: Bool = true
+    var useEmbeds: Bool = false
+    var compactMode: Bool = false
+}
+
+struct WikiParsingRule: Codable, Hashable, Identifiable {
     var id: UUID = UUID()
-    var isEnabled: Bool = true
-    var name: String = "THE FINALS Wiki"
-    var kind: WikiBridgeSourceKind = .finals
-    var baseURL: String = "https://www.thefinals.wiki"
+    var pageType: String = "weapon"
+    var templateName: String = "Weapon"
+}
+
+struct WikiSource: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var name: String = "Wiki Source"
+    var baseURL: String = "https://example.fandom.com"
     var apiPath: String = "/api.php"
+    var enabled: Bool = true
+    var isPrimary: Bool = false
+    var commands: [WikiCommand] = []
+    var formatting: WikiFormatting = WikiFormatting()
+    var parsingRules: [WikiParsingRule] = []
     var lastLookupAt: Date?
     var lastStatus: String = "Never used"
 
-    static func defaultFinals() -> WikiBridgeSourceTarget {
-        WikiBridgeSourceTarget(
+    init(
+        id: UUID = UUID(),
+        name: String = "Wiki Source",
+        baseURL: String = "https://example.fandom.com",
+        apiPath: String = "/api.php",
+        enabled: Bool = true,
+        isPrimary: Bool = false,
+        commands: [WikiCommand] = [],
+        formatting: WikiFormatting = WikiFormatting(),
+        parsingRules: [WikiParsingRule] = [],
+        lastLookupAt: Date? = nil,
+        lastStatus: String = "Never used"
+    ) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.apiPath = apiPath
+        self.enabled = enabled
+        self.isPrimary = isPrimary
+        self.commands = commands
+        self.formatting = formatting
+        self.parsingRules = parsingRules
+        self.lastLookupAt = lastLookupAt
+        self.lastStatus = lastStatus
+    }
+
+    static func defaultFinals() -> WikiSource {
+        WikiSource(
             id: UUID(),
-            isEnabled: true,
             name: "THE FINALS Wiki",
-            kind: .finals,
             baseURL: "https://www.thefinals.wiki",
             apiPath: "/api.php",
+            enabled: true,
+            isPrimary: true,
+            commands: [
+                WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true),
+                WikiCommand(trigger: "!weapon", endpoint: "weaponPage", description: "Lookup weapon stats", enabled: true),
+                WikiCommand(trigger: "!finals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true)
+            ],
+            formatting: WikiFormatting(
+                includeStatBlocks: true,
+                useEmbeds: false,
+                compactMode: false
+            ),
+            parsingRules: [
+                WikiParsingRule(pageType: "weapon", templateName: "Weapon")
+            ],
             lastLookupAt: nil,
             lastStatus: "Ready"
         )
     }
+
+    static func genericTemplate() -> WikiSource {
+        WikiSource(
+            id: UUID(),
+            name: "New Wiki",
+            baseURL: "https://example.fandom.com",
+            apiPath: "/api.php",
+            enabled: true,
+            isPrimary: false,
+            commands: [
+                WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true)
+            ],
+            formatting: WikiFormatting(
+                includeStatBlocks: false,
+                useEmbeds: false,
+                compactMode: false
+            ),
+            parsingRules: [],
+            lastLookupAt: nil,
+            lastStatus: "Ready"
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case baseURL
+        case apiPath
+        case enabled
+        case isPrimary
+        case commands
+        case formatting
+        case parsingRules
+        case lastLookupAt
+        case lastStatus
+        // Legacy key
+        case isEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Wiki Source"
+        baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "https://example.fandom.com"
+        apiPath = try container.decodeIfPresent(String.self, forKey: .apiPath) ?? "/api.php"
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+            ?? (try container.decodeIfPresent(Bool.self, forKey: .isEnabled))
+            ?? true
+        isPrimary = try container.decodeIfPresent(Bool.self, forKey: .isPrimary) ?? false
+        commands = try container.decodeIfPresent([WikiCommand].self, forKey: .commands) ?? []
+        formatting = try container.decodeIfPresent(WikiFormatting.self, forKey: .formatting) ?? WikiFormatting()
+        parsingRules = try container.decodeIfPresent([WikiParsingRule].self, forKey: .parsingRules) ?? []
+        lastLookupAt = try container.decodeIfPresent(Date.self, forKey: .lastLookupAt)
+        lastStatus = try container.decodeIfPresent(String.self, forKey: .lastStatus) ?? "Never used"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(apiPath, forKey: .apiPath)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(isPrimary, forKey: .isPrimary)
+        try container.encode(commands, forKey: .commands)
+        try container.encode(formatting, forKey: .formatting)
+        try container.encode(parsingRules, forKey: .parsingRules)
+        try container.encodeIfPresent(lastLookupAt, forKey: .lastLookupAt)
+        try container.encode(lastStatus, forKey: .lastStatus)
+    }
+}
+
+private struct LegacyWikiBridgeSourceTarget: Decodable {
+    enum LegacyKind: String, Decodable {
+        case finals = "THE FINALS"
+        case mediaWiki = "MediaWiki"
+    }
+
+    var id: UUID?
+    var isEnabled: Bool?
+    var name: String?
+    var kind: LegacyKind?
+    var baseURL: String?
+    var apiPath: String?
+    var lastLookupAt: Date?
+    var lastStatus: String?
 }
 
 struct WikiBotSettings: Codable, Hashable {
     var isEnabled: Bool = true
-    var allowFinalsCommand: Bool = true
-    var allowWikiAlias: Bool = true
-    var allowWeaponCommand: Bool = true
-    var includeWeaponStats: Bool = true
-    var sourceTargets: [WikiBridgeSourceTarget] = []
-    var defaultSourceID: UUID?
+    var sources: [WikiSource] = []
 
     private enum CodingKeys: String, CodingKey {
         case isEnabled
+        case sources
+        // Legacy key
+        case defaultSourceID
+        // Legacy keys
         case allowFinalsCommand
         case allowWikiAlias
         case allowWeaponCommand
         case includeWeaponStats
         case sourceTargets
-        case defaultSourceID
     }
 
     init() {
-        let defaultTarget = WikiBridgeSourceTarget.defaultFinals()
-        sourceTargets = [defaultTarget]
-        defaultSourceID = defaultTarget.id
+        let defaultSource = WikiSource.defaultFinals()
+        sources = [defaultSource]
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
-        allowFinalsCommand = try container.decodeIfPresent(Bool.self, forKey: .allowFinalsCommand) ?? true
-        allowWikiAlias = try container.decodeIfPresent(Bool.self, forKey: .allowWikiAlias) ?? true
-        allowWeaponCommand = try container.decodeIfPresent(Bool.self, forKey: .allowWeaponCommand) ?? true
-        includeWeaponStats = try container.decodeIfPresent(Bool.self, forKey: .includeWeaponStats) ?? true
-        sourceTargets = try container.decodeIfPresent([WikiBridgeSourceTarget].self, forKey: .sourceTargets) ?? []
-        defaultSourceID = try container.decodeIfPresent(UUID.self, forKey: .defaultSourceID)
+
+        let allowFinalsCommand = try container.decodeIfPresent(Bool.self, forKey: .allowFinalsCommand) ?? true
+        let allowWikiAlias = try container.decodeIfPresent(Bool.self, forKey: .allowWikiAlias) ?? true
+        let allowWeaponCommand = try container.decodeIfPresent(Bool.self, forKey: .allowWeaponCommand) ?? true
+        let includeWeaponStats = try container.decodeIfPresent(Bool.self, forKey: .includeWeaponStats) ?? true
+
+        if let decodedSources = try container.decodeIfPresent([WikiSource].self, forKey: .sources) {
+            sources = decodedSources
+        } else if let legacyTargets = try container.decodeIfPresent([LegacyWikiBridgeSourceTarget].self, forKey: .sourceTargets) {
+            sources = Self.sourcesFromLegacyTargets(
+                legacyTargets,
+                allowFinalsCommand: allowFinalsCommand,
+                allowWikiAlias: allowWikiAlias,
+                allowWeaponCommand: allowWeaponCommand,
+                includeWeaponStats: includeWeaponStats
+            )
+        } else {
+            sources = []
+        }
+
+        let legacyPrimaryID = try container.decodeIfPresent(UUID.self, forKey: .defaultSourceID)
+        if let legacyPrimaryID, !sources.contains(where: { $0.isPrimary }) {
+            sources = sources.map { source in
+                var updated = source
+                updated.isPrimary = source.id == legacyPrimaryID
+                return updated
+            }
+        }
         normalizeSources()
     }
 
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(sources, forKey: .sources)
+    }
+
     mutating func normalizeSources() {
-        if sourceTargets.isEmpty {
-            let defaultTarget = WikiBridgeSourceTarget.defaultFinals()
-            sourceTargets = [defaultTarget]
-            defaultSourceID = defaultTarget.id
+        if sources.isEmpty {
+            let defaultSource = WikiSource.defaultFinals()
+            sources = [defaultSource]
             return
         }
 
-        if let defaultSourceID,
-           sourceTargets.contains(where: { $0.id == defaultSourceID }) {
-            return
+        sources = sources.map { source in
+            var updated = source
+            updated.name = source.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.baseURL = source.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.apiPath = source.apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.commands = source.commands.map { command in
+                var normalized = command
+                normalized.trigger = command.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+                normalized.endpoint = command.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                normalized.description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                return normalized
+            }
+            updated.parsingRules = source.parsingRules.map { rule in
+                var normalized = rule
+                normalized.pageType = rule.pageType.trimmingCharacters(in: .whitespacesAndNewlines)
+                normalized.templateName = rule.templateName.trimmingCharacters(in: .whitespacesAndNewlines)
+                return normalized
+            }
+            if updated.name.isEmpty {
+                updated.name = "Wiki Source"
+            }
+            if updated.baseURL.isEmpty {
+                updated.baseURL = "https://example.fandom.com"
+            }
+            if updated.apiPath.isEmpty {
+                updated.apiPath = "/api.php"
+            }
+            if updated.commands.isEmpty {
+                updated.commands = [WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true)]
+            }
+            return updated
         }
 
-        if let firstEnabled = sourceTargets.first(where: { $0.isEnabled }) {
-            defaultSourceID = firstEnabled.id
-        } else {
-            defaultSourceID = sourceTargets.first?.id
+        let primaryID: UUID? = {
+            if let primaryEnabled = sources.first(where: { $0.isPrimary && $0.enabled }) {
+                return primaryEnabled.id
+            }
+            if let firstEnabled = sources.first(where: { $0.enabled }) {
+                return firstEnabled.id
+            }
+            if let explicitPrimary = sources.first(where: { $0.isPrimary }) {
+                return explicitPrimary.id
+            }
+            return sources.first?.id
+        }()
+
+        if let primaryID {
+            sources = sources.map { source in
+                var updated = source
+                updated.isPrimary = source.id == primaryID
+                return updated
+            }
         }
     }
 
-    func defaultSource() -> WikiBridgeSourceTarget? {
-        if let defaultSourceID,
-           let explicit = sourceTargets.first(where: { $0.id == defaultSourceID }) {
-            return explicit
+    mutating func setPrimarySource(_ sourceID: UUID) {
+        guard sources.contains(where: { $0.id == sourceID }) else { return }
+        sources = sources.map { source in
+            var updated = source
+            updated.isPrimary = source.id == sourceID
+            return updated
         }
-        if let firstEnabled = sourceTargets.first(where: { $0.isEnabled }) {
+        normalizeSources()
+    }
+
+    func primarySource() -> WikiSource? {
+        if let primaryEnabled = sources.first(where: { $0.isPrimary && $0.enabled }) {
+            return primaryEnabled
+        }
+        if let firstEnabled = sources.first(where: { $0.enabled }) {
             return firstEnabled
         }
-        return sourceTargets.first
+        return sources.first(where: { $0.isPrimary }) ?? sources.first
+    }
+
+    private static func sourcesFromLegacyTargets(
+        _ legacyTargets: [LegacyWikiBridgeSourceTarget],
+        allowFinalsCommand: Bool,
+        allowWikiAlias: Bool,
+        allowWeaponCommand: Bool,
+        includeWeaponStats: Bool
+    ) -> [WikiSource] {
+        guard !legacyTargets.isEmpty else {
+            return [finalsSourceFromLegacyFlags(
+                allowFinalsCommand: allowFinalsCommand,
+                allowWikiAlias: allowWikiAlias,
+                allowWeaponCommand: allowWeaponCommand,
+                includeWeaponStats: includeWeaponStats
+            )]
+        }
+
+        return legacyTargets.map { legacy in
+            let isFinals = legacy.kind == .finals ||
+                (legacy.baseURL?.lowercased().contains("thefinals.wiki") ?? false)
+            if isFinals {
+                var finals = finalsSourceFromLegacyFlags(
+                    allowFinalsCommand: allowFinalsCommand,
+                    allowWikiAlias: allowWikiAlias,
+                    allowWeaponCommand: allowWeaponCommand,
+                    includeWeaponStats: includeWeaponStats
+                )
+                finals.id = legacy.id ?? finals.id
+                finals.enabled = legacy.isEnabled ?? true
+                finals.name = legacy.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? finals.name
+                finals.baseURL = legacy.baseURL?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? finals.baseURL
+                finals.apiPath = legacy.apiPath?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? finals.apiPath
+                finals.lastLookupAt = legacy.lastLookupAt
+                finals.lastStatus = legacy.lastStatus ?? finals.lastStatus
+                return finals
+            }
+
+            return WikiSource(
+                id: legacy.id ?? UUID(),
+                name: legacy.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Wiki Source",
+                baseURL: legacy.baseURL?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "https://example.fandom.com",
+                apiPath: legacy.apiPath?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "/api.php",
+                enabled: legacy.isEnabled ?? true,
+                isPrimary: false,
+                commands: [
+                    WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: allowWikiAlias)
+                ],
+                formatting: WikiFormatting(
+                    includeStatBlocks: false,
+                    useEmbeds: false,
+                    compactMode: false
+                ),
+                parsingRules: [],
+                lastLookupAt: legacy.lastLookupAt,
+                lastStatus: legacy.lastStatus ?? "Ready"
+            )
+        }
+    }
+
+    private static func finalsSourceFromLegacyFlags(
+        allowFinalsCommand: Bool,
+        allowWikiAlias: Bool,
+        allowWeaponCommand: Bool,
+        includeWeaponStats: Bool
+    ) -> WikiSource {
+        var source = WikiSource.defaultFinals()
+        source.isPrimary = false
+        source.commands = source.commands.map { command in
+            var updated = command
+            let key = command.trigger.lowercased()
+            if key == "!finals" {
+                updated.enabled = allowFinalsCommand
+            } else if key == "!wiki" {
+                updated.enabled = allowWikiAlias
+            } else if key == "!weapon" {
+                updated.enabled = allowWeaponCommand
+            }
+            return updated
+        }
+        source.formatting.includeStatBlocks = includeWeaponStats
+        return source
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

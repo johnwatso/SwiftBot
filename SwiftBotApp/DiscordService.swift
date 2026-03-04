@@ -272,13 +272,12 @@ actor DiscordService {
         await generateLocalAIDMReply(messages: messages)
     }
 
-    func lookupWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
-        switch source.kind {
-        case .finals:
-            return await lookupFinalsWiki(query: query)
-        case .mediaWiki:
-            return await lookupGenericMediaWiki(query: query, source: source)
+    func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
+        let isFinalsSource = source.baseURL.lowercased().contains("thefinals.wiki")
+        if isFinalsSource, let finalsResult = await lookupFinalsWiki(query: query) {
+            return finalsResult
         }
+        return await lookupGenericMediaWiki(query: query, source: source)
     }
 
     func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
@@ -307,7 +306,7 @@ actor DiscordService {
         return await searchFinalsWikiViaWeb(query: trimmedQuery)
     }
 
-    private func lookupGenericMediaWiki(query: String, source: WikiBridgeSourceTarget) async -> FinalsWikiLookupResult? {
+    private func lookupGenericMediaWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return nil }
         guard
