@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UpdateEngine
+import Darwin
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -25,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
+    @Published var clusterNodes: [ClusterNodeStatus] = []
     @Published var appleIntelligenceOnline = false
     @Published var ollamaOnline = false
     @Published var ollamaDetectedModel: String?
@@ -40,6 +42,7 @@ final class AppModel: ObservableObject {
     private let discordCache = DiscordCache()
     private let service = DiscordService()
     private let cluster = ClusterCoordinator()
+    private let clusterStatusService = ClusterStatusPollingService()
     private let ruleEngine: RuleEngine
     private let wikiContextCache = WikiContextCache()
     private var serviceCallbacksConfigured = false
@@ -54,6 +57,7 @@ final class AppModel: ObservableObject {
     private let patchyChecker: UpdateChecker?
     private var patchyMonitorTask: Task<Void, Never>?
     private var botUserId: String?
+    private let launchedAt = Date()
     @Published var botUsername: String = "OnlineBot"
     @Published var botDiscriminator: String?
     @Published var botAvatarHash: String?
@@ -147,6 +151,7 @@ final class AppModel: ObservableObject {
                 workerBaseURL: settings.clusterWorkerBaseURL,
                 listenPort: settings.clusterListenPort
             )
+            await pollClusterStatus()
             await configureServiceCallbacks()
             configurePatchyMonitoring()
             if settings.autoStart, !settings.token.isEmpty {
@@ -180,6 +185,7 @@ final class AppModel: ObservableObject {
                 workerBaseURL: settings.clusterWorkerBaseURL,
                 listenPort: settings.clusterListenPort
             )
+            await pollClusterStatus()
             configurePatchyMonitoring()
 
             do {
@@ -607,6 +613,7 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 self.clusterSnapshot = snapshot
             }
+            await pollClusterStatus()
         }
     }
 
@@ -620,7 +627,81 @@ final class AppModel: ObservableObject {
         await cluster.refreshWorkerHealth()
         let snapshot = await cluster.currentSnapshot()
         self.clusterSnapshot = snapshot
+        await pollClusterStatus()
         return snapshot
+    }
+
+    func pollClusterStatus() async {
+        guard settings.clusterMode != .standalone else {
+            clusterNodes = []
+            return
+        }
+
+        guard let localURL = URL(string: "http://127.0.0.1:\(settings.clusterListenPort)/cluster/status"),
+              let response = await clusterStatusService.fetchStatus(from: localURL) else {
+            clusterNodes = fallbackClusterNodes()
+            return
+        }
+
+        clusterNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+    }
+
+    private func fallbackClusterNodes() -> [ClusterNodeStatus] {
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hostname = ProcessInfo.processInfo.hostName
+        let role: ClusterNodeRole = settings.clusterMode == .worker ? .worker : .leader
+        let uptime = max(0, Date().timeIntervalSince(launchedAt))
+        var nodes: [ClusterNodeStatus] = [
+            ClusterNodeStatus(
+                id: "\(role.rawValue)-\(hostname.lowercased())-\(settings.clusterListenPort)",
+                hostname: hostname,
+                displayName: localNodeName,
+                role: role,
+                hardwareModel: localHardwareModelIdentifier(),
+                cpu: 0,
+                mem: 0,
+                uptime: uptime,
+                latencyMs: nil,
+                status: clusterSnapshot.serverState.nodeHealthStatus,
+                jobsActive: 0
+            )
+        ]
+
+        if settings.clusterMode == .leader, !settings.clusterWorkerBaseURL.isEmpty {
+            let host = URL(string: settings.clusterWorkerBaseURL)?.host ?? "Worker"
+            nodes.append(
+                ClusterNodeStatus(
+                    id: "worker-\(host.lowercased())",
+                    hostname: host,
+                    displayName: host,
+                    role: .worker,
+                    hardwareModel: "Unknown",
+                    cpu: 0,
+                    mem: 0,
+                    uptime: 0,
+                    latencyMs: nil,
+                    status: .disconnected,
+                    jobsActive: 0
+                )
+            )
+        }
+
+        return nodes
+    }
+
+    private func localHardwareModelIdentifier() -> String {
+        var length = 0
+        // Use `hw.model` so identifiers resolve to Mac family names (for example MacBookAir10,1).
+        guard sysctlbyname("hw.model", nil, &length, nil, 0) == 0, length > 0 else {
+            return "Mac"
+        }
+        var value = [CChar](repeating: 0, count: length)
+        guard sysctlbyname("hw.model", &value, &length, nil, 0) == 0 else {
+            return "Mac"
+        }
+        return String(cString: value)
     }
 
     var isWorkerServiceRunning: Bool {
@@ -2265,6 +2346,26 @@ final class MemoryViewModel: ObservableObject {
             return "Channel \(scope.id)"
         case .directMessageUser:
             return "DM User \(scope.id.suffix(4))"
+        }
+    }
+}
+
+actor ClusterStatusPollingService {
+    private let decoder = JSONDecoder()
+
+    func fetchStatus(from endpoint: URL) async -> ClusterStatusResponse? {
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            return try decoder.decode(ClusterStatusResponse.self, from: data)
+        } catch {
+            return nil
         }
     }
 }

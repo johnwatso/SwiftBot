@@ -12,15 +12,21 @@ struct RootView: View {
         } detail: {
             Group {
                 switch selection {
-                case .overview: OverviewView()
+                case .overview:
+                    OverviewView(onOpenSwiftMesh: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = .swiftMesh
+                        }
+                    })
                 case .patchy: PatchyView()
                 case .voice: VoiceView()
                 case .commands: CommandsView()
                 case .wikiBridge: WikiBridgeView()
                 case .logs: LogsView()
-                case .settings: SettingsView(showToken: $showToken)
+                case .settings: GeneralSettingsView(showToken: $showToken)
                 case .aiBots: AIBotsView()
                 case .diagnostics: DiagnosticsView()
+                case .swiftMesh: SwiftMeshView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -140,6 +146,10 @@ struct DashboardSidebar: View {
                         SidebarRow(item: .settings, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .diagnostics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                    }
+
+                    SidebarSection(title: "Infrastructure") {
+                        SidebarRow(item: .swiftMesh, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -283,6 +293,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case settings = "Settings"
     case aiBots = "AI Bots"
     case diagnostics = "Diagnostics"
+    case swiftMesh = "SwiftMesh"
 
     var id: String { rawValue }
 
@@ -297,12 +308,14 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .settings: return "gearshape.2.fill"
         case .aiBots: return "sparkles.rectangle.stack.fill"
         case .diagnostics: return "waveform.path.ecg"
+        case .swiftMesh: return "point.3.connected.trianglepath.dotted"
         }
     }
 }
 
 struct OverviewView: View {
     @EnvironmentObject var app: AppModel
+    var onOpenSwiftMesh: (() -> Void)?
 
     private var recentVoice: [VoiceEventLogEntry] {
         Array(app.voiceLog.prefix(5))
@@ -382,11 +395,12 @@ struct OverviewView: View {
                             color: .red
                         )
                     }
-                    DashboardMetricCard(
-                        title: "Cluster Mode",
-                        value: app.clusterSnapshot.mode.rawValue,
-                        subtitle: app.clusterSnapshot.lastJobSummary,
-                        color: .indigo
+                }
+
+                if app.settings.clusterMode != .standalone {
+                    OverviewClusterSummaryCard(
+                        nodes: app.clusterNodes,
+                        onOpenSwiftMesh: onOpenSwiftMesh
                     )
                 }
 
@@ -445,12 +459,70 @@ struct OverviewView: View {
                         InfoRow(label: "Prefix", value: app.settings.prefix)
                         InfoRow(label: "Errors", value: "\(app.stats.errors)")
                         InfoRow(label: "State", value: app.settings.clusterMode == .worker ? app.primaryServiceStatusText : app.status.rawValue.capitalized)
-                        InfoRow(label: "Cluster", value: app.clusterSnapshot.mode.rawValue)
+                        if app.settings.clusterMode != .standalone {
+                            InfoRow(label: "Cluster", value: app.clusterSnapshot.mode.rawValue)
+                        }
                     }
                 }
             }
             .padding(20)
             .background(SwiftBotGlassBackground().opacity(0.55))
+        }
+    }
+}
+
+struct OverviewClusterSummaryCard: View {
+    @EnvironmentObject var app: AppModel
+    let nodes: [ClusterNodeStatus]
+    var onOpenSwiftMesh: (() -> Void)?
+
+    private var leaderNode: ClusterNodeStatus? {
+        nodes.first(where: { $0.role == .leader }) ?? nodes.first
+    }
+
+    private var connectedNodeCount: Int {
+        nodes.filter { $0.status != .disconnected }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Cluster")
+                .font(.headline)
+
+            Text("\(connectedNodeCount) nodes connected")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let leaderNode {
+                HStack {
+                    Text("Leader")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(leaderNode.hostname) (\(leaderNode.role.displayName))")
+                        .fontWeight(.semibold)
+                }
+                .font(.subheadline)
+            } else {
+                PlaceholderPanelLine(text: "No cluster nodes available")
+            }
+
+            Button("View in SwiftMesh") {
+                onOpenSwiftMesh?()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(.white.opacity(0.20), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
+        .task(id: app.settings.clusterMode) {
+            guard app.settings.clusterMode != .standalone else { return }
+            await app.pollClusterStatus()
         }
     }
 }
@@ -1538,7 +1610,7 @@ struct LogsView: View {
     }
 }
 
-struct SettingsView: View {
+struct GeneralSettingsView: View {
     @EnvironmentObject var app: AppModel
     @EnvironmentObject var updater: AppUpdater
     @Binding var showToken: Bool
@@ -1707,7 +1779,16 @@ struct SettingsView: View {
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
-    @FocusState private var systemPromptFocused: Bool
+
+    private enum AISettingKey {
+        static let enableReplies = "ai.enableReplies"
+        static let guildChannels = "ai.useGuildTextChannels"
+        static let allowDMs = "ai.allowDirectMessages"
+        static let primaryEngine = "ai.primaryEngine"
+        static let ollamaHost = "ai.ollamaHost"
+        static let ollamaModel = "ai.ollamaModel"
+        static let systemPrompt = "ai.systemPrompt"
+    }
 
     var body: some View {
         ScrollView {
@@ -1789,56 +1870,18 @@ struct AIBotsView: View {
             Text("Configuration")
                 .font(.title3.weight(.semibold))
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("AI Replies")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Toggle("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
-                    .toggleStyle(.switch)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Bot Behavior")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Toggle("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
-                    .toggleStyle(.switch)
-                Toggle("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
-                    .toggleStyle(.switch)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Primary AI Engine")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Primary AI Engine", selection: $app.settings.preferredAIProvider) {
-                    ForEach(AIProviderPreference.allCases) { provider in
-                        Text(provider.rawValue).tag(provider)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 260, alignment: .leading)
-            }
+            SettingsView(sections: aiSettingsSections, values: aiSettingsValues)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
 
             if app.settings.preferredAIProvider == .ollama {
-                HStack(spacing: 10) {
-                    materialTextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
-                        .frame(maxWidth: 340)
-
-                    materialTextField("Model", text: $app.settings.localAIModel)
-                        .frame(maxWidth: 260)
-
+                HStack {
+                    Spacer()
                     Button("Auto Detect Model") {
                         app.detectOllamaModel()
                     }
                     .buttonStyle(.bordered)
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("System Prompt")
-                    .font(.caption.weight(.medium))
-                systemPromptEditor
             }
 
             HStack {
@@ -1851,6 +1894,119 @@ struct AIBotsView: View {
         }
         .padding(16)
         .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    private var aiSettingsSections: [SettingSection] {
+        var engineSettings: [Setting] = [
+            Setting(
+                key: AISettingKey.primaryEngine,
+                title: "Primary AI Engine",
+                description: "Select the preferred AI provider.",
+                type: .picker(options: AIProviderPreference.allCases.map(\.rawValue))
+            )
+        ]
+
+        if app.settings.preferredAIProvider == .ollama {
+            engineSettings.append(
+                Setting(
+                    key: AISettingKey.ollamaHost,
+                    title: "Ollama Host (localhost)",
+                    description: "Base URL for your local Ollama server.",
+                    type: .text
+                )
+            )
+            engineSettings.append(
+                Setting(
+                    key: AISettingKey.ollamaModel,
+                    title: "Model",
+                    description: "Default Ollama model name for replies.",
+                    type: .text
+                )
+            )
+        }
+
+        return [
+            SettingSection(
+                title: "AI Behavior",
+                settings: [
+                    Setting(
+                        key: AISettingKey.enableReplies,
+                        title: "Enable AI Replies",
+                        description: "Allow SwiftBot to generate AI replies.",
+                        type: .toggle
+                    ),
+                    Setting(
+                        key: AISettingKey.guildChannels,
+                        title: "Use AI in Guild Text Channels",
+                        description: "Enable AI replies in server text channels.",
+                        type: .toggle
+                    )
+                ]
+            ),
+            SettingSection(
+                title: "Messaging",
+                settings: [
+                    Setting(
+                        key: AISettingKey.allowDMs,
+                        title: "Allow Direct Messages",
+                        description: "Allow bot interactions over direct messages.",
+                        type: .toggle
+                    )
+                ]
+            ),
+            SettingSection(title: "AI Engine", settings: engineSettings),
+            SettingSection(
+                title: "System Prompt",
+                settings: [
+                    Setting(
+                        key: AISettingKey.systemPrompt,
+                        title: "System Prompt",
+                        description: "Base instruction used for AI responses.",
+                        type: .text
+                    )
+                ]
+            )
+        ]
+    }
+
+    private var aiSettingsValues: Binding<[String: SettingValue]> {
+        Binding(
+            get: {
+                [
+                    AISettingKey.enableReplies: .toggle(app.settings.localAIDMReplyEnabled),
+                    AISettingKey.guildChannels: .toggle(app.settings.behavior.useAIInGuildChannels),
+                    AISettingKey.allowDMs: .toggle(app.settings.behavior.allowDMs),
+                    AISettingKey.primaryEngine: .text(app.settings.preferredAIProvider.rawValue),
+                    AISettingKey.ollamaHost: .text(app.settings.ollamaBaseURL),
+                    AISettingKey.ollamaModel: .text(app.settings.localAIModel),
+                    AISettingKey.systemPrompt: .text(app.settings.localAISystemPrompt)
+                ]
+            },
+            set: { updated in
+                if let enabled = updated[AISettingKey.enableReplies]?.boolValue {
+                    app.settings.localAIDMReplyEnabled = enabled
+                }
+                if let useGuildChannels = updated[AISettingKey.guildChannels]?.boolValue {
+                    app.settings.behavior.useAIInGuildChannels = useGuildChannels
+                }
+                if let allowDMs = updated[AISettingKey.allowDMs]?.boolValue {
+                    app.settings.behavior.allowDMs = allowDMs
+                }
+                if let providerRaw = updated[AISettingKey.primaryEngine]?.textValue,
+                   let provider = AIProviderPreference(rawValue: providerRaw) {
+                    app.settings.preferredAIProvider = provider
+                }
+                if let ollamaHost = updated[AISettingKey.ollamaHost]?.textValue {
+                    app.settings.ollamaBaseURL = ollamaHost
+                }
+                if let model = updated[AISettingKey.ollamaModel]?.textValue {
+                    app.settings.localAIModel = model
+                }
+                if let prompt = updated[AISettingKey.systemPrompt]?.textValue {
+                    app.settings.localAISystemPrompt = prompt
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -1869,55 +2025,6 @@ struct AIBotsView: View {
                     .padding(10)
             }
         }
-    }
-
-    private var systemPromptEditor: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.regularMaterial)
-
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.separator.opacity(systemPromptFocused ? 0.55 : 0.34), lineWidth: 1)
-
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .padding(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.quaternary.opacity(systemPromptFocused ? 0.82 : 0.56), lineWidth: 1)
-                        .padding(6)
-                )
-
-            TextEditor(text: $app.settings.localAISystemPrompt)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .scrollIndicators(.hidden)
-                .background(Color.clear)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .focused($systemPromptFocused)
-                .disabled(!app.settings.localAIDMReplyEnabled)
-                .opacity(app.settings.localAIDMReplyEnabled ? 1.0 : 0.55)
-        }
-        .frame(minHeight: 148, idealHeight: 172, maxHeight: 220)
-        .shadow(color: .black.opacity(systemPromptFocused ? 0.20 : 0.09), radius: systemPromptFocused ? 18 : 10, x: 0, y: systemPromptFocused ? 9 : 4)
-        .shadow(color: Color.accentColor.opacity(systemPromptFocused ? 0.16 : 0), radius: systemPromptFocused ? 14 : 0, x: 0, y: 0)
-        .animation(.easeInOut(duration: 0.20), value: systemPromptFocused)
-    }
-
-    private func materialTextField(_ title: String, text: Binding<String>) -> some View {
-        TextField(title, text: text)
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(.quaternary.opacity(0.56), lineWidth: 1)
-                    )
-            )
     }
 
     private func statusRow(isOnline: Bool) -> some View {
@@ -2170,7 +2277,7 @@ struct InfoRow: View {
     }
 }
 
-private struct SwiftBotGlassBackground: View {
+struct SwiftBotGlassBackground: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {

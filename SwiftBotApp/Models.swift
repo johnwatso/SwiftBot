@@ -1044,6 +1044,205 @@ enum ClusterJobRoute: String {
     case unavailable
 }
 
+enum ClusterNodeRole: String, Codable, Hashable {
+    case leader
+    case worker
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+enum ClusterNodeConnectionStatus: String, Codable, Hashable {
+    case connected
+    case disconnected
+    case degraded
+    case starting
+    case failed
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+enum ClusterNodeHealthStatus: String, Codable, Hashable {
+    case healthy
+    case degraded
+    case disconnected
+
+    var displayName: String {
+        switch self {
+        case .healthy: return "Healthy"
+        case .degraded: return "Degraded"
+        case .disconnected: return "Disconnected"
+        }
+    }
+
+    init(connectionStatus: ClusterNodeConnectionStatus) {
+        switch connectionStatus {
+        case .connected:
+            self = .healthy
+        case .starting, .degraded:
+            self = .degraded
+        case .failed, .disconnected:
+            self = .disconnected
+        }
+    }
+
+    var connectionStatus: ClusterNodeConnectionStatus {
+        switch self {
+        case .healthy:
+            return .connected
+        case .degraded:
+            return .degraded
+        case .disconnected:
+            return .disconnected
+        }
+    }
+}
+
+extension ClusterConnectionState {
+    var nodeConnectionStatus: ClusterNodeConnectionStatus {
+        switch self {
+        case .connected, .listening:
+            return .connected
+        case .starting:
+            return .starting
+        case .degraded:
+            return .degraded
+        case .failed:
+            return .failed
+        case .inactive, .stopped:
+            return .disconnected
+        }
+    }
+
+    var nodeHealthStatus: ClusterNodeHealthStatus {
+        ClusterNodeHealthStatus(connectionStatus: nodeConnectionStatus)
+    }
+}
+
+struct ClusterNodeStatus: Identifiable, Codable, Hashable {
+    var id: String
+    var hostname: String
+    var displayName: String
+    var role: ClusterNodeRole
+    var hardwareModel: String
+    var cpu: Double
+    var mem: Double
+    var uptime: TimeInterval
+    var latencyMs: Double?
+    var status: ClusterNodeHealthStatus
+    var jobsActive: Int
+
+    var hardwareName: String { displayName }
+    var uptimeSeconds: TimeInterval { uptime }
+    var connectionStatus: ClusterNodeConnectionStatus { status.connectionStatus }
+    var connectionStatusText: String { status.displayName }
+
+    init(
+        id: String,
+        hostname: String,
+        displayName: String,
+        role: ClusterNodeRole,
+        hardwareModel: String,
+        cpu: Double,
+        mem: Double,
+        uptime: TimeInterval,
+        latencyMs: Double?,
+        status: ClusterNodeHealthStatus,
+        jobsActive: Int
+    ) {
+        self.id = id
+        self.hostname = hostname
+        self.displayName = displayName
+        self.role = role
+        self.hardwareModel = hardwareModel
+        self.cpu = cpu
+        self.mem = mem
+        self.uptime = uptime
+        self.latencyMs = latencyMs
+        self.status = status
+        self.jobsActive = jobsActive
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case hostname
+        case displayName
+        case role
+        case hardwareModel
+        case cpu
+        case mem
+        case uptime
+        case latencyMs
+        case status
+        case jobsActive
+
+        // Legacy decode compatibility.
+        case hardwareName
+        case uptimeSeconds
+        case connectionStatus
+        case connectionStatusText
+        case cpuPercent
+        case memoryPercent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? "unknown-host"
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+            ?? (try container.decodeIfPresent(String.self, forKey: .hardwareName) ?? hostname)
+        role = try container.decodeIfPresent(ClusterNodeRole.self, forKey: .role) ?? .worker
+        hardwareModel = try container.decodeIfPresent(String.self, forKey: .hardwareModel) ?? "Mac"
+        cpu = try container.decodeIfPresent(Double.self, forKey: .cpu)
+            ?? (try container.decodeIfPresent(Double.self, forKey: .cpuPercent) ?? 0)
+        mem = try container.decodeIfPresent(Double.self, forKey: .mem)
+            ?? (try container.decodeIfPresent(Double.self, forKey: .memoryPercent) ?? 0)
+        uptime = try container.decodeIfPresent(TimeInterval.self, forKey: .uptime)
+            ?? (try container.decodeIfPresent(TimeInterval.self, forKey: .uptimeSeconds) ?? 0)
+        latencyMs = try container.decodeIfPresent(Double.self, forKey: .latencyMs)
+        jobsActive = try container.decodeIfPresent(Int.self, forKey: .jobsActive) ?? 0
+
+        if let decodedStatus = try container.decodeIfPresent(ClusterNodeHealthStatus.self, forKey: .status) {
+            status = decodedStatus
+        } else if let legacyConnection = try container.decodeIfPresent(ClusterNodeConnectionStatus.self, forKey: .connectionStatus) {
+            status = ClusterNodeHealthStatus(connectionStatus: legacyConnection)
+        } else {
+            let legacyText = (try container.decodeIfPresent(String.self, forKey: .connectionStatusText) ?? "").lowercased()
+            if legacyText.contains("degrad") || legacyText.contains("start") {
+                status = .degraded
+            } else if legacyText.contains("disconnect") || legacyText.contains("fail") || legacyText.contains("offline") || legacyText.contains("unavailable") {
+                status = .disconnected
+            } else {
+                status = .healthy
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(hostname, forKey: .hostname)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(role, forKey: .role)
+        try container.encode(hardwareModel, forKey: .hardwareModel)
+        try container.encode(cpu, forKey: .cpu)
+        try container.encode(mem, forKey: .mem)
+        try container.encode(uptime, forKey: .uptime)
+        try container.encodeIfPresent(latencyMs, forKey: .latencyMs)
+        try container.encode(status, forKey: .status)
+        try container.encode(jobsActive, forKey: .jobsActive)
+    }
+}
+
+struct ClusterStatusResponse: Codable, Hashable {
+    var mode: ClusterMode
+    var generatedAt: String
+    var nodes: [ClusterNodeStatus]
+}
+
 struct ClusterSnapshot: Hashable {
     var mode: ClusterMode = .standalone
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"

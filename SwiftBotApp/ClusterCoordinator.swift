@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Darwin
 
 actor ClusterCoordinator {
     typealias AIHandler = @Sendable ([Message]) async -> String?
@@ -8,11 +9,14 @@ actor ClusterCoordinator {
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let startedAt = Date()
+    private let hardwareModel = ClusterCoordinator.readHardwareModelIdentifier()
 
     private var mode: ClusterMode = .standalone
     private var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     private var workerBaseURL: String = ""
     private var listenPort: Int = 38787
+    private var activeJobs = 0
 
     private var aiHandler: AIHandler?
     private var wikiHandler: WikiHandler?
@@ -320,6 +324,10 @@ actor ClusterCoordinator {
             let payload = HealthResponse(nodeName: nodeName, mode: mode.rawValue, status: "ok")
             let body = (try? encoder.encode(payload)) ?? Data()
             return httpResponse(status: "200 OK", body: body)
+        case ("GET", "/cluster/status"):
+            let payload = await clusterStatusPayload()
+            let body = (try? encoder.encode(payload)) ?? Data()
+            return httpResponse(status: "200 OK", body: body)
         case ("GET", "/v1/probe"):
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "Served remote worker probe"
@@ -343,6 +351,8 @@ actor ClusterCoordinator {
             let body = (try? encoder.encode(payload)) ?? Data()
             return httpResponse(status: "200 OK", body: body)
         case ("POST", "/v1/ai-reply"):
+            activeJobs += 1
+            defer { activeJobs = max(0, activeJobs - 1) }
             guard let aiHandler,
                   let body = try? decoder.decode(AIJobRequest.self, from: request.body),
                   let reply = await aiHandler(body.messages) else {
@@ -374,6 +384,8 @@ actor ClusterCoordinator {
             let bodyData = (try? encoder.encode(response)) ?? Data()
             return httpResponse(status: "200 OK", body: bodyData)
         case ("POST", "/v1/wiki-lookup"), ("POST", "/v1/finals-wiki"):
+            activeJobs += 1
+            defer { activeJobs = max(0, activeJobs - 1) }
             guard let wikiHandler,
                   let body = decodeWikiJobRequest(from: request.body),
                   let result = await wikiHandler(body.query, body.source) else {
@@ -507,6 +519,172 @@ actor ClusterCoordinator {
             await publishSnapshot()
             return nil
         }
+    }
+
+    private func clusterStatusPayload() async -> ClusterStatusResponse {
+        var nodes: [ClusterNodeStatus] = [localNodeStatus()]
+
+        if mode == .leader, !workerBaseURL.isEmpty, !isSelfClusterEndpoint(workerBaseURL) {
+            if let remoteStatus = await fetchRemoteClusterStatus(baseURL: workerBaseURL) {
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Cluster status OK"
+
+                // Keep the local node first, then append unique remote nodes.
+                for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
+                    if node.role == .worker, node.latencyMs == nil {
+                        node.latencyMs = remoteStatus.latencyMs
+                    }
+                    nodes.append(node)
+                }
+            } else {
+                snapshot.workerState = .failed
+                snapshot.workerStatusText = "Cluster status unavailable"
+                snapshot.diagnostics = "Unable to fetch /cluster/status from \(workerBaseURL)"
+                nodes.append(unreachableWorkerNode())
+            }
+        }
+
+        return ClusterStatusResponse(
+            mode: mode,
+            generatedAt: ISO8601DateFormatter().string(from: Date()),
+            nodes: nodes
+        )
+    }
+
+    private func localNodeStatus() -> ClusterNodeStatus {
+        let hostname = ProcessInfo.processInfo.hostName
+        let role: ClusterNodeRole = mode == .worker ? .worker : .leader
+        let uptime = max(0, Date().timeIntervalSince(startedAt))
+        let status = snapshot.serverState.nodeHealthStatus
+
+        return ClusterNodeStatus(
+            id: "\(role.rawValue)-\(hostname.lowercased())-\(listenPort)",
+            hostname: hostname,
+            displayName: nodeName,
+            role: role,
+            hardwareModel: hardwareModel,
+            cpu: currentCPUPercent(),
+            mem: currentMemoryPercent(),
+            uptime: uptime,
+            latencyMs: nil,
+            status: status,
+            jobsActive: activeJobs
+        )
+    }
+
+    private func unreachableWorkerNode() -> ClusterNodeStatus {
+        let host = URL(string: workerBaseURL)?.host ?? "Worker"
+
+        return ClusterNodeStatus(
+            id: "worker-\(host.lowercased())",
+            hostname: host,
+            displayName: host,
+            role: .worker,
+            hardwareModel: "Unknown",
+            cpu: 0,
+            mem: 0,
+            uptime: 0,
+            latencyMs: nil,
+            status: .disconnected,
+            jobsActive: 0
+        )
+    }
+
+    private func fetchRemoteClusterStatus(baseURL: String) async -> (response: ClusterStatusResponse, latencyMs: Double)? {
+        guard let url = URL(string: baseURL + "/cluster/status") else {
+            return nil
+        }
+
+        do {
+            let started = Date()
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+
+            let decoded = try decoder.decode(ClusterStatusResponse.self, from: data)
+            let latencyMs = max(0, Date().timeIntervalSince(started) * 1000)
+            return (decoded, latencyMs)
+        } catch {
+            return nil
+        }
+    }
+
+    private func currentCPUPercent() -> Double {
+        var cpuInfo = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &cpuInfo) { pointer -> kern_return_t in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, rebound, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else { return 0 }
+        let user = Double(cpuInfo.cpu_ticks.0)
+        let system = Double(cpuInfo.cpu_ticks.1)
+        let idle = Double(cpuInfo.cpu_ticks.2)
+        let nice = Double(cpuInfo.cpu_ticks.3)
+        let used = user + system + nice
+        let total = used + idle
+        guard total > 0 else { return 0 }
+        return min(100, max(0, (used / total) * 100))
+    }
+
+    private func currentMemoryPercent() -> Double {
+        var vmStats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &vmStats) { pointer -> kern_return_t in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else { return 0 }
+        let usedPages = Double(vmStats.active_count)
+            + Double(vmStats.inactive_count)
+            + Double(vmStats.wire_count)
+            + Double(vmStats.compressor_page_count)
+        let usedBytes = usedPages * Double(vm_kernel_page_size)
+        let totalBytes = Double(ProcessInfo.processInfo.physicalMemory)
+        guard totalBytes > 0 else { return 0 }
+        return min(100, max(0, (usedBytes / totalBytes) * 100))
+    }
+
+    private static func readHardwareModelIdentifier() -> String {
+        var length: Int = 0
+        // Use `hw.model` so cluster status carries family identifiers like MacBookPro18,3.
+        guard sysctlbyname("hw.model", nil, &length, nil, 0) == 0, length > 0 else {
+            return "Mac"
+        }
+
+        var value = [CChar](repeating: 0, count: length)
+        guard sysctlbyname("hw.model", &value, &length, nil, 0) == 0 else {
+            return "Mac"
+        }
+        return String(cString: value)
+    }
+
+    private func isSelfClusterEndpoint(_ baseURL: String) -> Bool {
+        guard let url = URL(string: baseURL),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        let port = url.port ?? (url.scheme == "https" ? 443 : 80)
+        let localHosts = Set([
+            "127.0.0.1",
+            "localhost",
+            "::1",
+            ProcessInfo.processInfo.hostName.lowercased(),
+            Host.current().name?.lowercased(),
+            Host.current().localizedName?.replacingOccurrences(of: " ", with: "-").lowercased()
+        ].compactMap { $0 })
+
+        return localHosts.contains(host) && port == listenPort
     }
 
     private func publishSnapshot() async {
