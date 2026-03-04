@@ -27,6 +27,14 @@ let package = Package(
         .executableTarget(
             name: "SparklePublisher",
             path: "Tools/SparklePublisher"
+        ),
+        .testTarget(
+            name: "SwiftBotTests",
+            dependencies: [
+                "SwiftBot",
+                .product(name: "UpdateEngine", package: "UpdateEngine")
+            ],
+            path: "Tests/SwiftBotTests"
         )
     ]
 )

@@ -1618,6 +1618,7 @@ struct GeneralSettingsView: View {
     @State private var clusterNodeNameDraft = ""
     @State private var leaderAddressDraft = ""
     @State private var listenPortDraft = ""
+    @State private var clusterSharedSecretDraft = ""
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -1665,6 +1666,7 @@ struct GeneralSettingsView: View {
                                 app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                 app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                 app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                                app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                 app.testWorkerLeaderConnection()
                             }
                             .buttonStyle(.bordered)
@@ -1691,6 +1693,8 @@ struct GeneralSettingsView: View {
                         TextField("Listen Port", text: $listenPortDraft)
                     }
 
+                    SecureField("Cluster Shared Secret", text: $clusterSharedSecretDraft)
+
                     Text(app.settings.clusterMode.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1713,6 +1717,7 @@ struct GeneralSettingsView: View {
                                         app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                         app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                         app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                                        app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                                         Task { await app.startBot() }
                                     }
                                     .buttonStyle(.borderedProminent)
@@ -1787,11 +1792,13 @@ struct GeneralSettingsView: View {
                     app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                    app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     app.saveSettings()
                     prefixDraft = app.settings.prefix
                     clusterNodeNameDraft = app.settings.clusterNodeName
                     leaderAddressDraft = app.settings.clusterLeaderAddress
                     listenPortDraft = "\(app.settings.clusterListenPort)"
+                    clusterSharedSecretDraft = app.settings.clusterSharedSecret
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -1802,6 +1809,7 @@ struct GeneralSettingsView: View {
                 clusterNodeNameDraft = app.settings.clusterNodeName
                 leaderAddressDraft = app.settings.clusterLeaderAddress
                 listenPortDraft = "\(app.settings.clusterListenPort)"
+                clusterSharedSecretDraft = app.settings.clusterSharedSecret
             }
             .onChange(of: app.settings.prefix) { newValue in
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
