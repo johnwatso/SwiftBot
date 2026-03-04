@@ -75,6 +75,8 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 - On-device AI reply pipeline improvements (short-history focus, anti-rigid tone defaults, shared prompt composer)
 - Grounded AI context (Server/Channel/Time injection) and speaker attribution
 - Hardened Cluster Security (shared-secret auth, SSRF guards, request body caps)
+- Plugin system for modular feature extensions (`PluginManager` + `BotPlugin` protocol)
+- Weekly server activity summaries (`WeeklySummaryPlugin` — first built-in plugin)
 - SwiftMesh Phase 1: standby failover mode (health monitoring, promotion, term safety)
 - SwiftMesh Phase 2: conversation replication (incremental sync, pagination, gap-resync, durable cursors)
 - SwiftMesh Phase 3: wiki cache/state sync across nodes for failover continuity
@@ -82,14 +84,12 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 ### 🔄 In Progress
 
 - Improved macOS visual design pass (modern SwiftUI + "Liquid Glass" materials/vibrancy)
-- Voice analytics summaries and weekly digest quality improvements
 - Rule builder UX polish and automation ergonomics
 
 ### 🧭 Planned / Backlog
 
 - AI patch note summaries using local LLM pipelines
 - Notification channel auto-cleanup policies (e.g. periodic clear/archive)
-- Plugin system for modular feature extensions
 - Web dashboard / remote access with Discord SSO
 
 ## Commands
