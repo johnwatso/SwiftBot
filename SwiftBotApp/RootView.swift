@@ -1647,7 +1647,7 @@ struct GeneralSettingsView: View {
 
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
-                Section("Cluster") {
+                Section("SwiftMesh") {
                     Picker("Mode", selection: $app.settings.clusterMode) {
                         ForEach(ClusterMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
@@ -1659,6 +1659,30 @@ struct GeneralSettingsView: View {
 
                     if app.settings.clusterMode == .worker {
                         TextField("Leader Address", text: $leaderAddressDraft)
+
+                        HStack {
+                            Button("Test Connection") {
+                                app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                app.testWorkerLeaderConnection()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(app.workerConnectionTestInProgress)
+
+                            if app.workerConnectionTestInProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+
+                        Text(app.workerConnectionTestStatus)
+                            .font(.caption)
+                            .foregroundStyle(
+                                app.workerConnectionTestIsSuccess
+                                    ? .green
+                                    : (app.workerConnectionTestStatus == "Not tested" || app.workerConnectionTestInProgress
+                                        ? .secondary
+                                        : .red)
+                            )
                     }
 
                     if app.settings.clusterMode == .leader {
@@ -1669,14 +1693,43 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HStack {
-                        Button("Refresh Cluster Status") {
-                            app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
-                            app.refreshClusterStatus()
+                    if app.settings.clusterMode == .worker {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Worker Control")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                if app.isWorkerServiceRunning {
+                                    Button("Stop Worker") {
+                                        app.stopBot()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(.red)
+                                } else {
+                                    Button("Start Worker") {
+                                        app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+                                        Task { await app.startBot() }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
                         }
-                        .buttonStyle(.bordered)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Cluster Status")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Button("Refresh SwiftMesh Status") {
+                                app.refreshClusterStatus()
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
 
                     Text(app.settings.clusterMode == .worker ? app.clusterSnapshot.serverStatusText : app.clusterSnapshot.workerStatusText)
