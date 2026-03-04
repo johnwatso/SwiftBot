@@ -151,7 +151,7 @@ struct BotSettings: Codable, Hashable {
     var guildSettings: [String: GuildSettings] = [:]
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
-    var clusterWorkerBaseURL: String = ""
+    var clusterLeaderAddress: String = ""
     var clusterListenPort: Int = 38787
 
     // Local AI reply settings for DMs and guild mentions.
@@ -173,7 +173,8 @@ struct BotSettings: Codable, Hashable {
         case guildSettings
         case clusterMode
         case clusterNodeName
-        case clusterWorkerBaseURL
+        case clusterLeaderAddress
+        case clusterWorkerBaseURLLegacy = "clusterWorkerBaseURL"
         case clusterListenPort
         case localAIDMReplyEnabled
         case localAIProvider
@@ -197,7 +198,8 @@ struct BotSettings: Codable, Hashable {
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
         clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
         clusterNodeName = try container.decodeIfPresent(String.self, forKey: .clusterNodeName) ?? (Host.current().localizedName ?? "SwiftBot Node")
-        clusterWorkerBaseURL = try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURL) ?? ""
+        clusterLeaderAddress = try container.decodeIfPresent(String.self, forKey: .clusterLeaderAddress)
+            ?? (try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURLLegacy) ?? "")
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
@@ -209,6 +211,28 @@ struct BotSettings: Codable, Hashable {
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(token, forKey: .token)
+        try container.encode(prefix, forKey: .prefix)
+        try container.encode(autoStart, forKey: .autoStart)
+        try container.encode(guildSettings, forKey: .guildSettings)
+        try container.encode(clusterMode, forKey: .clusterMode)
+        try container.encode(clusterNodeName, forKey: .clusterNodeName)
+        try container.encode(clusterLeaderAddress, forKey: .clusterLeaderAddress)
+        try container.encode(clusterListenPort, forKey: .clusterListenPort)
+        try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
+        try container.encode(localAIProvider, forKey: .localAIProvider)
+        try container.encode(preferredAIProvider, forKey: .preferredAIProvider)
+        try container.encode(localAIEndpoint, forKey: .localAIEndpoint)
+        try container.encode(localAIModel, forKey: .localAIModel)
+        try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
+        try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
+        try container.encode(behavior, forKey: .behavior)
+        try container.encode(wikiBot, forKey: .wikiBot)
+        try container.encode(patchy, forKey: .patchy)
     }
 }
 
@@ -1021,9 +1045,9 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
         case .standalone:
             return "Runs Discord and heavy tasks locally."
         case .leader:
-            return "Owns Discord traffic and can offload heavy work to a worker."
+            return "Owns Discord traffic, listens for worker registrations, and can offload heavy work."
         case .worker:
-            return "Runs job services only. No Discord connection."
+            return "Runs job services only, connects to the leader address, and registers for jobs."
         }
     }
 }
@@ -1130,6 +1154,8 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
     var hardwareModel: String
     var cpu: Double
     var mem: Double
+    var cpuName: String
+    var physicalMemoryBytes: UInt64
     var uptime: TimeInterval
     var latencyMs: Double?
     var status: ClusterNodeHealthStatus
@@ -1148,6 +1174,8 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         hardwareModel: String,
         cpu: Double,
         mem: Double,
+        cpuName: String = "Unknown CPU",
+        physicalMemoryBytes: UInt64 = 0,
         uptime: TimeInterval,
         latencyMs: Double?,
         status: ClusterNodeHealthStatus,
@@ -1160,6 +1188,8 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         self.hardwareModel = hardwareModel
         self.cpu = cpu
         self.mem = mem
+        self.cpuName = cpuName
+        self.physicalMemoryBytes = physicalMemoryBytes
         self.uptime = uptime
         self.latencyMs = latencyMs
         self.status = status
@@ -1174,6 +1204,8 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         case hardwareModel
         case cpu
         case mem
+        case cpuName
+        case physicalMemoryBytes
         case uptime
         case latencyMs
         case status
@@ -1186,6 +1218,7 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         case connectionStatusText
         case cpuPercent
         case memoryPercent
+        case memoryBytes
     }
 
     init(from decoder: Decoder) throws {
@@ -1200,6 +1233,9 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
             ?? (try container.decodeIfPresent(Double.self, forKey: .cpuPercent) ?? 0)
         mem = try container.decodeIfPresent(Double.self, forKey: .mem)
             ?? (try container.decodeIfPresent(Double.self, forKey: .memoryPercent) ?? 0)
+        cpuName = try container.decodeIfPresent(String.self, forKey: .cpuName) ?? "Unknown CPU"
+        physicalMemoryBytes = try container.decodeIfPresent(UInt64.self, forKey: .physicalMemoryBytes)
+            ?? (try container.decodeIfPresent(UInt64.self, forKey: .memoryBytes) ?? 0)
         uptime = try container.decodeIfPresent(TimeInterval.self, forKey: .uptime)
             ?? (try container.decodeIfPresent(TimeInterval.self, forKey: .uptimeSeconds) ?? 0)
         latencyMs = try container.decodeIfPresent(Double.self, forKey: .latencyMs)
@@ -1230,6 +1266,8 @@ struct ClusterNodeStatus: Identifiable, Codable, Hashable {
         try container.encode(hardwareModel, forKey: .hardwareModel)
         try container.encode(cpu, forKey: .cpu)
         try container.encode(mem, forKey: .mem)
+        try container.encode(cpuName, forKey: .cpuName)
+        try container.encode(physicalMemoryBytes, forKey: .physicalMemoryBytes)
         try container.encode(uptime, forKey: .uptime)
         try container.encodeIfPresent(latencyMs, forKey: .latencyMs)
         try container.encode(status, forKey: .status)
@@ -1247,7 +1285,7 @@ struct ClusterSnapshot: Hashable {
     var mode: ClusterMode = .standalone
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var listenPort: Int = 38787
-    var workerBaseURL: String = ""
+    var leaderAddress: String = ""
     var serverState: ClusterConnectionState = .inactive
     var workerState: ClusterConnectionState = .inactive
     var serverStatusText: String = "Disabled"

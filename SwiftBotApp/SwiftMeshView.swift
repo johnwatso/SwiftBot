@@ -121,10 +121,11 @@ struct ClusterMapView: View {
                         radius: radius
                     )
 
-                    PulseLineView(
+                    HeartbeatConnectionView(
                         start: center,
                         end: workerPosition,
-                        status: worker.status
+                        status: worker.status,
+                        activeJobs: worker.jobsActive
                     )
 
                     ClusterNodeView(node: worker, compact: true)
@@ -222,8 +223,16 @@ struct ClusterNodeView: View {
                 HStack {
                     nodeMetric(label: "Latency", value: latencyValue)
                     nodeMetric(label: "Jobs", value: "\(node.jobsActive)")
-                    nodeMetric(label: "Model", value: node.hardwareModel)
+                    nodeMetric(label: "RAM", value: formatMemoryCapacity(node.physicalMemoryBytes))
                 }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CPU: \(node.cpuName)")
+                    Text("Model: \(node.hardwareModel)")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
         }
         .padding(12)
@@ -264,29 +273,35 @@ struct ClusterNodeView: View {
         if hours > 0 { return "\(hours)h \(minutes)m" }
         return "\(minutes)m"
     }
-}
 
-struct ConnectionLineView: View {
-    let start: CGPoint
-    let end: CGPoint
-    let color: Color
-
-    var body: some View {
-        Path { path in
-            path.move(to: start)
-            path.addLine(to: end)
-        }
-        .stroke(
-            color,
-            style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
-        )
+    private func formatMemoryCapacity(_ bytes: UInt64) -> String {
+        guard bytes > 0 else { return "--" }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useTB]
+        formatter.countStyle = .memory
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: Int64(bytes))
     }
 }
 
-struct PulseLineView: View {
+struct ClusterConnectionShape: Shape {
+    let start: CGPoint
+    let end: CGPoint
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        return path
+    }
+}
+
+struct HeartbeatConnectionView: View {
     let start: CGPoint
     let end: CGPoint
     let status: ClusterNodeHealthStatus
+    let activeJobs: Int
 
     private var lineColor: Color {
         switch status {
@@ -300,23 +315,30 @@ struct PulseLineView: View {
         status != .disconnected
     }
 
+    private var pulseDuration: Double {
+        activeJobs > 0 ? 0.72 : 1.5
+    }
+
+    private var pulseStep: Double {
+        activeJobs > 0 ? 0.032 : 0.05
+    }
+
     var body: some View {
         ZStack {
-            ConnectionLineView(
-                start: start,
-                end: end,
-                color: pulseEnabled ? lineColor.opacity(0.42) : Color.secondary.opacity(0.30)
-            )
+            ClusterConnectionShape(start: start, end: end)
+                .stroke(
+                    pulseEnabled ? lineColor.opacity(activeJobs > 0 ? 0.62 : 0.42) : Color.secondary.opacity(0.30),
+                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+                )
 
             if pulseEnabled {
-                TimelineView(.periodic(from: .now, by: 0.05)) { context in
-                    let duration = 1.6
+                TimelineView(.periodic(from: .now, by: pulseStep)) { context in
                     let progress = context.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: duration) / duration
+                        .truncatingRemainder(dividingBy: pulseDuration) / pulseDuration
 
                     Circle()
                         .fill(lineColor)
-                        .frame(width: 7, height: 7)
+                        .frame(width: activeJobs > 0 ? 8 : 7, height: activeJobs > 0 ? 8 : 7)
                         .shadow(color: lineColor.opacity(0.45), radius: 5, x: 0, y: 0)
                         .position(point(at: progress))
                 }
