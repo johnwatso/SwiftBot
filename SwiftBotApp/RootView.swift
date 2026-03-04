@@ -1616,14 +1616,10 @@ struct GeneralSettingsView: View {
     @Binding var showToken: Bool
     @State private var prefixDraft = "!"
     @State private var clusterNodeNameDraft = ""
-    @State private var workerBaseURLDraft = ""
+    @State private var leaderAddressDraft = ""
     @State private var listenPortDraft = ""
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
-    
-    private var localWorkerURL: String {
-        "http://\(clusterNodeNameDraft.isEmpty ? "this-mac" : clusterNodeNameDraft):\(listenPortDraft.isEmpty ? "38787" : listenPortDraft)"
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1661,17 +1657,13 @@ struct GeneralSettingsView: View {
 
                     TextField("Node Name", text: $clusterNodeNameDraft)
 
-                    if app.settings.clusterMode == .leader {
-                        TextField("Worker Base URL", text: $workerBaseURLDraft)
-                    } else if app.settings.clusterMode == .worker {
-                        LabeledContent("Worker URL") {
-                            Text(localWorkerURL)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
+                    if app.settings.clusterMode == .worker {
+                        TextField("Leader Address", text: $leaderAddressDraft)
                     }
 
-                    TextField("Listen Port", text: $listenPortDraft)
+                    if app.settings.clusterMode == .leader {
+                        TextField("Listen Port", text: $listenPortDraft)
+                    }
 
                     Text(app.settings.clusterMode.description)
                         .font(.caption)
@@ -1680,19 +1672,11 @@ struct GeneralSettingsView: View {
                     HStack {
                         Button("Refresh Cluster Status") {
                             app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            app.settings.clusterWorkerBaseURL = workerBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                             app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
                             app.refreshClusterStatus()
                         }
                         .buttonStyle(.bordered)
-
-                        if app.settings.clusterMode == .worker {
-                            Button("Copy Worker URL") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(localWorkerURL, forType: .string)
-                            }
-                            .buttonStyle(.bordered)
-                        }
                     }
 
                     Text(app.settings.clusterMode == .worker ? app.clusterSnapshot.serverStatusText : app.clusterSnapshot.workerStatusText)
@@ -1746,12 +1730,12 @@ struct GeneralSettingsView: View {
                 Button("Save") {
                     app.settings.prefix = prefixDraft
                     app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    app.settings.clusterWorkerBaseURL = workerBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
                     app.saveSettings()
                     prefixDraft = app.settings.prefix
                     clusterNodeNameDraft = app.settings.clusterNodeName
-                    workerBaseURLDraft = app.settings.clusterWorkerBaseURL
+                    leaderAddressDraft = app.settings.clusterLeaderAddress
                     listenPortDraft = "\(app.settings.clusterListenPort)"
                 }
                 .buttonStyle(.borderedProminent)
@@ -1761,7 +1745,7 @@ struct GeneralSettingsView: View {
             .onAppear {
                 prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
                 clusterNodeNameDraft = app.settings.clusterNodeName
-                workerBaseURLDraft = app.settings.clusterWorkerBaseURL
+                leaderAddressDraft = app.settings.clusterLeaderAddress
                 listenPortDraft = "\(app.settings.clusterListenPort)"
             }
             .onChange(of: app.settings.prefix) { newValue in

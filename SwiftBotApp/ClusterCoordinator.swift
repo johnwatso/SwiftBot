@@ -2,6 +2,35 @@ import Foundation
 import Network
 import Darwin
 
+struct HardwareInfo: Sendable, Hashable {
+    let modelIdentifier: String
+    let cpuName: String
+    let physicalMemoryBytes: UInt64
+
+    static func current() -> HardwareInfo {
+        HardwareInfo(
+            modelIdentifier: readSysctlString("hw.model") ?? "Mac",
+            cpuName: readSysctlString("machdep.cpu.brand_string") ?? "Unknown CPU",
+            physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory
+        )
+    }
+
+    private static func readSysctlString(_ key: String) -> String? {
+        var length: Int = 0
+        guard sysctlbyname(key, nil, &length, nil, 0) == 0, length > 1 else {
+            return nil
+        }
+
+        var value = [CChar](repeating: 0, count: length)
+        guard sysctlbyname(key, &value, &length, nil, 0) == 0 else {
+            return nil
+        }
+
+        let string = String(cString: value).trimmingCharacters(in: .whitespacesAndNewlines)
+        return string.isEmpty ? nil : string
+    }
+}
+
 actor ClusterCoordinator {
     typealias AIHandler = @Sendable ([Message]) async -> String?
     typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
@@ -10,13 +39,17 @@ actor ClusterCoordinator {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let startedAt = Date()
-    private let hardwareModel = ClusterCoordinator.readHardwareModelIdentifier()
+    private let hardwareInfo = HardwareInfo.current()
+    private let workerRegistrationIntervalNanoseconds: UInt64 = 4_000_000_000
+    private let registrationStaleAfter: TimeInterval = 20
 
     private var mode: ClusterMode = .standalone
     private var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
-    private var workerBaseURL: String = ""
+    private var leaderAddress: String = ""
     private var listenPort: Int = 38787
     private var activeJobs = 0
+    private var registeredWorkers: [String: RegisteredWorker] = [:]
+    private var workerRegistrationTask: Task<Void, Never>?
 
     private var aiHandler: AIHandler?
     private var wikiHandler: WikiHandler?
@@ -37,29 +70,37 @@ actor ClusterCoordinator {
         self.onJobLog = onJobLog
     }
 
-    func applySettings(mode: ClusterMode, nodeName: String, workerBaseURL: String, listenPort: Int) async {
+    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int) async {
         self.mode = mode
         self.nodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.workerBaseURL = workerBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
 
         snapshot.mode = mode
         snapshot.nodeName = self.nodeName
         snapshot.listenPort = listenPort
-        snapshot.workerBaseURL = self.workerBaseURL
+        snapshot.leaderAddress = self.leaderAddress
         snapshot.diagnostics = "Applied mode \(mode.rawValue)"
         snapshot.lastJobNode = self.nodeName
 
+        if mode != .leader {
+            registeredWorkers.removeAll()
+        }
+
         await restartServerIfNeeded()
+        await restartWorkerRegistrationIfNeeded()
         await refreshWorkerHealth()
         await publishSnapshot()
     }
 
     func stopAll() async {
+        workerRegistrationTask?.cancel()
+        workerRegistrationTask = nil
         listener?.cancel()
         listener = nil
+        registeredWorkers.removeAll()
         snapshot.serverState = .stopped
         snapshot.serverStatusText = "Stopped"
         snapshot.workerState = .inactive
@@ -73,41 +114,78 @@ actor ClusterCoordinator {
     }
 
     func refreshWorkerHealth() async {
-        guard mode == .leader, !workerBaseURL.isEmpty else {
-            snapshot.workerState = mode == .leader ? .inactive : .inactive
-            snapshot.workerStatusText = mode == .leader ? "No worker configured" : "Not applicable"
-            snapshot.diagnostics = mode == .leader ? "Leader has no worker URL configured" : "Worker health is not checked in this mode"
+        switch mode {
+        case .standalone:
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "Not applicable"
+            snapshot.diagnostics = "Cluster mode is standalone"
             await publishSnapshot()
-            return
-        }
-
-        guard let url = URL(string: workerBaseURL + "/health") else {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Invalid worker URL"
-            snapshot.diagnostics = "Worker URL is invalid: \(workerBaseURL)"
-            await publishSnapshot()
-            return
-        }
-
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                snapshot.workerState = .connected
-                snapshot.workerStatusText = "Reachable"
-                let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-                snapshot.diagnostics = "Worker health OK via \(url.absoluteString): \(body)"
-            } else {
-                snapshot.workerState = .degraded
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                snapshot.workerStatusText = "Health check failed (\(status))"
-                snapshot.diagnostics = "Worker health returned HTTP \(status) via \(url.absoluteString)"
+        case .leader:
+            pruneStaleRegistrations()
+            let workers = sortedRegisteredWorkers()
+            guard !workers.isEmpty else {
+                snapshot.workerState = .inactive
+                snapshot.workerStatusText = "No workers registered"
+                snapshot.diagnostics = "Waiting for workers to register"
+                await publishSnapshot()
+                return
             }
-        } catch {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Unavailable"
-            snapshot.diagnostics = "Worker health request failed for \(url.absoluteString): \(error.localizedDescription)"
+
+            var reachable = 0
+            for worker in workers {
+                if await isWorkerReachable(worker.baseURL) {
+                    reachable += 1
+                }
+            }
+
+            if reachable == workers.count {
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "\(reachable) workers reachable"
+            } else if reachable > 0 {
+                snapshot.workerState = .degraded
+                snapshot.workerStatusText = "\(reachable)/\(workers.count) workers reachable"
+            } else {
+                snapshot.workerState = .failed
+                snapshot.workerStatusText = "No workers reachable"
+            }
+            snapshot.diagnostics = "Registered workers: \(workers.count), reachable: \(reachable)"
+            await publishSnapshot()
+        case .worker:
+            guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+                snapshot.workerState = .inactive
+                snapshot.workerStatusText = "Leader not configured"
+                snapshot.diagnostics = "Worker requires a Leader Address"
+                await publishSnapshot()
+                return
+            }
+
+            guard let url = URL(string: leaderBaseURL + "/health") else {
+                snapshot.workerState = .failed
+                snapshot.workerStatusText = "Invalid leader address"
+                snapshot.diagnostics = "Leader Address is invalid: \(leaderAddress)"
+                await publishSnapshot()
+                return
+            }
+
+            do {
+                let (_, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                    snapshot.workerState = .connected
+                    snapshot.workerStatusText = "Leader reachable"
+                    snapshot.diagnostics = "Leader reachable via \(url.absoluteString)"
+                } else {
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    snapshot.workerState = .degraded
+                    snapshot.workerStatusText = "Leader health check failed (\(status))"
+                    snapshot.diagnostics = "Leader health returned HTTP \(status) via \(url.absoluteString)"
+                }
+            } catch {
+                snapshot.workerState = .failed
+                snapshot.workerStatusText = "Leader unavailable"
+                snapshot.diagnostics = "Leader health request failed for \(url.absoluteString): \(error.localizedDescription)"
+            }
+            await publishSnapshot()
         }
-        await publishSnapshot()
     }
 
     func generateAIReply(messages: [Message]) async -> String? {
@@ -153,46 +231,48 @@ actor ClusterCoordinator {
 
     func probeWorker() async -> ClusterProbeResponse? {
         guard mode == .leader else {
-            snapshot.diagnostics = "Remote worker probe is only available in leader mode"
+            snapshot.diagnostics = "Remote cluster worker probe is only available in leader mode"
             await publishSnapshot()
             return nil
         }
 
-        guard let url = URL(string: workerBaseURL + "/v1/probe") else {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Invalid worker URL"
-            snapshot.diagnostics = "Remote probe URL invalid: \(workerBaseURL)"
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else {
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "No workers registered"
+            snapshot.diagnostics = "No workers registered for probe"
             await publishSnapshot()
             return nil
         }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                snapshot.workerState = .degraded
-                snapshot.workerStatusText = "Remote probe failed"
-                snapshot.diagnostics = "Remote probe returned non-2xx from \(url.absoluteString)"
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/probe") else { continue }
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+
+                let decoded = try decoder.decode(ClusterProbeResponse.self, from: data)
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Remote probe OK"
+                snapshot.lastJobRoute = .remote
+                snapshot.lastJobSummary = "Remote cluster worker probe"
+                snapshot.lastJobNode = decoded.nodeName
+                snapshot.diagnostics = "Worker \(decoded.nodeName) responded via \(url.absoluteString)"
                 await publishSnapshot()
-                return nil
+                return decoded
+            } catch {
+                continue
             }
-
-            let decoded = try decoder.decode(ClusterProbeResponse.self, from: data)
-            snapshot.workerState = .connected
-            snapshot.workerStatusText = "Remote probe OK"
-            snapshot.lastJobRoute = .remote
-            snapshot.lastJobSummary = "Remote worker probe"
-            snapshot.lastJobNode = decoded.nodeName
-            snapshot.diagnostics = "Worker \(decoded.nodeName) responded via \(url.absoluteString)"
-            await publishSnapshot()
-            return decoded
-        } catch {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Remote probe unavailable"
-            snapshot.diagnostics = "Remote probe request failed for \(url.absoluteString): \(error.localizedDescription)"
-            await publishSnapshot()
-            return nil
         }
+
+        snapshot.workerState = .failed
+        snapshot.workerStatusText = "Remote probe unavailable"
+        snapshot.diagnostics = "Remote probe failed for all registered workers"
+        await publishSnapshot()
+        return nil
     }
 
     private func restartServerIfNeeded() async {
@@ -324,6 +404,8 @@ actor ClusterCoordinator {
             let payload = HealthResponse(nodeName: nodeName, mode: mode.rawValue, status: "ok")
             let body = (try? encoder.encode(payload)) ?? Data()
             return httpResponse(status: "200 OK", body: body)
+        case ("POST", "/cluster/register"):
+            return await handleWorkerRegistration(request.body)
         case ("GET", "/cluster/status"):
             let payload = await clusterStatusPayload()
             let body = (try? encoder.encode(payload)) ?? Data()
@@ -445,102 +527,285 @@ actor ClusterCoordinator {
         return data
     }
 
-    private func performRemoteAI(_ job: AIJobRequest) async -> AIJobResponse? {
-        guard let url = URL(string: workerBaseURL + "/v1/ai-reply") else {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Invalid worker URL"
-            snapshot.diagnostics = "Remote AI URL invalid: \(workerBaseURL)"
-            await publishSnapshot()
-            return nil
+    private func restartWorkerRegistrationIfNeeded() async {
+        workerRegistrationTask?.cancel()
+        workerRegistrationTask = nil
+
+        guard mode == .worker else { return }
+        guard let normalizedLeader = normalizedBaseURL(leaderAddress), !normalizedLeader.isEmpty else {
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "Leader not configured"
+            snapshot.diagnostics = "Set Leader Address to enable worker registration"
+            return
         }
 
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(job)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                snapshot.workerState = .degraded
-                snapshot.workerStatusText = "Remote AI failed"
-                snapshot.diagnostics = "Remote AI returned non-2xx from \(url.absoluteString)"
-                await publishSnapshot()
-                return nil
+        workerRegistrationTask = Task {
+            while !Task.isCancelled {
+                await registerWithLeader(normalizedLeader)
+                try? await Task.sleep(nanoseconds: workerRegistrationIntervalNanoseconds)
             }
-            let decoded = try decoder.decode(AIJobResponse.self, from: data)
-            snapshot.workerState = .connected
-            snapshot.workerStatusText = "Remote AI available"
-            snapshot.diagnostics = "Remote AI succeeded via \(url.absoluteString)"
-            await publishSnapshot()
-            return decoded
-        } catch {
-            snapshot.workerState = .failed
-            snapshot.workerStatusText = "Remote AI unavailable"
-            snapshot.diagnostics = "Remote AI request failed for \(url.absoluteString): \(error.localizedDescription)"
-            await publishSnapshot()
-            return nil
         }
     }
 
-    private func performRemoteWikiLookup(query: String, source: WikiSource) async -> WikiJobResponse? {
-        guard let url = URL(string: workerBaseURL + "/v1/wiki-lookup") else {
+    private func registerWithLeader(_ leaderBaseURL: String) async {
+        guard mode == .worker else { return }
+        guard let url = URL(string: leaderBaseURL + "/cluster/register") else {
             snapshot.workerState = .failed
-            snapshot.workerStatusText = "Invalid worker URL"
-            snapshot.diagnostics = "Remote wiki URL invalid: \(workerBaseURL)"
+            snapshot.workerStatusText = "Invalid leader address"
+            snapshot.diagnostics = "Invalid registration URL: \(leaderBaseURL)"
             await publishSnapshot()
-            return nil
+            return
         }
+
+        let payload = WorkerRegistrationRequest(
+            nodeName: nodeName,
+            baseURL: localWorkerAdvertisedBaseURL(),
+            listenPort: listenPort
+        )
 
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
+            request.timeoutInterval = 3
+            request.httpBody = try encoder.encode(payload)
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 snapshot.workerState = .degraded
-                snapshot.workerStatusText = "Remote wiki failed"
-                snapshot.diagnostics = "Remote wiki returned non-2xx from \(url.absoluteString)"
+                snapshot.workerStatusText = "Registration failed (\(code))"
+                snapshot.diagnostics = "Leader rejected registration at \(url.absoluteString)"
                 await publishSnapshot()
-                return nil
+                return
             }
-            let decoded = try decoder.decode(WikiJobResponse.self, from: data)
+
+            let ack = try? decoder.decode(WorkerRegistrationResponse.self, from: data)
             snapshot.workerState = .connected
-            snapshot.workerStatusText = "Remote wiki available"
-            snapshot.diagnostics = "Remote wiki succeeded via \(url.absoluteString)"
+            snapshot.workerStatusText = "Registered with leader"
+            if let ack {
+                snapshot.diagnostics = "Registered with leader \(ack.leaderNodeName) (\(ack.registeredWorkers) workers total)"
+            } else {
+                snapshot.diagnostics = "Registered with leader via \(url.absoluteString)"
+            }
             await publishSnapshot()
-            return decoded
         } catch {
             snapshot.workerState = .failed
-            snapshot.workerStatusText = "Remote wiki unavailable"
-            snapshot.diagnostics = "Remote wiki request failed for \(url.absoluteString): \(error.localizedDescription)"
+            snapshot.workerStatusText = "Leader unavailable"
+            snapshot.diagnostics = "Registration request failed for \(url.absoluteString): \(error.localizedDescription)"
+            await publishSnapshot()
+        }
+    }
+
+    private func handleWorkerRegistration(_ body: Data) async -> Data {
+        guard mode == .leader else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"leader_mode_required"}"#.utf8))
+        }
+
+        guard let registration = try? decoder.decode(WorkerRegistrationRequest.self, from: body),
+              let baseURL = normalizedBaseURL(registration.baseURL),
+              !baseURL.isEmpty else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_registration"}"#.utf8))
+        }
+
+        let workerName = registration.nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Worker"
+            : registration.nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = baseURL.lowercased()
+        registeredWorkers[key] = RegisteredWorker(
+            nodeName: workerName,
+            baseURL: baseURL,
+            listenPort: registration.listenPort,
+            lastSeen: Date()
+        )
+        pruneStaleRegistrations()
+
+        snapshot.workerState = .connected
+        let workerCount = registeredWorkers.count
+        snapshot.workerStatusText = "\(workerCount) worker\(workerCount == 1 ? "" : "s") registered"
+        snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL)"
+        await publishSnapshot()
+
+        let response = WorkerRegistrationResponse(
+            status: "ok",
+            leaderNodeName: nodeName,
+            registeredWorkers: workerCount
+        )
+        let payload = (try? encoder.encode(response)) ?? Data()
+        return httpResponse(status: "200 OK", body: payload)
+    }
+
+    private func sortedRegisteredWorkers() -> [RegisteredWorker] {
+        registeredWorkers.values
+            .filter { !isSelfClusterEndpoint($0.baseURL) }
+            .sorted { $0.lastSeen > $1.lastSeen }
+    }
+
+    private func pruneStaleRegistrations() {
+        let cutoff = Date().addingTimeInterval(-registrationStaleAfter)
+        registeredWorkers = registeredWorkers.filter { $0.value.lastSeen >= cutoff }
+    }
+
+    private func localWorkerAdvertisedBaseURL() -> String {
+        let host = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedHost = host.isEmpty ? "127.0.0.1" : host
+        return "http://\(resolvedHost):\(listenPort)"
+    }
+
+    private func normalizedBaseURL(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let candidate: String
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            candidate = trimmed
+        } else {
+            candidate = "http://\(trimmed)"
+        }
+        guard let url = URL(string: candidate),
+              let scheme = url.scheme,
+              let host = url.host,
+              !scheme.isEmpty,
+              !host.isEmpty else {
+            return nil
+        }
+        let portSuffix = url.port.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(host)\(portSuffix)"
+    }
+
+    private func isWorkerReachable(_ baseURL: String) async -> Bool {
+        guard let url = URL(string: baseURL + "/health") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 2
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200..<300).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+
+    private func performRemoteAI(_ job: AIJobRequest) async -> AIJobResponse? {
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else {
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "No workers registered"
+            snapshot.diagnostics = "No registered workers available for remote AI"
             await publishSnapshot()
             return nil
         }
+
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/ai-reply") else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try encoder.encode(job)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+
+                let decoded = try decoder.decode(AIJobResponse.self, from: data)
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Remote AI available"
+                snapshot.diagnostics = "Remote AI succeeded via \(url.absoluteString)"
+                await publishSnapshot()
+                return decoded
+            } catch {
+                continue
+            }
+        }
+
+        snapshot.workerState = .failed
+        snapshot.workerStatusText = "Remote AI unavailable"
+        snapshot.diagnostics = "Remote AI failed for all registered workers"
+        await publishSnapshot()
+        return nil
+    }
+
+    private func performRemoteWikiLookup(query: String, source: WikiSource) async -> WikiJobResponse? {
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else {
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "No workers registered"
+            snapshot.diagnostics = "No registered workers available for remote wiki lookup"
+            await publishSnapshot()
+            return nil
+        }
+
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/wiki-lookup") else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+
+                let decoded = try decoder.decode(WikiJobResponse.self, from: data)
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Remote wiki available"
+                snapshot.diagnostics = "Remote wiki succeeded via \(url.absoluteString)"
+                await publishSnapshot()
+                return decoded
+            } catch {
+                continue
+            }
+        }
+
+        snapshot.workerState = .failed
+        snapshot.workerStatusText = "Remote wiki unavailable"
+        snapshot.diagnostics = "Remote wiki failed for all registered workers"
+        await publishSnapshot()
+        return nil
     }
 
     private func clusterStatusPayload() async -> ClusterStatusResponse {
         var nodes: [ClusterNodeStatus] = [localNodeStatus()]
 
-        if mode == .leader, !workerBaseURL.isEmpty, !isSelfClusterEndpoint(workerBaseURL) {
-            if let remoteStatus = await fetchRemoteClusterStatus(baseURL: workerBaseURL) {
-                snapshot.workerState = .connected
-                snapshot.workerStatusText = "Cluster status OK"
+        if mode == .leader {
+            pruneStaleRegistrations()
+            let workers = sortedRegisteredWorkers()
+            var reachable = 0
 
-                // Keep the local node first, then append unique remote nodes.
-                for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
-                    if node.role == .worker, node.latencyMs == nil {
-                        node.latencyMs = remoteStatus.latencyMs
+            for worker in workers {
+                if let remoteStatus = await fetchRemoteClusterStatus(baseURL: worker.baseURL) {
+                    reachable += 1
+                    for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
+                        if node.role == .worker, node.latencyMs == nil {
+                            node.latencyMs = remoteStatus.latencyMs
+                        }
+                        nodes.append(node)
                     }
-                    nodes.append(node)
+                } else {
+                    nodes.append(unreachableWorkerNode(worker: worker))
                 }
+            }
+
+            if workers.isEmpty {
+                snapshot.workerState = .inactive
+                snapshot.workerStatusText = "No workers registered"
+                snapshot.diagnostics = "Waiting for worker registrations via /cluster/register"
+            } else if reachable == workers.count {
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "\(reachable) workers connected"
+                snapshot.diagnostics = "All registered workers reachable"
+            } else if reachable > 0 {
+                snapshot.workerState = .degraded
+                snapshot.workerStatusText = "\(reachable)/\(workers.count) workers connected"
+                snapshot.diagnostics = "Some registered workers are unreachable"
             } else {
                 snapshot.workerState = .failed
                 snapshot.workerStatusText = "Cluster status unavailable"
-                snapshot.diagnostics = "Unable to fetch /cluster/status from \(workerBaseURL)"
-                nodes.append(unreachableWorkerNode())
+                snapshot.diagnostics = "Unable to reach any registered workers"
             }
         }
 
@@ -562,9 +827,11 @@ actor ClusterCoordinator {
             hostname: hostname,
             displayName: nodeName,
             role: role,
-            hardwareModel: hardwareModel,
+            hardwareModel: hardwareInfo.modelIdentifier,
             cpu: currentCPUPercent(),
             mem: currentMemoryPercent(),
+            cpuName: hardwareInfo.cpuName,
+            physicalMemoryBytes: hardwareInfo.physicalMemoryBytes,
             uptime: uptime,
             latencyMs: nil,
             status: status,
@@ -572,17 +839,19 @@ actor ClusterCoordinator {
         )
     }
 
-    private func unreachableWorkerNode() -> ClusterNodeStatus {
-        let host = URL(string: workerBaseURL)?.host ?? "Worker"
+    private func unreachableWorkerNode(worker: RegisteredWorker) -> ClusterNodeStatus {
+        let host = URL(string: worker.baseURL)?.host ?? worker.nodeName
 
         return ClusterNodeStatus(
-            id: "worker-\(host.lowercased())",
+            id: "worker-\(host.lowercased())-\(worker.listenPort)",
             hostname: host,
-            displayName: host,
+            displayName: worker.nodeName,
             role: .worker,
             hardwareModel: "Unknown",
             cpu: 0,
             mem: 0,
+            cpuName: "Unknown CPU",
+            physicalMemoryBytes: 0,
             uptime: 0,
             latencyMs: nil,
             status: .disconnected,
@@ -654,20 +923,6 @@ actor ClusterCoordinator {
         return min(100, max(0, (usedBytes / totalBytes) * 100))
     }
 
-    private static func readHardwareModelIdentifier() -> String {
-        var length: Int = 0
-        // Use `hw.model` so cluster status carries family identifiers like MacBookPro18,3.
-        guard sysctlbyname("hw.model", nil, &length, nil, 0) == 0, length > 0 else {
-            return "Mac"
-        }
-
-        var value = [CChar](repeating: 0, count: length)
-        guard sysctlbyname("hw.model", &value, &length, nil, 0) == 0 else {
-            return "Mac"
-        }
-        return String(cString: value)
-    }
-
     private func isSelfClusterEndpoint(_ baseURL: String) -> Bool {
         guard let url = URL(string: baseURL),
               let host = url.host?.lowercased() else {
@@ -721,6 +976,25 @@ actor ClusterCoordinator {
         }
         return nil
     }
+}
+
+private struct RegisteredWorker: Hashable, Sendable {
+    var nodeName: String
+    var baseURL: String
+    var listenPort: Int
+    var lastSeen: Date
+}
+
+private struct WorkerRegistrationRequest: Codable {
+    let nodeName: String
+    let baseURL: String
+    let listenPort: Int
+}
+
+private struct WorkerRegistrationResponse: Codable {
+    let status: String
+    let leaderNodeName: String
+    let registeredWorkers: Int
 }
 
 private struct HTTPRequest {

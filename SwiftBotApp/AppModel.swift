@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import UpdateEngine
-import Darwin
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -148,7 +147,7 @@ final class AppModel: ObservableObject {
             await cluster.applySettings(
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
-                workerBaseURL: settings.clusterWorkerBaseURL,
+                leaderAddress: settings.clusterLeaderAddress,
                 listenPort: settings.clusterListenPort
             )
             await pollClusterStatus()
@@ -182,7 +181,7 @@ final class AppModel: ObservableObject {
             await cluster.applySettings(
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
-                workerBaseURL: settings.clusterWorkerBaseURL,
+                leaderAddress: settings.clusterLeaderAddress,
                 listenPort: settings.clusterListenPort
             )
             await pollClusterStatus()
@@ -541,7 +540,7 @@ final class AppModel: ObservableObject {
         await cluster.applySettings(
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
-            workerBaseURL: settings.clusterWorkerBaseURL,
+            leaderAddress: settings.clusterLeaderAddress,
             listenPort: settings.clusterListenPort
         )
 
@@ -605,7 +604,7 @@ final class AppModel: ObservableObject {
             await cluster.applySettings(
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
-                workerBaseURL: settings.clusterWorkerBaseURL,
+                leaderAddress: settings.clusterLeaderAddress,
                 listenPort: settings.clusterListenPort
             )
             await cluster.refreshWorkerHealth()
@@ -621,7 +620,7 @@ final class AppModel: ObservableObject {
         await cluster.applySettings(
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
-            workerBaseURL: settings.clusterWorkerBaseURL,
+            leaderAddress: settings.clusterLeaderAddress,
             listenPort: settings.clusterListenPort
         )
         await cluster.refreshWorkerHealth()
@@ -653,15 +652,18 @@ final class AppModel: ObservableObject {
         let hostname = ProcessInfo.processInfo.hostName
         let role: ClusterNodeRole = settings.clusterMode == .worker ? .worker : .leader
         let uptime = max(0, Date().timeIntervalSince(launchedAt))
+        let hardwareInfo = HardwareInfo.current()
         var nodes: [ClusterNodeStatus] = [
             ClusterNodeStatus(
                 id: "\(role.rawValue)-\(hostname.lowercased())-\(settings.clusterListenPort)",
                 hostname: hostname,
                 displayName: localNodeName,
                 role: role,
-                hardwareModel: localHardwareModelIdentifier(),
+                hardwareModel: hardwareInfo.modelIdentifier,
                 cpu: 0,
                 mem: 0,
+                cpuName: hardwareInfo.cpuName,
+                physicalMemoryBytes: hardwareInfo.physicalMemoryBytes,
                 uptime: uptime,
                 latencyMs: nil,
                 status: clusterSnapshot.serverState.nodeHealthStatus,
@@ -669,17 +671,19 @@ final class AppModel: ObservableObject {
             )
         ]
 
-        if settings.clusterMode == .leader, !settings.clusterWorkerBaseURL.isEmpty {
-            let host = URL(string: settings.clusterWorkerBaseURL)?.host ?? "Worker"
+        if settings.clusterMode == .worker, !settings.clusterLeaderAddress.isEmpty {
+            let host = URL(string: settings.clusterLeaderAddress)?.host ?? "Leader"
             nodes.append(
                 ClusterNodeStatus(
-                    id: "worker-\(host.lowercased())",
+                    id: "leader-\(host.lowercased())",
                     hostname: host,
                     displayName: host,
-                    role: .worker,
+                    role: .leader,
                     hardwareModel: "Unknown",
                     cpu: 0,
                     mem: 0,
+                    cpuName: "Unknown CPU",
+                    physicalMemoryBytes: 0,
                     uptime: 0,
                     latencyMs: nil,
                     status: .disconnected,
@@ -689,19 +693,6 @@ final class AppModel: ObservableObject {
         }
 
         return nodes
-    }
-
-    private func localHardwareModelIdentifier() -> String {
-        var length = 0
-        // Use `hw.model` so identifiers resolve to Mac family names (for example MacBookAir10,1).
-        guard sysctlbyname("hw.model", nil, &length, nil, 0) == 0, length > 0 else {
-            return "Mac"
-        }
-        var value = [CChar](repeating: 0, count: length)
-        guard sysctlbyname("hw.model", &value, &length, nil, 0) == 0 else {
-            return "Mac"
-        }
-        return String(cString: value)
     }
 
     var isWorkerServiceRunning: Bool {
@@ -1668,7 +1659,7 @@ final class AppModel: ObservableObject {
     private func clusterCommand(action: String, channelId: String) async -> Bool {
         let normalized = ["test", "refresh", "check", "remote", "probe"].contains(action) ? action : "status"
         let snapshot = await clusterSnapshotForCommand(action: normalized)
-        let workerURL = snapshot.workerBaseURL.isEmpty ? "-" : snapshot.workerBaseURL
+        let leaderAddress = snapshot.leaderAddress.isEmpty ? "-" : snapshot.leaderAddress
 
         let message = """
         🧭 **Cluster \(normalized.capitalized)**
@@ -1676,7 +1667,7 @@ final class AppModel: ObservableObject {
         Node: \(snapshot.nodeName)
         Server: \(snapshot.serverStatusText)
         Worker: \(snapshot.workerStatusText)
-        Worker URL: \(workerURL)
+        Leader Address: \(leaderAddress)
         Last Job: \(snapshot.lastJobSummary) [\(snapshot.lastJobRoute.rawValue)]
         Last Job Node: \(snapshot.lastJobNode)
         Diagnostics: \(snapshot.diagnostics)
