@@ -209,6 +209,7 @@ Deferred to Phase 2
 - Beta-aware app icon (runtime Dock icon swap for -beta builds)
 - Per-server welcome message profiles
 - Analytics mode + context-aware AI action replies (requested 2026-03-05)
+- Local wiki knowledge cache for AI Q&A (RAG-lite)
 
 
 Feature Proposal — Analytics Mode & Context-Aware AI Action Replies
@@ -270,6 +271,191 @@ Acceptance criteria:
 - [ ] AI context replies trigger only when configured predicates match.
 - [ ] Deterministic fallback sends when AI is unavailable.
 - [ ] Cooldowns/idempotency prevent duplicate or noisy outputs.
+
+
+Feature Proposal — Local Wiki Knowledge Cache for AI Q&A
+---------------------------------------------------------
+Goal: let users ask natural questions (example: "what gun is better FCAR or ARN?")
+and get grounded answers from locally cached wiki knowledge.
+
+Placement:
+- Phase 2 (not a blocker for current P0/P1 work).
+
+Architecture (phased):
+
+Phase 2A (lighter v1, high ROI):
+- Build a local `WikiKnowledgeStore` (actor) with persisted page extracts/chunks.
+- Index content with SQLite FTS5 for fast lexical retrieval (no embedding dependency).
+- Query flow:
+  1) detect wiki-knowledge query intent
+  2) retrieve top relevant chunks from local index
+  3) inject chunks into AI prompt as bounded context
+  4) require answer to cite source page/title
+- If low-confidence retrieval, return deterministic fallback ("not enough context found").
+
+Phase 2B (quality upgrade):
+- Add optional embedding-based retrieval (`WikiRetriever`) for better semantic recall.
+- Keep FTS path as fallback if embedding model is unavailable locally.
+
+Ingestion/refresh strategy:
+- Seed from enabled WikiBridge sources (do not hardcode a single wiki).
+- Background refresh on schedule + manual refresh command.
+- Support off-peak refresh windows (default: overnight local time) so bulk
+  ingestion runs when the bot is least active.
+- Optional idle-gating: defer heavy ingestion until device idle threshold is met.
+- Add jittered scheduling to avoid deterministic request spikes.
+- Missed-window recovery: if scheduled refresh is skipped (sleep/offline), run a
+  catch-up refresh on next eligible idle window.
+- Delta updates by content hash to avoid full re-index.
+- Retention/size cap for local cache.
+- Ingestion rate-limit policy for upstream wiki APIs (e.g., ~1 req/sec baseline),
+  with graceful 429 backoff/retry behavior.
+
+Safety/quality guardrails:
+- Keep prompts context-bounded; avoid unconstrained hallucination.
+- Store only needed page content/excerpts for feature purpose.
+- Redact/avoid secret data in ingest logs.
+- Treat wiki text as untrusted input: apply prompt-injection sanitization before
+  prompt assembly (strip/escape instruction-like patterns).
+- Answer format should distinguish "facts from cache" vs "opinion/uncertain".
+- Require source attribution in final responses.
+- Include cache staleness notice when relevant source data is older than threshold
+  (e.g., 7 days).
+
+Acceptance criteria:
+- [ ] Local wiki cache is persisted and queryable offline from previous sync.
+- [ ] AI answers for wiki questions include source attribution.
+- [ ] Retrieval fallback works when AI or embedding layer is unavailable.
+- [ ] Refresh can run manually and by schedule without blocking bot runtime.
+- [ ] Off-peak refresh window is configurable and defaults to overnight hours.
+- [ ] Missed refresh windows are detected and recovered on next eligible window.
+- [ ] Ingestion respects rate limits and handles 429 responses without hard failure.
+- [ ] Prompt-injection sanitization is applied to retrieved wiki chunks.
+- [ ] Responses include staleness indicator when cache age exceeds threshold.
+
+
+Apple Platform Opportunities — Prioritized Integration Plan (Architect Addendum, 2026-03-05)
+---------------------------------------------------------------------------------------------
+Purpose: lock the Apple-native technology ordering discussed in #github and remove ambiguity
+before implementation starts.
+
+Plan fit:
+- This ordering is compatible with current roadmap priorities.
+- Foundation Models is treated as a gated branch point, not an immediate hard commit.
+
+P0 (Phase 1, implement first):
+- OSLog migration for SwiftMesh/AI paths with privacy annotations.
+- CryptoKit request signing (nonce + timestamp + HMAC) for mesh/auth hardening.
+
+P1 (Phase 2 strategic branch):
+- Timebox a Foundation Models feasibility spike with explicit exit criteria.
+  Exit criteria:
+  - Reply quality meets command/Q&A acceptance bar.
+  - Latency is acceptable on target Apple Silicon hardware.
+  - Memory footprint remains stable under concurrent bot activity.
+- If spike passes all criteria: adopt Foundation Models as primary local AI path.
+- If spike fails any criterion: retain current local model stack and continue Phase 2
+  scope without architecture churn.
+
+P1b (Phase 2 independent wins, parallelizable):
+- NWBrowser + Network.framework for automatic local mesh node discovery.
+- NSBackgroundActivityScheduler for off-peak wiki refresh scheduling.
+
+P2 (Phase 3 / conditional enhancements):
+- Accelerate/BNNS only when Phase 2B embedding retrieval is enabled.
+- App Intents + Shortcuts for automation entry points.
+- Core Spotlight for local wiki/content indexing.
+- MetricKit for production reliability telemetry.
+- LocalAuthentication / Secure Enclave for sensitive actions.
+- Swift Charts for analytics/diagnostics UI.
+
+Acceptance criteria:
+- [ ] P0 items are implemented before non-critical Apple platform enhancements.
+- [ ] Foundation Models spike records pass/fail results against all exit criteria.
+- [ ] P1b items remain deliverable regardless of Foundation Models outcome.
+- [ ] Chosen branch (Foundation Models or existing stack) is documented before coding continues.
+
+
+GUI Architecture & UX Priorities (Architect Addendum, 2026-03-05)
+------------------------------------------------------------------
+Purpose: define a practical UI priority order that aligns with current feature
+scope and reduces implementation ambiguity for tomorrow's coding session.
+
+UI shell baseline (applies across phases):
+- Primary shell pattern: `MenuBarExtra` entry point + `NavigationSplitView`
+  main window for full diagnostics/configuration workflows.
+- UI framework baseline: SwiftUI-first surfaces with `@Observable` model flow.
+- Visual baseline: native macOS controls + SF Symbols for status semantics.
+- Note: richer menu bar feature behavior remains governed by roadmap phase
+  priority; this section defines target shell architecture.
+
+P0 (ship-critical UX in current phase work):
+- Guided onboarding shell as the first-run surface:
+  token entry -> token validation -> invite generation -> success transition.
+- Persistent status strip with at-a-glance health:
+  Gateway, REST, Rate Limits, Intents state.
+- Diagnostics panel organized by task, not raw telemetry:
+  "What failed", "Why", "Fix now", with one-click recovery actions where possible.
+- Safe settings UX for token reset:
+  explicit confirmation and clear user-impact messaging.
+
+P1 (Phase 2 structural improvements):
+- Modularize UI into focused surfaces:
+  `OnboardingView`, `StatusView`, `DiagnosticsView`, `ActionsView`, `MeshView`,
+  `SettingsView`.
+- Introduce a shared UI token layer (spacing, typography, semantic status colors)
+  to keep health and warning states consistent across views.
+- Add a unified event timeline view (Discord + Mesh + AI) with filters and
+  correlation IDs for faster debugging/support.
+
+P2 (polish and platform integration):
+- Menu bar quick actions and App Intents/Shortcuts entry points.
+- Swift Charts trends for diagnostics and activity summaries.
+- Optional Spotlight indexing for local wiki/log search workflows.
+
+Acceptance criteria:
+- [ ] P0 GUI behaviors are implemented before non-critical UI polish.
+- [ ] Diagnostics UI maps failures to actionable remediation paths.
+- [ ] UI modularization plan is followed for new views; no new monolithic root growth.
+- [ ] Status semantics (healthy/warn/fail) are visually consistent across surfaces.
+
+
+Release Readiness & Remaining Gaps (Architect Consolidation, 2026-03-05)
+-------------------------------------------------------------------------
+Purpose: combine remaining open architecture items into one execution gate so
+implementation does not drift across disconnected checklists.
+
+Distribution/update constraints:
+- App Store requirements are out of scope for this release path.
+- Updates are handled via Sparkle + GitHub + ShipHook.
+
+Remaining gaps to lock before coding completes:
+1) Permissions flow finalization
+- Define first-run permission sequence and recovery paths for denied states.
+- Ensure diagnostics can point users to exactly which permission is missing.
+
+2) Auto-relaunch/startup behavior
+- Decide `SMAppService` usage and user-visible controls for launch behavior.
+- Ensure clear/reset flows cannot silently auto-start services in conflict states.
+
+3) Testing strategy
+- Define minimum test matrix for onboarding, diagnostics, mesh auth, and wiki refresh.
+- Require targeted regression tests for every phase slice.
+
+4) Minimum viable bot commands (day-one contract)
+- Lock command surface needed for first usable release.
+- Defer non-essential command variants until after stability gates pass.
+
+Release readiness checklist (mandatory gates):
+- [ ] Definition of Done per phase is met:
+      build success + targeted tests + Release build validation + rollback note.
+- [ ] Security checks pass for replay handling, clock-skew abuse, prompt injection,
+      and secret redaction in logs.
+- [ ] Feature flags/kill switches exist for new AI/wiki/mesh behaviors.
+- [ ] Persistence/schema migrations are tested for backward compatibility.
+- [ ] Operator runbooks exist for: bot connect failures, mesh desync, wiki refresh stall.
+- [ ] Success metrics are defined and captured:
+      connect success rate, response latency, refresh success rate, duplicate-event rate.
 
 
 
@@ -459,6 +645,28 @@ Acceptance criteria:
 - [ ] Secret comparison is constant-time for authentication paths.
 - [ ] Logs/diagnostics never expose full token/shared-secret values.
 - [ ] Unauthorized/replay attempts are rejected with tests proving behavior.
+
+Discord Policy Compliance Checklist (Roadmap Guardrail)
+-------------------------------------------------------
+Purpose: keep planned features within Discord Terms/Developer Policy boundaries.
+
+Current assessment (non-legal advice):
+- A self-hosted bot for personal servers is generally compatible with Discord policy
+  when using an official bot account and developer portal flow.
+
+Must-follow rules for this project:
+- Use bot accounts only (no self-bot/user-account automation).
+- Keep functionality within stated app purpose; do not collect more API data than needed.
+- Provide a clear data handling/deletion pathway for stored analytics/activity data.
+- Do not use Discord message content to train AI/ML models without explicit Discord permission.
+- Avoid unsolicited DM/marketing-style behavior; keep messaging tied to server-approved features.
+- Redact tokens/secrets from logs and diagnostics by policy.
+
+Implementation checks before release:
+- [ ] Compliance checklist reviewed for each new feature slice.
+- [ ] Data retention/deletion behavior documented for cached analytics/activity data.
+- [ ] AI features confirmed as inference-only (no model training on Discord message content).
+- [ ] Bot behavior tested against anti-spam and user-permission expectations.
 
 SwiftMesh Observability Hardening (Roadmap Addendum, 2026-03-05)
 ----------------------------------------------------------------
