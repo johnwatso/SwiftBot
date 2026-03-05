@@ -41,6 +41,11 @@ This file provides quick answers to common questions and tasks for AI assistants
   - **Speaker Attribution:** All user turns are formatted as `Name: content` to help the AI track multi-user history.
   - **Trimming:** Assistant messages are capped at 300 characters in the transcript to prevent tone poisoning and token bloat.
   - **History Window:** 8-turn sliding window provides consistent short-term memory.
+
+- **Analytics Context Enrichment (Proposed Feature 5):**
+  - **Fact Extraction:** Injects `lastSeenDuration` (e.g., "14 days ago") and `firstSeenStatus` ("first time this week") into the system prompt.
+  - **Tone Bias:** The system prompt will be dynamically adjusted based on analytics predicates (e.g., "If this is the user’s first join after 10 days, use a witty/sarcastic welcome tone").
+
 - **Grounded System Prompt:** 
   - Automatically injects current **Server Name**, **Channel Name**, and **Local Time**.
   - Merges recent **Wiki Context** if available from the `!finals` command cache.
@@ -388,7 +393,7 @@ Voice presence keyed as: `"\(guildId)-\(userId)"`
 - **WebSocket:** `wss://gateway.discord.gg/?v=10&encoding=json`
 - **REST Base:** `https://discord.com/api/v10`
 - **Auth Header:** `Authorization: Bot {token}`
-- **Intents:** 37767 (guilds, voice, messages)
+- **Intents:** 37507 (guilds, voice, messages, members)
 
 ## Testing Checklist
 
@@ -417,3 +422,13 @@ Before marking changes complete:
 
 **Last Updated:** 2026-03-05  
 **Purpose:** Quick reference for AI assistants and developers
+
+
+
+## Future Feature Planning (March 2026)
+
+### Implementation Guardrails for New Features:
+- **API Checking**: Ensure the bot token is never logged. Use `KeychainHelper` for all retrieval.
+- **Welcome Actions**: Implement a burst-guard in the `RuleEngine` to prevent spam during member raids.
+- **Onboarding**: The `OnboardingView` must be part of the `RootView` navigation or a full-screen cover, gated by a `hasCompletedOnboarding` flag.
+- **App Icon**: Wrap `NSApp` calls in `targetEnvironment(macOS)` or similar guards if cross-platform expansion is ever considered.

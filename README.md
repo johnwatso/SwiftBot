@@ -88,6 +88,12 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 ### 🧭 Planned / Backlog
 
+- First-time setup splash screen with invite link generator
+- API health / diagnostics panel
+- Clear / reset bot token from Settings
+- Member welcome automation with configurable channel and message template
+- Voice join/leave messaging actions with configurable log channel
+- Beta-aware app icon
 - AI patch note summaries using local LLM pipelines
 - Notification channel auto-cleanup policies (e.g. periodic clear/archive)
 - Web dashboard / remote access with Discord SSO
@@ -143,6 +149,41 @@ SwiftBot includes a robust cluster operating system called **SwiftMesh** for dis
 - Runtime scheduling, target grouping, and Discord routing remain owned by `SwiftBotApp`.
 - Built-in sources today: NVIDIA, AMD, Intel Arc, and Steam.
 - Design intent: keep source fetching/parsing separate from runtime delivery and Discord command/event handling.
+
+## Getting Started
+
+### First-Time Setup
+
+1. [Create a Discord Application](https://discord.com/developers/applications) and add a Bot user to it.
+2. Copy your bot token from the **Bot** tab in the Developer Portal.
+3. Launch SwiftBot — the setup screen appears automatically when no token is stored.
+4. Paste your token and press **Connect**. SwiftBot validates the token and displays your bot's username and avatar.
+5. Copy the generated **Invite Link** (pre-filled with the recommended permissions) and open it in your browser to add the bot to your server.
+6. SwiftBot moves to the main dashboard once the bot is online.
+
+> **Required bot permissions:** Send Messages, View Channels, Read Message History, Embed Links, Send Messages in Threads. The generated invite link includes these automatically.
+
+### Resetting Your Bot Token
+
+1. Open **Settings** and click **Clear API Key**.
+2. Confirm the prompt — SwiftBot disconnects from the Discord Gateway and clears the stored token.
+3. The setup screen reappears so you can enter a new token.
+
+To revoke the token entirely, visit the **Bot** tab in the [Discord Developer Portal](https://discord.com/developers/applications) and click **Reset Token** before re-entering a new one in SwiftBot.
+
+### API Diagnostics
+
+Open the **Status** view to inspect live connection health:
+
+| Indicator | What it shows |
+|---|---|
+| Gateway | WebSocket connection state (connected / reconnecting / failed) |
+| Latency | Round-trip time of the last heartbeat ACK |
+| REST | Result of a lightweight `/users/@me` probe |
+| Rate Limits | Remaining request budget for the current window |
+| Permissions | Whether the bot has the required permissions in monitored channels |
+
+Use **Test Connection** to run a full probe (gateway connect → REST health check) on demand. Errors are categorised in the log with recommended fixes (invalid token, missing intents, missing channel permissions).
 
 ## Build in Xcode
 
