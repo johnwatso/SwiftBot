@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     @Published var workerModeMigrated = false
+    let isBetaBuild: Bool = (Bundle.main.object(forInfoDictionaryKey: "ShipHookIsBetaBuild") as? Bool) ?? false
 
     var logs = LogStore()
     let ruleStore = RuleStore()
@@ -233,6 +234,12 @@ final class AppModel: ObservableObject {
     }
 
     func saveSettings() {
+        let normalizedToken = normalizedDiscordToken(from: settings.token)
+        if normalizedToken != settings.token {
+            settings.token = normalizedToken
+            logs.append("⚠️ Token format normalized (removed surrounding whitespace or Bot prefix)")
+        }
+
         let trimmedPrefix = settings.prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPrefix.isEmpty {
             settings.prefix = "!"
@@ -642,7 +649,12 @@ final class AppModel: ObservableObject {
             return
         }
 
-        guard !settings.token.isEmpty else {
+        let normalizedToken = normalizedDiscordToken(from: settings.token)
+        if settings.token != normalizedToken {
+            settings.token = normalizedToken
+        }
+
+        guard !normalizedToken.isEmpty else {
             logs.append("⚠️ Token is empty; cannot start bot")
             return
         }
@@ -651,13 +663,34 @@ final class AppModel: ObservableObject {
     }
 
     private func connectDiscordAfterPromotion() async {
-        guard !settings.token.isEmpty else { return }
+        let normalizedToken = normalizedDiscordToken(from: settings.token)
+        if settings.token != normalizedToken {
+            settings.token = normalizedToken
+        }
+        guard !normalizedToken.isEmpty else { return }
         await connectDiscordInternal()
     }
 
     private func connectDiscordInternal() async {
         if !serviceCallbacksConfigured {
             await configureServiceCallbacks()
+        }
+
+        let token = normalizedDiscordToken(from: settings.token)
+        if settings.token != token {
+            settings.token = token
+        }
+        guard !token.isEmpty else {
+            logs.append("⚠️ Token is empty; cannot connect")
+            status = .stopped
+            return
+        }
+
+        let tokenValidation = await service.validateBotToken(token)
+        guard tokenValidation.isValid else {
+            status = .stopped
+            logs.append("❌ Token validation failed: \(tokenValidation.message)")
+            return
         }
 
         status = .connecting
@@ -677,8 +710,16 @@ final class AppModel: ObservableObject {
         self.weeklyPlugin = weekly
         Task { await pluginManager.add(weekly) }
 
-        await service.connect(token: settings.token)
+        await service.connect(token: token)
         logs.append("Connecting to Discord Gateway")
+    }
+
+    private func normalizedDiscordToken(from raw: String) -> String {
+        var token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.lowercased().hasPrefix("bot ") {
+            token = String(token.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return token
     }
 
     func stopBot() {

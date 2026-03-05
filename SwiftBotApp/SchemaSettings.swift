@@ -50,16 +50,27 @@ struct SettingsView: View {
     var onChange: ((String, SettingValue) -> Void)?
 
     var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(sections) { section in
-                Section(section.title) {
-                    ForEach(section.settings) { setting in
-                        SettingRow(setting: setting, value: binding(for: setting))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(section.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(section.settings.enumerated()), id: \.element.id) { index, setting in
+                            SettingRow(setting: setting, value: binding(for: setting))
+                            if index < section.settings.count - 1 {
+                                Divider()
+                            }
+                        }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     private func binding(for setting: Setting) -> Binding<SettingValue> {

@@ -217,21 +217,28 @@ The repo is set up so:
 
 - GitHub Releases hosts the signed update archive
 - GitHub Pages hosts the Sparkle appcast at [https://johnwatso.github.io/SwiftBot/appcast.xml](https://johnwatso.github.io/SwiftBot/appcast.xml)
-- [scripts/publish_sparkle_release.sh](scripts/publish_sparkle_release.sh) updates `docs/appcast.xml` for the latest release
+- GitHub Pages hosts the beta Sparkle appcast at [https://johnwatso.github.io/SwiftBot/beta/appcast.xml](https://johnwatso.github.io/SwiftBot/beta/appcast.xml)
+- [scripts/publish_sparkle_release.sh](scripts/publish_sparkle_release.sh) updates the channel appcast (`docs/appcast.xml` for stable, `docs/beta/appcast.xml` for beta)
 
 Suggested release steps:
 
 1. Archive and sign SwiftBot in Xcode.
 2. Export a signed `.app` from Xcode, or export a signed `.zip`.
-3. Create release notes HTML in `docs/release-notes/<version>.html` if you want Sparkle notes.
+3. Create release notes HTML in `docs/release-notes/<version>.html` (stable) or `docs/beta/release-notes/<version>.html` (beta) if you want Sparkle notes.
 4. Run:
 
 ```bash
 scripts/publish_sparkle_release.sh <version> <exported-app-or-zip> [release-notes-html]
 ```
 
-5. If `gh` is installed and authenticated, the script will create/update GitHub Release `v<version>` and upload the asset automatically.
-6. Commit and push the updated `docs/appcast.xml` and any release notes files.
+For beta channel publishing:
+
+```bash
+scripts/publish_sparkle_release.sh <version> <exported-app-or-zip> [release-notes-html] --channel beta
+```
+
+5. If `gh` is installed and authenticated, the script will create/update GitHub Release `v<version>` (stable) or `v<version>-beta` (beta) and upload the asset automatically.
+6. Commit and push the updated appcast (`docs/appcast.xml` or `docs/beta/appcast.xml`) and any release notes files.
 7. GitHub Pages will deploy automatically from `docs/` via `.github/workflows/pages.yml`.
 
 Notes:

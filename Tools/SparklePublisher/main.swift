@@ -12,13 +12,26 @@ struct ProcessResult {
     let stderr: String
 }
 
+enum ReleaseChannel: String {
+    case stable
+    case beta
+}
+
+struct PublisherArguments {
+    var version: String
+    var artifactPath: String
+    var releaseNotesPath: String?
+    var channel: ReleaseChannel
+}
+
 func usage() {
     let text = """
     Usage:
-      swift run --package-path . SparklePublisher <version> <exported-app-or-zip> [release-notes-html]
+      swift run --package-path . SparklePublisher <version> <exported-app-or-zip> [release-notes-html] [--channel stable|beta]
+      swift run --package-path . SparklePublisher --version <version> --artifact <exported-app-or-zip> [--release-notes <release-notes-html>] [--channel stable|beta]
 
     Example:
-      swift run --package-path . SparklePublisher 1.0.1 ~/Desktop/SwiftBot.app docs/release-notes/1.0.1.html
+      swift run --package-path . SparklePublisher 1.0.1 ~/Desktop/SwiftBot.app docs/release-notes/1.0.1.html --channel beta
 
     Environment:
       SPARKLE_GENERATE_APPCAST   Optional absolute path to generate_appcast
@@ -26,6 +39,68 @@ func usage() {
       SWIFTBOT_ROOT              Optional repo root override
     """
     print(text)
+}
+
+func parseArguments(_ rawArgs: [String]) throws -> PublisherArguments {
+    var args = rawArgs
+    var version = ""
+    var artifactPath = ""
+    var releaseNotesPath: String?
+    var channel: ReleaseChannel = .stable
+
+    if args.count >= 2, !args[0].hasPrefix("--") {
+        version = args.removeFirst()
+        artifactPath = args.removeFirst()
+        if !args.isEmpty, !args[0].hasPrefix("--") {
+            releaseNotesPath = args.removeFirst()
+        }
+    }
+
+    while !args.isEmpty {
+        let flag = args.removeFirst()
+        switch flag {
+        case "--version":
+            guard !args.isEmpty else {
+                throw CommandError(message: "Missing value for --version")
+            }
+            version = args.removeFirst()
+        case "--artifact":
+            guard !args.isEmpty else {
+                throw CommandError(message: "Missing value for --artifact")
+            }
+            artifactPath = args.removeFirst()
+        case "--release-notes":
+            guard !args.isEmpty else {
+                throw CommandError(message: "Missing value for --release-notes")
+            }
+            releaseNotesPath = args.removeFirst()
+        case "--channel":
+            guard !args.isEmpty else {
+                throw CommandError(message: "Missing value for --channel")
+            }
+            guard let parsedChannel = ReleaseChannel(rawValue: args.removeFirst().lowercased()) else {
+                throw CommandError(message: "Unsupported channel. Use --channel stable or --channel beta.")
+            }
+            channel = parsedChannel
+        case "-h", "--help":
+            usage()
+            exit(0)
+        default:
+            throw CommandError(message: "Unknown argument: \(flag)")
+        }
+    }
+
+    guard !version.isEmpty, !artifactPath.isEmpty else {
+        usage()
+        throw CommandError(message: "Invalid arguments.")
+    }
+
+    return PublisherArguments(
+        version: version,
+        artifactPath: artifactPath,
+        releaseNotesPath: releaseNotesPath,
+        channel: channel
+    )
 }
 
 @discardableResult
@@ -189,11 +264,18 @@ func findGenerateAppcast(env: [String: String]) throws -> String {
     throw CommandError(message: "Could not find Sparkle generate_appcast. Set SPARKLE_GENERATE_APPCAST.")
 }
 
-func makeArchiveIfNeeded(inputURL: URL, version: String, releaseArtifactsDir: URL) throws -> URL {
+func makeArchiveIfNeeded(
+    inputURL: URL,
+    appName: String,
+    version: String,
+    channel: ReleaseChannel,
+    releaseArtifactsDir: URL
+) throws -> URL {
     try FileManager.default.createDirectory(at: releaseArtifactsDir, withIntermediateDirectories: true)
+    let channelSuffix = channel == .beta ? "-beta" : ""
 
     if isDirectory(inputURL), inputURL.pathExtension.lowercased() == "app" {
-        let outputURL = releaseArtifactsDir.appendingPathComponent("SwiftBot-\(version).zip")
+        let outputURL = releaseArtifactsDir.appendingPathComponent("\(appName)-\(version)\(channelSuffix).zip")
         if pathExists(outputURL) {
             try FileManager.default.removeItem(at: outputURL)
         }
@@ -277,7 +359,8 @@ func publishReleaseIfPossible(
     owner: String,
     repo: String,
     tag: String,
-    version: String,
+    releaseTitle: String,
+    isPrerelease: Bool,
     archiveURL: URL,
     releaseNotesPath: URL?
 ) throws {
@@ -301,11 +384,14 @@ func publishReleaseIfPossible(
 
     if releaseView.status != 0 {
         print("Creating GitHub Release \(tag)...")
-        var createArgs = ["release", "create", tag, "--repo", repoRef, "--title", "SwiftBot \(version)"]
+        var createArgs = ["release", "create", tag, "--repo", repoRef, "--title", releaseTitle]
         if let releaseNotesPath {
             createArgs += ["--notes-file", releaseNotesPath.path]
         } else {
-            createArgs += ["--notes", "SwiftBot \(version)"]
+            createArgs += ["--notes", releaseTitle]
+        }
+        if isPrerelease {
+            createArgs.append("--prerelease")
         }
         _ = try runProcess(ghPath, createArgs, captureOutput: false)
     } else {
@@ -339,16 +425,14 @@ func resolveRepoRoot() throws -> URL {
 }
 
 func main() throws {
-    let args = Array(CommandLine.arguments.dropFirst())
-    guard args.count >= 2, args.count <= 3 else {
-        usage()
-        throw CommandError(message: "Invalid arguments.")
-    }
-
-    let version = args[0]
+    let parsed = try parseArguments(Array(CommandLine.arguments.dropFirst()))
+    let version = parsed.version
+    let channel = parsed.channel
+    let channelSuffix = channel == .beta ? "-beta" : ""
+    let appName = "SwiftBot"
     let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    let inputURL = absoluteURL(args[1], relativeTo: currentDir)
-    let releaseNotesInputURL: URL? = args.count == 3 ? absoluteURL(args[2], relativeTo: currentDir) : nil
+    let inputURL = absoluteURL(parsed.artifactPath, relativeTo: currentDir)
+    let releaseNotesInputURL: URL? = parsed.releaseNotesPath.map { absoluteURL($0, relativeTo: currentDir) }
 
     guard pathExists(inputURL) else {
         throw CommandError(message: "Input not found: \(inputURL.path)")
@@ -360,7 +444,8 @@ func main() throws {
 
     let rootDir = try resolveRepoRoot()
     let docsDir = rootDir.appendingPathComponent("docs", isDirectory: true)
-    let appcastPath = docsDir.appendingPathComponent("appcast.xml")
+    let appcastDir = channel == .beta ? docsDir.appendingPathComponent("beta", isDirectory: true) : docsDir
+    let appcastPath = appcastDir.appendingPathComponent("appcast.xml")
     let releaseArtifactsDir = rootDir.appendingPathComponent("release-artifacts", isDirectory: true)
 
     let env = ProcessInfo.processInfo.environment
@@ -373,10 +458,18 @@ func main() throws {
         throw CommandError(message: "Could not parse GitHub owner/repo from origin: \(remoteURL)")
     }
 
-    let tag = "v\(version)"
+    let tag = "v\(version)\(channelSuffix)"
+    let releaseTitle = channel == .beta ? "\(appName) \(version) Beta" : "\(appName) \(version)"
     let pagesBaseURL = "https://\(owner).github.io/\(repo)"
+    let channelPagesBaseURL = channel == .beta ? "\(pagesBaseURL)/beta" : pagesBaseURL
 
-    let archiveURL = try makeArchiveIfNeeded(inputURL: inputURL, version: version, releaseArtifactsDir: releaseArtifactsDir)
+    let archiveURL = try makeArchiveIfNeeded(
+        inputURL: inputURL,
+        appName: appName,
+        version: version,
+        channel: channel,
+        releaseArtifactsDir: releaseArtifactsDir
+    )
     try validateBundleVersionInArchive(archiveURL)
 
     let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("sparkle-publish-\(UUID().uuidString)", isDirectory: true)
@@ -389,13 +482,15 @@ func main() throws {
     var releaseNotesPublishedURL: String?
     var releaseNotesCopiedURL: URL?
     if let releaseNotesInputURL {
-        let releaseNotesDir = docsDir.appendingPathComponent("release-notes", isDirectory: true)
+        let releaseNotesDir = channel == .beta
+            ? docsDir.appendingPathComponent("beta/release-notes", isDirectory: true)
+            : docsDir.appendingPathComponent("release-notes", isDirectory: true)
         try FileManager.default.createDirectory(at: releaseNotesDir, withIntermediateDirectories: true)
         let targetName = "\(version).html"
         let releaseNotesOutputURL = releaseNotesDir.appendingPathComponent(targetName)
         try copyReplacingIfNeeded(from: releaseNotesInputURL, to: releaseNotesOutputURL)
         releaseNotesCopiedURL = releaseNotesInputURL
-        releaseNotesPublishedURL = "\(pagesBaseURL)/release-notes/\(targetName)"
+        releaseNotesPublishedURL = "\(channelPagesBaseURL)/release-notes/\(targetName)"
     }
 
     var generateArgs = [tempDir.path]
@@ -434,7 +529,8 @@ func main() throws {
         owner: owner,
         repo: repo,
         tag: tag,
-        version: version,
+        releaseTitle: releaseTitle,
+        isPrerelease: channel == .beta,
         archiveURL: archiveURL,
         releaseNotesPath: releaseNotesCopiedURL
     )
@@ -442,6 +538,7 @@ func main() throws {
     let downloadURL = "https://github.com/\(owner)/\(repo)/releases/download/\(tag)/\(archiveURL.lastPathComponent)"
     print("Updated appcast: \(appcastPath.path)")
     print("Archive: \(archiveURL.path)")
+    print("Release channel: \(channel.rawValue)")
     print("Release asset URL: \(downloadURL)")
     if let releaseNotesPublishedURL {
         print("Release notes URL: \(releaseNotesPublishedURL)")
@@ -449,7 +546,9 @@ func main() throws {
     print()
     print("Next:")
     print("1. Verify GitHub Release \(tag) exists and contains \(archiveURL.lastPathComponent)")
-    print("2. Commit docs/appcast.xml and any docs/release-notes/*.html changes")
+    let notesPath = channel == .beta ? "docs/beta/release-notes/*.html" : "docs/release-notes/*.html"
+    let appcastRelativePath = channel == .beta ? "docs/beta/appcast.xml" : "docs/appcast.xml"
+    print("2. Commit \(appcastRelativePath) and any \(notesPath) changes")
     print("3. Push main so GitHub Pages publishes the updated appcast")
 }
 
