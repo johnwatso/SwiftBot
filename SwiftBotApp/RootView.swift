@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -6,6 +7,10 @@ struct RootView: View {
     @State private var showToken = false
 
     var body: some View {
+        if !app.isOnboardingComplete {
+            OnboardingGateView()
+                .frame(minWidth: 1200, minHeight: 760)
+        } else {
         HSplitView {
             DashboardSidebar(selection: $selection)
                 .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
@@ -42,6 +47,7 @@ struct RootView: View {
                     .padding(.trailing, 18)
             }
         }
+        } // end else isOnboardingComplete
     }
 }
 
@@ -84,6 +90,180 @@ private struct BetaBadgeView: View {
             )
             .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
             .accessibilityLabel("Beta build")
+    }
+}
+
+// MARK: - Onboarding gate
+
+private struct OnboardingGateView: View {
+    @EnvironmentObject var app: AppModel
+
+    private enum Step { case entry, validating, confirmed, failed }
+
+    @State private var step: Step = .entry
+    @State private var tokenInput: String = ""
+    @State private var showToken: Bool = false
+    @State private var inviteURL: String? = nil
+    @State private var inviteConfirmed: Bool = false
+
+    var body: some View {
+        ZStack {
+            SwiftBotGlassBackground()
+
+            VStack(spacing: 32) {
+                // Icon + title
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [.blue, .indigo],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "cpu.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
+                    }
+                    Text("Welcome to SwiftBot")
+                        .font(.largeTitle.weight(.bold))
+                    Text("Enter your Discord bot token to get started.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Token field + action
+                VStack(spacing: 16) {
+                    HStack {
+                        Group {
+                            if showToken {
+                                TextField("Bot token", text: $tokenInput)
+                            } else {
+                                SecureField("Bot token", text: $tokenInput)
+                            }
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .disabled(step == .validating || step == .confirmed)
+
+                        Button {
+                            showToken.toggle()
+                        } label: {
+                            Image(systemName: showToken ? "eye.slash" : "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(showToken ? "Hide token" : "Show token")
+                    }
+                    .frame(maxWidth: 560)
+
+                    // Error message
+                    if step == .failed, let result = app.lastTokenValidationResult {
+                        Text(result.errorMessage)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 560)
+                    }
+
+                    // Buttons
+                    switch step {
+                    case .entry, .failed:
+                        Button {
+                            app.settings.token = tokenInput
+                            step = .validating
+                            Task {
+                                let ok = await app.validateAndOnboard()
+                                step = ok ? .confirmed : .failed
+                            }
+                        } label: {
+                            Label("Validate Token", systemImage: "checkmark.shield.fill")
+                                .frame(minWidth: 200)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    case .validating:
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text("Validating…")
+                                .foregroundStyle(.secondary)
+                        }
+
+                    case .confirmed:
+                        VStack(spacing: 16) {
+                            if let result = app.lastTokenValidationResult {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text("Connected as **\(result.username ?? "Bot")**")
+                                }
+                                .font(.body)
+                            }
+
+                            // Invite URL
+                            if let url = inviteURL {
+                                VStack(spacing: 8) {
+                                    Text("Invite your bot to a server:")
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 8) {
+                                        Text(url)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .foregroundStyle(.secondary)
+                                            .frame(maxWidth: 360)
+                                        Button {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(url, forType: .string)
+                                        } label: {
+                                            Label("Copy", systemImage: "doc.on.doc")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        Button {
+                                            if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+                                        } label: {
+                                            Label("Open Invite", systemImage: "arrow.up.right.square")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
+                                .padding(12)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                Toggle(isOn: $inviteConfirmed) {
+                                    Text("I have invited the bot to at least one server")
+                                        .font(.callout)
+                                }
+                                .toggleStyle(.checkbox)
+                                .frame(maxWidth: 560, alignment: .leading)
+                            }
+
+                            Button {
+                                app.completeOnboarding()
+                            } label: {
+                                Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
+                                    .frame(minWidth: 200)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                            .disabled(inviteURL != nil && !inviteConfirmed)
+                        }
+                        .task {
+                            if inviteURL == nil {
+                                inviteURL = await app.generateInviteURL()
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(48)
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            tokenInput = app.settings.token
+        }
     }
 }
 
@@ -1780,6 +1960,7 @@ struct GeneralSettingsView: View {
     @State private var listenPortError: String? = nil
     @State private var primaryAddressError: String? = nil
     @State private var sharedSecretError: String? = nil
+    @State private var showClearKeyConfirmation = false
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -1799,6 +1980,29 @@ struct GeneralSettingsView: View {
                                 }
                             }
                             Button(showToken ? "Hide" : "Show") { showToken.toggle() }
+                        }
+
+                        HStack {
+                            Button(role: .destructive) {
+                                showClearKeyConfirmation = true
+                            } label: {
+                                Label("Clear API Key", systemImage: "key.slash.fill")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                            .disabled(app.settings.token.isEmpty || app.status == .stopped)
+                            .confirmationDialog(
+                                "Clear API Key?",
+                                isPresented: $showClearKeyConfirmation,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Clear Key and Disconnect", role: .destructive) {
+                                    Task { await app.clearAPIKey() }
+                                }
+                                Button("Cancel", role: .cancel) { }
+                            } message: {
+                                Text("This will disconnect the bot and remove the stored token. You will need to enter a new token to reconnect.")
+                            }
                         }
 
                         Picker("Command Prefix", selection: $prefixDraft) {
@@ -1949,6 +2153,39 @@ struct GeneralSettingsView: View {
 
                         Text("Live output is a Discord embed. Preview shows field content only.")
                             .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    }
+
+                    settingsBlock(title: "Events & Actions") {
+                    // Member join welcome
+                    // Intent dependency: GUILD_MEMBER_ADD requires SERVER MEMBERS INTENT (bitmask 37507).
+                    // If intents are rejected (close 4014), member join events will not be delivered.
+                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 {
+                        Label("SERVER MEMBERS INTENT not enabled — member join events will not be received. Enable in Discord Developer Portal → Bot tab.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    Toggle("Member Join Welcome", isOn: $app.settings.behavior.memberJoinWelcomeEnabled)
+                    if app.settings.behavior.memberJoinWelcomeEnabled {
+                        TextField("Welcome Channel ID", text: $app.settings.behavior.memberJoinWelcomeChannelId)
+                            .help("Discord channel ID where welcome messages are posted.")
+                        TextField("Welcome Template", text: $app.settings.behavior.memberJoinWelcomeTemplate)
+                            .help("Template variables: {username}, {server}, {memberCount}")
+                        Text("Variables: {username} · {server} · {memberCount}")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+
+                    // Voice activity log
+                    Toggle("Voice Activity Log", isOn: $app.settings.behavior.voiceActivityLogEnabled)
+                    if app.settings.behavior.voiceActivityLogEnabled {
+                        TextField("Voice Log Channel ID", text: $app.settings.behavior.voiceActivityLogChannelId)
+                            .help("Global fallback channel for voice join/leave/move logs. Per-guild channel settings take precedence.")
+                        Text("Per-guild notification channels in SwiftMesh take precedence over this global fallback.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     }

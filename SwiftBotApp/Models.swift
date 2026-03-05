@@ -135,9 +135,9 @@ struct GuildSettings: Codable, Hashable {
     var notifyOnJoin: Bool = true
     var notifyOnLeave: Bool = true
     var notifyOnMove: Bool = true
-    var joinNotificationTemplate: String = "🔊 <@{userId}> connected to <#{channelId}>"
-    var leaveNotificationTemplate: String = "🔌 <@{userId}> disconnected from <#{channelId}>"
-    var moveNotificationTemplate: String = "🔁 <@{userId}> switched voice channels: <#{fromChannelId}> → <#{toChannelId}>"
+    var joinNotificationTemplate: String = "🔊 {username} joined {channelName}"
+    var leaveNotificationTemplate: String = "🔌 {username} left {channelName}"
+    var moveNotificationTemplate: String = "🔁 {username} moved: {fromChannelName} → {toChannelName}"
 }
 
 struct BotSettings: Codable, Hashable {
@@ -248,6 +248,15 @@ struct BotSettings: Codable, Hashable {
 struct BotBehaviorSettings: Codable, Hashable {
     var allowDMs: Bool = false
     var useAIInGuildChannels: Bool = true
+
+    // Member join welcome (P0.5)
+    var memberJoinWelcomeEnabled: Bool = false
+    var memberJoinWelcomeChannelId: String = ""
+    var memberJoinWelcomeTemplate: String = "👋 Welcome {username} to **{server}**!"
+
+    // Voice activity log — global fallback channel when no per-guild channel is set (P0.5)
+    var voiceActivityLogEnabled: Bool = false
+    var voiceActivityLogChannelId: String = ""
 }
 
 struct WikiCommand: Codable, Hashable, Identifiable {

@@ -116,9 +116,10 @@ final class MeshFailoverTests: XCTestCase {
             sharedSecret: "drill-secret"
         )
         let body = (try? JSONEncoder().encode(payload)) ?? Data()
+        let signedHeaders = await worker.testMakeHMACHeaders(path: "/v1/mesh/leader-changed", body: body)
         let request = makeRequest(
             method: "POST", path: "/v1/mesh/leader-changed",
-            headers: ["X-Cluster-Secret": "drill-secret"], body: body
+            headers: signedHeaders, body: body
         )
         let response = await worker.testProcessHTTPRequest(request)
 
@@ -147,9 +148,10 @@ final class MeshFailoverTests: XCTestCase {
             sharedSecret: "drill-secret"
         )
         let body = (try? JSONEncoder().encode(payload)) ?? Data()
+        let signedHeaders = await worker.testMakeHMACHeaders(path: "/v1/mesh/leader-changed", body: body)
         let request = makeRequest(
             method: "POST", path: "/v1/mesh/leader-changed",
-            headers: ["X-Cluster-Secret": "drill-secret"], body: body
+            headers: signedHeaders, body: body
         )
         let response = await worker.testProcessHTTPRequest(request)
 
@@ -198,9 +200,10 @@ final class MeshFailoverTests: XCTestCase {
             sharedSecret: "drill-secret"
         )
         let body = (try? JSONEncoder().encode(changedPayload)) ?? Data()
+        let signedHeaders = await worker.testMakeHMACHeaders(path: "/v1/mesh/leader-changed", body: body)
         let request = makeRequest(
             method: "POST", path: "/v1/mesh/leader-changed",
-            headers: ["X-Cluster-Secret": "drill-secret"], body: body
+            headers: signedHeaders, body: body
         )
         let response = await worker.testProcessHTTPRequest(request)
 

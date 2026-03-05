@@ -51,27 +51,20 @@ final class ClusterSecurityTests: XCTestCase {
             sharedSecret: "hunter2"
         )
 
+        // /health is always open regardless of auth
         let healthNoSecret = await coordinator.testProcessHTTPRequest(
             makeRequest(method: "GET", path: "/health", headers: [:], body: Data())
         )
         XCTAssertEqual(statusCode(from: healthNoSecret), 200)
 
+        // Missing HMAC headers → 401
         let missingSecret = await coordinator.testProcessHTTPRequest(
             makeRequest(method: "POST", path: "/v1/ai-reply", headers: [:], body: Data("{}".utf8))
         )
         XCTAssertEqual(statusCode(from: missingSecret), 401)
 
+        // Old X-Cluster-Secret header (wrong scheme) → 401
         let wrongSecret = await coordinator.testProcessHTTPRequest(
-            makeRequest(
-                method: "POST",
-                path: "/v1/ai-reply",
-                headers: ["X-Cluster-Secret": "wrong"],
-                body: Data("{}".utf8)
-            )
-        )
-        XCTAssertEqual(statusCode(from: wrongSecret), 401)
-
-        let correctSecret = await coordinator.testProcessHTTPRequest(
             makeRequest(
                 method: "POST",
                 path: "/v1/ai-reply",
@@ -79,7 +72,15 @@ final class ClusterSecurityTests: XCTestCase {
                 body: Data("{}".utf8)
             )
         )
-        XCTAssertEqual(statusCode(from: correctSecret), 503)
+        XCTAssertEqual(statusCode(from: wrongSecret), 401)
+
+        // Valid HMAC signature → auth passes, 503 because no AI handler is wired in test
+        let body = Data("{}".utf8)
+        let signedHeaders = await coordinator.testMakeHMACHeaders(path: "/v1/ai-reply", body: body)
+        let validSig = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        XCTAssertEqual(statusCode(from: validSig), 503)
     }
 
     func testClusterSecretBackwardCompatWhenEmpty() async {
@@ -122,6 +123,79 @@ final class ClusterSecurityTests: XCTestCase {
 
         await bus.publish(TestEvent(value: 42))
         await fulfillment(of: [exp], timeout: 1.0)
+    }
+
+    func testNonceReplayRejected() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .standalone,
+            nodeName: "ReplayTest",
+            leaderAddress: "",
+            listenPort: 39010,
+            sharedSecret: "replay-secret"
+        )
+
+        let body = Data("{}".utf8)
+        // Generate a single signed header set — same nonce will be reused.
+        let signedHeaders = await coordinator.testMakeHMACHeaders(method: "POST", path: "/v1/ai-reply", body: body)
+
+        let first = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        // First request: auth passes, handler absent → 503
+        XCTAssertEqual(statusCode(from: first), 503, "First request with valid HMAC should pass auth")
+
+        let second = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        // Second request: same nonce → replay → 401
+        XCTAssertEqual(statusCode(from: second), 401, "Replayed nonce must be rejected")
+    }
+
+    func testStaleTimestampRejected() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .standalone,
+            nodeName: "StaleTest",
+            leaderAddress: "",
+            listenPort: 39011,
+            sharedSecret: "stale-secret"
+        )
+
+        // Build headers manually with a timestamp 301s in the past.
+        let staleTimestamp = Int(Date().timeIntervalSince1970) - 301
+        let nonce = "stale-nonce-\(staleTimestamp)"
+        let body = Data("{}".utf8)
+        // We can't call meshSignature directly, so use testMakeHMACHeaders and
+        // then overwrite the timestamp to simulate a stale request.
+        var headers = await coordinator.testMakeHMACHeaders(method: "POST", path: "/v1/ai-reply", body: body)
+        headers["X-Mesh-Timestamp"] = String(staleTimestamp)
+        // Signature is now invalid for the stale timestamp — but skew check fires first.
+        headers["X-Mesh-Nonce"] = nonce
+
+        let response = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: headers, body: body)
+        )
+        XCTAssertEqual(statusCode(from: response), 401, "Stale timestamp must be rejected")
+    }
+
+    func testMethodMismatchRejected() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .standalone,
+            nodeName: "MethodTest",
+            leaderAddress: "",
+            listenPort: 39012,
+            sharedSecret: "method-secret"
+        )
+
+        let body = Data("{}".utf8)
+        // Sign as GET, send as POST — method mismatch should fail signature verification.
+        let signedHeaders = await coordinator.testMakeHMACHeaders(method: "GET", path: "/v1/ai-reply", body: body)
+        let response = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
+        )
+        XCTAssertEqual(statusCode(from: response), 401, "Method mismatch must be rejected")
     }
 
     private func makeRequest(method: String, path: String, headers: [String: String], body: Data) -> Data {

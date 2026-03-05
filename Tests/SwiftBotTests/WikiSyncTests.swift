@@ -47,7 +47,8 @@ final class WikiSyncTests: XCTestCase {
         )
         
         // Simulate Standby pull
-        let raw = makeHTTPRequest(method: "GET", path: "/v1/mesh/sync/wiki-cache", headers: ["X-Cluster-Secret": "s"], body: Data())
+        let signedHeaders = await leader.testMakeHMACHeaders(method: "GET", path: "/v1/mesh/sync/wiki-cache", body: Data())
+        let raw = makeHTTPRequest(method: "GET", path: "/v1/mesh/sync/wiki-cache", headers: signedHeaders, body: Data())
         let resp = await leader.testProcessHTTPRequest(raw)
         XCTAssertEqual(statusCode(from: resp), 200)
         

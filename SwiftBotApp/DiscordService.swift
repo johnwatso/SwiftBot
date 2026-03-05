@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -206,12 +207,15 @@ struct OllamaEngine: AIEngine {
 
 actor DiscordService {
 
+    private let discordLogger = Logger(subsystem: "com.swiftbot", category: "discord")
+
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
     private let finalsWikiAPI = URL(string: "https://www.thefinals.wiki/api.php")!
     private let duckDuckGoHTML = URL(string: "https://duckduckgo.com/html/")!
     private var socket: URLSessionWebSocketTask?
     private var heartbeatTask: Task<Void, Never>?
+    private var heartbeatSentAt: Date?
     private var receiveTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var heartbeatInterval: UInt64 = 41_250_000_000
@@ -239,8 +243,23 @@ actor DiscordService {
 
     private let session = URLSession(configuration: .default)
 
+    /// Dedicated session for Discord identity probes (/users/@me, /oauth2/applications/@me).
+    /// Short timeout, no caching — token never cached locally.
+    private static let identitySessionConfig: URLSessionConfiguration = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 10
+        c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        c.urlCache = nil
+        return c
+    }()
+    private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
+
     var onPayload: ((GatewayPayload) async -> Void)?
     var onConnectionState: ((BotStatus) async -> Void)?
+    /// Called each time a heartbeat ACK (op 11) is received; value is round-trip ms.
+    var onHeartbeatLatency: ((Int) async -> Void)?
+    /// Called when the WebSocket closes with a non-normal code; value is the close code integer.
+    var onGatewayClose: ((Int) async -> Void)?
 
     func setOnPayload(_ handler: @escaping (GatewayPayload) async -> Void) {
         onPayload = handler
@@ -248,6 +267,14 @@ actor DiscordService {
 
     func setOnConnectionState(_ handler: @escaping (BotStatus) async -> Void) {
         onConnectionState = handler
+    }
+
+    func setOnHeartbeatLatency(_ handler: @escaping (Int) async -> Void) {
+        onHeartbeatLatency = handler
+    }
+
+    func setOnGatewayClose(_ handler: @escaping (Int) async -> Void) {
+        onGatewayClose = handler
     }
 
     func setRuleEngine(_ engine: RuleEngine) {
@@ -400,9 +427,11 @@ actor DiscordService {
     func connect(token: String) async {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
+            discordLogger.warning("Gateway connect called with empty token — aborting")
             await onConnectionState?(.stopped)
             return
         }
+        discordLogger.info("Gateway connect initiated")
         userInitiatedDisconnect = false
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -412,6 +441,7 @@ actor DiscordService {
     }
 
     func disconnect() {
+        discordLogger.info("Gateway disconnect requested (user-initiated)")
         userInitiatedDisconnect = true
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -443,6 +473,11 @@ actor DiscordService {
                     await onPayload?(payload)
                 }
             } catch {
+                // Capture Discord gateway close code (4004, 4014, etc.) before reconnect.
+                let closeRawValue = socket.closeCode.rawValue
+                if closeRawValue != 1000, closeRawValue > 0 {
+                    await onGatewayClose?(closeRawValue)
+                }
                 await scheduleReconnect(
                     reason: "Gateway receive failed: \(error.localizedDescription)"
                 )
@@ -471,7 +506,11 @@ actor DiscordService {
         case 9:
             await identify(token: token)
         case 11:
-            break
+            if let sent = heartbeatSentAt {
+                let latencyMs = max(1, Int((Date().timeIntervalSince(sent) * 1000).rounded()))
+                heartbeatSentAt = nil
+                await onHeartbeatLatency?(latencyMs)
+            }
         default:
             break
         }
@@ -518,6 +557,181 @@ actor DiscordService {
         await openGatewayConnection(token: token, isReconnect: true)
     }
 
+    // MARK: - Onboarding: Token Validation & Invite Generation
+
+    /// Categorized token validation errors with human-readable message and remediation hint.
+    enum TokenValidationError {
+        case invalidToken
+        case rateLimited
+        case networkFailure
+        case serverError(Int)
+
+        var message: String {
+            switch self {
+            case .invalidToken:   return "Token is invalid or revoked."
+            case .rateLimited:    return "Rate limited by Discord. Wait a moment and try again."
+            case .networkFailure: return "Network request failed. Check your internet connection."
+            case .serverError(let code): return "Discord server error (HTTP \(code)). Try again shortly."
+            }
+        }
+
+        var remediation: String {
+            switch self {
+            case .invalidToken:   return "Use Clear API Key in Settings to enter a new token."
+            case .rateLimited:    return "Reduce request frequency; Discord will reset the limit automatically."
+            case .networkFailure: return "Check your connection, then try connecting again."
+            case .serverError:    return "Discord may be experiencing an outage. Check status.discord.com."
+            }
+        }
+    }
+
+    /// Rich result from token validation including bot identity fields.
+    struct TokenValidationResult {
+        let isValid: Bool
+        let userId: String?
+        let username: String?
+        let discriminator: String?
+        let avatarURL: URL?
+        let errorCategory: TokenValidationError?
+        let errorMessage: String
+
+        static func failure(_ category: TokenValidationError) -> TokenValidationResult {
+            TokenValidationResult(isValid: false, userId: nil, username: nil,
+                                  discriminator: nil, avatarURL: nil,
+                                  errorCategory: category, errorMessage: category.message)
+        }
+    }
+
+    /// Validates a bot token against Discord's /users/@me endpoint.
+    /// Returns a rich result including bot identity on success.
+    /// Token is never logged; OSLog uses privacy: .private throughout.
+    func validateBotTokenRich(_ token: String) async -> TokenValidationResult {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return TokenValidationResult(isValid: false, userId: nil, username: nil,
+                                         discriminator: nil, avatarURL: nil,
+                                         errorCategory: .invalidToken,
+                                         errorMessage: "Token is empty.")
+        }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                discordLogger.warning("Token validation: invalid response (no HTTPURLResponse)")
+                return .failure(.networkFailure)
+            }
+
+            switch http.statusCode {
+            case 200..<300:
+                // Parse bot identity from response.
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let userId   = json?["id"] as? String
+                let username = json?["username"] as? String
+                let discrim  = json?["discriminator"] as? String
+                let avatarHash = json?["avatar"] as? String
+                var avatarURL: URL?
+                if let uid = userId, let hash = avatarHash, !hash.isEmpty {
+                    avatarURL = URL(string: "https://cdn.discordapp.com/avatars/\(uid)/\(hash).png")
+                }
+                discordLogger.info("Token validation succeeded for user \(userId ?? "unknown", privacy: .private)")
+                return TokenValidationResult(isValid: true, userId: userId, username: username,
+                                             discriminator: discrim, avatarURL: avatarURL,
+                                             errorCategory: nil, errorMessage: "Valid token")
+            case 401:
+                discordLogger.warning("Token validation: 401 unauthorized")
+                return .failure(.invalidToken)
+            case 429:
+                discordLogger.warning("Token validation: 429 rate limited")
+                return .failure(.rateLimited)
+            default:
+                discordLogger.warning("Token validation: unexpected HTTP \(http.statusCode, privacy: .public)")
+                return .failure(.serverError(http.statusCode))
+            }
+        } catch {
+            discordLogger.warning("Token validation: network failure — \(error.localizedDescription, privacy: .public)")
+            return .failure(.networkFailure)
+        }
+    }
+
+    /// Resolves the bot's application client_id via /oauth2/applications/@me.
+    /// Falls back to the userId from token validation if the endpoint is unavailable.
+    func resolveClientID(token: String, fallbackUserID: String?) async -> String? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallbackUserID }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("oauth2/applications/@me"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let appID = json["id"] as? String {
+                discordLogger.info("Resolved client_id from /oauth2/applications/@me")
+                return appID
+            }
+        } catch {
+            discordLogger.warning("client_id resolution failed, using fallback: \(error.localizedDescription, privacy: .public)")
+        }
+
+        // Fallback: use the user ID from /users/@me (same value for bots).
+        if let fallback = fallbackUserID {
+            discordLogger.info("Using userId as client_id fallback")
+            return fallback
+        }
+        return nil
+    }
+
+    /// Generates a Discord OAuth2 bot invite URL using URLComponents (no manual string concatenation).
+    /// - Parameters:
+    ///   - clientId: The bot's application ID.
+    ///   - includeSlashCommands: When true, appends `applications.commands` scope.
+    /// - Returns: The invite URL string, or nil if clientId is empty or URL construction fails.
+    func generateInviteURL(clientId: String, includeSlashCommands: Bool) -> String? {
+        let trimmed = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "discord.com"
+        components.path = "/oauth2/authorize"
+
+        var scope = "bot"
+        if includeSlashCommands { scope += " applications.commands" }
+
+        components.queryItems = [
+            URLQueryItem(name: "client_id",   value: trimmed),
+            URLQueryItem(name: "permissions", value: "274877991936"),
+            URLQueryItem(name: "scope",       value: scope)
+        ]
+
+        return components.url?.absoluteString
+    }
+
+    /// Runs a REST health probe against GET /users/@me.
+    /// Returns: ok flag, HTTP status code, and the X-RateLimit-Remaining header value.
+    func restHealthProbe(token: String) async -> (isOK: Bool, httpStatus: Int?, rateLimitRemaining: Int?) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return (false, nil, nil) }
+        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me")!)
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 10
+        do {
+            let (_, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return (false, nil, nil) }
+            let remaining = (http.value(forHTTPHeaderField: "X-RateLimit-Remaining"))
+                .flatMap { Int($0) }
+            return (http.statusCode == 200, http.statusCode, remaining)
+        } catch {
+            return (false, nil, nil)
+        }
+    }
+
     func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -560,6 +774,7 @@ actor DiscordService {
     }
 
     private func sendHeartbeat() async {
+        heartbeatSentAt = Date()
         let payload: [String: Any] = ["op": 1, "d": sequence as Any]
         await sendRaw(payload)
     }
@@ -901,6 +1116,7 @@ actor DiscordService {
                     ))
                 }
 
+                discordLogger.debug("Local AI DM reply triggered for user \(event.userId, privacy: .private)")
                 if let aiReply = await generateLocalAIDMReply(
                     messages: messagesToProcess,
                     serverName: guildNamesById[event.guildId],
