@@ -1,0 +1,465 @@
+SwiftBot — Phase 1 Feature Plan (Docs Only)
+============================================
+Status: Planning / Documentation
+Code changes: NONE in this phase
+Last updated: 2026-03-05
+
+Overview
+--------
+This document captures the agreed execution order, design intent, and acceptance
+criteria for the four Phase 1 features. It is the single source of truth for
+AI agents and John while planning implementation.
+
+Decision scope: docs + design only. No source files are modified in Phase 1.
+
+Implementation Kickoff Protocol (Use When Coding Starts)
+--------------------------------------------------------
+To ensure coding work references the agreed docs, use this instruction format:
+
+"Implement only from these docs, in this order:
+1) docs/FEATURE_PLAN_PHASE1.txt
+2) ARCHITECTURE.md
+3) AI_GUIDE.md
+Constraints:
+- Execute P0 sequence first.
+- If any doc conflict exists, stop and ask before coding.
+- Before finishing, summarize exactly which sections were followed."
+
+Required completion checks:
+- Build succeeds.
+- Targeted tests for modified areas pass.
+- Release build validation passes:
+  `xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Release build`
+
+
+Feature 1 — Onboarding Splash / First-Time Setup
+-------------------------------------------------
+Goal: Guide new users from zero to a running bot without reading external docs.
+
+User flow:
+  1. User launches SwiftBot with no stored token.
+  2. Splash screen appears (replaces main dashboard).
+  3. User pastes their Discord bot token into a secure text field.
+  4. SwiftBot validates the token via GET /users/@me (base: https://discord.com/api/v10).
+     - Success: display bot avatar + username + discriminator.
+     - Failure: show categorised error (invalid token / network / rate-limited).
+  5. App resolves client_id from application metadata (/oauth2/applications/@me),
+     with fallback to identity ID if metadata is unavailable.
+  6. App computes an OAuth2 invite URL with the minimum required permission set
+     (permissions: 274877991936) and displays it as a copyable link + button.
+     Note: include applications.commands scope only when slash commands are enabled.
+  7. Once the user confirms the bot is in at least one server, transition to the
+     main dashboard.
+
+Required bot permissions for invite URL (permission integer: 274877991936):
+  - View Channels              (1024)
+  - Send Messages              (2048)
+  - Embed Links                (16384)
+  - Read Message History       (65536)
+  - Send Messages in Threads   (274877906944)
+
+OAuth scope guidance:
+  - Baseline scope: bot
+  - applications.commands: optional, add only when slash commands are enabled
+    (this is an OAuth scope, not a permission bit — do not include in the integer)
+
+Required gateway intents (bitmask: 37507):
+  - GUILDS                     (1)    — guild/channel/role metadata
+  - GUILD_MEMBERS              (2)    — member join/leave events [PRIVILEGED]
+  - GUILD_VOICE_STATES         (128)  — voice tracking
+  - GUILD_MESSAGES             (512)  — prefix command handling
+  - DIRECT_MESSAGES            (4096) — DM handling
+  - MESSAGE_CONTENT            (32768)— read message text [PRIVILEGED]
+  Note: GUILD_MEMBERS and MESSAGE_CONTENT must be enabled in the Discord
+  Developer Portal under Bot > Privileged Gateway Intents.
+
+UX constraints:
+  - Token field must not log or display the token in plain text after entry.
+  - Validation must be non-blocking (async); show a spinner, not a frozen UI.
+  - The splash must not be dismissible until a valid token is confirmed.
+
+Acceptance criteria:
+  [ ] Splash shown on first launch (no stored token).
+  [ ] Token validated before proceeding.
+  [ ] Invite URL generated with correct permissions.
+  [ ] Bot avatar/username displayed after successful validation.
+  [ ] Error state shown with actionable message on failure.
+
+
+Feature 2 — Clear / Reset Bot Token
+-------------------------------------
+Goal: Let users safely swap or revoke their bot token from within the app.
+
+User flow:
+  1. User opens Settings.
+  2. "Clear API Key" button is visible (disabled if already disconnected).
+  3. User clicks it — confirmation dialog: "This will disconnect your bot and
+     clear the stored token. Continue?"
+  4. On confirm:
+     a. Bot disconnects from the Discord Gateway (clean close, not a crash).
+     b. Stored token is removed from Application Support.
+     c. App returns to the onboarding splash screen.
+  5. User can now enter a new token.
+
+UX constraints:
+  - Confirmation is mandatory — no single-click token wipe.
+  - App should not attempt auto-reconnect after a deliberate clear.
+  - Optionally surface a link to the Discord Developer Portal for token revocation.
+
+Acceptance criteria:
+  [ ] Button visible in Settings.
+  [ ] Confirmation dialog shown before any action.
+  [ ] Gateway disconnected cleanly on confirm.
+  [ ] Token cleared from persistent storage.
+  [ ] Onboarding splash shown immediately after clear.
+  [ ] No auto-reconnect attempted.
+
+
+Feature 3 — API Health / Diagnostics Panel
+-------------------------------------------
+Goal: Give users and developers visibility into live connection state and a
+structured path to resolving common failures.
+
+Panel indicators:
+  Gateway       WebSocket state: connected | reconnecting | failed
+  Latency       Last heartbeat ACK round-trip in ms
+  REST          GET /users/@me result: ok | error (with HTTP status)
+  Rate Limits   Remaining requests in the current global window
+  Permissions   Per-monitored-channel permission check result
+  Intents       Confirmation that required gateway intents are enabled
+  (Required Gateway Intents bitmask: 37507)
+
+Test Connection button:
+  Runs a full on-demand probe: gateway connect → REST health check.
+  Results appear inline with timestamp.
+
+Common failure runbook (to be surfaced in-app or in docs):
+  - 401 Unauthorized     → Token is invalid or revoked. Use Clear API Key to reset.
+  - 403 Forbidden        → Bot lacks permission in that channel. Re-invite with correct permissions.
+  - Missing Intents      → Enable SERVER MEMBERS INTENT and MESSAGE CONTENT INTENT
+                           in the Discord Developer Portal → Bot tab.
+  - Gateway CLOSE 4004   → Authentication failed. Token is wrong.
+  - Gateway CLOSE 4014   → Privileged intent not enabled in Developer Portal.
+  - Rate limited (429)   → Reduce send frequency; diagnostics will show retry-after.
+
+UX constraints:
+  - Panel updates in real time; no manual refresh needed for live indicators.
+  - "Test Connection" is rate-limited in the UI (e.g. once per 10 seconds).
+  - Errors must be categorised, not raw HTTP status codes only.
+
+Acceptance criteria:
+  [ ] All six indicators displayed with live values.
+  [ ] Test Connection runs a full probe on demand.
+  [ ] Each error category maps to a human-readable message + suggested fix.
+  [ ] Panel is accessible from the Status view without navigating away.
+
+
+Feature 4 — Member Welcome & Voice Join/Leave Messaging
+--------------------------------------------------------
+Goal: Let the bot send configurable welcome messages when members join the server
+or enter/leave voice channels.
+
+Sub-feature 4a — Member Join Welcome:
+  Trigger: member_join (Discord GUILD_MEMBER_ADD gateway event)
+  Action:  Post a message to a configured "welcome channel"
+  Template variables:
+    {username}    — new member's display name
+    {server}      — guild name
+    {memberCount} — total member count after join
+  Default template: "Welcome to {server}, {username}! You're member #{memberCount}."
+  Config: per-guild welcome channel selection + message template editor in Settings.
+
+Sub-feature 4b — Voice Join/Leave Log:
+  Trigger: voice_state_update (existing gateway event, already tracked)
+  Action:  Post a log line to a configured "voice log channel"
+  Templates:
+    Join:  "{username} joined {channel}"
+    Leave: "{username} left {channel}"
+    Move:  "{username} moved from {fromChannel} to {toChannel}"
+  Config: per-guild voice log channel selection + toggle on/off per event type.
+
+Anti-spam / idempotency guardrails:
+  - Member join: deduplicate by user ID + guild ID within a 10-second window
+    (prevents duplicate events from gateway reconnect replays).
+  - Voice: only fire on actual state transitions; ignore redundant VOICE_STATE_UPDATE
+    events where channel ID has not changed.
+  - Both features require GUILD_MEMBERS and GUILD_VOICE_STATES intents (already
+    used for existing voice tracking).
+
+Relationship to existing Actions engine:
+  - member_join is a new trigger type, consistent with the existing trigger model
+    (voice_join, voice_leave, voice_move, message_contains).
+  - Voice join/leave messaging is an extension of the existing Actions rule engine,
+    not a separate system.
+
+Acceptance criteria:
+  [ ] member_join trigger fires on new member arrival (not on bot reconnect replay).
+  [ ] Welcome message posted to configured channel with correct template expansion.
+  [ ] Voice join/leave/move log posted to configured voice log channel.
+  [ ] Deduplication guard prevents double-posts on reconnect.
+  [ ] All config accessible in the Actions or Settings view.
+  [ ] Both features can be disabled independently.
+
+
+Deferred to Phase 2
+--------------------
+- Menu bar connection status indicator (green/yellow/red dot)
+- Launch at Login toggle
+- Reconnect policy / backoff tuning UI
+- Beta-aware app icon (runtime Dock icon swap for -beta builds)
+- Per-server welcome message profiles
+- Analytics mode + context-aware AI action replies (requested 2026-03-05)
+
+
+Feature Proposal — Analytics Mode & Context-Aware AI Action Replies
+--------------------------------------------------------------------
+Goal: Add an analytics option that tracks member activity (join/disconnect and
+voice presence patterns) and enables context-aware action replies (including AI
+generated witty responses) based on recent/long-term behavior.
+
+Placement:
+- Not a blocker for current Phase 1 features.
+- Recommended as first Phase 2 functional slice after P0/P1 preconditions.
+
+Data sourcing strategy (API vs cache):
+- Primary source should be live Discord gateway events already in scope:
+  - `GUILD_MEMBER_ADD` for server joins
+  - `VOICE_STATE_UPDATE` for voice connect/disconnect/move
+- No dependable Discord API endpoint provides complete historical "first this week"
+  behavior out of the box, so this feature should rely on persisted local activity
+  cache/ledger rather than on-demand historical API pulls.
+
+Proposed data model (persisted locally):
+- `memberActivity[guildId][userId]` with:
+  - `firstSeenAt`
+  - `lastSeenAt`
+  - `lastVoiceJoinAt`
+  - `lastVoiceLeaveAt`
+  - `weeklyFirstSeenWeekKey` (ISO week key)
+  - rolling counters (joins/leaves/moves per day/week)
+- Store in Application Support (separate analytics file) with schema versioning.
+
+Context predicates (examples):
+- First voice connection this week
+- First seen after inactivity threshold (e.g., 14+ days)
+- First-ever seen in guild
+- Reconnect frequency anomaly (many joins/leaves in short period)
+
+Reply generation architecture:
+- Step 1 (deterministic): evaluate predicates and produce structured context facts.
+- Step 2 (optional AI): generate tone/personality response from those facts.
+- Step 3 (safety fallback): if AI unavailable/rate-limited/filtered, send a
+  deterministic template response.
+- AI output must be bounded and context-limited (no raw history dump in prompt).
+
+Operational/safety guardrails:
+- Per-user and per-channel cooldowns to prevent spam.
+- Deduplicate replay/reconnect events (idempotency window).
+- Opt-in per guild; configurable channels and tone level.
+- Ignore bot accounts.
+- Add content safety filter for generated witty responses.
+
+Dependencies:
+- Requires `GUILD_MEMBERS` and `GUILD_VOICE_STATES` intents (already in planning mask 37507).
+- No additional privileged intents required for the base analytics mode.
+
+Acceptance criteria:
+- [ ] Analytics mode can be toggled on/off per guild.
+- [ ] Join/disconnect activity is persisted and survives app restarts.
+- [ ] "First this week" and "first after inactivity" predicates evaluate correctly.
+- [ ] AI context replies trigger only when configured predicates match.
+- [ ] Deterministic fallback sends when AI is unavailable.
+- [ ] Cooldowns/idempotency prevent duplicate or noisy outputs.
+
+
+Codebase Improvement Backlog (Audit: 2026-03-05)
+-------------------------------------------------
+These are architecture/maintainability improvements identified from code review.
+They are not required to ship Phase 1 features but should be planned to reduce
+future risk and implementation cost.
+
+1. Split `AppModel` into focused coordinators/services.
+   Current file is very large and mixes gateway event handling, command execution,
+   persistence, diagnostics state, Patchy runtime orchestration, and mesh sync.
+   This increases regression risk and makes feature work harder to isolate.
+
+2. Modularize `RootView` and settings/forms by feature domain.
+   The current monolithic UI surface makes onboarding/diagnostics additions harder
+   to implement and test cleanly. Break into feature-local views and view-models.
+
+3. Replace silent `try?` error swallowing in runtime paths with structured error reporting.
+   Many network/serialization/storage operations currently fail quietly. Add typed
+   error categories and route failures into diagnostics logs/metrics.
+
+4. Consolidate Discord/mesh HTTP calls behind a shared API client layer.
+   `URLSession.shared` usage is distributed across multiple files. A shared client
+   should standardize timeout policy, retry/backoff, cancellation, auth headers,
+   and response diagnostics.
+
+5. Add explicit persistence schema versioning + migration tests.
+   Settings/rules/cache files should have deterministic migration paths and tests
+   for backward compatibility to avoid silent load fallbacks.
+
+6. Expand test coverage for onboarding/security contracts.
+   Add tests for: invite URL generation logic (scope gating + permission integer),
+   token clear/reset behavior, endpoint normalization assumptions, and no DEBUG-only
+   symbol usage from production paths.
+
+7. Introduce event-ingestion guardrails for gateway replay/idempotency.
+   Member join and voice events need deterministic dedupe windows and replay-safe
+   handling semantics across reconnects to prevent duplicate automations.
+
+8. Improve observability primitives for live support/debugging.
+   Add correlation IDs for outbound API probes, capture rate-limit headers, and
+   classify failures consistently so diagnostics panel output is actionable.
+
+--- Specific findings from direct source review (claude, 2026-03-05) ---
+
+9. appendPatchyLog (AppModel.swift) allocates a new ISO8601DateFormatter on every
+   call. DateFormatter is expensive to initialise and should be a shared static —
+   the same way LogStore already handles it. Fix is trivial; worth doing before
+   Patchy cycle frequency increases.
+
+10. WeeklySummaryPlugin is re-created on every connectDiscordInternal() call. Any
+    in-memory counters/history the plugin holds are discarded on reconnect. Decide
+    whether the plugin should be created once at init and reused, or have its state
+    persisted across reconnects before extending the plugin system further.
+
+11. ConfigStore, RuleConfigStore, DiscordCacheStore, and MeshCursorStore each
+    duplicate the Application Support path-building boilerplate in their init().
+    A shared SwiftBotSupportDirectory helper would eliminate the repetition and
+    reduce risk of one store silently writing to the wrong location.
+
+12. commandCooldown is hardcoded to 3.0 seconds and not exposed in Settings.
+    Configurable cooldown would let server operators tune anti-spam without a
+    rebuild, and would make the value testable.
+
+13. LogStore caps at 500 lines and patchyDebugLogs at 200 — both hardcoded.
+    Reasonable defaults but not configurable. Useful to expose, especially for
+    debugging sessions where full history matters.
+
+14. GUILD_MEMBER_ADD gateway event is not currently dispatched by the gateway
+    handler. This is the required entry point for Feature 4a (member welcome).
+    Nothing needs to change in existing code — adding the event type, payload
+    struct, and dispatch case is purely additive.
+
+15. Token is already correctly stored in the Keychain via KeychainHelper
+    (Persistence.swift). Feature 2 (Clear API Key) maps directly to
+    KeychainHelper.deleteToken() + token = "" + splash navigation. Keychain
+    migration from disk is already implemented so no extra migration is needed.
+
+16. DiagnosticsView shows gateway/cluster/voice sections but has no REST health
+    probe, latency row, rate-limit display, intents check, or Test Connection
+    button. Feature 3 rows are purely additive — nothing needs to be removed.
+
+17. startBot() logs a warning when the token is empty but does not navigate to
+    onboarding (AppModel.swift). Once Feature 1 is implemented, this code path
+    should transition to the splash screen instead of appending a log line.
+
+Efficiency Debt Workstream (Cross-Agent Synthesis, 2026-03-05)
+---------------------------------------------------------------
+Goal: reduce avoidable CPU/memory churn in hot paths without widening feature scope.
+
+Validated hot-path hotspots:
+- `DiscordService.swift` gateway receive loop creates `JSONDecoder()` per incoming message.
+- `AppModel.swift` `appendPatchyLog` creates `ISO8601DateFormatter()` per log line.
+- `ClusterCoordinator.swift` creates `ISO8601DateFormatter()` in status/probe response paths.
+
+Priority order:
+
+E0 (quick wins, low risk):
+- Reuse stored decoder/encoder instances in the highest-frequency paths first
+  (gateway decode and outbound message encode).
+- Reuse static `ISO8601DateFormatter` in `appendPatchyLog` and cluster status/probe paths
+  (avoid per-event allocation).
+- Replace `patchyDebugLogs.insert(at: 0)` with append + reverse-at-render (or ring buffer)
+  to avoid O(n) shifts on every log line.
+
+E1 (near-term efficiency + correctness):
+- Centralize cluster/status polling ownership to one throttled loop to prevent duplicate
+  network work from view/runtime overlap.
+- Stabilize `WeeklySummaryPlugin` lifecycle across reconnects (reuse instance or persist
+  plugin state) to avoid churn and accidental reset.
+
+E2 (scale-oriented optimizations):
+- Move capped log/history buffers to deque/ring-buffer structures where remove-first or
+  prepend patterns currently cause O(n) shifts.
+- Add index map acceleration for Patchy target runtime updates if target count growth makes
+  current O(n) scans measurable.
+
+Maintainability (non-efficiency lane, tracked separately):
+- Replace repeated Application Support store boilerplate with a shared helper to reduce
+  copy/paste divergence (maintainability benefit, not a primary perf win).
+
+Acceptance criteria:
+- [ ] Hot-path formatter/encoder allocations are removed from per-event/per-log loops.
+- [ ] Gateway payload decode no longer allocates a new decoder per message.
+- [ ] Polling is single-owner and rate-limited by policy.
+- [ ] Patchy log append path is O(1) amortized.
+- [ ] Weekly summary behavior remains stable across reconnect events.
+- [ ] Efficiency changes introduce no behavior regression in P0/P1 features.
+
+
+Notes for Implementation (future reference)
+--------------------------------------------
+- member_join requires the SERVER MEMBERS INTENT enabled in the Discord Developer
+  Portal AND passed in the identify payload (intents bitmask bit 1, value 2).
+- The diagnostics panel's permission check should use GET /guilds/{id}/members/@me
+  or resolve channel overwrites from the cached metadata — do not make live calls
+  per-channel on every panel render.
+- Token storage must use the macOS Keychain (not UserDefaults or a plain JSON file).
+  If currently stored elsewhere, migration should happen silently on first launch
+  after this feature ships.
+- Release build validation rule (from #shiphook): any new methods called by
+  production code must NOT live inside #if DEBUG. Validate with:
+    xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Release build
+
+
+
+Technical Debt & Architectural Improvement Opportunities (Senior Engineer Audit)
+================================================================================
+The following areas have been identified for refactoring and stabilization to
+prevent regressions and ensure a clean integration for Phase 1 features.
+
+1. AppModel Responsibility Overload (God Object)
+------------------------------------------------
+- AppModel currently manages: bot lifecycle, settings persistence, Patchy
+  scheduling, command routing, help rendering, and more.
+- Recommended: Extract Feature Coordinators (e.g., `PatchyCoordinator`, 
+  `CommandRouter`) to reduce the 2000+ line count and improve testability.
+
+2. RootView Modularization (2450 LOC)
+-------------------------------------
+- RootView is a monolith containing all UI modules (Actions, Patchy, Mesh, 
+  Settings). This causes slow previews and brittle state updates.
+- Recommended: Decompose into feature-specific views (e.g., `PatchyDashboardView`, 
+  `RuleBuilderView`, `BotSettingsView`) with clear, ID-based bindings rather 
+  than array indices (prevents "out-of-range" crashes).
+
+3. Service Lifecycle & Gated Onboarding
+----------------------------------------
+- Currently, services (Patchy, Discord) may attempt to start before a token is 
+  validated or during a "Clear API Key" reset.
+- Recommended: Implement a robust `ServiceState` (stopped, idle, connecting, 
+  running) in AppModel to ensure zero network activity until a token is 
+  confirmed during onboarding.
+
+4. Centralized Polling & Resource Efficiency
+--------------------------------------------
+- Multiple views (SwiftMesh, Overview) still initiate redundant polling tasks.
+- Recommended: Move all view-level polling into a single, throttled `AppModel` 
+  loop to reduce CPU and network overhead.
+
+5. Persistence & Coalescing Logic
+---------------------------------
+- While `PersistenceQueue` handles settings writes, many views still fire-and-
+  forget `@Published` changes that can trigger redundant disk I/O.
+- Recommended: Extend the actor-backed coalescing pattern to all non-critical 
+  state updates to ensure a single "final-state" flush per user action.
+
+6. Modern SwiftUI & API Safety
+-------------------------------
+- Replace legacy `onChange(of:)` handlers (where applicable) with modern 
+  `.task(id:)` or `.onAppear` patterns.
+- Ensure all production-path methods are tested against the #if DEBUG release 
+  build constraint (from #shiphook audit).

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Planned (March 2026)
+
+#### API Debugging & Onboarding
+- **API Diagnostics Panel**: Real-time health indicators (ping, rate limits, token status) in the Status view.
+- **Onboarding Splash Screen**: New-user setup flow with token validation and dynamic invite link generation.
+- **Token Management**: Dedicated "Clear API Key" action in Settings for safe disconnection and reconfiguration.
+
+#### Automation & Actions
+- **Member Join Triggers**: Extend the rule engine to support \`member_join\` events with customizable welcome messages.
+- **Voice Join/Leave Logs**: Support for logging voice activity to specific text channels using templates.
+
+#### UI & Branding
+- **Dynamic Beta Icon**: Automatic Dock icon switching to a "Beta" variant when build name contains \`-beta\`.
+
 ### Fixed
 
 #### SwiftMesh Worker Mode - UX Hotfix

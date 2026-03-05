@@ -361,3 +361,31 @@ SwiftBot.xcodeproj
 **Last Updated:** 2026-03-05  
 **Maintained By:** AI Assistant  
 **Purpose:** Context for code modifications and architectural decisions
+
+
+
+## Proposed Extensions (March 2026)
+
+### 1. API Diagnostics & Debugging
+- **Logic**: Add `validateToken()` to `DiscordService` performing a GET to `/users/@me`.
+- **State**: `AppModel` to publish `lastPing`, `rateLimitRemaining`, and `gatewayStatus`.
+- **UI**: New `DiagnosticsPanel` in `RootView` with real-time health indicators.
+
+### 2. Welcome Automation (Member & Voice)
+- **Triggers**: Extend `TriggerType` with `memberJoin`, `voiceJoin`, and `voiceLeave`.
+- **Events**: New `MemberJoined` event in `Models.swift` published via `GUILD_MEMBER_ADD` gateway dispatch.
+- **Actions**: Template-based messaging support for welcome/log channels.
+
+### 3. Onboarding Splash Screen
+- **Flow**: `OnboardingView` presented when `settings.botToken` is empty.
+- **Features**: Token validation step + Dynamic OAuth2 Invite Link generation (permissions bitmask 274877991936 (Baseline)).
+
+### 4. Dynamic Beta App Icon
+
+### 5. Analytics & Context-Aware AI Replies (Proposed)
+- **Store**: New `AnalyticsStore` (actor-backed JSON) tracking per-member join/leave/first-seen history.
+- **Rules**: Extend `TriggerType` with member join/leave predicates and `ActionType` with `generateAIReply`.
+- **Pipeline**: `PromptComposer` enriched with analytics context (e.g., "days since last seen").
+
+- **Mechanism**: Runtime Dock icon swap using `NSApp.applicationIconImage`.
+- **Detection**: Build name string check (`-beta`) or `CFBundleVersion` parsing.
