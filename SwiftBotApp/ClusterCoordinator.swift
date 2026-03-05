@@ -1,6 +1,8 @@
 import Foundation
 import Network
 import Darwin
+import OSLog
+import CryptoKit
 
 struct HardwareInfo: Sendable, Hashable {
     let modelIdentifier: String
@@ -32,6 +34,8 @@ struct HardwareInfo: Sendable, Hashable {
 }
 
 actor ClusterCoordinator {
+    private let meshLogger = Logger(subsystem: "com.swiftbot", category: "mesh")
+
     typealias AIHandler = @Sendable ([Message], String?, String?, String?) async -> String?
     typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
@@ -55,6 +59,8 @@ actor ClusterCoordinator {
     private var leaderAddress: String = ""
     private var listenPort: Int = 38787
     private var sharedSecret: String = ""
+    /// Nonce replay cache: maps nonce → expiry time. Swept opportunistically on each auth check.
+    private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
     private var registeredWorkers: [String: RegisteredWorker] = [:]
     private var workerRegistrationTask: Task<Void, Never>?
@@ -351,9 +357,7 @@ actor ClusterCoordinator {
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = "GET"
-                if !sharedSecret.isEmpty {
-                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-                }
+                applyMeshAuth(to: &request, path: "/v1/probe")
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
@@ -379,6 +383,90 @@ actor ClusterCoordinator {
         snapshot.diagnostics = "Remote probe failed for all registered workers"
         await publishSnapshot()
         return nil
+    }
+
+    // MARK: - Mesh Auth (HMAC-SHA256)
+
+    /// Computes HMAC-SHA256 over `METHOD:path:nonce:timestamp:` + body bytes using sharedSecret as key.
+    /// Returns a lowercase hex string. Returns empty string if sharedSecret is empty.
+    private func meshSignature(method: String, nonce: String, timestamp: Int, path: String, body: Data) -> String {
+        guard !sharedSecret.isEmpty,
+              let keyData = sharedSecret.data(using: .utf8) else { return "" }
+        let key = SymmetricKey(data: keyData)
+        var input = Data("\(method.uppercased()):\(path):\(nonce):\(timestamp):".utf8)
+        input.append(body)
+        let mac = HMAC<SHA256>.authenticationCode(for: input, using: key)
+        return mac.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Adds `X-Mesh-Nonce`, `X-Mesh-Timestamp`, and `X-Mesh-Signature` headers to a URLRequest.
+    /// Only adds headers when sharedSecret is non-empty; otherwise leaves the request untouched
+    /// (standalone mode makes no clustered calls so this is safe).
+    private func applyMeshAuth(to request: inout URLRequest, path: String) {
+        guard !sharedSecret.isEmpty else { return }
+        let method = request.httpMethod ?? "GET"
+        let nonce = UUID().uuidString
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let body = request.httpBody ?? Data()
+        let sig = meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: body)
+        request.setValue(nonce, forHTTPHeaderField: "X-Mesh-Nonce")
+        request.setValue(String(timestamp), forHTTPHeaderField: "X-Mesh-Timestamp")
+        request.setValue(sig, forHTTPHeaderField: "X-Mesh-Signature")
+    }
+
+    /// Verifies inbound mesh auth headers. Returns true only if:
+    /// - All required headers present
+    /// - Timestamp within ±300s skew window
+    /// - Nonce has not been seen before (replay protection)
+    /// - HMAC-SHA256 signature is valid (constant-time via CryptoKit)
+    private func verifyMeshAuth(headers: [String: String], method: String, path: String, body: Data) -> Bool {
+        guard !sharedSecret.isEmpty else { return false }
+        guard let nonce = headers["x-mesh-nonce"],
+              let tsStr = headers["x-mesh-timestamp"],
+              let timestamp = Int(tsStr),
+              let sigHex = headers["x-mesh-signature"] else { return false }
+
+        // Opportunistic sweep of expired nonces (older than 300s).
+        let now = Date()
+        let nowEpoch = Int(now.timeIntervalSince1970)
+        usedNonces = usedNonces.filter { now.timeIntervalSince($0.value) < 300 }
+
+        // Timestamp skew check — fail-closed if outside ±300s window.
+        let skew = abs(nowEpoch - timestamp)
+        guard skew <= 300 else {
+            meshLogger.warning("Mesh auth rejected: timestamp skew \(skew)s exceeds 300s window")
+            return false
+        }
+
+        // Nonce replay check — reject if this nonce has been seen within the skew window.
+        guard usedNonces[nonce] == nil else {
+            meshLogger.warning("Mesh auth rejected: nonce replay detected")
+            return false
+        }
+
+        guard let keyData = sharedSecret.data(using: .utf8) else { return false }
+        let key = SymmetricKey(data: keyData)
+        var input = Data("\(method.uppercased()):\(path):\(nonce):\(timestamp):".utf8)
+        input.append(body)
+
+        // Convert hex signature back to bytes for constant-time comparison.
+        guard sigHex.count % 2 == 0 else { return false }
+        var expectedBytes = [UInt8]()
+        var idx = sigHex.startIndex
+        while idx < sigHex.endIndex {
+            let nextIdx = sigHex.index(idx, offsetBy: 2)
+            guard let byte = UInt8(sigHex[idx..<nextIdx], radix: 16) else { return false }
+            expectedBytes.append(byte)
+            idx = nextIdx
+        }
+
+        guard HMAC<SHA256>.isValidAuthenticationCode(expectedBytes, authenticating: input, using: key) else {
+            return false
+        }
+
+        // Record nonce as used (keyed to expiry time).
+        usedNonces[nonce] = now
+        return true
     }
 
     private func restartServerIfNeeded() async {
@@ -417,6 +505,7 @@ actor ClusterCoordinator {
             snapshot.serverState = .listening
             snapshot.serverStatusText = "Listening on :\(listenPort)"
             snapshot.diagnostics = "Worker server listening on port \(listenPort)"
+            meshLogger.info("Mesh server started on port \(self.listenPort, privacy: .public)")
         case .failed(let error):
             snapshot.serverState = .failed
             snapshot.serverStatusText = "Server failed: \(error.localizedDescription)"
@@ -521,11 +610,21 @@ actor ClusterCoordinator {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_request"}"#.utf8))
         }
 
-        // Enforce shared-secret auth on all routes except /health.
-        if !sharedSecret.isEmpty, request.path != "/health" {
-            let provided = request.headers["x-cluster-secret"] ?? ""
-            guard provided == sharedSecret else {
+        // Enforce HMAC auth on all routes except /health.
+        // Policy:
+        //   - Non-standalone mode + empty sharedSecret → fail-closed (401): clustered nodes must have a secret.
+        //   - Any mode + non-empty sharedSecret → require valid HMAC signature.
+        //   - Standalone mode + empty sharedSecret → open (local-only node, no cluster traffic expected).
+        if request.path != "/health" {
+            if mode != .standalone && sharedSecret.isEmpty {
+                meshLogger.warning("Mesh auth rejected: non-standalone mode with no shared secret configured")
                 return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
+            }
+            if !sharedSecret.isEmpty {
+                guard verifyMeshAuth(headers: request.headers, method: request.method, path: request.path, body: request.body) else {
+                    meshLogger.warning("Mesh auth rejected: invalid HMAC, stale timestamp, or replay for path \(request.path, privacy: .public)")
+                    return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
+                }
             }
         }
 
@@ -710,6 +809,7 @@ actor ClusterCoordinator {
         } else {
             standbyHealthMisses += 1
             snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
+        meshLogger.warning("Primary health miss \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
             await publishSnapshot()
             
             if standbyHealthMisses >= Self.standbyPromotionThreshold {
@@ -725,6 +825,7 @@ actor ClusterCoordinator {
         snapshot.mode = .leader
         snapshot.leaderTerm = leaderTerm
         snapshot.diagnostics = "PROMOTED TO PRIMARY (Term \(leaderTerm))"
+        meshLogger.critical("Node promoted to Primary — term \(self.leaderTerm, privacy: .public), node \(self.nodeName, privacy: .public)")
         snapshot.workerState = .connected
         snapshot.workerStatusText = "Primary (Promoted)"
         await publishSnapshot()
@@ -771,11 +872,9 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !sharedSecret.isEmpty {
-                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
-            request.timeoutInterval = 5
             request.httpBody = try encoder.encode(payload)
+            applyMeshAuth(to: &request, path: "/v1/mesh/leader-changed")
+            request.timeoutInterval = 5
             _ = try await URLSession.shared.data(for: request)
         } catch {
             // Best effort — worker will re-register on its own next cycle if missed
@@ -814,9 +913,9 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !sharedSecret.isEmpty { request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret") }
-            request.timeoutInterval = 10
             request.httpBody = try encoder.encode(payload)
+            applyMeshAuth(to: &request, path: "/v1/mesh/sync/conversations")
+            request.timeoutInterval = 10
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
             return true
@@ -831,11 +930,9 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !sharedSecret.isEmpty {
-                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
-            request.timeoutInterval = 10
             request.httpBody = try encoder.encode(payload)
+            applyMeshAuth(to: &request, path: path)
+            request.timeoutInterval = 10
             _ = try await URLSession.shared.data(for: request)
         } catch {
             // best effort
@@ -882,11 +979,9 @@ actor ClusterCoordinator {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !sharedSecret.isEmpty {
-                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
-            request.timeoutInterval = 3
             request.httpBody = try encoder.encode(payload)
+            applyMeshAuth(to: &request, path: "/cluster/register")
+            request.timeoutInterval = 3
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
@@ -1023,9 +1118,7 @@ actor ClusterCoordinator {
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
-            if !sharedSecret.isEmpty {
-                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
+            applyMeshAuth(to: &request, path: "/health")
             request.timeoutInterval = 2
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
@@ -1051,10 +1144,8 @@ actor ClusterCoordinator {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                if !sharedSecret.isEmpty {
-                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-                }
                 request.httpBody = try encoder.encode(job)
+                applyMeshAuth(to: &request, path: "/v1/ai-reply")
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
@@ -1095,10 +1186,8 @@ actor ClusterCoordinator {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                if !sharedSecret.isEmpty {
-                    request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-                }
                 request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
+                applyMeshAuth(to: &request, path: "/v1/wiki-lookup")
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
@@ -1223,9 +1312,7 @@ actor ClusterCoordinator {
             let started = Date()
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
-            if !sharedSecret.isEmpty {
-                request.setValue(sharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
+            applyMeshAuth(to: &request, path: "/v1/cluster/status")
             request.timeoutInterval = 3
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -1475,6 +1562,19 @@ extension ClusterCoordinator {
     func testCurrentLeaderAddress() -> String { leaderAddress }
     func testReplicationCursors() -> [String: ReplicationCursor] { replicationCursors }
     func testMaxSyncBatchSize() -> Int { Self.maxSyncBatchSize }
+
+    /// Returns HTTP headers (nonce, timestamp, signature) for a request with the given method, path, and body.
+    /// Used by tests to construct properly signed requests against the coordinator's current sharedSecret.
+    func testMakeHMACHeaders(method: String = "POST", path: String, body: Data = Data()) -> [String: String] {
+        let nonce = UUID().uuidString
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let sig = meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: body)
+        return [
+            "X-Mesh-Nonce": nonce,
+            "X-Mesh-Timestamp": String(timestamp),
+            "X-Mesh-Signature": sig
+        ]
+    }
 }
 #endif
 

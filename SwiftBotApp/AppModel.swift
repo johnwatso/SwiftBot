@@ -37,6 +37,29 @@ final class AppModel: ObservableObject {
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     @Published var workerModeMigrated = false
+    // MARK: - P0.4 Diagnostics state
+
+    struct ConnectionDiagnostics {
+        enum RESTHealth { case unknown, ok, error(Int, String) }
+        var heartbeatLatencyMs: Int? = nil
+        var restHealth: RESTHealth = .unknown
+        var rateLimitRemaining: Int? = nil
+        var lastTestAt: Date? = nil
+        var lastTestMessage: String = ""
+        /// Last non-normal WebSocket close code from Discord (e.g. 4004, 4014). Nil = no abnormal close.
+        var lastGatewayCloseCode: Int? = nil
+    }
+
+    @Published var connectionDiagnostics = ConnectionDiagnostics()
+    /// Date after which another Test Connection is allowed (10s UI rate limit).
+    @Published var testConnectionCooldownUntil: Date? = nil
+
+    /// `true` once a valid token has been confirmed — gates the main dashboard.
+    @Published var isOnboardingComplete: Bool = false
+    /// OAuth2 client ID resolved from a validated token; used to build the invite URL.
+    @Published var resolvedClientID: String? = nil
+    /// Result from the most recent rich token validation; exposed for onboarding UI error display.
+    @Published var lastTokenValidationResult: DiscordService.TokenValidationResult? = nil
     let isBetaBuild: Bool = (Bundle.main.object(forInfoDictionaryKey: "ShipHookIsBetaBuild") as? Bool) ?? false
 
     var logs = LogStore()
@@ -60,6 +83,12 @@ final class AppModel: ObservableObject {
     /// Tracks the last MemoryRecord ID the standby successfully merged from the leader.
     private var localLastMergedRecordID: String?
     private var lastCommandTimeByUserId: [String: Date] = [:]
+    /// Dedupe cache for GUILD_MEMBER_ADD: keyed by "guildId:userId", 10s window. Capped at 500 entries.
+    private var recentMemberJoins: [String: Date] = [:]
+    /// Approximate member count per guild, seeded from GUILD_CREATE and incremented on GUILD_MEMBER_ADD.
+    private var guildMemberCounts: [String: Int] = [:]
+    /// Burst-guard: recent join timestamps per guild (keyed by guildId). Used to detect member raids.
+    private var guildJoinTimestamps: [String: [Date]] = [:]
     private let commandCooldown: TimeInterval = 3.0
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
@@ -117,6 +146,7 @@ final class AppModel: ObservableObject {
             }
 
             settings = loadedSettings
+            isOnboardingComplete = !loadedSettings.token.isEmpty
             if let cachedDiscord = await discordCacheStore.load() {
                 await discordCache.replace(with: cachedDiscord)
                 await syncPublishedDiscordCacheFromService()
@@ -686,10 +716,11 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let tokenValidation = await service.validateBotToken(token)
+        let tokenValidation = await service.validateBotTokenRich(token)
+        lastTokenValidationResult = tokenValidation
         guard tokenValidation.isValid else {
             status = .stopped
-            logs.append("❌ Token validation failed: \(tokenValidation.message)")
+            logs.append("❌ Token validation failed: \(tokenValidation.errorMessage)")
             return
         }
 
@@ -712,6 +743,136 @@ final class AppModel: ObservableObject {
 
         await service.connect(token: token)
         logs.append("Connecting to Discord Gateway")
+    }
+
+    // MARK: - Onboarding integration
+
+    /// Validates the current token, resolves the OAuth2 client ID, and stores results for
+    /// the onboarding UI. Returns `true` on success. Does NOT flip `isOnboardingComplete` —
+    /// call `completeOnboarding()` after the user gives explicit confirmation.
+    @discardableResult
+    func validateAndOnboard() async -> Bool {
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else { return false }
+        let result = await service.validateBotTokenRich(token)
+        lastTokenValidationResult = result
+        guard result.isValid else { return false }
+        let cid = await service.resolveClientID(token: token, fallbackUserID: result.userId)
+        resolvedClientID = cid
+        return true
+    }
+
+    /// Flips the onboarding gate after the user has explicitly confirmed they want to proceed.
+    /// Persists settings through the Keychain path, then flips `isOnboardingComplete`.
+    /// Must only be called after a successful `validateAndOnboard()`.
+    func completeOnboarding() {
+        saveSettings()
+        isOnboardingComplete = true
+    }
+
+    /// Performs a safe API key reset with deterministic ordering:
+    /// 1. Awaits gateway disconnect (cancels reconnect task, sets userInitiatedDisconnect).
+    /// 2. Clears all bot runtime state.
+    /// 3. Clears the token and persists via the Keychain-backed path (disk settings.json stays redacted).
+    /// 4. Resets all onboarding and session state so the user returns to the onboarding gate.
+    func clearAPIKey() async {
+        // Step 1: deterministic gateway disconnect — awaited before any state mutation.
+        await service.disconnect()
+        // Step 2: clear runtime state (mirrors stopBot without fire-and-forget disconnect).
+        uptimeTask?.cancel()
+        uptime = nil
+        activeVoice.removeAll()
+        joinTimes.removeAll()
+        lastGatewayEventName = "-"
+        lastVoiceStateAt = nil
+        lastVoiceStateSummary = "-"
+        botUserId = nil
+        botUsername = "OnlineBot"
+        botDiscriminator = nil
+        botAvatarHash = nil
+        Task { await pluginManager.removeAll() }
+        Task { await cluster.stopAll() }
+        status = .stopped
+        // Step 3: secure token erase — empty token triggers KeychainHelper.deleteToken() in ConfigStore.
+        settings.token = ""
+        saveSettings()
+        // Step 4: onboarding/session state purge → gate returns to onboarding splash.
+        resolvedClientID = nil
+        lastTokenValidationResult = nil
+        isOnboardingComplete = false
+        logs.append("API key cleared. Please enter a new token to reconnect.")
+    }
+
+    /// Generates a Discord invite URL for the bot using the resolved OAuth2 client ID.
+    /// Returns `nil` if `resolvedClientID` has not yet been set.
+    func generateInviteURL(includeSlashCommands: Bool = true) async -> String? {
+        guard let cid = resolvedClientID else { return nil }
+        return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlashCommands)
+    }
+
+    // MARK: - Diagnostics
+
+    /// Whether the 10-second Test Connection UI cooldown has elapsed.
+    var canRunTestConnection: Bool {
+        guard let until = testConnectionCooldownUntil else { return true }
+        return Date() >= until
+    }
+
+    /// Derived: gateway intents were accepted when Discord sent READY.
+    var intentsAccepted: Bool? {
+        switch status {
+        case .running where readyEventCount > 0: return true
+        case .stopped: return nil
+        default: return nil
+        }
+    }
+
+    /// Runs an on-demand REST health probe and updates `connectionDiagnostics`.
+    /// Enforces a 10-second UI rate limit — callers must check `canRunTestConnection` first.
+    func runTestConnection() async {
+        guard canRunTestConnection else { return }
+        testConnectionCooldownUntil = Date().addingTimeInterval(10)
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else {
+            connectionDiagnostics.lastTestAt = Date()
+            connectionDiagnostics.lastTestMessage = "No token configured."
+            connectionDiagnostics.restHealth = .error(0, "No token")
+            return
+        }
+        let (isOK, httpStatus, remaining) = await service.restHealthProbe(token: token)
+        let now = Date()
+        connectionDiagnostics.lastTestAt = now
+        connectionDiagnostics.rateLimitRemaining = remaining
+        if isOK {
+            connectionDiagnostics.restHealth = .ok
+            connectionDiagnostics.lastTestMessage = "REST probe OK."
+        } else {
+            let code = httpStatus ?? 0
+            let message = diagnosticsRemediationMessage(httpStatus: code)
+            connectionDiagnostics.restHealth = .error(code, message)
+            connectionDiagnostics.lastTestMessage = message
+        }
+    }
+
+    private func diagnosticsRemediationMessage(httpStatus: Int) -> String {
+        switch httpStatus {
+        case 401: return "401 Unauthorized — Token is invalid or revoked. Use Clear API Key to reset."
+        case 403: return "403 Forbidden — Bot lacks required permissions. Re-invite with correct permissions."
+        case 429: return "429 Rate Limited — Reduce request frequency. Discord will reset the limit automatically."
+        case 0:   return "Network failure — Check your internet connection."
+        default:  return "HTTP \(httpStatus) — Unexpected error from Discord REST API."
+        }
+    }
+
+    func gatewayCloseRemediationMessage(code: Int) -> String {
+        switch code {
+        case 4004: return "Close 4004 — Authentication failed. Token is invalid. Use Clear API Key to reset."
+        case 4014: return "Close 4014 — Privileged intent not enabled. Enable SERVER MEMBERS INTENT and MESSAGE CONTENT INTENT in the Discord Developer Portal → Bot tab."
+        case 4013: return "Close 4013 — Invalid intents specified. Check the gateway intents bitmask (required: 37507)."
+        case 4009: return "Close 4009 — Session timed out. The bot will reconnect automatically."
+        case 4000: return "Close 4000 — Unknown gateway error. The bot will attempt to reconnect."
+        default:   return "Close \(code) — Gateway closed with error. The bot will attempt to reconnect."
+        }
     }
 
     private func normalizedDiscordToken(from raw: String) -> String {
@@ -979,6 +1140,18 @@ final class AppModel: ObservableObject {
             await self?.handlePayload(payload)
         }
 
+        await service.setOnHeartbeatLatency { [weak self] latencyMs in
+            await MainActor.run {
+                self?.connectionDiagnostics.heartbeatLatencyMs = latencyMs
+            }
+        }
+
+        await service.setOnGatewayClose { [weak self] code in
+            await MainActor.run {
+                self?.connectionDiagnostics.lastGatewayCloseCode = code
+            }
+        }
+
         serviceCallbacksConfigured = true
     }
 
@@ -1015,6 +1188,8 @@ final class AppModel: ObservableObject {
             await handleVoiceStateUpdate(payload.d)
         case "READY":
             readyEventCount += 1
+            // Clear any stale close-code state — a new READY means the gateway is healthy.
+            connectionDiagnostics.lastGatewayCloseCode = nil
             await handleReady(payload.d)
             logs.append("READY received")
             if case let .object(map)? = payload.d,
@@ -1037,6 +1212,8 @@ final class AppModel: ObservableObject {
             await handleGuildCreate(payload.d)
         case "CHANNEL_CREATE":
             await handleChannelCreate(payload.d)
+        case "GUILD_MEMBER_ADD":
+            await handleMemberJoin(payload.d)
         case "GUILD_DELETE":
             await handleGuildDelete(payload.d)
         default:
@@ -2293,6 +2470,9 @@ final class AppModel: ObservableObject {
         if case let .string(cid)? = map["channel_id"] { channelId = cid } else { channelId = nil }
 
         if let newChannel = channelId {
+            // Idempotency: ignore mute/deaf-only updates (channel unchanged). Only fire on channel transitions.
+            if let previous, previous.channelId == newChannel { return }
+
             let next = VoiceMemberPresence(
                 id: key,
                 userId: userId,
@@ -2314,14 +2494,15 @@ final class AppModel: ObservableObject {
                     if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
                         let message = renderNotificationTemplate(
                             settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
-                            userId: userId,
                             username: displayName,
                             guildId: guildId,
                             channelId: newChannel,
                             fromChannelId: previous.channelId,
                             toChannelId: newChannel
                         )
-                        _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move)
+                        _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move,
+                            displayName: displayName, channelName: next.channelName,
+                            fromChannelName: previous.channelName)
                     }
                 }
                 activeVoice.removeAll { $0.id == previous.id }
@@ -2335,14 +2516,14 @@ final class AppModel: ObservableObject {
                 if shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
                     let message = renderNotificationTemplate(
                         settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
-                        userId: userId,
                         username: displayName,
                         guildId: guildId,
                         channelId: newChannel,
                         fromChannelId: nil,
                         toChannelId: newChannel
                     )
-                    _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join)
+                    _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
+                        displayName: displayName, channelName: next.channelName)
                 }
                 await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
             }
@@ -2361,14 +2542,14 @@ final class AppModel: ObservableObject {
             if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.leaveNotificationTemplate ?? GuildSettings().leaveNotificationTemplate,
-                    userId: userId,
                     username: displayName,
                     guildId: guildId,
                     channelId: previous.channelId,
                     fromChannelId: previous.channelId,
                     toChannelId: nil
                 )
-                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave)
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave,
+                    displayName: previous.username, channelName: previous.channelName, duration: elapsed)
             }
             let elapsedSec = Int(now.timeIntervalSince(joinTimes[key] ?? previous.joinedAt))
             await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
@@ -2444,27 +2625,58 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    private func sendVoiceNotification(guildId: String, message: String, event: VoiceNotifyEvent) async -> Bool {
-        guard let guildSettings = settings.guildSettings[guildId],
-              let channelId = guildSettings.notificationChannelId else { return false }
+    /// Sends a voice activity notification. When using the global voice log channel (no per-guild channel
+    /// configured), a privacy-safe display-name-only message is used instead of the per-guild template
+    /// (which may contain Discord ID mentions). `displayName`, `channelName`, `fromChannelName`, and
+    /// `duration` are used only for the global path.
+    private func sendVoiceNotification(
+        guildId: String,
+        message: String,
+        event: VoiceNotifyEvent,
+        displayName: String = "",
+        channelName: String = "",
+        fromChannelName: String = "",
+        duration: String = ""
+    ) async -> Bool {
+        let perGuildChannelId = settings.guildSettings[guildId]?.notificationChannelId
+        let globalChannelId: String? = (settings.behavior.voiceActivityLogEnabled
+            && !settings.behavior.voiceActivityLogChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            ? settings.behavior.voiceActivityLogChannelId.trimmingCharacters(in: .whitespacesAndNewlines)
+            : nil
 
-        switch event {
-        case .join where !guildSettings.notifyOnJoin:
-            return false
-        case .leave where !guildSettings.notifyOnLeave:
-            return false
-        case .move where !guildSettings.notifyOnMove:
-            return false
-        default:
-            break
+        if let gs = settings.guildSettings[guildId] {
+            switch event {
+            case .join where !gs.notifyOnJoin: return false
+            case .leave where !gs.notifyOnLeave: return false
+            case .move where !gs.notifyOnMove: return false
+            default: break
+            }
         }
 
-        return await send(channelId, message)
+        var sent = false
+        // Per-guild channel: use the caller-rendered message (may contain Discord mention syntax).
+        if let channelId = perGuildChannelId {
+            sent = await send(channelId, message)
+        }
+        // Global voice log channel: use display-name-only message (no raw IDs).
+        if let channelId = globalChannelId, channelId != perGuildChannelId {
+            let privacyMessage: String
+            switch event {
+            case .join:
+                privacyMessage = "🔊 \(displayName) joined \(channelName)"
+            case .leave:
+                let dur = duration.isEmpty ? "" : " (duration: \(duration))"
+                privacyMessage = "🔌 \(displayName) left \(channelName)\(dur)"
+            case .move:
+                privacyMessage = "🔁 \(displayName) moved: \(fromChannelName) → \(channelName)"
+            }
+            sent = await send(channelId, privacyMessage) || sent
+        }
+        return sent
     }
 
     private func renderNotificationTemplate(
         _ template: String,
-        userId: String,
         username: String,
         guildId: String,
         channelId: String,
@@ -2475,15 +2687,15 @@ final class AppModel: ObservableObject {
         let resolvedFromChannelId = fromChannelId ?? channelId
         let resolvedToChannelId = toChannelId ?? channelId
 
+        // Only display-name tokens are substituted — raw IDs ({userId}, {guildId}, {channelId},
+        // {fromChannelId}, {toChannelId}) are intentionally NOT substituted so they can never
+        // leak Discord snowflake IDs into sent voice-notification messages.
         return template
-            .replacingOccurrences(of: "{userId}", with: userId)
             .replacingOccurrences(of: "{username}", with: username)
-            .replacingOccurrences(of: "{guildId}", with: guildId)
             .replacingOccurrences(of: "{guildName}", with: guildName)
-            .replacingOccurrences(of: "{channelId}", with: channelId)
             .replacingOccurrences(of: "{channelName}", with: channelDisplayName(guildId: guildId, channelId: channelId))
-            .replacingOccurrences(of: "{fromChannelId}", with: resolvedFromChannelId)
-            .replacingOccurrences(of: "{toChannelId}", with: resolvedToChannelId)
+            .replacingOccurrences(of: "{fromChannelName}", with: channelDisplayName(guildId: guildId, channelId: resolvedFromChannelId))
+            .replacingOccurrences(of: "{toChannelName}", with: channelDisplayName(guildId: guildId, channelId: resolvedToChannelId))
     }
 
     private func parseVoiceChannels(from guildMap: [String: DiscordJSON]) -> [GuildVoiceChannel] {
@@ -2574,13 +2786,95 @@ final class AppModel: ObservableObject {
         }
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
-        // TODO: Emit UserJoinedServer events when GUILD_MEMBER_ADD events are handled (future implementation)
+        // GUILD_MEMBER_ADD is now handled via handleMemberJoin (P0.5).
+    }
+
+    // MARK: - P0.5: Member join welcome
+
+    private func handleMemberJoin(_ raw: DiscordJSON?) async {
+        guard settings.behavior.memberJoinWelcomeEnabled,
+              !settings.behavior.memberJoinWelcomeChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"],
+              case let .string(userId)? = user["id"]
+        else { return }
+
+        let guildId: String
+        if case let .string(gid)? = map["guild_id"] { guildId = gid } else { return }
+
+        let now = Date()
+
+        // Increment member count for this guild (best-effort; sourced from GUILD_CREATE).
+        let memberCount = (guildMemberCounts[guildId] ?? 0) + 1
+        guildMemberCounts[guildId] = memberCount
+
+        // Burst-guard: track join timestamps per guild; cap array to 50 entries.
+        var timestamps = guildJoinTimestamps[guildId] ?? []
+        timestamps = timestamps.filter { now.timeIntervalSince($0) < 5 }
+        timestamps.append(now)
+        if timestamps.count > 50 { timestamps = Array(timestamps.suffix(50)) }
+        guildJoinTimestamps[guildId] = timestamps
+
+        let burstThreshold = 10
+        if timestamps.count > burstThreshold {
+            // Raid-safe: summarize instead of individual welcome.
+            if timestamps.count == burstThreshold + 1 {
+                // Post once at the threshold crossing, not on every subsequent join.
+                let channelId = settings.behavior.memberJoinWelcomeChannelId
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let serverName = connectedServers[guildId] ?? "the server"
+                _ = await send(channelId, "👥 Multiple members joined \(serverName) — welcome everyone!")
+                logs.append("Member join burst detected in \(guildId); switched to summary mode.")
+            }
+            return
+        }
+
+        // Dedupe: skip if same user joined this guild within 10 seconds.
+        let dedupeKey = "\(guildId):\(userId)"
+        if let last = recentMemberJoins[dedupeKey], now.timeIntervalSince(last) < 10 { return }
+        recentMemberJoins[dedupeKey] = now
+        // Bounded cleanup: cap at 500 entries, remove entries older than 60s.
+        if recentMemberJoins.count > 500 {
+            let pruned = recentMemberJoins.filter { now.timeIntervalSince($0.value) < 60 }
+            recentMemberJoins = Dictionary(uniqueKeysWithValues: Array(pruned.prefix(500)))
+        }
+
+        let rawUsername: String
+        if case let .string(name)? = user["global_name"] ?? user["username"] {
+            rawUsername = name
+        } else {
+            rawUsername = "Unknown"
+        }
+
+        // Template sanitization: neutralize @everyone and @here to prevent mass-ping abuse.
+        let safeUsername = rawUsername
+            .replacingOccurrences(of: "@everyone", with: "@​everyone")
+            .replacingOccurrences(of: "@here", with: "@​here")
+
+        let serverName = connectedServers[guildId] ?? "the server"
+        let message = settings.behavior.memberJoinWelcomeTemplate
+            .replacingOccurrences(of: "{username}", with: safeUsername)
+            .replacingOccurrences(of: "{server}", with: serverName)
+            .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
+
+        let channelId = settings.behavior.memberJoinWelcomeChannelId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = await send(channelId, message)
+        // Log username only — no internal IDs or metadata.
+        addEvent(ActivityEvent(timestamp: now, kind: .info, message: "👋 \(safeUsername) joined \(serverName)"))
+        logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
     }
 
     private func handleGuildCreate(_ raw: DiscordJSON?) async {
         guard case let .object(map)? = raw,
               case let .string(guildId)? = map["id"]
         else { return }
+
+        if case let .int(count)? = map["member_count"] {
+            guildMemberCounts[guildId] = count
+        }
 
         let guildName: String?
         if case let .string(name)? = map["name"] {

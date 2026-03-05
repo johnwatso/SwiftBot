@@ -56,8 +56,9 @@ final class MeshSyncTests: XCTestCase {
 
     private func sendResync(to coordinator: ClusterCoordinator, fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
         let body = resyncRequest(fromRecordID: fromRecordID, pageSize: pageSize)
+        let signedHeaders = await coordinator.testMakeHMACHeaders(path: "/v1/mesh/sync/conversations/resync", body: body)
         let raw = makeHTTPRequest(method: "POST", path: "/v1/mesh/sync/conversations/resync",
-                                  headers: ["X-Cluster-Secret": "s"], body: body)
+                                  headers: signedHeaders, body: body)
         let resp = await coordinator.testProcessHTTPRequest(raw)
         let statusCode = self.statusCode(from: resp)
         guard statusCode == 200 else { return nil }
