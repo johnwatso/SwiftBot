@@ -17,6 +17,7 @@
 		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
 		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
+		8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */; };
 		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
@@ -38,6 +39,7 @@
 		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
 		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
 		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 			children = (
 				6337960E98AEBC0A19A67531 /* AppModel.swift */,
 				8D8E9F101122334455667788 /* AppUpdater.swift */,
+				8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */,
 				11C22D441122334455667788 /* ClusterCoordinator.swift */,
 				A7B811001122334455667788 /* PatchyView.swift */,
 				A7B813001122334455667788 /* PatchyViewModel.swift */,
@@ -175,6 +178,7 @@
 			files = (
 				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
 				8D8E9F001122334455667788 /* AppUpdater.swift in Sources */,
+				8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */,
 				A7B810001122334455667788 /* PatchyView.swift in Sources */,
 				A7B812001122334455667788 /* PatchyViewModel.swift in Sources */,
 				11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */,
@@ -324,7 +328,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17214;
+				CURRENT_PROJECT_VERSION = 17215;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -371,7 +375,7 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 17214;
+				CURRENT_PROJECT_VERSION = 17215;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;

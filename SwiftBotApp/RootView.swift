@@ -720,7 +720,7 @@ struct VoiceWorkspaceView: View {
                 .fill(.white.opacity(0.04))
         )
         .padding(12)
-        .onChange(of: ruleStore.rules) { _ in
+        .onChange(of: ruleStore.rules) {
             if let selected = ruleStore.selectedRuleID,
                !ruleStore.rules.contains(where: { $0.id == selected }) {
                 ruleStore.selectedRuleID = nil
@@ -744,22 +744,21 @@ struct VoiceWorkspaceView: View {
     }
 
     private var selectedRuleBinding: Binding<Rule>? {
-        guard let selectedRuleID = ruleStore.selectedRuleID,
-              let index = ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID })
-        else {
+        guard let selectedRuleID = ruleStore.selectedRuleID else {
             return nil
         }
 
         return Binding(
             get: {
-                ruleStore.rules[index]
+                guard let currentSelectedID = ruleStore.selectedRuleID,
+                      let index = ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
+                    return Rule(id: selectedRuleID)
+                }
+                return ruleStore.rules[index]
             },
             set: { updatedRule in
-                guard ruleStore.rules.indices.contains(index),
-                      ruleStore.rules[index].id == selectedRuleID else {
-                    if let refreshedIndex = ruleStore.rules.firstIndex(where: { $0.id == selectedRuleID }) {
-                        ruleStore.rules[refreshedIndex] = updatedRule
-                    }
+                guard let currentSelectedID = ruleStore.selectedRuleID,
+                      let index = ruleStore.rules.firstIndex(where: { $0.id == currentSelectedID }) else {
                     return
                 }
                 ruleStore.rules[index] = updatedRule
@@ -996,10 +995,10 @@ struct RuleEditorView: View {
         .onAppear {
             initializeRuleDefaultsIfNeeded()
         }
-        .onChange(of: rule) { _ in
+        .onChange(of: rule) {
             app.ruleStore.scheduleAutoSave()
         }
-        .onChange(of: rule.trigger) { newTrigger in
+        .onChange(of: rule.trigger) { _, newTrigger in
             applyTriggerDefaults(for: newTrigger)
         }
     }
@@ -1548,7 +1547,7 @@ struct ActionSectionView: View {
                 action.channelId = textChannels.first?.id ?? ""
             }
         }
-        .onChange(of: action.serverId) { _ in
+        .onChange(of: action.serverId) {
             action.channelId = textChannels.first?.id ?? ""
         }
     }
@@ -1621,7 +1620,7 @@ struct LogsView: View {
                     .padding(12)
                 }
                 .glassCard(cornerRadius: 20, tint: .black.opacity(0.04), stroke: .white.opacity(0.16))
-                .onChange(of: app.logs.lines.count) { _ in
+                .onChange(of: app.logs.lines.count) {
                     if app.logs.autoScroll, let last = app.logs.lines.indices.last {
                         proxy.scrollTo(last, anchor: .bottom)
                     }
@@ -1696,7 +1695,7 @@ struct GeneralSettingsView: View {
                             .help(app.settings.clusterMode == .standby
                                 ? "Address of the Primary node to monitor for failover."
                                 : "Address of the Primary node to register with.")
-                            .onChange(of: leaderAddressDraft) { _ in validatePrimaryAddress() }
+                            .onChange(of: leaderAddressDraft) { validatePrimaryAddress() }
                         if let err = primaryAddressError {
                             Text(err).font(.caption).foregroundStyle(.red)
                         }
@@ -1709,7 +1708,7 @@ struct GeneralSettingsView: View {
                                 : app.settings.clusterMode == .worker
                                     ? "Local port this Worker listens on."
                                     : "Port this node listens on for Workers.")
-                            .onChange(of: listenPortDraft) { _ in validateListenPort() }
+                            .onChange(of: listenPortDraft) { validateListenPort() }
                         if let err = listenPortError {
                             Text(err).font(.caption).foregroundStyle(.red)
                         }
@@ -1717,7 +1716,7 @@ struct GeneralSettingsView: View {
 
                     if app.settings.clusterMode != .standalone {
                         SecureField("Cluster Shared Secret", text: $clusterSharedSecretDraft)
-                            .onChange(of: clusterSharedSecretDraft) { _ in validateSharedSecret() }
+                            .onChange(of: clusterSharedSecretDraft) { validateSharedSecret() }
                         if let err = sharedSecretError {
                             Text(err).font(.caption).foregroundStyle(.red)
                         }
@@ -1743,6 +1742,76 @@ struct GeneralSettingsView: View {
                     Text(app.settings.clusterMode == .worker ? app.clusterSnapshot.serverStatusText : app.clusterSnapshot.workerStatusText)
                         .font(.caption)
                         .foregroundStyle((app.clusterSnapshot.workerState == .connected || app.clusterSnapshot.serverState == .listening) ? .green : .secondary)
+                }
+
+                Section("Help & Commands") {
+                    Picker("Help Mode", selection: $app.settings.help.mode) {
+                        ForEach(HelpMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if app.settings.help.mode != .classic {
+                        Text(app.settings.help.mode.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Picker("Tone", selection: $app.settings.help.tone) {
+                        ForEach(HelpTone.allCases) { tone in
+                            Text(tone.rawValue).tag(tone)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Custom Intro")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextField("Optional intro text", text: $app.settings.help.customIntro)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Custom Footer")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextField("Optional footer text", text: $app.settings.help.customFooter)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    DisclosureGroup("Preview (embed fields)") {
+                        let prefix = app.settings.prefix
+                        let catalog = CommandCatalog.build(
+                            prefix: prefix,
+                            wikiCommands: app.settings.wikiBot.sources
+                                .filter(\.enabled)
+                                .flatMap { source in
+                                    source.commands
+                                        .filter(\.enabled)
+                                        .map { cmd in WikiCommandInfo(trigger: cmd.trigger, sourceName: source.name, description: cmd.description) }
+                                }
+                        )
+                        let renderer = HelpRenderer(prefix: prefix, helpSettings: app.settings.help)
+                        let previewText = renderer.overview(catalog: catalog)
+
+                        ScrollView {
+                            Text(previewText)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .frame(maxHeight: 200)
+                        .background(Color.black.opacity(0.25))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        Text("Live output is a Discord embed. Preview shows field content only.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Software Updates") {
@@ -1812,10 +1881,10 @@ struct GeneralSettingsView: View {
                 clusterSharedSecretDraft = app.settings.clusterSharedSecret
                 validateAll()
             }
-            .onChange(of: app.settings.prefix) { newValue in
+            .onChange(of: app.settings.prefix) { _, newValue in
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
             }
-            .onChange(of: app.settings.clusterMode) { _ in validateAll() }
+            .onChange(of: app.settings.clusterMode) { validateAll() }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .background(Color.clear)

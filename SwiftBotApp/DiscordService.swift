@@ -296,6 +296,50 @@ actor DiscordService {
         )
     }
 
+    /// Generates an AI-rewritten help response. Not gated by `localAIDMReplyEnabled` — the
+    /// caller controls whether AI help is attempted via `HelpSettings.mode`.
+    /// Tries primary → secondary provider; returns nil if both are unavailable (caller falls
+    /// back to deterministic catalog text).
+    func generateHelpReply(messages: [Message], systemPrompt: String) async -> String? {
+        let finalSystemPrompt = PromptComposer.buildSystemPrompt(
+            base: systemPrompt,
+            serverName: nil,
+            channelName: nil,
+            wikiContext: nil
+        )
+        let finalMessages = PromptComposer.buildMessages(systemPrompt: finalSystemPrompt, history: messages)
+        guard finalMessages.contains(where: { $0.role == .user }) else { return nil }
+
+        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: finalSystemPrompt)
+        let ollamaEngine = OllamaEngine(
+            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
+            preferredModel: localAIModel,
+            session: session
+        )
+
+        let preferred = localPreferredAIProvider
+        if preferred == .apple {
+            if let reply = await appleEngine.generate(messages: finalMessages) {
+                let cleaned = cleanOutput(reply)
+                if !cleaned.isEmpty { return cleaned }
+            }
+            if let reply = await ollamaEngine.generate(messages: finalMessages) {
+                let cleaned = cleanOutput(reply)
+                if !cleaned.isEmpty { return cleaned }
+            }
+        } else {
+            if let reply = await ollamaEngine.generate(messages: finalMessages) {
+                let cleaned = cleanOutput(reply)
+                if !cleaned.isEmpty { return cleaned }
+            }
+            if let reply = await appleEngine.generate(messages: finalMessages) {
+                let cleaned = cleanOutput(reply)
+                if !cleaned.isEmpty { return cleaned }
+            }
+        }
+        return nil
+    }
+
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         let isFinalsSource = source.baseURL.lowercased().contains("thefinals.wiki")
         if isFinalsSource, let finalsResult = await lookupFinalsWiki(query: query) {

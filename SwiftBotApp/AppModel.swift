@@ -1288,14 +1288,35 @@ final class AppModel: ObservableObject {
 
         switch command {
         case "help":
-            let dynamicWiki = wikiCommandHelpList(prefix: prefix)
-            let wikiHelpSuffix = dynamicWiki.isEmpty
-                ? ""
-                : ", \(dynamicWiki)"
-            return await send(
-                channelId,
-                "Commands: \(prefix)help, \(prefix)ping, \(prefix)roll NdS, \(prefix)8ball <question>, \(prefix)poll \"Question\" \"Option 1\" \"Option 2\", \(prefix)userinfo [@user]\(wikiHelpSuffix), \(prefix)cluster [status|test|probe], \(prefix)setchannel, \(prefix)ignorechannel #channel|list|remove #channel, \(prefix)notifystatus. Use <wiki-command> <source>::<query> to target a specific WikiBridge source."
-            )
+            let catalog = buildHelpCatalog(prefix: prefix)
+            let renderer = HelpRenderer(prefix: prefix, helpSettings: settings.help)
+            let targetCommand = tokens.dropFirst().first?.lowercased()
+
+            // `!help <command>` — send detailed text reply (with examples).
+            if let target = targetCommand {
+                if let entry = catalog.entry(for: target) {
+                    return await send(channelId, renderer.detail(for: entry))
+                } else {
+                    return await send(channelId, "❓ Unknown command `\(prefix)\(target)`. Type `\(prefix)help` for a full list.")
+                }
+            }
+
+            // `!help` — send embed overview.
+            // Smart/Hybrid: attempt AI-generated intro for embed description; embed fields are always catalog-sourced.
+            var aiIntro: String? = nil
+            if settings.help.mode != .classic {
+                let msg = Message(
+                    channelID: channelId,
+                    userID: "help-request",
+                    username: "user",
+                    content: "Write a short intro for a SwiftBot help embed.",
+                    role: .user
+                )
+                aiIntro = await service.generateHelpReply(messages: [msg], systemPrompt: renderer.aiIntroPrompt(catalog: catalog))
+            }
+
+            let embed = renderer.embedOverview(catalog: catalog, aiDescription: aiIntro)
+            return await sendEmbed(channelId, embed: embed)
         case "ping":
             return await send(channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
         case "roll":
@@ -1376,6 +1397,22 @@ final class AppModel: ObservableObject {
 
         return display.joined(separator: ", ")
     }
+
+    /// Builds the full CommandCatalog including all enabled WikiBridge commands.
+    private func buildHelpCatalog(prefix: String) -> CommandCatalog {
+        var wikiCmds: [WikiCommandInfo] = []
+        for source in orderedEnabledWikiSources() {
+            for command in source.commands where command.enabled {
+                let key = normalizedWikiCommandTrigger(command.trigger)
+                guard !key.isEmpty else { continue }
+                wikiCmds.append(WikiCommandInfo(trigger: key, sourceName: source.name, description: command.description))
+            }
+        }
+        return CommandCatalog.build(prefix: prefix, wikiCommands: wikiCmds)
+    }
+
+    /// Ensures custom intro/footer are always applied to AI help output.
+    /// Deterministic help rendering already includes this shell.
 
     private func orderedEnabledWikiSources() -> [WikiSource] {
         let enabledSources = settings.wikiBot.sources.filter(\.enabled)
@@ -1679,6 +1716,19 @@ final class AppModel: ObservableObject {
     private func send(_ channelId: String, _ message: String) async -> Bool {
         do {
             try await service.sendMessage(channelId: channelId, content: message, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func sendEmbed(_ channelId: String, embed: [String: Any]) async -> Bool {
+        do {
+            _ = try await service.sendMessage(
+                channelId: channelId,
+                payload: ["embeds": [embed]],
+                token: settings.token
+            )
             return true
         } catch {
             return false
