@@ -1,8 +1,8 @@
 SwiftBot — Phase 1 Feature Plan (Docs Only)
 ============================================
 Status: Planning / Documentation
-Code changes: NONE in this phase
-Last updated: 2026-03-05
+Code changes: Existing repo updates are present; this plan governs remaining feature work.
+Last updated: 2026-03-06
 
 Overview
 --------
@@ -30,6 +30,22 @@ Required completion checks:
 - Targeted tests for modified areas pass.
 - Release build validation passes:
   `xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Release build`
+
+Architect Update (2026-03-06)
+-----------------------------
+Direction confirmed by John:
+- Hold off on major UI changes for now.
+- Missing feature work is approved to add once coding green light is given.
+- Until that green light, keep documentation aligned and avoid introducing new
+  large UI refactor requirements.
+
+Execution policy update:
+- Keep current app shell as-is during Phase 1 follow-through (no major shell
+  migration work).
+- Prioritize functional feature gaps (onboarding flow completion, clear token
+  flow, diagnostics contracts, member_join trigger path) over layout redesign.
+- Defer large shell shifts (e.g. MenuBarExtra-first shell migration or full
+  NavigationSplitView restructuring) until explicitly approved for coding.
 
 
 Feature 1 — Onboarding Splash / First-Time Setup
@@ -382,12 +398,12 @@ Purpose: define a practical UI priority order that aligns with current feature
 scope and reduces implementation ambiguity for tomorrow's coding session.
 
 UI shell baseline (applies across phases):
-- Primary shell pattern: `MenuBarExtra` entry point + `NavigationSplitView`
-  main window for full diagnostics/configuration workflows.
+- Current baseline for near-term work: keep existing app shell and window chrome
+  as implemented; no major shell migration in this phase.
 - UI framework baseline: SwiftUI-first surfaces with `@Observable` model flow.
 - Visual baseline: native macOS controls + SF Symbols for status semantics.
-- Note: richer menu bar feature behavior remains governed by roadmap phase
-  priority; this section defines target shell architecture.
+- Note: `MenuBarExtra` and `NavigationSplitView` remain longer-term options, not
+  immediate refactor requirements.
 
 P0 (ship-critical UX in current phase work):
 - Guided onboarding shell as the first-run surface:
@@ -418,6 +434,7 @@ Acceptance criteria:
 - [ ] Diagnostics UI maps failures to actionable remediation paths.
 - [ ] UI modularization plan is followed for new views; no new monolithic root growth.
 - [ ] Status semantics (healthy/warn/fail) are visually consistent across surfaces.
+- [ ] Major UI shell changes are deferred until explicit coding green light.
 
 
 Release Readiness & Remaining Gaps (Architect Consolidation, 2026-03-05)
