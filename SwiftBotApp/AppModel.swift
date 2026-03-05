@@ -801,7 +801,7 @@ final class AppModel: ObservableObject {
     }
 
     private func pullWikiCacheFromLeader() async {
-        guard let normalizedLeader = await cluster.testNormalizedBaseURL(settings.clusterLeaderAddress),
+        guard let normalizedLeader = await cluster.normalizedLeaderBaseURL(settings.clusterLeaderAddress),
               let leaderURL = URL(string: normalizedLeader + "/v1/mesh/sync/wiki-cache") else { return }
         
         do {
@@ -1037,7 +1037,7 @@ final class AppModel: ObservableObject {
 
     /// Standby requests a bounded page of records from the leader starting after `fromRecordID`.
     private func requestResyncFromLeader(fromRecordID: String?) async {
-        guard let normalizedLeader = await cluster.testNormalizedBaseURL(settings.clusterLeaderAddress),
+        guard let normalizedLeader = await cluster.normalizedLeaderBaseURL(settings.clusterLeaderAddress),
               let url = URL(string: normalizedLeader + "/v1/mesh/sync/conversations/resync") else { return }
         let req = MeshResyncRequest(fromRecordID: fromRecordID, pageSize: 500)
         guard let body = try? JSONEncoder().encode(req) else { return }
