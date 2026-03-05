@@ -297,6 +297,7 @@ private struct PatchTargetCard: View {
     let onEdit: () -> Void
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -337,8 +338,14 @@ private struct PatchTargetCard: View {
                     .buttonStyle(.bordered)
                 Button(target.isEnabled ? "Disable" : "Enable", action: onToggleEnabled)
                     .buttonStyle(.bordered)
-                Button("Delete", role: .destructive, action: onDelete)
+                Button("Delete", role: .destructive) { showDeleteConfirm = true }
                     .buttonStyle(.bordered)
+                    .alert("Delete Target?", isPresented: $showDeleteConfirm) {
+                        Button("Delete", role: .destructive) { onDelete() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("\"\(sourceDisplayName)\" will be permanently deleted.")
+                    }
                 Spacer()
             }
         }

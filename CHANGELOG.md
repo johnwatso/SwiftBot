@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+#### SwiftMesh Worker Mode - UX Hotfix
+- Temporarily disabled Worker mode from the UI and runtime to undergo UX redesign.
+- Existing `.worker` settings will automatically fall back to Standalone mode with a notice.
+- Worker code remains in the repository but is gated from activation.
+
 ### Changed - 2026-03-05
 
 #### SwiftMesh Failover + Replication (Phases 1 / 2 / 2.1 / 3)

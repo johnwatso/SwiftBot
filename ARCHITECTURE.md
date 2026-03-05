@@ -235,7 +235,7 @@ RuleEditorView(rule: selectedRuleBinding)
 
 ## SwiftMesh High Availability (Current State)
 
-SwiftMesh now has phased HA support beyond basic leader/worker routing:
+SwiftMesh now has phased HA support beyond basic leader/worker routing (Note: Worker mode is temporarily disabled in the UI for UX redesign):
 
 - **Phase 1 (implemented):**
   - `standby` mode with leader health monitoring (10s poll, 3-miss promotion)

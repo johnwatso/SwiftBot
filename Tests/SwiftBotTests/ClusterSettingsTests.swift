@@ -78,4 +78,28 @@ final class ClusterSettingsTests: XCTestCase {
         XCTAssertEqual(mode, .leader)
         XCTAssertEqual(mode.displayName, "Primary")
     }
+
+    // MARK: - Worker Mode Disable (UX Hotfix)
+
+    @MainActor
+    func testWorkerModeRuntimeGuard() async {
+        let app = AppModel()
+        // Manually set to worker (simulating legacy settings or manual override)
+        app.settings.clusterMode = .worker
+        
+        await app.startBot()
+        
+        // Verify that the bot did not start and log message was added
+        XCTAssertEqual(app.status, .stopped)
+        XCTAssertTrue(app.logs.lines.contains { $0.contains("Worker mode is temporarily unavailable") })
+    }
+
+    @MainActor
+    func testWorkerModeMigrationFlag() async {
+        let app = AppModel()
+        // By default on a clean init (or matching current store), it should be false
+        // (unless the test machine has a legacy settings.json with worker mode)
+        // This just proves the property exists and is accessible.
+        XCTAssertFalse(app.workerModeMigrated)
+    }
 }
