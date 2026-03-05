@@ -7,11 +7,6 @@ struct PatchyView: View {
     @State private var editorMode: PatchyEditorMode = .create
     @State private var debugExpanded = false
 
-    private enum PatchySettingKey {
-        static let monitoringEnabled = "patchy.monitoringEnabled"
-        static let showDebug = "patchy.showDebug"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -19,7 +14,9 @@ struct PatchyView: View {
             sourceTargetList
             debugArea
         }
-        .padding(16)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
         .sheet(item: $editorDraft) { draft in
             PatchyTargetEditorSheet(
                 draft: draft,
@@ -42,8 +39,7 @@ struct PatchyView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Text("Patchy")
-                .font(.title2.weight(.semibold))
+            ViewSectionHeader(title: "Patchy", symbol: "hammer.fill")
 
             Spacer()
 
@@ -52,23 +48,52 @@ struct PatchyView: View {
                 editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
             } label: {
                 Label("Add Target", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                    )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
         }
     }
 
     private var monitoringControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsView(
-                sections: patchySettingsSections,
-                values: patchySettingsValues,
-                onChange: { _, _ in
-                    app.saveSettings()
-                }
-            )
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
-            .frame(minHeight: 118, maxHeight: 168)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Monitoring", systemImage: "dot.radiowaves.left.and.right")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Start Monitoring", isOn: Binding(
+                    get: { app.settings.patchy.monitoringEnabled },
+                    set: { newValue in
+                        app.settings.patchy.monitoringEnabled = newValue
+                        app.saveSettings()
+                    }
+                ))
+                Text("Enable scheduled checks for release updates.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+
+                Divider()
+
+                Toggle("Show Debug", isOn: Binding(
+                    get: { app.settings.patchy.showDebug },
+                    set: { newValue in
+                        app.settings.patchy.showDebug = newValue
+                        app.saveSettings()
+                    }
+                ))
+                Text("Show additional diagnostic logs and controls.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 10) {
                 if let last = app.patchyLastCycleAt {
@@ -85,49 +110,9 @@ struct PatchyView: View {
                 Spacer()
             }
         }
-        .padding(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
         .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-    }
-
-    private var patchySettingsSections: [SettingSection] {
-        [
-            SettingSection(
-                title: "Monitoring",
-                settings: [
-                    Setting(
-                        key: PatchySettingKey.monitoringEnabled,
-                        title: "Start Monitoring",
-                        description: "Enable scheduled checks for release updates.",
-                        type: .toggle
-                    ),
-                    Setting(
-                        key: PatchySettingKey.showDebug,
-                        title: "Show Debug",
-                        description: "Show additional diagnostic logs and controls.",
-                        type: .toggle
-                    )
-                ]
-            )
-        ]
-    }
-
-    private var patchySettingsValues: Binding<[String: SettingValue]> {
-        Binding(
-            get: {
-                [
-                    PatchySettingKey.monitoringEnabled: .toggle(app.settings.patchy.monitoringEnabled),
-                    PatchySettingKey.showDebug: .toggle(app.settings.patchy.showDebug)
-                ]
-            },
-            set: { updated in
-                if let enabled = updated[PatchySettingKey.monitoringEnabled]?.boolValue {
-                    app.settings.patchy.monitoringEnabled = enabled
-                }
-                if let showDebug = updated[PatchySettingKey.showDebug]?.boolValue {
-                    app.settings.patchy.showDebug = showDebug
-                }
-            }
-        )
     }
 
     private var sourceTargetList: some View {
@@ -172,6 +157,7 @@ struct PatchyView: View {
             }
             .padding(.vertical, 4)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder

@@ -10,8 +10,7 @@ struct SwiftMeshView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("SwiftMesh")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                    ViewSectionHeader(title: "SwiftMesh", symbol: "point.3.connected.trianglepath.dotted")
                     Spacer()
                     Text("\(connectedNodeCount) connected")
                         .font(.caption.weight(.semibold))
@@ -58,7 +57,9 @@ struct SwiftMeshView: View {
 
                 SwiftMeshJobDistributionCard(nodes: app.clusterNodes)
             }
-            .padding(20)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
             .background(SwiftBotGlassBackground().opacity(0.55))
         }
         .task(id: app.settings.clusterMode) {

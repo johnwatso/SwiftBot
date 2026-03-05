@@ -213,10 +213,13 @@ actor DiscordService {
     private var socket: URLSessionWebSocketTask?
     private var heartbeatTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var heartbeatInterval: UInt64 = 41_250_000_000
     private var sequence: Int?
     private var sessionId: String?
     private var botToken: String?
+    private var reconnectAttempts = 0
+    private var userInitiatedDisconnect = false
     private var ruleEngine: RuleEngine?
     private var voiceChannelByMemberKey: [String: String] = [:]
     private var voiceJoinTimeByMemberKey: [String: Date] = [:]
@@ -395,15 +398,23 @@ actor DiscordService {
     }
 
     func connect(token: String) async {
-        botToken = token
-        await onConnectionState?(.connecting)
-        let task = session.webSocketTask(with: gatewayURL)
-        self.socket = task
-        task.resume()
-        receiveTask = Task { await self.receiveLoop(token: token) }
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            await onConnectionState?(.stopped)
+            return
+        }
+        userInitiatedDisconnect = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempts = 0
+        botToken = normalizedToken
+        await openGatewayConnection(token: normalizedToken, isReconnect: false)
     }
 
     func disconnect() {
+        userInitiatedDisconnect = true
+        reconnectTask?.cancel()
+        reconnectTask = nil
         heartbeatTask?.cancel()
         receiveTask?.cancel()
         socket?.cancel(with: .normalClosure, reason: nil)
@@ -417,7 +428,7 @@ actor DiscordService {
     }
 
     private func receiveLoop(token: String) async {
-        while let socket {
+        while !Task.isCancelled, let socket {
             do {
                 let message = try await socket.receive()
                 if case .string(let text) = message,
@@ -432,7 +443,9 @@ actor DiscordService {
                     await onPayload?(payload)
                 }
             } catch {
-                await onConnectionState?(.reconnecting)
+                await scheduleReconnect(
+                    reason: "Gateway receive failed: \(error.localizedDescription)"
+                )
                 break
             }
         }
@@ -445,19 +458,94 @@ actor DiscordService {
                case let .double(interval)? = hello["heartbeat_interval"] {
                 heartbeatInterval = UInt64(interval * 1_000_000)
             }
+            reconnectAttempts = 0
+            reconnectTask?.cancel()
+            reconnectTask = nil
             await identify(token: token)
             startHeartbeat()
             await onConnectionState?(.running)
         case 1:
             await sendHeartbeat()
         case 7:
-            await onConnectionState?(.reconnecting)
+            await scheduleReconnect(reason: "Gateway requested reconnect (op 7)")
         case 9:
             await identify(token: token)
         case 11:
             break
         default:
             break
+        }
+    }
+
+    private func openGatewayConnection(token: String, isReconnect: Bool) async {
+        if isReconnect {
+            await onConnectionState?(.reconnecting)
+        } else {
+            await onConnectionState?(.connecting)
+        }
+        heartbeatTask?.cancel()
+        receiveTask?.cancel()
+        socket?.cancel(with: .goingAway, reason: nil)
+
+        let task = session.webSocketTask(with: gatewayURL)
+        socket = task
+        task.resume()
+        receiveTask = Task { await self.receiveLoop(token: token) }
+    }
+
+    private func scheduleReconnect(reason: String) async {
+        guard !userInitiatedDisconnect else { return }
+        guard reconnectTask == nil else { return }
+        guard let token = botToken, !token.isEmpty else { return }
+
+        reconnectAttempts += 1
+        let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
+        await onConnectionState?(.reconnecting)
+
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            await self.reconnectTaskDidFire(token: token)
+        }
+        _ = reason
+    }
+
+    private func reconnectTaskDidFire(token: String) async {
+        reconnectTask = nil
+        guard !userInitiatedDisconnect else { return }
+        guard botToken == token else { return }
+        await openGatewayConnection(token: token, isReconnect: true)
+    }
+
+    func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return (false, "Token is empty.")
+        }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                return (false, "Discord returned an invalid response.")
+            }
+            if (200..<300).contains(http.statusCode) {
+                return (true, "Valid token")
+            }
+            if http.statusCode == 401 {
+                return (false, "Unauthorized (401). Token is invalid or revoked.")
+            }
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if body.isEmpty {
+                return (false, "Discord API returned HTTP \(http.statusCode).")
+            }
+            return (false, "Discord API returned HTTP \(http.statusCode): \(body)")
+        } catch {
+            return (false, "Token validation request failed: \(error.localizedDescription)")
         }
     }
 

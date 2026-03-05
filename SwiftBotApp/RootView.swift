@@ -6,10 +6,10 @@ struct RootView: View {
     @State private var showToken = false
 
     var body: some View {
-        NavigationSplitView {
+        HSplitView {
             DashboardSidebar(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 280)
-        } detail: {
+                .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
+
             Group {
                 switch selection {
                 case .overview:
@@ -31,18 +31,59 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SwiftBotGlassBackground())
-            .navigationTitle(windowTitle)
         }
-        .navigationSplitViewStyle(.balanced)
+        .padding(.top, -30)
+        .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
-    }
-    
-    private var windowTitle: String {
-        if app.status == .running {
-            return "\(app.botUsername) - SwiftBot"
-        } else {
-            return "SwiftBot Dashboard"
+        .overlay(alignment: .topTrailing) {
+            if app.isBetaBuild {
+                BetaBadgeView()
+                    .padding(.top, 14)
+                    .padding(.trailing, 18)
+            }
         }
+    }
+}
+
+struct ViewSectionHeader: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title2.weight(.semibold))
+        }
+    }
+}
+
+private struct BetaBadgeView: View {
+    var body: some View {
+        Text("BETA")
+            .font(.caption2.weight(.heavy))
+            .tracking(0.8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(.white)
+            .background(
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.orange, Color.red],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(.white.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+            .accessibilityLabel("Beta build")
     }
 }
 
@@ -126,7 +167,6 @@ struct DashboardSidebar: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .sidebarProfileCard()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -301,7 +341,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
-        case .patchy: return "shippingbox.fill"
+        case .patchy: return "hammer.fill"
         case .voice: return "point.3.filled.connected.trianglepath.dotted"
         case .commands: return "terminal.fill"
         case .wikiBridge: return "book.pages.fill"
@@ -330,44 +370,97 @@ struct OverviewView: View {
         app.commandLog.filter { $0.executionRoute == "Worker" || $0.executionRoute == "Remote" }.count
     }
 
+    private var aiProviderSummary: String {
+        app.settings.preferredAIProvider == .apple ? "Apple Intelligence" : "Ollama"
+    }
+
+    private var enabledWikiSourceCount: Int {
+        app.settings.wikiBot.sources.filter(\.enabled).count
+    }
+
+    private var enabledWikiCommandCount: Int {
+        app.settings.wikiBot.sources
+            .filter(\.enabled)
+            .reduce(into: 0) { count, source in
+                count += source.commands.filter(\.enabled).count
+            }
+    }
+
+    private var patchyTargetCount: Int {
+        app.settings.patchy.sourceTargets.count
+    }
+
+    private var patchyEnabledTargetCount: Int {
+        app.settings.patchy.sourceTargets.filter(\.isEnabled).count
+    }
+
+    private var actionRuleCount: Int {
+        app.ruleStore.rules.count
+    }
+
+    private var enabledActionRuleCount: Int {
+        app.ruleStore.rules.filter(\.isEnabled).count
+    }
+
+    private var helpSummary: String {
+        "\(app.settings.help.mode.rawValue) · \(app.settings.help.tone.rawValue)"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Overview")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                    }
-
-                    Spacer()
-                }
+                ViewSectionHeader(title: "Overview", symbol: "speedometer")
 
                 LazyVGrid(columns: [
-                    GridItem(.adaptive(minimum: 180), spacing: 12)
+                    GridItem(.adaptive(minimum: 150), spacing: 10)
                 ], spacing: 12) {
                     if app.settings.clusterMode == .worker {
                         DashboardMetricCard(
                             title: "Status",
                             value: app.primaryServiceStatusText,
                             subtitle: app.clusterSnapshot.serverStatusText,
+                            symbol: "bolt.horizontal.circle.fill",
+                            detail: "Auto Start \(app.settings.autoStart ? "On" : "Off")",
                             color: .green
+                        )
+                        DashboardMetricCard(
+                            title: "Mesh Mode",
+                            value: app.settings.clusterMode.displayName,
+                            subtitle: app.settings.clusterNodeName,
+                            symbol: "point.3.connected.trianglepath.dotted",
+                            detail: "Primary \(app.settings.clusterLeaderAddress.isEmpty ? "Not set" : "Configured")",
+                            color: .purple
                         )
                         DashboardMetricCard(
                             title: "Listen Port",
                             value: "\(app.clusterSnapshot.listenPort)",
                             subtitle: "worker HTTP service",
+                            symbol: "antenna.radiowaves.left.and.right",
+                            detail: "Prefix \(app.settings.prefix)",
                             color: .blue
                         )
                         DashboardMetricCard(
-                            title: "Jobs Handled",
-                            value: "\(workerJobCount)",
-                            subtitle: "this session",
+                            title: "WikiBridge",
+                            value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                            subtitle: "\(enabledWikiSourceCount) sources",
+                            symbol: "book.pages.fill",
+                            detail: "\(enabledWikiCommandCount) commands",
                             color: .orange
                         )
                         DashboardMetricCard(
-                            title: "Last Route",
-                            value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized,
-                            subtitle: app.clusterSnapshot.lastJobNode,
+                            title: "Patchy",
+                            value: app.settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                            subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
+                            symbol: "hammer.fill",
+                            detail: "Jobs \(workerJobCount)",
+                            color: .red
+                        )
+                        DashboardMetricCard(
+                            title: "Actions",
+                            value: "\(enabledActionRuleCount) active",
+                            subtitle: "\(actionRuleCount) total rules",
+                            symbol: "point.3.filled.connected.trianglepath.dotted",
+                            detail: helpSummary,
                             color: .red
                         )
                     } else {
@@ -375,25 +468,65 @@ struct OverviewView: View {
                             title: "Status",
                             value: app.status.rawValue.capitalized,
                             subtitle: app.uptime?.text ?? "--",
+                            symbol: "bolt.horizontal.circle.fill",
+                            detail: "Auto Start \(app.settings.autoStart ? "On" : "Off")",
                             color: .green
                         )
                         DashboardMetricCard(
                             title: "Servers",
                             value: "\(app.connectedServers.count)",
                             subtitle: "servers connected",
+                            symbol: "server.rack",
+                            detail: app.settings.clusterMode == .standalone ? "Standalone" : app.settings.clusterMode.displayName,
                             color: .blue
                         )
                         DashboardMetricCard(
                             title: "In Voice",
                             value: "\(app.activeVoice.count)",
                             subtitle: "users right now",
+                            symbol: "person.3.sequence.fill",
+                            detail: "Route \(app.clusterSnapshot.lastJobRoute.rawValue.capitalized)",
                             color: .orange
                         )
                         DashboardMetricCard(
                             title: "Commands Run",
                             value: "\(app.stats.commandsRun)",
                             subtitle: "this session",
+                            symbol: "terminal.fill",
+                            detail: "Prefix \(app.settings.prefix)",
                             color: .red
+                        )
+                        DashboardMetricCard(
+                            title: "WikiBridge",
+                            value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                            subtitle: "\(enabledWikiSourceCount) sources",
+                            symbol: "book.pages.fill",
+                            detail: "\(enabledWikiCommandCount) commands",
+                            color: .mint
+                        )
+                        DashboardMetricCard(
+                            title: "Patchy",
+                            value: app.settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                            subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
+                            symbol: "hammer.fill",
+                            detail: "Help \(helpSummary)",
+                            color: .purple
+                        )
+                        DashboardMetricCard(
+                            title: "Actions",
+                            value: "\(enabledActionRuleCount) active",
+                            subtitle: "\(actionRuleCount) total rules",
+                            symbol: "point.3.filled.connected.trianglepath.dotted",
+                            detail: "Errors \(app.stats.errors)",
+                            color: .indigo
+                        )
+                        DashboardMetricCard(
+                            title: "AI Bots",
+                            value: aiProviderSummary,
+                            subtitle: app.settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled",
+                            symbol: "sparkles",
+                            detail: "Guild AI \(app.settings.behavior.useAIInGuildChannels ? "On" : "Off")",
+                            color: .purple
                         )
                     }
                 }
@@ -466,7 +599,9 @@ struct OverviewView: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
             .background(SwiftBotGlassBackground().opacity(0.55))
         }
     }
@@ -1165,10 +1300,10 @@ struct RulePaneHeader: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 66, alignment: .bottomLeading)
+        .frame(height: 58, alignment: .bottomLeading)
         .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
+        .padding(.top, 11)
+        .padding(.bottom, 13)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -1558,8 +1693,7 @@ struct CommandsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Commands")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+            ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
 
             Table(app.commandLog) {
                 TableColumn("Time") { Text($0.time.formatted(date: .omitted, time: .standard)) }
@@ -1577,7 +1711,9 @@ struct CommandsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
         }
-        .padding(20)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
     }
 }
 
@@ -1588,8 +1724,7 @@ struct LogsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Logs")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                ViewSectionHeader(title: "Logs", symbol: "list.bullet.clipboard.fill")
                 Spacer()
                 Button("Clear") { showClearLogsConfirm = true }
                     .alert("Clear All Logs?", isPresented: $showClearLogsConfirm) {
@@ -1627,7 +1762,9 @@ struct LogsView: View {
                 }
             }
         }
-        .padding(20)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
     }
 }
 
@@ -1648,31 +1785,33 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Settings")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+            ViewSectionHeader(title: "Settings", symbol: "gearshape.2.fill")
 
-            Form {
-                HStack {
-                    Group {
-                        if showToken {
-                            TextField("Bot Token", text: $app.settings.token)
-                        } else {
-                            SecureField("Bot Token", text: $app.settings.token)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    settingsBlock(title: "General") {
+                        HStack {
+                            Group {
+                                if showToken {
+                                    TextField("Bot Token", text: $app.settings.token)
+                                } else {
+                                    SecureField("Bot Token", text: $app.settings.token)
+                                }
+                            }
+                            Button(showToken ? "Hide" : "Show") { showToken.toggle() }
                         }
+
+                        Picker("Command Prefix", selection: $prefixDraft) {
+                            ForEach(allowedPrefixes, id: \.self) { prefix in
+                                Text(prefix).tag(prefix)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Toggle("Auto Start", isOn: $app.settings.autoStart)
                     }
-                    Button(showToken ? "Hide" : "Show") { showToken.toggle() }
-                }
-
-                Picker("Command Prefix", selection: $prefixDraft) {
-                    ForEach(allowedPrefixes, id: \.self) { prefix in
-                        Text(prefix).tag(prefix)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Toggle("Auto Start", isOn: $app.settings.autoStart)
-
-                Section("SwiftMesh") {
+                    
+                    settingsBlock(title: "SwiftMesh") {
                     // Worker mode is temporarily hidden pending UX redesign.
                     // The .worker case and all runtime code remain intact for future re-enable.
                     Picker("Mode", selection: $app.settings.clusterMode) {
@@ -1742,9 +1881,9 @@ struct GeneralSettingsView: View {
                     Text(app.settings.clusterMode == .worker ? app.clusterSnapshot.serverStatusText : app.clusterSnapshot.workerStatusText)
                         .font(.caption)
                         .foregroundStyle((app.clusterSnapshot.workerState == .connected || app.clusterSnapshot.serverState == .listening) ? .green : .secondary)
-                }
+                    }
 
-                Section("Help & Commands") {
+                    settingsBlock(title: "Help & Commands") {
                     Picker("Help Mode", selection: $app.settings.help.mode) {
                         ForEach(HelpMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
@@ -1812,9 +1951,9 @@ struct GeneralSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                }
+                    }
 
-                Section("Software Updates") {
+                    settingsBlock(title: "Software Updates") {
                     LabeledContent("Updater") {
                         Text(updater.isConfigured ? "Configured" : "Not Configured")
                             .foregroundStyle(updater.isConfigured ? .green : .secondary)
@@ -1855,7 +1994,7 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                }
+                    }
 
                 Button("Save") {
                     validateAll()
@@ -1872,6 +2011,10 @@ struct GeneralSettingsView: View {
                 .disabled(!clusterConfigValid)
 
                 Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
             }
             .onAppear {
                 prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
@@ -1885,8 +2028,7 @@ struct GeneralSettingsView: View {
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
             }
             .onChange(of: app.settings.clusterMode) { validateAll() }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 0)
             .background(Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
@@ -1935,7 +2077,23 @@ struct GeneralSettingsView: View {
                 }
             }
         }
-        .padding(20)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 16)
+    }
+
+    @ViewBuilder
+    private func settingsBlock<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Validation
@@ -2003,16 +2161,16 @@ struct AIBotsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 30) {
-                Text("AI Bots")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 14) {
+                ViewSectionHeader(title: "AI Bots", symbol: "sparkles.rectangle.stack.fill")
 
                 overviewCard
                 MemoryOverviewView(viewModel: app.memoryViewModel)
                 configurationCard
             }
-            .padding(20)
-            .frame(maxWidth: 800)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
         }
         .task {
@@ -2072,8 +2230,8 @@ struct AIBotsView: View {
                 statusStack(isOnline: app.ollamaOnline, isPrimary: app.settings.preferredAIProvider == .ollama)
             }
         }
-        .padding(20)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 
     private var configurationCard: some View {
@@ -2084,27 +2242,48 @@ struct AIBotsView: View {
             SettingsView(sections: aiSettingsSections, values: aiSettingsValues)
                 .scrollContentBackground(.hidden)
                 .background(Color.clear)
+                .padding(.horizontal, 0)
 
             if app.settings.preferredAIProvider == .ollama {
                 HStack {
                     Spacer()
-                    Button("Auto Detect Model") {
+                    Button {
                         app.detectOllamaModel()
+                    } label: {
+                        Label("Auto Detect Model", systemImage: "wand.and.stars")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                            )
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                 }
             }
 
             HStack {
                 Spacer()
-                Button("Save AI Settings") {
+                Button {
                     app.saveSettings()
+                } label: {
+                    Label("Save AI Settings", systemImage: "checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                        )
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
             }
         }
-        .padding(16)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 
     private var aiSettingsSections: [SettingSection] {
@@ -2318,8 +2497,8 @@ struct MemoryOverviewView: View {
                 }
             }
         }
-        .padding(20)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
         .alert("Clear Memory?", isPresented: Binding(
             get: { scopeToClear != nil },
             set: { if !$0 { scopeToClear = nil } }
@@ -2387,22 +2566,39 @@ struct DashboardMetricCard: View {
     let title: String
     let value: String
     let subtitle: String
+    let symbol: String
+    var detail: String = ""
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             Text(value)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .glassCard(cornerRadius: 22, tint: color.opacity(0.10), stroke: color.opacity(0.28))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassCard(cornerRadius: 18, tint: color.opacity(0.10), stroke: color.opacity(0.28))
     }
 }
 

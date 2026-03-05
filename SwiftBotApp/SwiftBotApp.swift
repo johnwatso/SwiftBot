@@ -18,6 +18,40 @@ struct SwiftBotApp: App {
         NSApp.applicationIconImage = image
     }
 
+    private func applyWindowChromeIfAvailable() {
+        DispatchQueue.main.async {
+            guard let window = NSApp.windows.first else { return }
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isMovableByWindowBackground = true
+            window.styleMask.insert(.fullSizeContentView)
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = true
+
+            let cornerRadius: CGFloat = 24
+
+            var currentView: NSView? = window.contentView
+            for _ in 0..<3 {
+                guard let view = currentView else { break }
+                view.wantsLayer = true
+                view.layer?.cornerRadius = cornerRadius
+                view.layer?.cornerCurve = .continuous
+                view.layer?.masksToBounds = true
+                currentView = view.superview
+            }
+
+            if let contentView = window.contentView {
+                contentView.wantsLayer = true
+                contentView.layer?.cornerRadius = cornerRadius
+                contentView.layer?.cornerCurve = .continuous
+                contentView.layer?.masksToBounds = true
+            }
+
+            window.invalidateShadow()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -26,10 +60,13 @@ struct SwiftBotApp: App {
                 .frame(minWidth: 1200, minHeight: 760)
                 .onAppear {
                     applyAppIconIfAvailable()
+                    applyWindowChromeIfAvailable()
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(replacing: .sidebar) { }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates...") {
                     updater.checkForUpdates()

@@ -6,10 +6,6 @@ struct WikiBridgeView: View {
     @State private var editorDraft: WikiSourceDraft?
     @State private var editorMode: WikiBridgeEditorMode = .create
 
-    private enum WikiSettingKey {
-        static let enabled = "wikibridge.enabled"
-    }
-
     private var sortedSources: [WikiSource] {
         app.settings.wikiBot.sources.sorted { lhs, rhs in
             if lhs.isPrimary != rhs.isPrimary {
@@ -20,19 +16,21 @@ struct WikiBridgeView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("WikiBridge")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 14) {
+            header
 
+            if app.settings.wikiBot.isEnabled {
                 overviewCard
-                configurationCard
                 sourcesCard
+            } else {
+                disabledStateContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(20)
-            .frame(maxWidth: 900)
-            .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editorDraft) { draft in
             WikiSourceEditorSheet(
                 draft: draft,
@@ -50,78 +48,65 @@ struct WikiBridgeView: View {
         }
     }
 
+    private var header: some View {
+        HStack(spacing: 12) {
+            ViewSectionHeader(title: "WikiBridge", symbol: "book.pages.fill")
+            Spacer()
+            Button {
+                var updated = app.settings
+                updated.wikiBot.isEnabled.toggle()
+                app.settings = updated
+                app.saveSettings()
+            } label: {
+                Label(
+                    app.settings.wikiBot.isEnabled ? "Disable" : "Enable",
+                    systemImage: app.settings.wikiBot.isEnabled ? "xmark.circle.fill" : "checkmark.circle.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .help("Enable or disable WikiBridge")
+        }
+    }
+
     private var overviewCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Status")
-                .font(.title3.weight(.semibold))
-
             let primarySource = app.settings.wikiBot.primarySource()
-            InfoRow(label: "WikiBridge", value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled")
-            InfoRow(label: "Primary Source", value: primarySource?.name ?? "Not set")
-            InfoRow(label: "Configured Sources", value: "\(app.settings.wikiBot.sources.count)")
-            InfoRow(label: "Enabled Sources", value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)")
-        }
-        .padding(20)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-    }
 
-    private var configurationCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Configuration")
-                .font(.title3.weight(.semibold))
-
-            SettingsView(sections: wikiSettingsSections, values: wikiSettingsValues)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
-                .frame(minHeight: 94, maxHeight: 140)
-
-            HStack {
-                Spacer()
-                Button("Save WikiBridge Settings") {
-                    app.saveSettings()
-                }
-                .buttonStyle(.borderedProminent)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                compactMetric(
+                    title: "Configured",
+                    value: "\(app.settings.wikiBot.sources.count)",
+                    symbol: "square.stack.3d.up"
+                )
+                compactMetric(
+                    title: "Enabled",
+                    value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)",
+                    symbol: "checkmark.seal"
+                )
+                compactMetric(
+                    title: "Primary Source",
+                    value: primarySource?.name ?? "Not set",
+                    symbol: "star.fill"
+                )
             }
         }
-        .padding(20)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-    }
-
-    private var wikiSettingsSections: [SettingSection] {
-        [
-            SettingSection(
-                title: "WikiBridge",
-                settings: [
-                    Setting(
-                        key: WikiSettingKey.enabled,
-                        title: "Enable WikiBridge",
-                        description: "Allow wiki command routing and source resolution.",
-                        type: .toggle
-                    )
-                ]
-            )
-        ]
-    }
-
-    private var wikiSettingsValues: Binding<[String: SettingValue]> {
-        Binding(
-            get: {
-                [
-                    WikiSettingKey.enabled: .toggle(app.settings.wikiBot.isEnabled)
-                ]
-            },
-            set: { updated in
-                if let enabled = updated[WikiSettingKey.enabled]?.boolValue {
-                    app.settings.wikiBot.isEnabled = enabled
-                }
-            }
-        )
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 
     private var sourcesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Wiki Sources")
+                Label("Wiki Sources", systemImage: "books.vertical.fill")
                     .font(.title3.weight(.semibold))
                 Spacer()
                 Button {
@@ -129,8 +114,16 @@ struct WikiBridgeView: View {
                     editorDraft = WikiSourceDraft.makeNew()
                 } label: {
                     Label("Add Source", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                        )
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
             }
 
             if sortedSources.isEmpty {
@@ -138,33 +131,71 @@ struct WikiBridgeView: View {
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
             } else {
-                LazyVStack(spacing: 12) {
-                    ForEach(sortedSources) { source in
-                        WikiSourceCard(
-                            source: source,
-                            onSetPrimary: {
-                                app.setWikiBridgePrimarySource(source.id)
-                            },
-                            onTest: {
-                                app.testWikiBridgeSource(targetID: source.id)
-                            },
-                            onEdit: {
-                                editorMode = .edit
-                                editorDraft = WikiSourceDraft(source: source)
-                            },
-                            onToggleEnabled: {
-                                app.toggleWikiBridgeSourceTargetEnabled(source.id)
-                            },
-                            onDelete: {
-                                app.deleteWikiBridgeSourceTarget(source.id)
-                            }
-                        )
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(sortedSources) { source in
+                            WikiSourceCard(
+                                source: source,
+                                onSetPrimary: {
+                                    app.setWikiBridgePrimarySource(source.id)
+                                },
+                                onTest: {
+                                    app.testWikiBridgeSource(targetID: source.id)
+                                },
+                                onEdit: {
+                                    editorMode = .edit
+                                    editorDraft = WikiSourceDraft(source: source)
+                                },
+                                onToggleEnabled: {
+                                    app.toggleWikiBridgeSourceTargetEnabled(source.id)
+                                },
+                                onDelete: {
+                                    app.deleteWikiBridgeSourceTarget(source.id)
+                                }
+                            )
+                        }
                     }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
-        .padding(20)
-        .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .padding(12)
+        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+    }
+
+    private var disabledStateContent: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+            Image(systemName: "book.pages")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Enable WikiBridge to Configure")
+                .font(.title3.weight(.semibold))
+            Text("Turn on the toggle above to manage sources and commands.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func compactMetric(title: String, value: String, symbol: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
