@@ -163,6 +163,7 @@ struct BotSettings: Codable, Hashable {
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
+    var help = HelpSettings()
 
     private enum CodingKeys: String, CodingKey {
         case token
@@ -186,6 +187,7 @@ struct BotSettings: Codable, Hashable {
         case behavior
         case wikiBot
         case patchy
+        case help
     }
 
     init() {}
@@ -213,6 +215,7 @@ struct BotSettings: Codable, Hashable {
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+        help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -238,6 +241,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(behavior, forKey: .behavior)
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
+        try container.encode(help, forKey: .help)
     }
 }
 
@@ -681,6 +685,40 @@ private extension String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+}
+
+// MARK: - Help Engine Settings
+
+enum HelpMode: String, Codable, CaseIterable, Identifiable {
+    case classic = "Classic"
+    case smart   = "Smart"
+    case hybrid  = "Hybrid"
+
+    var id: String { rawValue }
+
+    var description: String {
+        switch self {
+        case .classic: return "Plain structured text — no AI."
+        case .smart:   return "AI rewrites the response. Falls back to Classic if unavailable."
+        case .hybrid:  return "AI on first attempt; Classic on failure."
+        }
+    }
+}
+
+enum HelpTone: String, Codable, CaseIterable, Identifiable {
+    case concise  = "Concise"
+    case friendly = "Friendly"
+    case detailed = "Detailed"
+
+    var id: String { rawValue }
+}
+
+struct HelpSettings: Codable, Hashable {
+    var mode: HelpMode = .classic
+    var tone: HelpTone = .concise
+    var customIntro: String = ""
+    var customFooter: String = ""
+    var showAdvanced: Bool = false
 }
 
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
