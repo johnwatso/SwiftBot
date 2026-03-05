@@ -23,7 +23,7 @@ struct SwiftMeshView: View {
                         .font(.headline)
 
                     if app.settings.clusterMode == .standalone {
-                        PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Leader or Worker mode to use SwiftMesh.")
+                        PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Worker mode to use SwiftMesh.")
                     } else if topologyNodes.isEmpty {
                         PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
                     } else {

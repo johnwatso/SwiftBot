@@ -496,7 +496,7 @@ struct OverviewClusterSummaryCard: View {
 
             if let leaderNode {
                 HStack {
-                    Text("Leader")
+                    Text("Primary")
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text("\(leaderNode.hostname) (\(leaderNode.role.displayName))")
@@ -781,6 +781,7 @@ struct RuleListView: View {
     let onDeleteOffsets: (IndexSet) -> Void
     let onDeleteRuleID: (UUID) -> Void
     let onDeleteSelected: () -> Void
+    @State private var showDeleteSelectedConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -813,12 +814,18 @@ struct RuleListView: View {
                         }
                     }
 
-                    Button(role: .destructive, action: onDeleteSelected) {
+                    Button(role: .destructive) { showDeleteSelectedConfirm = true } label: {
                         Label("Delete Selected", systemImage: "trash")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .disabled(selectedRuleID == nil)
+                    .alert("Delete Rule?", isPresented: $showDeleteSelectedConfirm) {
+                        Button("Delete", role: .destructive) { onDeleteSelected() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This rule will be permanently deleted.")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
@@ -838,6 +845,7 @@ struct RuleRowView: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -851,11 +859,17 @@ struct RuleRowView: View {
             Spacer()
             Toggle("Enabled", isOn: $rule.isEnabled)
                 .labelsHidden()
-            Button(role: .destructive, action: onDelete) {
+            Button(role: .destructive) { showDeleteConfirm = true } label: {
                 Image(systemName: "trash")
                     .font(.caption.bold())
             }
             .buttonStyle(.borderless)
+            .alert("Delete Rule?", isPresented: $showDeleteConfirm) {
+                Button("Delete", role: .destructive) { onDelete() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\"\(rule.name)\" will be permanently deleted.")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -1570,6 +1584,7 @@ struct CommandsView: View {
 
 struct LogsView: View {
     @EnvironmentObject var app: AppModel
+    @State private var showClearLogsConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1577,7 +1592,13 @@ struct LogsView: View {
                 Text("Logs")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Spacer()
-                Button("Clear") { app.logs.clear() }
+                Button("Clear") { showClearLogsConfirm = true }
+                    .alert("Clear All Logs?", isPresented: $showClearLogsConfirm) {
+                        Button("Clear", role: .destructive) { app.logs.clear() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("All log entries will be permanently removed.")
+                    }
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(app.logs.fullLog(), forType: .string)
@@ -1620,6 +1641,9 @@ struct GeneralSettingsView: View {
     @State private var leaderAddressDraft = ""
     @State private var listenPortDraft = ""
     @State private var clusterSharedSecretDraft = ""
+    @State private var listenPortError: String? = nil
+    @State private var primaryAddressError: String? = nil
+    @State private var sharedSecretError: String? = nil
 
     private let allowedPrefixes = ["$", "#", "!", "?", "%"]
 
@@ -1650,12 +1674,20 @@ struct GeneralSettingsView: View {
                 Toggle("Auto Start", isOn: $app.settings.autoStart)
 
                 Section("SwiftMesh") {
+                    // Worker mode is temporarily hidden pending UX redesign.
+                    // The .worker case and all runtime code remain intact for future re-enable.
                     Picker("Mode", selection: $app.settings.clusterMode) {
-                        ForEach(ClusterMode.allCases) { mode in
+                        ForEach(ClusterMode.allCases.filter { $0 != .worker }) { mode in
                             Text(mode.displayName).tag(mode)
                         }
                     }
                     .pickerStyle(.menu)
+
+                    if app.workerModeMigrated {
+                        Label("Worker mode is temporarily unavailable. Mode switched to Standalone.", systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     TextField("Node Name", text: $clusterNodeNameDraft)
 
@@ -1664,78 +1696,36 @@ struct GeneralSettingsView: View {
                             .help(app.settings.clusterMode == .standby
                                 ? "Address of the Primary node to monitor for failover."
                                 : "Address of the Primary node to register with.")
-
-                        if app.settings.clusterMode == .worker {
-                            HStack {
-                                Button("Test Connection") {
-                                    app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
-                                    app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    app.testWorkerLeaderConnection()
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(app.workerConnectionTestInProgress)
-
-                                if app.workerConnectionTestInProgress {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                            }
-
-                            Text(app.workerConnectionTestStatus)
-                                .font(.caption)
-                                .foregroundStyle(
-                                    app.workerConnectionTestIsSuccess
-                                        ? .green
-                                        : (app.workerConnectionTestStatus == "Not tested" || app.workerConnectionTestInProgress
-                                            ? .secondary
-                                            : .red)
-                                )
+                            .onChange(of: leaderAddressDraft) { _ in validatePrimaryAddress() }
+                        if let err = primaryAddressError {
+                            Text(err).font(.caption).foregroundStyle(.red)
                         }
                     }
 
-                    if app.settings.clusterMode == .leader || app.settings.clusterMode == .standby {
-                        TextField("Listen Port", text: $listenPortDraft)
+                    if app.settings.clusterMode != .standalone {
+                        TextField("Listen Port", text: $listenPortDraft, prompt: Text("38787"))
                             .help(app.settings.clusterMode == .standby
                                 ? "Port to listen on after promotion to Primary."
-                                : "Port this node listens on for Workers.")
+                                : app.settings.clusterMode == .worker
+                                    ? "Local port this Worker listens on."
+                                    : "Port this node listens on for Workers.")
+                            .onChange(of: listenPortDraft) { _ in validateListenPort() }
+                        if let err = listenPortError {
+                            Text(err).font(.caption).foregroundStyle(.red)
+                        }
                     }
 
                     if app.settings.clusterMode != .standalone {
                         SecureField("Cluster Shared Secret", text: $clusterSharedSecretDraft)
+                            .onChange(of: clusterSharedSecretDraft) { _ in validateSharedSecret() }
+                        if let err = sharedSecretError {
+                            Text(err).font(.caption).foregroundStyle(.red)
+                        }
                     }
 
                     Text(app.settings.clusterMode.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    if app.settings.clusterMode == .worker {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Worker Control")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                if app.isWorkerServiceRunning {
-                                    Button("Stop Worker") {
-                                        app.stopBot()
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(.red)
-                                } else {
-                                    Button("Start Worker") {
-                                        app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
-                                        app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        Task { await app.startBot() }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-                            }
-                        }
-                    }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Cluster Status")
@@ -1799,11 +1789,9 @@ struct GeneralSettingsView: View {
                 }
 
                 Button("Save") {
-                    app.settings.prefix = prefixDraft
-                    app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
-                    app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    validateAll()
+                    guard clusterConfigValid else { return }
+                    applyDraftsToSettings()
                     app.saveSettings()
                     prefixDraft = app.settings.prefix
                     clusterNodeNameDraft = app.settings.clusterNodeName
@@ -1812,6 +1800,7 @@ struct GeneralSettingsView: View {
                     clusterSharedSecretDraft = app.settings.clusterSharedSecret
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!clusterConfigValid)
 
                 Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
             }
@@ -1821,17 +1810,112 @@ struct GeneralSettingsView: View {
                 leaderAddressDraft = app.settings.clusterLeaderAddress
                 listenPortDraft = "\(app.settings.clusterListenPort)"
                 clusterSharedSecretDraft = app.settings.clusterSharedSecret
+                validateAll()
             }
             .onChange(of: app.settings.prefix) { newValue in
                 prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
             }
+            .onChange(of: app.settings.clusterMode) { _ in validateAll() }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .background(Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
+
+            if app.settings.clusterMode == .worker {
+                GroupBox("Cluster Controls") {
+                    HStack {
+                        Button("Test Connection") {
+                            applyDraftsToSettings()
+                            app.testWorkerLeaderConnection()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(app.workerConnectionTestInProgress || !clusterConfigValid)
+
+                        if app.workerConnectionTestInProgress {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+
+                    Text(app.workerConnectionTestStatus)
+                        .font(.caption)
+                        .foregroundStyle(
+                            app.workerConnectionTestIsSuccess
+                                ? .green
+                                : (app.workerConnectionTestStatus == "Not tested" || app.workerConnectionTestInProgress
+                                    ? .secondary
+                                    : .red)
+                        )
+
+                    Divider()
+
+                    HStack {
+                        if app.isWorkerServiceRunning {
+                            Button("Stop Worker") { app.stopBot() }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                        } else {
+                            Button("Start Worker") {
+                                applyDraftsToSettings()
+                                Task { await app.startBot() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!clusterConfigValid)
+                        }
+                    }
+                }
+            }
         }
         .padding(20)
+    }
+
+    // MARK: - Validation
+
+    private var clusterConfigValid: Bool {
+        listenPortError == nil && primaryAddressError == nil && sharedSecretError == nil
+    }
+
+    private func validateAll() {
+        validatePrimaryAddress()
+        validateListenPort()
+        validateSharedSecret()
+    }
+
+    private func validatePrimaryAddress() {
+        guard app.settings.clusterMode == .worker || app.settings.clusterMode == .standby else {
+            primaryAddressError = nil; return
+        }
+        primaryAddressError = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Required for Worker and Fail Over modes."
+            : nil
+    }
+
+    private func validateListenPort() {
+        guard app.settings.clusterMode != .standalone else {
+            listenPortError = nil; return
+        }
+        if let port = Int(listenPortDraft), (1024...65535).contains(port) {
+            listenPortError = nil
+        } else {
+            listenPortError = "Must be a number between 1024 and 65535."
+        }
+    }
+
+    private func validateSharedSecret() {
+        guard app.settings.clusterMode == .worker || app.settings.clusterMode == .standby else {
+            sharedSecretError = nil; return
+        }
+        sharedSecretError = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Required for Worker and Fail Over modes."
+            : nil
+    }
+
+    private func applyDraftsToSettings() {
+        app.settings.prefix = prefixDraft
+        app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
+        app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -2119,6 +2203,8 @@ struct AIBotsView: View {
 
 struct MemoryOverviewView: View {
     @ObservedObject var viewModel: MemoryViewModel
+    @State private var showClearAllConfirm = false
+    @State private var scopeToClear: MemoryScope? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2129,11 +2215,15 @@ struct MemoryOverviewView: View {
                 Text("\(viewModel.totalMessages) messages")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Button("Clear All") {
-                    viewModel.clearAll()
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.summaries.isEmpty)
+                Button("Clear All") { showClearAllConfirm = true }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.summaries.isEmpty)
+                    .alert("Clear All Memory?", isPresented: $showClearAllConfirm) {
+                        Button("Clear All", role: .destructive) { viewModel.clearAll() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("All conversation memory will be permanently deleted.")
+                    }
             }
 
             if viewModel.summaries.isEmpty {
@@ -2151,11 +2241,9 @@ struct MemoryOverviewView: View {
                         Text("\(summary.messageCount)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        Button("Clear") {
-                            viewModel.clear(scope: summary.scope)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        Button("Clear") { scopeToClear = summary.scope }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 2)
                 }
@@ -2163,6 +2251,18 @@ struct MemoryOverviewView: View {
         }
         .padding(20)
         .glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .alert("Clear Memory?", isPresented: Binding(
+            get: { scopeToClear != nil },
+            set: { if !$0 { scopeToClear = nil } }
+        )) {
+            Button("Clear", role: .destructive) {
+                if let scope = scopeToClear { viewModel.clear(scope: scope) }
+                scopeToClear = nil
+            }
+            Button("Cancel", role: .cancel) { scopeToClear = nil }
+        } message: {
+            Text("Memory for this conversation will be permanently deleted.")
+        }
     }
 }
 

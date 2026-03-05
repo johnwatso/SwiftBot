@@ -128,7 +128,7 @@ SwiftBot includes a robust cluster operating system called **SwiftMesh** for dis
 - **Standalone**: Single node handling all Discord and job operations.
 - **Leader**: Primary node owning the Discord Gateway connection. Replicates state (conversations, wiki cache, worker registry) to standbys and offloads heavy jobs to workers.
 - **Standby**: Hot-failover node. Monitors leader health via heartbeat. Promotes to Leader automatically after 3 misses, assuming the newest monotonic term.
-- **Worker**: Lightweight node for offloading AI/Wiki jobs. Does not connect to Discord.
+- **Worker** (Temporarily Disabled): Lightweight node for offloading AI/Wiki jobs. _Note: This mode is currently disabled in the UI for UX redesign._
 
 ### Failover Features:
 - **Term Monotonicity**: Prevents split-brain scenarios using persisted, incrementing leader epochs.

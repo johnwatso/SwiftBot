@@ -21,7 +21,7 @@ struct DiagnosticsView: View {
                 RuleGroupSection(title: "Cluster", systemImage: "point.3.connected.trianglepath.dotted") {
                     InfoRow(label: "Mode", value: app.clusterSnapshot.mode.rawValue)
                     InfoRow(label: "Node", value: app.clusterSnapshot.nodeName)
-                    InfoRow(label: "Leader Address", value: app.clusterSnapshot.leaderAddress.isEmpty ? "-" : app.clusterSnapshot.leaderAddress)
+                    InfoRow(label: "Primary Address", value: app.clusterSnapshot.leaderAddress.isEmpty ? "-" : app.clusterSnapshot.leaderAddress)
                     InfoRow(label: "Listen Port", value: "\(app.clusterSnapshot.listenPort)")
                     InfoRow(label: "Server", value: app.clusterSnapshot.serverStatusText)
                     InfoRow(label: "Worker", value: app.clusterSnapshot.workerStatusText)

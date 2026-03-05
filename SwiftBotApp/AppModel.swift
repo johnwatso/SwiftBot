@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
+    @Published var workerModeMigrated = false
 
     var logs = LogStore()
     let ruleStore = RuleStore()
@@ -105,6 +106,12 @@ final class AppModel: ObservableObject {
                 migrated = true
             }
             if migrateLegacyWikiBridgeSettingsIfNeeded(&loadedSettings) {
+                migrated = true
+            }
+            // Worker mode is temporarily disabled pending UX redesign — migrate to Standalone.
+            if loadedSettings.clusterMode == .worker {
+                loadedSettings.clusterMode = .standalone
+                workerModeMigrated = true
                 migrated = true
             }
 
@@ -180,7 +187,7 @@ final class AppModel: ObservableObject {
                     // When promoted to leader, start connecting to Discord.
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        logs.append("🚀 Promoted to leader. Connecting to Discord...")
+                        logs.append("🚀 Promoted to Primary. Connecting to Discord...")
                         Task { await self.connectDiscordAfterPromotion() }
                     }
                 }
@@ -611,6 +618,15 @@ final class AppModel: ObservableObject {
     }
 
     func startBot() async {
+        // Worker mode is temporarily disabled pending UX redesign.
+        // The underlying code is preserved; re-enable by removing this guard when ready.
+        if settings.clusterMode == .worker {
+            await MainActor.run {
+                logs.append("⚠️ Worker mode is temporarily unavailable. Select Standalone, Primary, or Fail Over in Settings.")
+            }
+            return
+        }
+
         await cluster.applySettings(
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
@@ -620,15 +636,9 @@ final class AppModel: ObservableObject {
             leaderTerm: settings.clusterLeaderTerm
         )
 
-        if settings.clusterMode == .worker {
-            status = .stopped
-            logs.append("Worker mode active. Discord connection is disabled on this node.")
-            return
-        }
-
         if settings.clusterMode == .standby {
             status = .stopped
-            logs.append("Standby mode active. Monitoring leader; Discord connection deferred until promotion.")
+            logs.append("Fail Over mode active. Monitoring Primary; Discord connection deferred until promotion.")
             return
         }
 
@@ -809,7 +819,7 @@ final class AppModel: ObservableObject {
                 for entry in entries {
                     await wikiContextCache.upsertEntry(entry)
                 }
-                logs.append("SwiftMesh: pulled \(entries.count) wiki entry(s) from leader")
+                logs.append("SwiftMesh: pulled \(entries.count) wiki entry(s) from Primary")
             }
         } catch {
             // best effort
@@ -871,7 +881,7 @@ final class AppModel: ObservableObject {
         ]
 
         if settings.clusterMode == .worker, !settings.clusterLeaderAddress.isEmpty {
-            let host = URL(string: settings.clusterLeaderAddress)?.host ?? "Leader"
+            let host = URL(string: settings.clusterLeaderAddress)?.host ?? "Primary"
             nodes.append(
                 ClusterNodeStatus(
                     id: "leader-\(host.lowercased())",
@@ -2046,7 +2056,7 @@ final class AppModel: ObservableObject {
             case .cannotConnectToHost:
                 let portLabel = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
                 return WorkerConnectionTestOutcome(
-                    message: "Connection refused on port \(portLabel) (Leader may be offline or settings not saved)",
+                    message: "Connection refused on port \(portLabel) (Primary may be offline or settings not saved)",
                     isSuccess: false
                 )
             default:
@@ -2160,7 +2170,7 @@ final class AppModel: ObservableObject {
             return (snapshot.lastJobRoute.rawValue.capitalized, snapshot.lastJobNode)
         }
 
-        return ("Leader", leaderNode)
+        return ("Primary", leaderNode)
     }
 
     private func rollDice(_ descriptor: String) -> String? {

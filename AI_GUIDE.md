@@ -48,6 +48,8 @@ This file provides quick answers to common questions and tasks for AI assistants
 
 ## SwiftMesh (High Availability)
 
+> **Note:** Worker mode is temporarily disabled in the UI for UX redesign. Primary and Fail Over modes remain fully functional.
+
 - **Architecture:** Monotonic term-based leader election with standby nodes.
 - **Persistence:** Cursors are keyed by stable `nodeName` and saved to `mesh-cursors.json`.
 - **Sync Protocol:**

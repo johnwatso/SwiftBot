@@ -328,7 +328,7 @@ actor ClusterCoordinator {
 
     func probeWorker() async -> ClusterProbeResponse? {
         guard mode == .leader else {
-            snapshot.diagnostics = "Remote cluster worker probe is only available in leader mode"
+            snapshot.diagnostics = "Remote cluster worker probe is only available in Primary mode"
             await publishSnapshot()
             return nil
         }
