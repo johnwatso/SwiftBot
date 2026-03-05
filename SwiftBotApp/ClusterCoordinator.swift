@@ -188,6 +188,10 @@ actor ClusterCoordinator {
         leaderTerm
     }
 
+    func normalizedLeaderBaseURL(_ raw: String) -> String? {
+        normalizedBaseURL(raw)
+    }
+
     func refreshWorkerHealth() async {
         switch mode {
         case .standby:
