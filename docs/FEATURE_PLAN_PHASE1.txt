@@ -272,6 +272,27 @@ Acceptance criteria:
 - [ ] Cooldowns/idempotency prevent duplicate or noisy outputs.
 
 
+
+SwiftMesh Observability & Diagnostics (Requested 2026-03-05)
+-----------------------------------------------------------
+Goal: Provide deep visibility into cluster communication and sync state to
+diagnose "silent" failures in Worker/Leader connectivity.
+
+Proposed solution:
+1. Dedicated Log Store: Implement a persistent `SwiftMeshLogger` (actor) that
+   writes to `~/Library/Application Support/SwiftBot/swiftmesh.log`.
+2. Granular Traceability: Log every stage of the handshake:
+   - Worker registration attempts (including full URL and response code).
+   - Auth secret verification outcomes.
+   - Gateway event replication (MemoryRecord ID, byte size, merge status).
+   - Term-based election transitions.
+3. UI Integration: Add a "Cluster Logs" panel within the Status or Mesh view
+   for real-time field diagnostics.
+
+Placement:
+- P1 Stabilization Workstream.
+- Critical for resolving the reported "silent failure" bugs in SwiftMesh.
+
 Codebase Improvement Backlog (Audit: 2026-03-05)
 -------------------------------------------------
 These are architecture/maintainability improvements identified from code review.
@@ -398,6 +419,80 @@ Acceptance criteria:
 - [ ] Patchy log append path is O(1) amortized.
 - [ ] Weekly summary behavior remains stable across reconnect events.
 - [ ] Efficiency changes introduce no behavior regression in P0/P1 features.
+
+Security Roadmap (Cross-Agent Draft, 2026-03-05)
+-------------------------------------------------
+Goal: reduce security risk while preserving current feature velocity.
+
+Current security posture: generally sound for token storage and basic cluster auth,
+but with important hardening gaps in transport/auth robustness and abuse controls.
+
+P0 (high priority hardening):
+- Enforce fail-closed cluster auth when mesh modes are enabled.
+  - If cluster mode is not standalone, missing/empty shared secret should block
+    privileged cluster operations at runtime.
+- Replace plain secret equality checks with constant-time comparison for shared secrets.
+- Add explicit secret/token redaction policy for logs and diagnostics output.
+
+P1 (network and protocol hardening):
+- Strengthen cluster transport security:
+  - Prefer TLS for inter-node traffic where feasible.
+  - If TLS is deferred, add request signing with nonce/timestamp to reduce replay risk.
+- Add anti-replay controls on sensitive cluster routes.
+- Add rate limiting/throttling for sensitive inbound routes (AI job, sync, worker register).
+
+P2 (defense-in-depth and governance):
+- Add a security configuration self-check panel (secret presence, intent gates, endpoint safety).
+- Add security-focused tests:
+  - unauthorized cluster request rejection
+  - replay attempt rejection
+  - secret redaction in logs
+- Add dependency/update cadence policy and basic vulnerability review checklist.
+
+Security strengths already present:
+- Discord bot token is stored in Keychain with migration from disk and disk-clearing on save.
+- Cluster addresses include private-range/localhost SSRF guards.
+- Cluster server has max request size and read timeout constraints.
+
+Acceptance criteria:
+- [ ] Cluster auth fails closed when mesh features are active.
+- [ ] Secret comparison is constant-time for authentication paths.
+- [ ] Logs/diagnostics never expose full token/shared-secret values.
+- [ ] Unauthorized/replay attempts are rejected with tests proving behavior.
+
+SwiftMesh Observability Hardening (Roadmap Addendum, 2026-03-05)
+----------------------------------------------------------------
+Goal: make SwiftMesh communication failures diagnosable without digging through
+mixed general logs.
+
+Architectural direction:
+- Do **not** extend current `LogStore` for this purpose (it is in-memory, UI-first).
+- Add a dedicated `ClusterLogger` actor with durable file output
+  (`Application Support/SwiftBot/swiftmesh.log`) and bounded retention policy.
+
+P1 scope:
+- Structured mesh log events for:
+  - worker registration attempts/results
+  - leader health checks and promotion decisions
+  - sync push/pull attempts with cursor/term metadata
+  - auth failures (401), payload validation failures, timeouts, unreachable nodes
+  - node clock-skew observations (local vs remote timestamp delta)
+- Correlation IDs per operation chain (register/sync/probe) to trace failures end-to-end.
+- Clock-drift guardrail: emit warning event when node time drift exceeds threshold
+  (e.g., >5s warn, >30s critical) because drift can destabilize election/sync semantics.
+- Add a focused "Mesh Logs" view/filter in UI (read-only, copy/export support).
+
+Guardrails:
+- Redact secrets/tokens from log lines by policy.
+- Keep human-readable summary + structured fields for machine parsing.
+- Ensure log writes are non-blocking to runtime-critical paths.
+
+Acceptance criteria:
+- [ ] SwiftMesh failures are visible in dedicated persistent logs with reason codes.
+- [ ] Registration and sync flows can be traced by correlation ID.
+- [ ] Node time-drift events are captured with thresholded severity.
+- [ ] Mesh logs survive app restart and are bounded by retention policy.
+- [ ] No sensitive secret/token values appear in persisted mesh logs.
 
 
 Notes for Implementation (future reference)
