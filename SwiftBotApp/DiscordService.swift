@@ -851,6 +851,14 @@ actor DiscordService {
         return (http.statusCode, responseBody)
     }
 
+    /// Sends a typing indicator to the given channel. Fire-and-forget; errors are silently discarded.
+    func triggerTyping(channelId: String, token: String) async {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/typing"))
+        req.httpMethod = "POST"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: req)
+    }
+
     private func seedGuildNameIfNeeded(_ payload: GatewayPayload) {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,

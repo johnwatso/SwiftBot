@@ -76,7 +76,16 @@ actor ClusterCoordinator {
     private var replicationCursors: [String: ReplicationCursor] = [:]
     private var onCursorsChanged: (@Sendable ([String: ReplicationCursor]) async -> Void)?
 
+    // P1b: LAN peer discovery via Bonjour/mDNS
+    private var meshBrowser: NWBrowser?
+    private var discoveredPeers: [String: DiscoveredPeer] = [:]
+
     private var aiHandler: AIHandler?
+#if DEBUG
+    // AI reply override for unit tests — set via testSetAIReplyOverride(_:delaySeconds:).
+    var _testAIReplyOverride: String? = nil
+    var _testAIReplyDelaySeconds: Double = 0
+#endif
     private var wikiHandler: WikiHandler?
     private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
@@ -170,6 +179,7 @@ actor ClusterCoordinator {
     }
 
     func stopAll() async {
+        stopMeshDiscovery()
         workerRegistrationTask?.cancel()
         workerRegistrationTask = nil
         standbyMonitorTask?.cancel()
@@ -291,6 +301,14 @@ actor ClusterCoordinator {
         channelName: String? = nil,
         wikiContext: String? = nil
     ) async -> String? {
+#if DEBUG
+        if let override = _testAIReplyOverride {
+            if _testAIReplyDelaySeconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(_testAIReplyDelaySeconds * 1_000_000_000))
+            }
+            return override.isEmpty ? nil : override
+        }
+#endif
         let job = AIJobRequest(
             messages: messages,
             serverName: serverName,
@@ -470,6 +488,7 @@ actor ClusterCoordinator {
     }
 
     private func restartServerIfNeeded() async {
+        stopMeshDiscovery()
         listener?.cancel()
         listener = nil
 
@@ -484,6 +503,13 @@ actor ClusterCoordinator {
             snapshot.serverStatusText = "Starting on :\(listenPort)"
             snapshot.diagnostics = "Starting worker server on port \(listenPort)"
             let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(integerLiteral: NWEndpoint.Port.IntegerLiteralType(listenPort)))
+            // P1b: advertise this node over Bonjour so LAN peers can discover it.
+            let txtRecord = NWTXTRecord([
+                "node": nodeName,
+                "port": "\(listenPort)",
+                "host": ProcessInfo.processInfo.hostName
+            ])
+            listener.service = NWListener.Service(name: nodeName, type: "_swiftbot-mesh._tcp", txtRecord: txtRecord)
             listener.newConnectionHandler = { [weak self] connection in
                 Task { await self?.handleConnection(connection) }
             }
@@ -497,6 +523,9 @@ actor ClusterCoordinator {
             snapshot.serverStatusText = "Server failed: \(error.localizedDescription)"
             snapshot.diagnostics = "Failed to bind port \(listenPort): \(error.localizedDescription)"
         }
+
+        // P1b: start browsing for other LAN nodes regardless of role.
+        startMeshDiscovery()
     }
 
     private func handleListenerState(_ state: NWListener.State) async {
@@ -518,6 +547,81 @@ actor ClusterCoordinator {
             break
         }
         await publishSnapshot()
+    }
+
+    // MARK: - P1b: LAN peer discovery
+
+    /// Returns base URLs of LAN-discovered peers, sorted by discovery time (oldest first).
+    /// Peers are discovered via Bonjour (_swiftbot-mesh._tcp) and keyed by node name for dedupe.
+    /// Does NOT replace the manual leaderAddress path; purely additive.
+    func discoveredPeerBaseURLs() -> [String] {
+        // Primary: discovery time (oldest first). Secondary: nodeName (lexicographic) for
+        // fully deterministic output when two peers are discovered within the same tick.
+        discoveredPeers.values
+            .sorted {
+                if $0.discoveredAt != $1.discoveredAt { return $0.discoveredAt < $1.discoveredAt }
+                return $0.nodeName < $1.nodeName
+            }
+            .map { $0.baseURL }
+    }
+
+    private func startMeshDiscovery() {
+        meshBrowser?.cancel()
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: "_swiftbot-mesh._tcp", domain: nil),
+            using: .tcp
+        )
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            Task { await self?.handleDiscoveryResults(results) }
+        }
+        browser.start(queue: .global(qos: .utility))
+        meshBrowser = browser
+    }
+
+    private func stopMeshDiscovery() {
+        meshBrowser?.cancel()
+        meshBrowser = nil
+        discoveredPeers.removeAll()
+    }
+
+    private func handleDiscoveryResults(_ results: Set<NWBrowser.Result>) {
+        // Single timestamp for the entire batch so all newly seen peers in the same
+        // browse update share the same discoveredAt — preventing Set iteration order
+        // from producing different primary-sort values across runs.
+        let batchTimestamp = Date()
+        var active: [String: DiscoveredPeer] = [:]
+        for result in results {
+            guard case let .bonjour(txtRecord) = result.metadata else { continue }
+            let peerName = txtRecord["node"] ?? ""
+            let host = txtRecord["host"] ?? ""
+            let portStr = txtRecord["port"] ?? ""
+            guard !peerName.isEmpty, !host.isEmpty,
+                  let port = Int(portStr), port > 0 else { continue }
+            guard peerName != nodeName else { continue }  // skip self
+            let baseURL = "http://\(host):\(port)"
+            if let existing = active[peerName] {
+                // Deterministic collision rule: when the same nodeName appears more than once
+                // in a single browse batch, prefer the lexicographically smallest baseURL so
+                // the result is independent of Set iteration order.
+                if baseURL < existing.baseURL {
+                    active[peerName] = DiscoveredPeer(
+                        nodeName: peerName,
+                        baseURL: baseURL,
+                        discoveredAt: existing.discoveredAt
+                    )
+                }
+            } else {
+                // New peer: use batchTimestamp (not per-item Date()) so all peers first seen
+                // in the same batch share an identical discoveredAt; secondary nodeName sort
+                // then provides stable output ordering within the batch.
+                active[peerName] = DiscoveredPeer(
+                    nodeName: peerName,
+                    baseURL: baseURL,
+                    discoveredAt: discoveredPeers[peerName]?.discoveredAt ?? batchTimestamp
+                )
+            }
+        }
+        discoveredPeers = active
     }
 
     private func handleConnection(_ connection: NWConnection) async {
@@ -1575,6 +1679,34 @@ extension ClusterCoordinator {
             "X-Mesh-Signature": sig
         ]
     }
+
+    /// Injects a list of DiscoveredPeer values into the discovery table, applying the same
+    /// deterministic collision rule as handleDiscoveryResults (lexicographically smallest baseURL
+    /// wins when two entries share the same nodeName).
+    func testInjectDiscoveredPeers(_ peers: [DiscoveredPeer]) {
+        var result: [String: DiscoveredPeer] = [:]
+        for peer in peers {
+            if let existing = result[peer.nodeName] {
+                if peer.baseURL < existing.baseURL {
+                    result[peer.nodeName] = DiscoveredPeer(
+                        nodeName: peer.nodeName,
+                        baseURL: peer.baseURL,
+                        discoveredAt: existing.discoveredAt
+                    )
+                }
+            } else {
+                result[peer.nodeName] = peer
+            }
+        }
+        discoveredPeers = result
+    }
+
+    /// Overrides the AI reply generator with a fixed response after a configurable delay.
+    /// Pass nil to clear the override and restore normal generation.
+    func testSetAIReplyOverride(response: String?, delaySeconds: Double = 0) {
+        _testAIReplyOverride = response
+        _testAIReplyDelaySeconds = delaySeconds
+    }
 }
 #endif
 
@@ -1583,6 +1715,13 @@ private struct RegisteredWorker: Hashable, Sendable {
     var baseURL: String
     var listenPort: Int
     var lastSeen: Date
+}
+
+/// A LAN peer discovered via Bonjour (_swiftbot-mesh._tcp).
+struct DiscoveredPeer: Sendable {
+    let nodeName: String
+    var baseURL: String
+    let discoveredAt: Date
 }
 
 private struct WorkerRegistrationRequest: Codable {
