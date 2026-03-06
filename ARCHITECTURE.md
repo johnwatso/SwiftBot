@@ -250,6 +250,39 @@ SwiftMesh now has phased HA support beyond basic leader/worker routing (Note: Wo
 - **Phase 3 (implemented):**
   - wiki cache/state replication across nodes for failover knowledge continuity via background pull protocol (`/v1/mesh/sync/wiki-cache`)
 
+## Music Link Converter (Planned — not yet implemented)
+
+See [`docs/music.md`](docs/music.md) for full design details. Inspired by [tunes.ninja](https://tunes.ninja).
+
+### Purpose
+When a user posts a Spotify/YouTube/Apple Music/etc. link, SwiftBot automatically replies with a cross-platform embed (via the [Odesli API](https://odesli.co)) so everyone can open the track in their preferred app.
+
+No voice channel, no audio download, no playback.
+
+### New Component: `MusicLinkConverter`
+- `extractMusicURL(from:)` — `NSDataDetector` + domain filter for known music services
+- `resolve(url:apiKey:)` — `GET api.song.link/v1-alpha.1/links` via existing `URLSession` pattern
+- `buildEmbed(from:originalURL:)` — formats `linksByPlatform` into a Discord embed payload
+
+### Framework Fit
+- No new SPM dependencies
+- `AppModel.handleMessageCreate()` — call converter before command check
+- `AppModel.sendEmbed()` — already exists, reused directly
+- `BotSettings` — add `musicLinkConversionEnabled` toggle
+
+### Data Flow
+```
+User posts message with music URL
+    ↓
+AppModel.handleMessageCreate()
+    ↓
+MusicLinkConverter.extractMusicURL(from: content)
+    ↓
+MusicLinkConverter.resolve(url:)  [Odesli API]
+    ↓
+AppModel.sendEmbed(channelId, embed:)
+```
+
 ## Plugin System
 
 ### Interface

@@ -7,6 +7,8 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 - **[CHANGELOG.md](CHANGELOG.md)** - All changes and fixes made to the project
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical architecture and design patterns
 - **[AI_GUIDE.md](AI_GUIDE.md)** - Quick reference for AI assistants and developers
+- **[docs/link-converter.md](docs/link-converter.md)** - Music Link Converter detailed design (Odesli/tunes.ninja model)
+- **[docs/music.md](docs/music.md)** - Music feature overview and setup guide
 
 ## Preview
 
@@ -85,6 +87,16 @@ A native macOS Discord bot dashboard app written in SwiftUI and Swift Concurrenc
 
 - Improved macOS visual design pass (modern SwiftUI + "Liquid Glass" materials/vibrancy)
 - Rule builder UX polish and automation ergonomics
+
+### 🎵 Music Link Converter (Planned — design phase, not yet implemented)
+
+Inspired by [tunes.ninja](https://tunes.ninja): when a user posts a Spotify, YouTube, Apple Music, or other music service link, SwiftBot automatically replies with a cross-platform embed so everyone can open the track in their preferred app.
+
+**How it works:** `NSDataDetector` finds music URLs → [Odesli API](https://odesli.co) resolves them to all platforms → Discord embed posted with links for Spotify, YouTube, Apple Music, Tidal, and more.
+
+No voice channel, no audio download, no new dependencies. See [`docs/music.md`](docs/music.md) for the full design.
+
+> **Legal:** No audio is downloaded or streamed. Odesli ToS permits free non-commercial link sharing. All links point to original licensed platforms.
 
 ### 🧭 Planned / Backlog
 
