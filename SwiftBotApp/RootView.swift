@@ -98,172 +98,388 @@ private struct BetaBadgeView: View {
 private struct OnboardingGateView: View {
     @EnvironmentObject var app: AppModel
 
-    private enum Step { case entry, validating, confirmed, failed }
+    private enum Step {
+        // Initial path choice
+        case choosePath
+        // Standalone bot path
+        case entry, validating, confirmed, failed
+        // SwiftMesh path
+        case meshSetup, meshTesting, meshConfirmed, meshFailed
+    }
 
-    @State private var step: Step = .entry
+    @State private var step: Step = .choosePath
     @State private var tokenInput: String = ""
     @State private var showToken: Bool = false
     @State private var inviteURL: String? = nil
     @State private var inviteConfirmed: Bool = false
+    @State private var isLoadingInviteURL: Bool = false
+    @State private var inviteLoadFailed: Bool = false
 
     var body: some View {
         ZStack {
             SwiftBotGlassBackground()
 
             VStack(spacing: 32) {
-                // Icon + title
+                // Icon + title (always visible)
                 VStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [.blue, .indigo],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 72, height: 72)
-                        Image(systemName: "cpu.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.white)
-                    }
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 80, height: 80)
+                        .accessibilityHidden(true)
                     Text("Welcome to SwiftBot")
                         .font(.largeTitle.weight(.bold))
-                    Text("Enter your Discord bot token to get started.")
+                    Text(stepSubtitle)
                         .font(.body)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
 
-                // Token field + action
-                VStack(spacing: 16) {
-                    HStack {
-                        Group {
-                            if showToken {
-                                TextField("Bot token", text: $tokenInput)
-                            } else {
-                                SecureField("Bot token", text: $tokenInput)
-                            }
-                        }
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                        .disabled(step == .validating || step == .confirmed)
-
-                        Button {
-                            showToken.toggle()
-                        } label: {
-                            Image(systemName: showToken ? "eye.slash" : "eye")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(showToken ? "Hide token" : "Show token")
-                    }
-                    .frame(maxWidth: 560)
-
-                    // Error message
-                    if step == .failed, let result = app.lastTokenValidationResult {
-                        Text(result.errorMessage)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: 560)
-                    }
-
-                    // Buttons
+                // Step content
+                Group {
                     switch step {
-                    case .entry, .failed:
-                        Button {
-                            app.settings.token = tokenInput
-                            step = .validating
-                            Task {
-                                let ok = await app.validateAndOnboard()
-                                step = ok ? .confirmed : .failed
-                            }
-                        } label: {
-                            Label("Validate Token", systemImage: "checkmark.shield.fill")
-                                .frame(minWidth: 200)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    case .validating:
-                        HStack(spacing: 10) {
-                            ProgressView().controlSize(.small)
-                            Text("Validating…")
-                                .foregroundStyle(.secondary)
-                        }
-
-                    case .confirmed:
-                        VStack(spacing: 16) {
-                            if let result = app.lastTokenValidationResult {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                    Text("Connected as **\(result.username ?? "Bot")**")
-                                }
-                                .font(.body)
-                            }
-
-                            // Invite URL
-                            if let url = inviteURL {
-                                VStack(spacing: 8) {
-                                    Text("Invite your bot to a server:")
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                    HStack(spacing: 8) {
-                                        Text(url)
-                                            .font(.system(.caption, design: .monospaced))
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                            .foregroundStyle(.secondary)
-                                            .frame(maxWidth: 360)
-                                        Button {
-                                            NSPasteboard.general.clearContents()
-                                            NSPasteboard.general.setString(url, forType: .string)
-                                        } label: {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                        Button {
-                                            if let u = URL(string: url) { NSWorkspace.shared.open(u) }
-                                        } label: {
-                                            Label("Open Invite", systemImage: "arrow.up.right.square")
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-                                }
-                                .padding(12)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                                Toggle(isOn: $inviteConfirmed) {
-                                    Text("I have invited the bot to at least one server")
-                                        .font(.callout)
-                                }
-                                .toggleStyle(.checkbox)
-                                .frame(maxWidth: 560, alignment: .leading)
-                            }
-
-                            Button {
-                                app.completeOnboarding()
-                            } label: {
-                                Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
-                                    .frame(minWidth: 200)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                            .disabled(inviteURL != nil && !inviteConfirmed)
-                        }
-                        .task {
-                            if inviteURL == nil {
-                                inviteURL = await app.generateInviteURL()
-                            }
-                        }
+                    case .choosePath:
+                        choosePathView
+                    case .entry, .validating, .confirmed, .failed:
+                        standaloneFlow
+                    case .meshSetup, .meshTesting, .meshConfirmed, .meshFailed:
+                        meshFlow
                     }
                 }
             }
             .padding(48)
         }
         .ignoresSafeArea()
-        .onAppear {
-            tokenInput = app.settings.token
+        .onAppear { tokenInput = app.settings.token }
+        .onChange(of: app.workerConnectionTestInProgress) { inProgress in
+            guard step == .meshTesting, !inProgress else { return }
+            step = app.workerConnectionTestIsSuccess ? .meshConfirmed : .meshFailed
         }
+    }
+
+    // MARK: - Subtitle
+
+    private var stepSubtitle: String {
+        switch step {
+        case .choosePath:       return "How would you like to set up SwiftBot?"
+        case .entry, .failed:  return "Enter your Discord bot token to get started."
+        case .validating:      return "Validating your token…"
+        case .confirmed:       return "Your bot is connected and ready."
+        case .meshSetup:       return "Enter your SwiftMesh node details."
+        case .meshTesting:     return "Testing connection to the SwiftMesh leader…"
+        case .meshConfirmed:   return "SwiftMesh connection successful."
+        case .meshFailed:      return "Could not reach the SwiftMesh leader."
+        }
+    }
+
+    // MARK: - Path choice
+
+    private var choosePathView: some View {
+        VStack(spacing: 16) {
+            Button { step = .entry } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "server.rack").font(.title2)
+                    Text("Set Up Standalone Bot").font(.headline)
+                    Text("Connect a single Discord bot with a token.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 360)
+                .padding(20)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
+            Button {
+                app.settings.clusterMode = .leader
+                step = .meshSetup
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted").font(.title2)
+                    Text("Set Up SwiftMesh Node").font(.headline)
+                    Text("Join or create a multi-node SwiftMesh cluster.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 360)
+                .padding(20)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+    }
+
+    // MARK: - Standalone flow
+
+    @ViewBuilder
+    private var standaloneFlow: some View {
+        VStack(spacing: 16) {
+            // Token field
+            HStack {
+                Group {
+                    if showToken {
+                        TextField("Bot token", text: $tokenInput)
+                    } else {
+                        SecureField("Bot token", text: $tokenInput)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+                .disabled(step == .validating || step == .confirmed)
+
+                Button {
+                    showToken.toggle()
+                } label: {
+                    Image(systemName: showToken ? "eye.slash" : "eye").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showToken ? "Hide token" : "Show token")
+            }
+            .frame(maxWidth: 560)
+
+            // Error
+            if step == .failed, let result = app.lastTokenValidationResult {
+                Text(result.errorMessage)
+                    .font(.callout).foregroundStyle(.red)
+                    .multilineTextAlignment(.center).frame(maxWidth: 560)
+            }
+
+            // Actions
+            switch step {
+            case .entry, .failed:
+                HStack(spacing: 12) {
+                    Button { step = .choosePath } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.bordered).controlSize(.large)
+
+                    Button {
+                        app.settings.token = tokenInput
+                        step = .validating
+                        Task {
+                            let ok = await app.validateAndOnboard()
+                            step = ok ? .confirmed : .failed
+                        }
+                    } label: {
+                        Label("Validate Token", systemImage: "checkmark.shield.fill")
+                            .frame(minWidth: 200)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+            case .validating:
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Validating…").foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Validating token, please wait")
+
+            case .confirmed:
+                VStack(spacing: 16) {
+                    if let result = app.lastTokenValidationResult {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green).accessibilityHidden(true)
+                            Text("Connected as **\(result.username ?? "Bot")**")
+                        }
+                        .font(.body)
+                    }
+
+                    // Invite link states
+                    if isLoadingInviteURL {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Generating invite link…").font(.callout).foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Generating invite link, please wait")
+                    } else if inviteLoadFailed {
+                        Text("Could not generate an invite link. Your bot's client ID may not be available yet — you can invite the bot manually from the Discord Developer Portal.")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).frame(maxWidth: 560)
+                    }
+
+                    if let url = inviteURL {
+                        VStack(spacing: 8) {
+                            Text("Invite your bot to a server:")
+                                .font(.callout).foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(url, forType: .string)
+                                } label: {
+                                    Label("Copy Invite Link", systemImage: "doc.on.doc")
+                                }
+                                .buttonStyle(.bordered).controlSize(.small)
+                                .accessibilityHint("Copies the bot invite link to your clipboard")
+
+                                Button {
+                                    if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+                                } label: {
+                                    Label("Open Invite", systemImage: "arrow.up.right.square")
+                                }
+                                .buttonStyle(.bordered).controlSize(.small)
+                                .accessibilityHint("Opens the Discord bot authorization page in your browser")
+                            }
+                        }
+                        .padding(12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        Toggle(isOn: $inviteConfirmed) {
+                            Text("I have invited the bot to at least one server").font(.callout)
+                        }
+                        .toggleStyle(.checkbox)
+                        .frame(maxWidth: 560, alignment: .leading)
+                    }
+
+                    Button { app.completeOnboarding() } label: {
+                        Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
+                            .frame(minWidth: 200)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .disabled(inviteURL != nil && !inviteConfirmed)
+                }
+                .task {
+                    if inviteURL == nil {
+                        isLoadingInviteURL = true
+                        inviteURL = await app.generateInviteURL()
+                        isLoadingInviteURL = false
+                        inviteLoadFailed = (inviteURL == nil)
+                    }
+                }
+
+            default: EmptyView()
+            }
+        }
+    }
+
+    // MARK: - SwiftMesh flow
+
+    @ViewBuilder
+    private var meshFlow: some View {
+        switch step {
+        case .meshSetup:
+            meshSetupFields
+
+        case .meshTesting:
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Testing connection…").foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Testing SwiftMesh connection, please wait")
+
+        case .meshConfirmed:
+            VStack(spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green).font(.title2).accessibilityHidden(true)
+                    Text(app.workerConnectionTestStatus).font(.body)
+                }
+                Button {
+                    app.saveSettings()
+                    app.completeOnboarding()
+                } label: {
+                    Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
+                        .frame(minWidth: 200)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+            }
+
+        case .meshFailed:
+            VStack(spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange).font(.title2).accessibilityHidden(true)
+                    Text(app.workerConnectionTestStatus)
+                        .font(.body).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button { step = .meshSetup } label: {
+                        Label("Try Again", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.bordered).controlSize(.large)
+
+                    Button {
+                        app.settings.clusterMode = .standalone
+                        app.saveSettings()
+                        app.completeOnboarding()
+                    } label: {
+                        Label("Set Up Later (Limited Mode)", systemImage: "clock.arrow.2.circlepath")
+                            .frame(minWidth: 200)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                }
+                Text("Limited Mode launches SwiftBot without Discord or SwiftMesh. Configure both from Settings after launch.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).frame(maxWidth: 560)
+            }
+
+        default: EmptyView()
+        }
+    }
+
+    private var meshSetupFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Role", selection: $app.settings.clusterMode) {
+                Text("Leader").tag(ClusterMode.leader)
+                Text("Standby").tag(ClusterMode.standby)
+            }
+            .pickerStyle(.segmented).frame(maxWidth: 560)
+
+            TextField("Node Name", text: $app.settings.clusterNodeName)
+                .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+
+            if app.settings.clusterMode == .standby {
+                TextField("Leader Address (host:port)", text: $app.settings.clusterLeaderAddress)
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+            }
+
+            HStack {
+                Text("Listen Port").font(.callout)
+                Spacer()
+                TextField("Port", text: Binding(
+                    get: { String(app.settings.clusterListenPort) },
+                    set: { if let v = Int($0) { app.settings.clusterListenPort = v } }
+                ))
+                .textFieldStyle(.roundedBorder).frame(width: 100)
+            }
+            .frame(maxWidth: 560)
+
+            SecureField("Shared Secret", text: $app.settings.clusterSharedSecret)
+                .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+
+            HStack(spacing: 12) {
+                Button { step = .choosePath } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.bordered).controlSize(.large)
+
+                if app.settings.clusterMode == .leader {
+                    // Leader nodes don't test against a remote — save and proceed.
+                    Button {
+                        app.saveSettings()
+                        app.completeOnboarding()
+                    } label: {
+                        Label("Save & Continue", systemImage: "square.and.arrow.down")
+                            .frame(minWidth: 200)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                } else {
+                    // Standby nodes test connectivity to the leader before proceeding.
+                    Button {
+                        step = .meshTesting
+                        app.testWorkerLeaderConnection()
+                    } label: {
+                        Label("Test Connection", systemImage: "antenna.radiowaves.left.and.right")
+                            .frame(minWidth: 200)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .disabled(app.settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .frame(maxWidth: 560, alignment: .leading)
+        }
+        .frame(maxWidth: 560)
     }
 }
 
@@ -332,6 +548,7 @@ struct DashboardSidebar: View {
                         Circle()
                             .fill(app.primaryServiceIsOnline ? Color.green : Color.secondary)
                             .frame(width: 6, height: 6)
+                            .accessibilityHidden(true)
                         Text(app.primaryServiceStatusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -848,6 +1065,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
     case userLeftVoice = "User Leaves Voice"
     case userMovedVoice = "User Moves Voice"
     case messageContains = "Message Contains"
+    case memberJoined = "Member Joined"
 
     var id: String { rawValue }
 
@@ -857,6 +1075,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userLeftVoice: return "person.crop.circle.badge.xmark"
         case .userMovedVoice: return "arrow.left.arrow.right.circle"
         case .messageContains: return "text.bubble"
+        case .memberJoined: return "person.badge.plus"
         }
     }
 
@@ -866,6 +1085,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userLeftVoice: return "🔌 <@{userId}> disconnected from <#{channelId}> (Online for {duration})"
         case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
         case .messageContains: return "nm you?"
+        case .memberJoined: return "👋 Welcome to {server}, {username}! You're member #{memberCount}."
         }
     }
 
@@ -875,6 +1095,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userLeftVoice: return "Leave Action"
         case .userMovedVoice: return "Move Action"
         case .messageContains: return "Message Reply"
+        case .memberJoined: return "Member Join Welcome"
         }
     }
 
@@ -964,6 +1185,7 @@ struct Rule: Identifiable, Codable, Equatable {
         case .userMovedVoice: return "When someone moves voice"
         case .messageContains:
             return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
+        case .memberJoined: return "When a member joins the server"
         }
     }
 }
@@ -983,6 +1205,7 @@ struct VoiceWorkspaceView: View {
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
+        VStack(spacing: 0) {
         HSplitView {
             RuleListView(
                 rules: rulesBinding,
@@ -1042,6 +1265,27 @@ struct VoiceWorkspaceView: View {
             }
             ruleStore.scheduleAutoSave()
         }
+
+        // Default Action Channel — global fallback used when a rule's action has no channel set.
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.turn.down.right")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+                .accessibilityHidden(true)
+            Text("Default Action Channel (Fallback)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Channel ID", text: $app.settings.behavior.voiceActivityLogChannelId)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+                .frame(maxWidth: 200)
+                .onChange(of: app.settings.behavior.voiceActivityLogChannelId) { _, newValue in
+                    app.settings.behavior.voiceActivityLogEnabled = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        } // end VStack
     }
 
     private var rulesBinding: Binding<[Rule]> {
@@ -1625,7 +1869,7 @@ struct TriggerSectionView: View {
                 }
             }
 
-            if triggerType != .messageContains, !voiceChannels.isEmpty {
+            if triggerType != .messageContains, triggerType != .memberJoined, !voiceChannels.isEmpty {
                 Picker("Voice Channel", selection: $triggerVoiceChannelId) {
                     Text("Any Channel").tag("")
                     ForEach(voiceChannels) { channel in
@@ -2153,39 +2397,6 @@ struct GeneralSettingsView: View {
 
                         Text("Live output is a Discord embed. Preview shows field content only.")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    }
-
-                    settingsBlock(title: "Events & Actions") {
-                    // Member join welcome
-                    // Intent dependency: GUILD_MEMBER_ADD requires SERVER MEMBERS INTENT (bitmask 37507).
-                    // If intents are rejected (close 4014), member join events will not be delivered.
-                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 {
-                        Label("SERVER MEMBERS INTENT not enabled — member join events will not be received. Enable in Discord Developer Portal → Bot tab.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    Toggle("Member Join Welcome", isOn: $app.settings.behavior.memberJoinWelcomeEnabled)
-                    if app.settings.behavior.memberJoinWelcomeEnabled {
-                        TextField("Welcome Channel ID", text: $app.settings.behavior.memberJoinWelcomeChannelId)
-                            .help("Discord channel ID where welcome messages are posted.")
-                        TextField("Welcome Template", text: $app.settings.behavior.memberJoinWelcomeTemplate)
-                            .help("Template variables: {username}, {server}, {memberCount}")
-                        Text("Variables: {username} · {server} · {memberCount}")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Divider()
-
-                    // Voice activity log
-                    Toggle("Voice Activity Log", isOn: $app.settings.behavior.voiceActivityLogEnabled)
-                    if app.settings.behavior.voiceActivityLogEnabled {
-                        TextField("Voice Log Channel ID", text: $app.settings.behavior.voiceActivityLogChannelId)
-                            .help("Global fallback channel for voice join/leave/move logs. Per-guild channel settings take precedence.")
-                        Text("Per-guild notification channels in SwiftMesh take precedence over this global fallback.")
-                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     }

@@ -1891,6 +1891,7 @@ struct VoiceRuleEvent {
         case leave
         case move
         case message
+        case memberJoin
     }
 
     let kind: Kind
@@ -2037,6 +2038,8 @@ final class RuleEngine {
                 return rule.replyToDMs && content.localizedCaseInsensitiveContains(needle)
             }
             return content.localizedCaseInsensitiveContains(needle)
+        case (.memberJoined, .memberJoin):
+            return true
         default:
             return false
         }
@@ -2055,11 +2058,15 @@ final class RuleEngine {
         case .server:
             return value.isEmpty || event.guildId == value
         case .voiceChannel:
+            // Voice channel conditions don't apply to member join events — always pass.
+            if event.kind == .memberJoin { return true }
             return value.isEmpty || event.channelId == value || event.fromChannelId == value || event.toChannelId == value
         case .usernameContains:
             guard !value.isEmpty else { return true }
             return event.username.localizedCaseInsensitiveContains(value)
         case .minimumDuration:
+            // Duration conditions don't apply to member join events — always pass.
+            if event.kind == .memberJoin { return true }
             guard let minimum = Int(value), minimum > 0 else { return true }
             guard let durationSeconds = event.durationSeconds else { return false }
             return durationSeconds >= (minimum * 60)
