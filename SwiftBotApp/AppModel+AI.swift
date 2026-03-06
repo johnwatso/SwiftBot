@@ -3,11 +3,6 @@ import Foundation
 extension AppModel {
     // MARK: - AI typing indicator + timeout
 
-#if DEBUG
-    /// Exposes the cluster coordinator for test instrumentation.
-    var testCluster: ClusterCoordinator { cluster }
-#endif
-
     /// Outcome of `generateAIReplyWithTimeout`. Callers must inspect this to avoid
     /// emitting a second fallback message when the hard timeout has already fired.
     enum AIReplyOutcome {
@@ -30,10 +25,11 @@ extension AppModel {
     ) async -> AIReplyOutcome {
         await sendTypingIndicator(channelId)
 
+        // Timing overrides for tests (compliant with March 2026 standards).
 #if DEBUG
-        let softNoticeNs = _testSoftNoticeDelayNs
-        let hardTimeoutNs = _testHardTimeoutNs
-        let typingRefreshNs = _testTypingRefreshNs
+        let softNoticeNs = AITestOverrides.softNoticeNs ?? 10_000_000_000
+        let hardTimeoutNs = AITestOverrides.hardTimeoutNs ?? 30_000_000_000
+        let typingRefreshNs = AITestOverrides.typingRefreshNs ?? 9_000_000_000
 #else
         let softNoticeNs: UInt64 = 10_000_000_000
         let hardTimeoutNs: UInt64 = 30_000_000_000

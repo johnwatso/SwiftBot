@@ -215,6 +215,69 @@ final class MeshFailoverTests: XCTestCase {
         XCTAssertEqual(finalTerm, promotedTerm, "Worker term must match promoted term")
     }
 
+    // MARK: - Startup Reconciliation
+
+    func testReturningPrimaryStartsAsStandbyWhenHealthyLeaderExists() async {
+        let sharedSecret = "reconcile-secret"
+        let activeLeaderAddress = "http://127.0.0.1:39220"
+
+        let activeLeader = ClusterCoordinator()
+        await activeLeader.applySettings(
+            mode: .leader,
+            nodeName: "ActiveLeader",
+            leaderAddress: "",
+            listenPort: 39220,
+            sharedSecret: sharedSecret,
+            leaderTerm: 7
+        )
+
+        // Give listener a brief moment to be ready before probing.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        let returningPrimary = ClusterCoordinator()
+        await returningPrimary.applySettings(
+            mode: .leader,
+            nodeName: "ReturningPrimary",
+            leaderAddress: activeLeaderAddress,
+            listenPort: 39221,
+            sharedSecret: sharedSecret,
+            leaderTerm: 3
+        )
+
+        let reconciledMode = await returningPrimary.testCurrentMode()
+        XCTAssertEqual(reconciledMode, .standby, "Returning node must demote to standby when a healthy leader already exists")
+
+        var registered = false
+        for _ in 0..<15 {
+            let nodes = await activeLeader.registeredNodeInfo()
+            if nodes.contains(where: { $0.nodeName == "ReturningPrimary" }) {
+                registered = true
+                break
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        XCTAssertTrue(registered, "Reconciled standby should register with the active leader")
+
+        await returningPrimary.stopAll()
+        await activeLeader.stopAll()
+    }
+
+    func testConfiguredLeaderUnreachableKeepsLeaderModeAtStartup() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "ColdStartPrimary",
+            leaderAddress: "http://127.0.0.1:39222",
+            listenPort: 39223,
+            sharedSecret: "reconcile-secret",
+            leaderTerm: 1
+        )
+
+        let mode = await coordinator.testCurrentMode()
+        XCTAssertEqual(mode, .leader, "Node should remain leader when no healthy configured leader responds")
+        await coordinator.stopAll()
+    }
+
     // MARK: - Helpers
 
     private func makeRequest(method: String, path: String, headers: [String: String], body: Data) -> Data {

@@ -3,6 +3,18 @@ import Foundation
 import Network
 import Security
 
+#if DEBUG
+/// Task-local overrides for AI timing and response behavior in unit tests.
+/// Only available in DEBUG builds — release logic must not depend on this enum.
+enum AITestOverrides {
+    @TaskLocal static var softNoticeNs: UInt64?
+    @TaskLocal static var hardTimeoutNs: UInt64?
+    @TaskLocal static var typingRefreshNs: UInt64?
+    @TaskLocal static var replyOverride: String?
+    @TaskLocal static var replyDelaySeconds: Double = 0
+}
+#endif
+
 // MARK: - EventBus System
 
 /// A marker protocol for events that can be published and subscribed through `EventBus`.

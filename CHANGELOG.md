@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-07
+
+#### SwiftMesh Stabilization & Reliability (P0 Fixes)
+**Issue:** SwiftMesh was non-functional due to authentication mismatches, missing standby connectivity, and split-brain risks.
+
+**Solution:**
+- **Standby Connectivity:** Enabled Standby nodes to start an HTTP listener and register with the Primary, allowing them to receive real-time sync pushes.
+- **Authentication Hardening:**
+  - Replaced legacy `X-Cluster-Secret` with HMAC-signed requests for all resync and wiki-cache pull paths.
+  - Tightened `verifyMeshAuth` skew window from 300s to 60s and implemented opportunistic nonce pruning.
+- **Split-Brain Protection:**
+  - Added strict `leaderTerm` validation to all mesh sync handlers (`conversations`, `worker-registry`, `wiki-cache`).
+  - Implemented monotonicity guards for replication cursors to prevent state regression.
+- **Rule Compliance (Clean Build):**
+  - Moved all `test*` methods and `#if DEBUG` logic out of production targets into `ClusterCoordinator+Testing.swift` and `TestSupport.swift`.
+  - Implemented `TaskLocal` overrides (via `AITestOverrides`) for AI timing and reply behavior in unit tests.
+- **UI Improvements:**
+  - Updated status messaging to explicitly distinguish between "Standby Registered" and "Worker Registered".
+
+**Impact:** SwiftMesh is now a stable and secure distributed system with reliable node-to-node communication and robust failover protection.
+
+**Files Modified:**
+- `SwiftBotApp/ClusterCoordinator.swift`
+- `SwiftBotApp/AppModel.swift`
+- `SwiftBotApp/AppModel+Gateway.swift`
+- `SwiftBotApp/AppModel+AI.swift`
+- `SwiftBotApp/ClusterCoordinator+Testing.swift`
+- `SwiftBotApp/TestSupport.swift`
+- `Tests/SwiftBotTests/TestHelpers.swift`
+- `Tests/SwiftBotTests/DMTimeoutTests.swift`
+- `ARCHITECTURE.md`
+- `AI_GUIDE.md`
+- `docs/swiftmesh-observed-behavior.md`
+
 ### P2 — UX Hardening + Release Quality (2026-03-06)
 
 #### Fixed

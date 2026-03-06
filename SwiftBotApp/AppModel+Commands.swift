@@ -1236,12 +1236,18 @@ extension AppModel {
         var request = URLRequest(url: pingURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 3
+        await applyMeshAuthToConnectionTestRequest(&request, path: "/cluster/ping")
         let startedAt = Date()
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
+            guard let http = response as? HTTPURLResponse else {
+                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+            }
+            if http.statusCode == 401 {
+                return WorkerConnectionTestOutcome(message: "Authentication failed (shared secret mismatch)", isSuccess: false)
+            }
+            guard (200..<300).contains(http.statusCode),
                   let payload = try? JSONDecoder().decode(SwiftMeshPingResponse.self, from: data),
                   payload.status.caseInsensitiveCompare("ok") == .orderedSame,
                   payload.role.caseInsensitiveCompare("leader") == .orderedSame else {
@@ -1273,6 +1279,20 @@ extension AppModel {
         }
     }
 
+    private func applyMeshAuthToConnectionTestRequest(_ request: inout URLRequest, path: String) async {
+        let secret = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty else { return }
+
+        let nonce = UUID().uuidString
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let body = request.httpBody ?? Data()
+        let method = request.httpMethod ?? "GET"
+        let signature = await cluster.meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: body)
+        request.setValue(nonce, forHTTPHeaderField: "X-Mesh-Nonce")
+        request.setValue(String(timestamp), forHTTPHeaderField: "X-Mesh-Timestamp")
+        request.setValue(signature, forHTTPHeaderField: "X-Mesh-Signature")
+    }
+
     func normalizedSwiftMeshBaseURL(from rawValue: String) -> URL? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -1295,7 +1315,7 @@ extension AppModel {
         var components = URLComponents()
         components.scheme = scheme
         components.host = host
-        components.port = url.port
+        components.port = url.port ?? (scheme.lowercased() == "https" ? 443 : settings.clusterListenPort)
         components.path = ""
         return components.url
     }

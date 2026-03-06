@@ -787,10 +787,10 @@ struct DashboardSidebar: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.red)
+                    .tint(.secondary)
                 }
             }
-            .controlSize(.large)
+            .controlSize(.regular)
         }
         .padding(12)
         .background(Color.clear)
@@ -2633,7 +2633,7 @@ struct GeneralSettingsView: View {
                         if app.isWorkerServiceRunning {
                             Button("Stop Worker") { app.stopBot() }
                                 .buttonStyle(.bordered)
-                                .tint(.red)
+                                .tint(.secondary)
                         } else {
                             Button("Start Worker") {
                                 applyDraftsToSettings()

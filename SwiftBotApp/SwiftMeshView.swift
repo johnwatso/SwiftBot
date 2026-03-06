@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct SwiftMeshView: View {
     @EnvironmentObject var app: AppModel
@@ -8,53 +7,44 @@ struct SwiftMeshView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    ViewSectionHeader(title: "SwiftMesh", symbol: "point.3.connected.trianglepath.dotted")
-                    Spacer()
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SwiftMesh")
+                        .font(.title2.weight(.semibold))
                     Text("\(connectedNodeCount) connected")
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    sectionHeader(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted")
-
+                SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
                     if app.settings.clusterMode == .standalone {
-                        PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Worker mode to use SwiftMesh.")
+                        PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.")
                     } else if topologyNodes.isEmpty {
                         PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
                     } else {
                         ClusterMapView(nodes: topologyNodes)
                     }
                 }
-                .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    sectionHeader(title: "Node Details", symbol: "cpu")
-
+                SwiftMeshSection(title: "Nodes", symbol: "cpu") {
                     if app.clusterNodes.isEmpty {
-                        PlaceholderPanelLine(text: "No node details yet")
+                        PlaceholderPanelLine(text: "No nodes available")
                     } else {
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 300), spacing: 12)],
-                            spacing: 12
-                        ) {
+                        VStack(spacing: 8) {
                             ForEach(app.clusterNodes) { node in
-                                NodeDetailCard(node: node)
+                                ClusterNodeRow(node: node)
                             }
                         }
                     }
                 }
 
-                SwiftMeshJobDistributionCard(nodes: app.clusterNodes)
+                SwiftMeshSection(title: "Cluster Metrics", symbol: "square.grid.2x2") {
+                    SwiftMeshMetricsGrid(nodes: app.clusterNodes)
+                }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
+            .padding(.top, 12)
             .padding(.bottom, 16)
-            .background(SwiftBotGlassBackground().opacity(0.55))
         }
         .task(id: app.settings.clusterMode) {
             guard app.settings.clusterMode != .standalone else {
@@ -76,25 +66,44 @@ struct SwiftMeshView: View {
     private var topologyNodes: [ClusterNodeStatus] {
         app.clusterNodes
     }
+}
 
-    @ViewBuilder
-    private func sectionHeader(title: String, symbol: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.headline.weight(.semibold))
+private struct SwiftMeshSection<Content: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.headline.weight(.semibold))
+            }
+
+            content
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
     }
 }
 
 struct ClusterMapView: View {
     let nodes: [ClusterNodeStatus]
-    private let leaderCardWidth: CGFloat = 210
-    private let workerCardWidth: CGFloat = 190
-    private let compactCardHeight: CGFloat = 92
-    private let mapPadding: CGFloat = 16
+    private let leaderCardWidth: CGFloat = 182
+    private let workerCardWidth: CGFloat = 170
+    private let compactCardHeight: CGFloat = 68
+    private let mapPadding: CGFloat = 14
 
     private var connectedNodes: [ClusterNodeStatus] {
         nodes
@@ -118,8 +127,7 @@ struct ClusterMapView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let size = proxy.size
-            let layout = topologyLayout(in: size)
+            let layout = topologyLayout(in: proxy.size)
 
             ZStack {
                 ForEach(Array(workers.enumerated()), id: \.element.id) { index, worker in
@@ -133,24 +141,28 @@ struct ClusterMapView: View {
                         latencyMs: worker.latencyMs
                     )
 
-                    ClusterNodeView(node: worker, compact: true)
+                    ClusterMapNodeChip(node: worker)
                         .frame(width: workerCardWidth)
                         .position(workerPosition)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
 
                 if let leader {
-                    ClusterNodeView(node: leader, compact: true, highlightLeader: true)
+                    ClusterMapNodeChip(node: leader, showLeaderSymbol: true)
                         .frame(width: leaderCardWidth)
                         .position(layout.leaderPosition)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .animation(.spring(response: 0.52, dampingFraction: 0.82), value: topologyKey)
+            .animation(.easeInOut(duration: 0.22), value: topologyKey)
         }
         .frame(height: mapHeight)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func topologyLayout(in size: CGSize) -> ClusterTopologyLayout {
@@ -159,56 +171,40 @@ struct ClusterMapView: View {
             return ClusterTopologyLayout(leaderPosition: center, workerPositions: [])
         }
 
-        // Two-node topology: keep leader above worker to make direction obvious.
+        // Left-to-right topology:
+        // - Primary is fixed on the left side
+        // - Workers are distributed vertically on the right side
+        // - Connection lines branch from primary toward workers
+        let leaderX = mapPadding + (leaderCardWidth / 2)
+        let workerX = size.width - mapPadding - (workerCardWidth / 2)
+        let leaderPosition = CGPoint(x: leaderX, y: center.y)
+
+        let topY = mapPadding + (compactCardHeight / 2)
+        let bottomY = size.height - mapPadding - (compactCardHeight / 2)
+
+        let workerPositions: [CGPoint]
         if workers.count == 1 {
-            let desiredSeparation = max(170, compactCardHeight * 1.9)
-            let maxHalfShift = max(
-                0,
-                (size.height / 2) - (compactCardHeight / 2) - mapPadding
-            )
-            let halfShift = min(desiredSeparation / 2, maxHalfShift)
-            return ClusterTopologyLayout(
-                leaderPosition: CGPoint(x: center.x, y: center.y - halfShift),
-                workerPositions: [CGPoint(x: center.x, y: center.y + halfShift)]
-            )
-        }
-
-        // Three or more nodes: circular worker placement around centered leader.
-        let radius = circularLayoutRadius(for: size, workerCount: workers.count)
-        let points = (0..<workers.count).map { index -> CGPoint in
-            let angle = (Double(index) / Double(workers.count)) * (2.0 * Double.pi) - (Double.pi / 2)
-            return CGPoint(
-                x: center.x + CGFloat(cos(angle)) * radius,
-                y: center.y + CGFloat(sin(angle)) * radius
-            )
-        }
-        return ClusterTopologyLayout(leaderPosition: center, workerPositions: points)
-    }
-
-    private func circularLayoutRadius(for size: CGSize, workerCount: Int) -> CGFloat {
-        let baseRadius: CGFloat = 160
-        let minLeaderClearance = ((leaderCardWidth + workerCardWidth) / 2) + 20
-        let minByNeighborSpacing: CGFloat
-        if workerCount > 1 {
-            let minChord = workerCardWidth + 24
-            minByNeighborSpacing = minChord / (2 * CGFloat(sin(.pi / Double(workerCount))))
+            workerPositions = [CGPoint(x: workerX, y: center.y)]
         } else {
-            minByNeighborSpacing = 0
+            let span = max(0, bottomY - topY)
+            let step = span / CGFloat(max(1, workers.count - 1))
+            workerPositions = (0..<workers.count).map { index in
+                CGPoint(x: workerX, y: topY + (CGFloat(index) * step))
+            }
         }
-        let desired = max(baseRadius, minLeaderClearance, minByNeighborSpacing)
 
-        let maxRadiusX = max(80, (size.width / 2) - (workerCardWidth / 2) - mapPadding)
-        let maxRadiusY = max(80, (size.height / 2) - (compactCardHeight / 2) - mapPadding)
-        let maxAllowed = min(maxRadiusX, maxRadiusY)
-        return min(desired, maxAllowed)
+        return ClusterTopologyLayout(
+            leaderPosition: leaderPosition,
+            workerPositions: workerPositions
+        )
     }
 
     private var mapHeight: CGFloat {
         let workerCount = workers.count
-        if workerCount <= 2 { return 460 }
-        if workerCount <= 4 { return 520 }
-        if workerCount <= 6 { return 600 }
-        return 680
+        if workerCount <= 2 { return 280 }
+        if workerCount <= 4 { return 340 }
+        if workerCount <= 6 { return 400 }
+        return 470
     }
 }
 
@@ -217,10 +213,52 @@ private struct ClusterTopologyLayout {
     let workerPositions: [CGPoint]
 }
 
-struct ClusterNodeView: View {
+private struct ClusterMapNodeChip: View {
     let node: ClusterNodeStatus
-    var compact: Bool = false
-    var highlightLeader: Bool = false
+    var showLeaderSymbol: Bool = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: SwiftMeshHardwareSymbols.symbolName(for: node.hardwareModel))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(node.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if showLeaderSymbol {
+                        Image(systemName: "crown.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
+                    Text(node.status.displayName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(node.status == .disconnected ? 0.02 : 0.045))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .opacity(node.status == .disconnected ? 0.7 : 1.0)
+    }
 
     private var statusColor: Color {
         switch node.status {
@@ -231,133 +269,72 @@ struct ClusterNodeView: View {
     }
 }
 
-extension ClusterNodeView {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Image(nsImage: SwiftMeshHardwareIcons.icon(for: node.hardwareModel))
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: compact ? 42 : 46, height: compact ? 42 : 46)
-                    .padding(4)
-                    .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(iconRingColor, lineWidth: compact ? 2.2 : 2.8)
-                    )
+private struct ClusterNodeRow: View {
+    let node: ClusterNodeStatus
 
-                VStack(alignment: .leading, spacing: 2) {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: SwiftMeshHardwareSymbols.symbolName(for: node.hardwareModel))
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
                     Text(node.displayName)
-                        .font(compact ? .subheadline.weight(.semibold) : .headline)
-                        .lineLimit(1)
+                        .font(.subheadline.weight(.semibold))
+                    if node.role == .leader {
+                        Label("Primary", systemImage: "crown.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
+                    Text(node.status.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("•")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                     Text(node.hostname)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-
-                Spacer()
-
-                Text(node.role.displayName)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background((highlightLeader ? Color.cyan : Color.white).opacity(0.16), in: Capsule())
             }
 
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
-                Text(node.status.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusColor)
-            }
+            Spacer()
 
-            if !compact {
-                Divider()
-
-                HStack {
-                    nodeMetric(label: "CPU", value: "\(Int(node.cpu.rounded()))%")
-                    nodeMetric(label: "Memory", value: "\(Int(node.mem.rounded()))%")
-                    nodeMetric(label: "Uptime", value: formatUptime(node.uptime))
-                }
-
-                HStack {
-                    nodeMetric(label: "Latency", value: latencyValue)
-                    nodeMetric(label: "Jobs", value: "\(node.jobsActive)")
-                    nodeMetric(label: "RAM", value: formatMemoryCapacity(node.physicalMemoryBytes))
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CPU: \(node.cpuName)")
-                    Text("Model: \(node.hardwareModel)")
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if node.role == .worker, let latency = node.latencyMs {
+                Text("\(Int(latency.rounded())) ms")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .opacity(node.status == .disconnected ? 0.64 : 1.0)
     }
 
-    private var latencyValue: String {
-        guard node.role == .worker else { return "--" }
-        guard let latencyMs = node.latencyMs else { return "--" }
-        return "\(Int(latencyMs.rounded())) ms"
-    }
-
-    private var iconRingColor: Color {
+    private var statusColor: Color {
         switch node.status {
-        case .healthy:
-            if let latency = node.latencyMs, latency >= 140 {
-                return .yellow
-            }
-            return node.jobsActive > 0 ? .green : .gray
-        case .degraded:
-            return .yellow
-        case .disconnected:
-            return .red
+        case .healthy: return .green
+        case .degraded: return .yellow
+        case .disconnected: return .red
         }
-    }
-
-    private func nodeMetric(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func formatUptime(_ uptime: TimeInterval) -> String {
-        let total = max(0, Int(uptime))
-        let days = total / 86_400
-        let hours = (total % 86_400) / 3_600
-        let minutes = (total % 3_600) / 60
-
-        if days > 0 { return "\(days)d \(hours)h" }
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        return "\(minutes)m"
-    }
-
-    private func formatMemoryCapacity(_ bytes: UInt64) -> String {
-        guard bytes > 0 else { return "--" }
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useGB, .useTB]
-        formatter.countStyle = .memory
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
-        return formatter.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -397,9 +374,7 @@ struct HeartbeatConnectionView: View {
         activeJobs > 0 ? 2.2 : 3.2
     }
 
-    private var pulseStep: Double {
-        0.035
-    }
+    private let pulseStep: Double = 0.035
 
     private var latencyLabel: String {
         guard let latencyMs else { return "--" }
@@ -417,10 +392,7 @@ struct HeartbeatConnectionView: View {
     var body: some View {
         ZStack {
             ClusterConnectionShape(start: start, end: end)
-                .stroke(
-                    pulseEnabled ? lineColor.opacity(activeJobs > 0 ? 0.62 : 0.5) : lineColor.opacity(0.5),
-                    style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round)
-                )
+                .stroke(lineColor.opacity(activeJobs > 0 ? 0.45 : 0.34), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
 
             if pulseEnabled {
                 TimelineView(.periodic(from: .now, by: pulseStep)) { context in
@@ -429,21 +401,20 @@ struct HeartbeatConnectionView: View {
 
                     Circle()
                         .fill(lineColor)
-                        .frame(width: activeJobs > 0 ? 8 : 7, height: activeJobs > 0 ? 8 : 7)
-                        .shadow(color: lineColor.opacity(0.45), radius: 5, x: 0, y: 0)
+                        .frame(width: activeJobs > 0 ? 6 : 5, height: activeJobs > 0 ? 6 : 5)
                         .position(point(at: progress))
                 }
             }
 
             Text(latencyLabel)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.primary.opacity(0.86))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(.ultraThinMaterial, in: Capsule())
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Color.primary.opacity(0.03), in: Capsule())
                 .overlay(
                     Capsule()
-                        .stroke(lineColor.opacity(0.45), lineWidth: 1)
+                        .stroke(lineColor.opacity(0.25), lineWidth: 1)
                 )
                 .position(midpoint)
         }
@@ -468,110 +439,87 @@ private enum ConnectionVisualState {
     case idle
 }
 
-struct NodeDetailCard: View {
-    let node: ClusterNodeStatus
-
-    var body: some View {
-        ClusterNodeView(node: node)
-            .opacity(node.status == .disconnected ? 0.58 : 1.0)
-    }
-}
-
-private struct SwiftMeshJobDistributionCard: View {
+private struct SwiftMeshMetricsGrid: View {
     let nodes: [ClusterNodeStatus]
+
+    private var healthyCount: Int {
+        nodes.filter { $0.status == .healthy }.count
+    }
+
+    private var degradedCount: Int {
+        nodes.filter { $0.status == .degraded }.count
+    }
+
+    private var disconnectedCount: Int {
+        nodes.filter { $0.status == .disconnected }.count
+    }
 
     private var totalJobs: Int {
         nodes.reduce(0) { $0 + max(0, $1.jobsActive) }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("Job Distribution")
-                    .font(.headline.weight(.semibold))
-            }
-
-            if nodes.isEmpty {
-                PlaceholderPanelLine(text: "No nodes available")
-            } else if totalJobs == 0 {
-                PlaceholderPanelLine(text: "No active jobs reported")
-            } else {
-                ForEach(nodes.sorted(by: { $0.jobsActive > $1.jobsActive })) { node in
-                    let share = Double(node.jobsActive) / Double(max(1, totalJobs))
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(node.displayName)
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text("\(node.jobsActive) jobs")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(barColor(for: node.status).opacity(0.72))
-                                    .frame(width: proxy.size.width * share)
-                            }
-                        }
-                        .frame(height: 8)
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
+    private var avgLatency: String {
+        let latencies = nodes.compactMap { $0.latencyMs }
+        guard !latencies.isEmpty else { return "--" }
+        let average = latencies.reduce(0, +) / Double(latencies.count)
+        return "\(Int(average.rounded())) ms"
     }
 
-    private func barColor(for status: ClusterNodeHealthStatus) -> Color {
-        switch status {
-        case .healthy: return .green
-        case .degraded: return .yellow
-        case .disconnected: return .red
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+            MetricTile(title: "Nodes", value: "\(nodes.count)", symbol: "point.3.connected.trianglepath.dotted")
+            MetricTile(title: "Healthy", value: "\(healthyCount)", symbol: "checkmark.circle")
+            MetricTile(title: "Degraded", value: "\(degradedCount)", symbol: "exclamationmark.triangle")
+            MetricTile(title: "Offline", value: "\(disconnectedCount)", symbol: "xmark.circle")
+            MetricTile(title: "Active Jobs", value: "\(totalJobs)", symbol: "chart.bar")
+            MetricTile(title: "Avg Latency", value: avgLatency, symbol: "speedometer")
         }
     }
 }
 
-enum SwiftMeshHardwareIcons {
-    private static let coreTypesBundle = Bundle(path: "/System/Library/CoreServices/CoreTypes.bundle")
+private struct MetricTile: View {
+    let title: String
+    let value: String
+    let symbol: String
 
-    static func icon(for hardwareModel: String) -> NSImage {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: symbol)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+enum SwiftMeshHardwareSymbols {
+    static func symbolName(for hardwareModel: String) -> String {
         let normalized = normalizeHardwareModel(hardwareModel)
-        let iconName: NSImage.Name
-
-        if normalized.hasPrefix("macmini") {
-            iconName = NSImage.macminiName
-        } else if normalized.hasPrefix("macbookair") {
-            iconName = NSImage.macbookAirName
-        } else if normalized.hasPrefix("macbookpro") {
-            iconName = NSImage.macbookProName
-        } else if normalized.hasPrefix("macpro") {
-            iconName = NSImage.macProName
-        } else if normalized.hasPrefix("mac") {
-            iconName = NSImage.macStudioName
-        } else {
-            iconName = NSImage.computerName
+        if normalized.hasPrefix("macbook") {
+            return "laptopcomputer"
         }
-
-        if let image = coreTypesBundle?.image(forResource: iconName) {
-            return image
+        if normalized.hasPrefix("macmini")
+            || normalized.hasPrefix("macstudio")
+            || normalized.hasPrefix("macpro")
+            || normalized.hasPrefix("imac")
+            || normalized.hasPrefix("mac") {
+            return "server.rack"
         }
-        if let image = NSImage(named: iconName) {
-            return image
-        }
-        if let fallback = NSImage(named: NSImage.computerName) {
-            return fallback
-        }
-
-        return NSImage(size: NSSize(width: 46, height: 46))
+        return "desktopcomputer"
     }
 
     private static func normalizeHardwareModel(_ value: String) -> String {
@@ -579,12 +527,4 @@ enum SwiftMeshHardwareIcons {
             .lowercased()
             .filter { $0.isLetter || $0.isNumber }
     }
-}
-
-private extension NSImage {
-    static let macminiName = NSImage.Name("com.apple.macmini")
-    static let macbookAirName = NSImage.Name("com.apple.macbookair")
-    static let macbookProName = NSImage.Name("com.apple.macbookpro-15")
-    static let macProName = NSImage.Name("com.apple.macpro")
-    static let macStudioName = NSImage.Name("com.apple.macstudio")
 }

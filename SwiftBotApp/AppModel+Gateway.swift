@@ -85,26 +85,8 @@ extension AppModel {
 
     /// Standby requests a bounded page of records from the leader starting after `fromRecordID`.
     func requestResyncFromLeader(fromRecordID: String?) async {
-        guard let normalizedLeader = await cluster.normalizedLeaderBaseURL(settings.clusterLeaderAddress),
-              let url = URL(string: normalizedLeader + "/v1/mesh/sync/conversations/resync") else { return }
-        let req = MeshResyncRequest(fromRecordID: fromRecordID, pageSize: 500)
-        guard let body = try? JSONEncoder().encode(req) else { return }
-        do {
-            var urlRequest = URLRequest(url: url)
-            urlRequest.httpMethod = "POST"
-            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !settings.clusterSharedSecret.isEmpty {
-                urlRequest.setValue(settings.clusterSharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
-            }
-            urlRequest.timeoutInterval = 15
-            urlRequest.httpBody = body
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let payload = try? JSONDecoder().decode(MeshSyncPayload.self, from: data) else { return }
-            await handleMeshSync(payload)
-        } catch {
-            // best effort
-        }
+        guard let payload = await cluster.fetchResyncPage(fromRecordID: fromRecordID, pageSize: 500) else { return }
+        await handleMeshSync(payload)
     }
 
     func handleMeshRequest(type: String) async -> Data? {
