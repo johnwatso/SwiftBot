@@ -99,6 +99,8 @@ final class AppModel: ObservableObject {
     private var botUserId: String?
     private let launchedAt = Date()
     private var clusterNodesRefreshTask: Task<Void, Never>?
+    // P1b: off-peak background mesh refresh
+    private var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
     @Published var botDiscriminator: String?
     @Published var botAvatarHash: String?
@@ -254,6 +256,7 @@ final class AppModel: ObservableObject {
             let restoredCursors = await meshCursorStore.load()
             await cluster.applyRestoredCursors(restoredCursors)
             configureMeshSync()
+            setupBackgroundRefreshScheduler()
             await pollClusterStatus()
             await configureServiceCallbacks()
             configurePatchyMonitoring()
@@ -977,6 +980,31 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - P1b: Off-peak background mesh refresh
+
+    /// Schedules a low-priority background activity (15 min / 5 min tolerance) that fires
+    /// existing standby/worker sync paths when the system is idle (NSBackgroundActivityScheduler).
+    private func setupBackgroundRefreshScheduler() {
+        let scheduler = NSBackgroundActivityScheduler(identifier: "com.swiftbot.meshBackgroundRefresh")
+        scheduler.repeats = true
+        scheduler.interval = 15 * 60        // 15 minutes
+        scheduler.tolerance = 5 * 60        // 5-minute tolerance window
+        scheduler.qualityOfService = .background
+        scheduler.schedule { [weak self] completion in
+            guard let self else { completion(.finished); return }
+            Task {
+                await self.runBackgroundMeshRefresh()
+                completion(.finished)
+            }
+        }
+        backgroundRefreshScheduler = scheduler
+    }
+
+    private func runBackgroundMeshRefresh() async {
+        guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
+        await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
+    }
+
     /// Leader: push incremental conversation batches to each registered node using per-node cursors.
     private func pushIncrementalConversationsToAllNodes() async {
         let nodes = await cluster.registeredNodeInfo()
@@ -1396,12 +1424,15 @@ final class AppModel: ObservableObject {
                 }
                 let channelName = await discordCache.channelName(for: channelId)
 
-                if let aiReply = await cluster.generateAIReply(
+                let outcome = await generateAIReplyWithTimeout(
+                    channelId: channelId,
                     messages: messages,
                     serverName: serverName,
                     channelName: channelName,
                     wikiContext: wikiContext
-                ) {
+                )
+                switch outcome {
+                case .reply(let aiReply):
                     await conversationStore.append(
                         scope: scope,
                         messageID: messageId,
@@ -1410,10 +1441,13 @@ final class AppModel: ObservableObject {
                         role: .user
                     )
                     let sent = await send(channelId, aiReply)
-                    if sent {
-                        await appendAssistantMessage(scope: scope, content: aiReply)
-                    }
+                    if sent { await appendAssistantMessage(scope: scope, content: aiReply) }
                     return
+                case .handledFallback:
+                    // Timeout fallback already sent — do not emit a second message.
+                    return
+                case .noReply:
+                    break
                 }
             }
 
@@ -1451,7 +1485,8 @@ final class AppModel: ObservableObject {
                 }
                 let channelName = await discordCache.channelName(for: channelId)
 
-                if let aiReply = await cluster.generateAIReply(
+                if case .reply(let aiReply) = await generateAIReplyWithTimeout(
+                    channelId: channelId,
                     messages: messages,
                     serverName: serverName,
                     channelName: channelName,
@@ -1465,9 +1500,7 @@ final class AppModel: ObservableObject {
                         role: .user
                     )
                     let sent = await send(channelId, aiReply)
-                    if sent {
-                        await appendAssistantMessage(scope: scope, content: aiReply)
-                    }
+                    if sent { await appendAssistantMessage(scope: scope, content: aiReply) }
                     return
                 }
             }
@@ -1929,6 +1962,109 @@ final class AppModel: ObservableObject {
             content: content,
             role: .assistant
         )
+    }
+
+    // MARK: - AI typing indicator + timeout
+
+#if DEBUG
+    /// Exposes the cluster coordinator for test instrumentation.
+    var testCluster: ClusterCoordinator { cluster }
+    /// Override soft-notice delay for tests (default: 10 000 000 000 ns = 10s).
+    var _testSoftNoticeDelayNs: UInt64 = 10_000_000_000
+    /// Override hard-timeout for tests (default: 30 000 000 000 ns = 30s).
+    var _testHardTimeoutNs: UInt64 = 30_000_000_000
+    /// Override typing refresh interval for tests (default: 9 000 000 000 ns = 9s).
+    var _testTypingRefreshNs: UInt64 = 9_000_000_000
+#endif
+
+    /// Outcome of `generateAIReplyWithTimeout`. Callers must inspect this to avoid
+    /// emitting a second fallback message when the hard timeout has already fired.
+    enum AIReplyOutcome {
+        case reply(String)       // Generation succeeded — reply text to send.
+        case handledFallback     // Hard timeout fired; fallback message already sent.
+        case noReply             // Engine returned nil — caller may use its own fallback.
+    }
+
+    private func sendTypingIndicator(_ channelId: String) async {
+        await service.triggerTyping(channelId: channelId, token: settings.token)
+    }
+
+    /// Runs AI generation with a typing indicator, a 10s soft notice, and a 30s hard timeout.
+    func generateAIReplyWithTimeout(
+        channelId: String,
+        messages: [Message],
+        serverName: String?,
+        channelName: String?,
+        wikiContext: String?
+    ) async -> AIReplyOutcome {
+        await sendTypingIndicator(channelId)
+
+#if DEBUG
+        let softNoticeNs = _testSoftNoticeDelayNs
+        let hardTimeoutNs = _testHardTimeoutNs
+        let typingRefreshNs = _testTypingRefreshNs
+#else
+        let softNoticeNs: UInt64 = 10_000_000_000
+        let hardTimeoutNs: UInt64 = 30_000_000_000
+        let typingRefreshNs: UInt64 = 9_000_000_000
+#endif
+
+        let typingTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: typingRefreshNs)
+                guard !Task.isCancelled else { return }
+                await sendTypingIndicator(channelId)
+            }
+        }
+        defer { typingTask.cancel() }
+
+        var softNoticeSent = false
+
+        return await withTaskGroup(of: String?.self) { group in
+            // Main generation task
+            group.addTask {
+                await self.cluster.generateAIReply(
+                    messages: messages,
+                    serverName: serverName,
+                    channelName: channelName,
+                    wikiContext: wikiContext
+                )
+            }
+
+            // Soft notice
+            group.addTask {
+                try? await Task.sleep(nanoseconds: softNoticeNs)
+                return "__soft_notice__"
+            }
+
+            // Hard timeout
+            group.addTask {
+                try? await Task.sleep(nanoseconds: hardTimeoutNs)
+                return "__hard_timeout__"
+            }
+
+            for await value in group {
+                switch value {
+                case "__soft_notice__":
+                    if !softNoticeSent {
+                        softNoticeSent = true
+                        _ = await send(channelId, "One moment — I'm still working on that.")
+                    }
+                case "__hard_timeout__":
+                    group.cancelAll()
+                    _ = await send(channelId, "Whoops — that one's a bit beyond my current limits. Try a shorter or more specific prompt.")
+                    return .handledFallback
+                case let text?:
+                    group.cancelAll()
+                    return .reply(text)
+                default:
+                    // Engine returned nil
+                    group.cancelAll()
+                    return .noReply
+                }
+            }
+            return .noReply
+        }
     }
 
     private func send(_ channelId: String, _ message: String) async -> Bool {
