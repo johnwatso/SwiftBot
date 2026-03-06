@@ -4,8 +4,9 @@ import XCTest
 /// P1 — DM AI timeout path: verifies that on hard-timeout the outcome is `.handledFallback`
 /// and no trailing help-prompt is emitted by the DM caller.
 ///
-/// Uses DEBUG overrides on AppModel (timeout intervals) and ClusterCoordinator (AI delay)
+/// Uses Task-local overrides (AITestOverrides) for timeout intervals and AI delay
 /// so the test completes in ~200 ms instead of 30 s.
+/// Complies with March 2026 coding standards: "Release logic must not be inside #if DEBUG".
 @MainActor
 final class DMTimeoutTests: XCTestCase {
 
@@ -15,28 +16,29 @@ final class DMTimeoutTests: XCTestCase {
         let model = AppModel()
 
         // AI will take 10s — well beyond the 150 ms hard timeout below.
-        await model.testCluster.testSetAIReplyOverride(response: "slow reply", delaySeconds: 10)
+        await AITestOverrides.$replyOverride.withValue("slow reply") {
+            await AITestOverrides.$replyDelaySeconds.withValue(10) {
+                // Compress timing: soft notice at 50 ms, hard timeout at 150 ms, refresh at 60 s.
+                await AITestOverrides.$softNoticeNs.withValue(50_000_000) {
+                    await AITestOverrides.$hardTimeoutNs.withValue(150_000_000) {
+                        await AITestOverrides.$typingRefreshNs.withValue(60_000_000_000) {
+                            let outcome = await model.generateAIReplyWithTimeout(
+                                channelId: "test-channel",
+                                messages: [],
+                                serverName: nil,
+                                channelName: nil,
+                                wikiContext: nil
+                            )
 
-        // Compress timing: soft notice at 50 ms, hard timeout at 150 ms, refresh at 60 s.
-        model._testSoftNoticeDelayNs  = 50_000_000
-        model._testHardTimeoutNs      = 150_000_000
-        model._testTypingRefreshNs    = 60_000_000_000
-
-        let outcome = await model.generateAIReplyWithTimeout(
-            channelId: "test-channel",
-            messages: [],
-            serverName: nil,
-            channelName: nil,
-            wikiContext: nil
-        )
-
-        guard case .handledFallback = outcome else {
-            XCTFail("Expected .handledFallback when AI exceeds hard timeout; got \(outcome)")
-            return
+                            guard case .handledFallback = outcome else {
+                                XCTFail("Expected .handledFallback when AI exceeds hard timeout; got \(outcome)")
+                                return
+                            }
+                        }
+                    }
+                }
+            }
         }
-
-        // Clean up so no background work leaks between tests.
-        await model.testCluster.testSetAIReplyOverride(response: nil)
     }
 
     // MARK: - Test 2: Fast AI produces .reply, not .handledFallback
@@ -44,27 +46,29 @@ final class DMTimeoutTests: XCTestCase {
     func testFastAIProducesReply() async {
         let model = AppModel()
 
-        await model.testCluster.testSetAIReplyOverride(response: "quick answer", delaySeconds: 0)
+        await AITestOverrides.$replyOverride.withValue("quick answer") {
+            await AITestOverrides.$replyDelaySeconds.withValue(0) {
+                await AITestOverrides.$softNoticeNs.withValue(10_000_000_000) {
+                    await AITestOverrides.$hardTimeoutNs.withValue(30_000_000_000) {
+                        await AITestOverrides.$typingRefreshNs.withValue(60_000_000_000) {
+                            let outcome = await model.generateAIReplyWithTimeout(
+                                channelId: "test-channel",
+                                messages: [],
+                                serverName: nil,
+                                channelName: nil,
+                                wikiContext: nil
+                            )
 
-        model._testSoftNoticeDelayNs  = 10_000_000_000
-        model._testHardTimeoutNs      = 30_000_000_000
-        model._testTypingRefreshNs    = 60_000_000_000
-
-        let outcome = await model.generateAIReplyWithTimeout(
-            channelId: "test-channel",
-            messages: [],
-            serverName: nil,
-            channelName: nil,
-            wikiContext: nil
-        )
-
-        guard case .reply(let text) = outcome else {
-            XCTFail("Expected .reply when AI responds promptly; got \(outcome)")
-            return
+                            guard case .reply(let text) = outcome else {
+                                XCTFail("Expected .reply when AI responds promptly; got \(outcome)")
+                                return
+                            }
+                            XCTAssertEqual(text, "quick answer")
+                        }
+                    }
+                }
+            }
         }
-        XCTAssertEqual(text, "quick answer")
-
-        await model.testCluster.testSetAIReplyOverride(response: nil)
     }
 
     // MARK: - Test 3: Engine nil before soft notice → .noReply
@@ -72,27 +76,29 @@ final class DMTimeoutTests: XCTestCase {
     func testEngineNilBeforeSoftNoticeProducesNoReply() async {
         let model = AppModel()
 
-        // Engine returns nil immediately — soft notice has not fired yet.
-        await model.testCluster.testSetAIReplyOverride(response: "", delaySeconds: 0)
+        // Engine returns nil immediately (empty string) — soft notice has not fired yet.
+        await AITestOverrides.$replyOverride.withValue("") {
+            await AITestOverrides.$replyDelaySeconds.withValue(0) {
+                await AITestOverrides.$softNoticeNs.withValue(10_000_000_000) { // 10 s — will not fire
+                    await AITestOverrides.$hardTimeoutNs.withValue(30_000_000_000) {
+                        await AITestOverrides.$typingRefreshNs.withValue(60_000_000_000) {
+                            let outcome = await model.generateAIReplyWithTimeout(
+                                channelId: "test-channel",
+                                messages: [],
+                                serverName: nil,
+                                channelName: nil,
+                                wikiContext: nil
+                            )
 
-        model._testSoftNoticeDelayNs  = 10_000_000_000   // 10 s — will not fire
-        model._testHardTimeoutNs      = 30_000_000_000
-        model._testTypingRefreshNs    = 60_000_000_000
-
-        let outcome = await model.generateAIReplyWithTimeout(
-            channelId: "test-channel",
-            messages: [],
-            serverName: nil,
-            channelName: nil,
-            wikiContext: nil
-        )
-
-        guard case .noReply = outcome else {
-            XCTFail("Expected .noReply when engine returns nil before soft notice; got \(outcome)")
-            return
+                            guard case .noReply = outcome else {
+                                XCTFail("Expected .noReply when engine returns nil before soft notice; got \(outcome)")
+                                return
+                            }
+                        }
+                    }
+                }
+            }
         }
-
-        await model.testCluster.testSetAIReplyOverride(response: nil)
     }
 
     // MARK: - Test 4: Engine nil AFTER soft notice → .handledFallback (no stall)
@@ -101,28 +107,27 @@ final class DMTimeoutTests: XCTestCase {
         let model = AppModel()
 
         // Engine returns nil but takes 200 ms — after the 50 ms soft notice fires.
-        await model.testCluster.testSetAIReplyOverride(response: "", delaySeconds: 0)
-        // Use a custom delay by making the AI take longer than the soft-notice window.
-        // Soft notice at 50 ms, AI nil at ~200 ms, hard timeout at 10 s.
-        await model.testCluster.testSetAIReplyOverride(response: "", delaySeconds: 0.2)
+        await AITestOverrides.$replyOverride.withValue("") {
+            await AITestOverrides.$replyDelaySeconds.withValue(0.2) {
+                await AITestOverrides.$softNoticeNs.withValue(50_000_000) { //  50 ms — fires before AI nil
+                    await AITestOverrides.$hardTimeoutNs.withValue(10_000_000_000) { // 10 s — should not fire
+                        await AITestOverrides.$typingRefreshNs.withValue(60_000_000_000) {
+                            let outcome = await model.generateAIReplyWithTimeout(
+                                channelId: "test-channel",
+                                messages: [],
+                                serverName: nil,
+                                channelName: nil,
+                                wikiContext: nil
+                            )
 
-        model._testSoftNoticeDelayNs  = 50_000_000    //  50 ms — fires before AI nil
-        model._testHardTimeoutNs      = 10_000_000_000 // 10 s — should not fire
-        model._testTypingRefreshNs    = 60_000_000_000
-
-        let outcome = await model.generateAIReplyWithTimeout(
-            channelId: "test-channel",
-            messages: [],
-            serverName: nil,
-            channelName: nil,
-            wikiContext: nil
-        )
-
-        guard case .handledFallback = outcome else {
-            XCTFail("Expected .handledFallback when engine returns nil after soft notice; got \(outcome)")
-            return
+                            guard case .handledFallback = outcome else {
+                                XCTFail("Expected .handledFallback when engine returns nil after soft notice; got \(outcome)")
+                                return
+                            }
+                        }
+                    }
+                }
+            }
         }
-
-        await model.testCluster.testSetAIReplyOverride(response: nil)
     }
 }

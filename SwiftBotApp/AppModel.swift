@@ -106,15 +106,6 @@ final class AppModel: ObservableObject {
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
 
-#if DEBUG
-    /// Override soft-notice delay for tests (default: 10 000 000 000 ns = 10s).
-    var _testSoftNoticeDelayNs: UInt64 = 10_000_000_000
-    /// Override hard-timeout for tests (default: 30 000 000 000 ns = 30s).
-    var _testHardTimeoutNs: UInt64 = 30_000_000_000
-    /// Override typing refresh interval for tests (default: 9 000 000 000 ns = 9s).
-    var _testTypingRefreshNs: UInt64 = 9_000_000_000
-#endif
-    
     var botAvatarURL: URL? {
         guard let userId = botUserId, let hash = botAvatarHash else { return nil }
         let ext = hash.hasPrefix("a_") ? "gif" : "png"
@@ -720,7 +711,8 @@ final class AppModel: ObservableObject {
             leaderTerm: settings.clusterLeaderTerm
         )
 
-        if settings.clusterMode == .standby {
+        let runtimeMode = await cluster.currentSnapshot().mode
+        if runtimeMode == .standby {
             status = .stopped
             logs.append("Fail Over mode active. Monitoring Primary; Discord connection deferred until promotion.")
             return
@@ -951,7 +943,7 @@ final class AppModel: ObservableObject {
         botAvatarHash = nil
         Task { await pluginManager.removeAll() }
         status = .stopped
-        Task { await cluster.stopAll() }
+        // SwiftMesh intentionally keeps running — cluster topology is independent of Discord connection.
         logs.append("Bot stopped")
     }
 
@@ -1081,28 +1073,12 @@ final class AppModel: ObservableObject {
     }
 
     func pullWikiCacheFromLeader() async {
-        guard let normalizedLeader = await cluster.normalizedLeaderBaseURL(settings.clusterLeaderAddress),
-              let leaderURL = URL(string: normalizedLeader + "/v1/mesh/sync/wiki-cache") else { return }
-        
-        do {
-            var request = URLRequest(url: leaderURL)
-            request.httpMethod = "GET"
-            if !settings.clusterSharedSecret.isEmpty {
-                request.setValue(settings.clusterSharedSecret, forHTTPHeaderField: "X-Cluster-Secret")
+        guard let data = await cluster.fetchWikiCache() else { return }
+        if let entries = try? JSONDecoder().decode([WikiContextEntry].self, from: data) {
+            for entry in entries {
+                await wikiContextCache.upsertEntry(entry)
             }
-            request.timeoutInterval = 15
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-            
-            if let entries = try? JSONDecoder().decode([WikiContextEntry].self, from: data) {
-                for entry in entries {
-                    await wikiContextCache.upsertEntry(entry)
-                }
-                logs.append("SwiftMesh: pulled \(entries.count) wiki entry(s) from Primary")
-            }
-        } catch {
-            // best effort
+            logs.append("SwiftMesh: pulled \(entries.count) wiki entry(s) from Primary")
         }
     }
 
@@ -1125,13 +1101,34 @@ final class AppModel: ObservableObject {
             return
         }
 
+        let authHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: Data())
         guard let localURL = URL(string: "http://127.0.0.1:\(settings.clusterListenPort)/cluster/status"),
-              let response = await clusterStatusService.fetchStatus(from: localURL) else {
+              let response = await clusterStatusService.fetchStatus(from: localURL, headers: authHeaders) else {
             clusterNodes = fallbackClusterNodes()
             return
         }
 
         clusterNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+    }
+
+    private func meshStatusAuthHeaders(path: String, method: String, body: Data) async -> [String: String] {
+        let secret = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty else { return [:] }
+
+        let nonce = UUID().uuidString
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let signature = await cluster.meshSignature(
+            method: method,
+            nonce: nonce,
+            timestamp: timestamp,
+            path: path,
+            body: body
+        )
+        return [
+            "X-Mesh-Nonce": nonce,
+            "X-Mesh-Timestamp": String(timestamp),
+            "X-Mesh-Signature": signature
+        ]
     }
 
     func fallbackClusterNodes() -> [ClusterNodeStatus] {
@@ -1725,11 +1722,14 @@ struct SwiftMeshPingResponse: Decodable {
 actor ClusterStatusPollingService {
     let decoder = JSONDecoder()
 
-    func fetchStatus(from endpoint: URL) async -> ClusterStatusResponse? {
+    func fetchStatus(from endpoint: URL, headers: [String: String] = [:]) async -> ClusterStatusResponse? {
         do {
             var request = URLRequest(url: endpoint)
             request.httpMethod = "GET"
             request.timeoutInterval = 3
+            for (header, value) in headers {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {

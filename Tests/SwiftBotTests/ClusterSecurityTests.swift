@@ -41,6 +41,23 @@ final class ClusterSecurityTests: XCTestCase {
         XCTAssertNil(metadataURL)
     }
 
+    func testNormalizedBaseURLAddsDefaultMeshPortWhenMissing() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "PortDefaultTest",
+            leaderAddress: "",
+            listenPort: 39055,
+            sharedSecret: "x"
+        )
+
+        let hostOnly = await coordinator.testNormalizedBaseURL("10.0.0.5")
+        let httpsHostOnly = await coordinator.testNormalizedBaseURL("https://10.0.0.6")
+
+        XCTAssertEqual(hostOnly, "http://10.0.0.5:39055")
+        XCTAssertEqual(httpsHostOnly, "https://10.0.0.6:443")
+    }
+
     func testClusterSecretAuthRoutes() async {
         let coordinator = ClusterCoordinator()
         await coordinator.applySettings(
@@ -196,6 +213,52 @@ final class ClusterSecurityTests: XCTestCase {
             makeRequest(method: "POST", path: "/v1/ai-reply", headers: signedHeaders, body: body)
         )
         XCTAssertEqual(statusCode(from: response), 401, "Method mismatch must be rejected")
+    }
+
+    func testClusterStatusPathMustMatchSignaturePath() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "StatusPathTest",
+            leaderAddress: "",
+            listenPort: 39013,
+            sharedSecret: "status-secret"
+        )
+
+        let wrongPathHeaders = await coordinator.testMakeHMACHeaders(method: "GET", path: "/v1/cluster/status", body: Data())
+        let wrongPathResponse = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "GET", path: "/cluster/status", headers: wrongPathHeaders, body: Data())
+        )
+        XCTAssertEqual(statusCode(from: wrongPathResponse), 401, "Signature path must exactly match request path")
+
+        let rightPathHeaders = await coordinator.testMakeHMACHeaders(method: "GET", path: "/cluster/status", body: Data())
+        let rightPathResponse = await coordinator.testProcessHTTPRequest(
+            makeRequest(method: "GET", path: "/cluster/status", headers: rightPathHeaders, body: Data())
+        )
+        XCTAssertEqual(statusCode(from: rightPathResponse), 200, "Correctly signed /cluster/status should pass auth")
+    }
+
+    func testRegistrationPrefersObservedRemoteHostForCallbackAddress() async {
+        let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "Leader",
+            leaderAddress: "",
+            listenPort: 39020,
+            sharedSecret: "register-secret"
+        )
+
+        let body = Data(#"{"nodeName":"StandbyNode","baseURL":"http://localhost:39021","listenPort":39021}"#.utf8)
+        let signedHeaders = await coordinator.testMakeHMACHeaders(method: "POST", path: "/cluster/register", body: body)
+        let request = makeRequest(method: "POST", path: "/cluster/register", headers: signedHeaders, body: body)
+        let response = await coordinator.testProcessHTTPRequest(request, remoteHost: "10.0.0.8")
+        XCTAssertEqual(statusCode(from: response), 200)
+
+        let nodes = await coordinator.registeredNodeInfo()
+        XCTAssertTrue(
+            nodes.contains(where: { $0.nodeName == "StandbyNode" && $0.baseURL == "http://10.0.0.8:39021" }),
+            "Leader should store observed source host callback URL for registered node"
+        )
     }
 
     private func makeRequest(method: String, path: String, headers: [String: String], body: Data) -> Data {

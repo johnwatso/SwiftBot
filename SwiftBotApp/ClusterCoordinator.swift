@@ -50,15 +50,15 @@ actor ClusterCoordinator {
     private let hardwareInfo = HardwareInfo.current()
     private let workerRegistrationIntervalNanoseconds: UInt64 = 4_000_000_000
     private let registrationStaleAfter: TimeInterval = 20
-    private static let maxHTTPRequestSize = 1_024 * 1024
+    static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
-    private static let maxSyncBatchSize: Int = 500
+    static let maxSyncBatchSize: Int = 500
 
-    private var mode: ClusterMode = .standalone
-    private var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
-    private var leaderAddress: String = ""
-    private var listenPort: Int = 38787
-    private var sharedSecret: String = ""
+    var mode: ClusterMode = .standalone
+    var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
+    var leaderAddress: String = ""
+    var listenPort: Int = 38787
+    var sharedSecret: String = ""
     /// Nonce replay cache: maps nonce → expiry time. Swept opportunistically on each auth check.
     private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
@@ -66,36 +66,32 @@ actor ClusterCoordinator {
     private var workerRegistrationTask: Task<Void, Never>?
 
     // SwiftMesh failover state
-    private var leaderTerm: Int = 0
+    var leaderTerm: Int = 0
     private var standbyMonitorTask: Task<Void, Never>?
-    private var standbyHealthMisses: Int = 0
-    private static let standbyHealthInterval: TimeInterval = 10.0
-    private static let standbyPromotionThreshold: Int = 3
+    var standbyHealthMisses: Int = 0
+    static let standbyHealthInterval: TimeInterval = 10.0
+    static let standbyPromotionThreshold: Int = 3
 
     // Phase 2: per-node replication cursors (keyed by nodeName, persisted on leader)
-    private var replicationCursors: [String: ReplicationCursor] = [:]
+    var replicationCursors: [String: ReplicationCursor] = [:]
     private var onCursorsChanged: (@Sendable ([String: ReplicationCursor]) async -> Void)?
 
     // P1b: LAN peer discovery via Bonjour/mDNS
     private var meshBrowser: NWBrowser?
-    private var discoveredPeers: [String: DiscoveredPeer] = [:]
+    var discoveredPeers: [String: DiscoveredPeer] = [:]
 
     private var aiHandler: AIHandler?
-#if DEBUG
-    // AI reply override for unit tests — set via testSetAIReplyOverride(_:delaySeconds:).
-    var _testAIReplyOverride: String? = nil
-    var _testAIReplyDelaySeconds: Double = 0
-#endif
     private var wikiHandler: WikiHandler?
     private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
+    private var listenerActivePort: Int? = nil
     private var onSnapshot: (@Sendable (ClusterSnapshot) async -> Void)?
     private var onJobLog: JobLogHandler?
     private var onSync: SyncHandler?
     private var meshHandler: MeshHandler?
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
-    private var snapshot = ClusterSnapshot()
+    var snapshot = ClusterSnapshot()
 
     func configureHandlers(
         aiHandler: @escaping AIHandler,
@@ -142,6 +138,9 @@ actor ClusterCoordinator {
     }
 
     func updateReplicationCursor(for nodeName: String, lastSentRecordID: String?, term: Int) async {
+        if let existing = replicationCursors[nodeName], existing.leaderTerm > term {
+            return
+        }
         replicationCursors[nodeName] = ReplicationCursor(leaderTerm: term, lastSentRecordID: lastSentRecordID, updatedAt: Date())
         await onCursorsChanged?(replicationCursors)
     }
@@ -152,22 +151,22 @@ actor ClusterCoordinator {
             self.leaderTerm = leaderTerm
             snapshot.leaderTerm = leaderTerm
         }
-        self.mode = mode
         self.nodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.mode = await startupReconciledMode(requestedMode: mode)
 
-        snapshot.mode = mode
+        snapshot.mode = self.mode
         snapshot.nodeName = self.nodeName
         snapshot.listenPort = listenPort
         snapshot.leaderAddress = self.leaderAddress
-        snapshot.diagnostics = "Applied mode \(mode.rawValue)"
+        snapshot.diagnostics = "Applied mode \(self.mode.rawValue)"
         snapshot.lastJobNode = self.nodeName
 
-        if mode != .leader {
+        if self.mode != .leader {
             registeredWorkers.removeAll()
         }
 
@@ -178,6 +177,34 @@ actor ClusterCoordinator {
         await publishSnapshot()
     }
 
+    /// Startup reconciliation to prevent split-brain:
+    /// if this node is configured as leader but can reach a healthy existing leader
+    /// at the configured leaderAddress, demote to standby and register with that leader.
+    private func startupReconciledMode(requestedMode: ClusterMode) async -> ClusterMode {
+        guard requestedMode == .leader else { return requestedMode }
+        guard let configuredLeader = normalizedBaseURL(leaderAddress), !configuredLeader.isEmpty else {
+            return requestedMode
+        }
+        guard !isSelfClusterEndpoint(configuredLeader) else { return requestedMode }
+        guard let remoteStatus = await fetchRemoteClusterStatus(baseURL: configuredLeader) else {
+            return requestedMode
+        }
+
+        let localLeaderID = "leader-\(ProcessInfo.processInfo.hostName.lowercased())-\(listenPort)"
+        let remoteLeader = remoteStatus.response.nodes.first {
+            $0.role == .leader && $0.status != .disconnected
+        }
+        if let remoteLeader, remoteLeader.id != localLeaderID {
+            meshLogger.warning(
+                "Startup reconciliation: discovered active leader \(remoteLeader.displayName, privacy: .public) at \(configuredLeader, privacy: .public); starting in standby mode"
+            )
+            leaderAddress = configuredLeader
+            return .standby
+        }
+
+        return requestedMode
+    }
+
     func stopAll() async {
         stopMeshDiscovery()
         workerRegistrationTask?.cancel()
@@ -186,6 +213,7 @@ actor ClusterCoordinator {
         standbyMonitorTask = nil
         listener?.cancel()
         listener = nil
+        listenerActivePort = nil
         registeredWorkers.removeAll()
         standbyHealthMisses = 0
         snapshot.serverState = .stopped
@@ -300,15 +328,19 @@ actor ClusterCoordinator {
         serverName: String? = nil,
         channelName: String? = nil,
         wikiContext: String? = nil
-    ) async -> String? {
+        ) async -> String? {
+        // AI reply override for unit tests (compliant with March 2026 standards).
 #if DEBUG
-        if let override = _testAIReplyOverride {
-            if _testAIReplyDelaySeconds > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(_testAIReplyDelaySeconds * 1_000_000_000))
+        if let override = AITestOverrides.replyOverride {
+            if AITestOverrides.replyDelaySeconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(AITestOverrides.replyDelaySeconds * 1_000_000_000))
             }
             return override.isEmpty ? nil : override
         }
 #endif
+
+        guard let aiHandler else { return nil }
+
         let job = AIJobRequest(
             messages: messages,
             serverName: serverName,
@@ -323,7 +355,7 @@ actor ClusterCoordinator {
             return remote.reply
         }
 
-        let local = await aiHandler?(messages, serverName, channelName, wikiContext)
+        let local = await aiHandler(messages, serverName, channelName, wikiContext)
         snapshot.lastJobRoute = local == nil ? .unavailable : .local
         snapshot.lastJobSummary = local == nil ? "AI reply unavailable" : "AI reply local"
         snapshot.lastJobNode = nodeName
@@ -407,7 +439,11 @@ actor ClusterCoordinator {
 
     /// Computes HMAC-SHA256 over `METHOD:path:nonce:timestamp:` + body bytes using sharedSecret as key.
     /// Returns a lowercase hex string. Returns empty string if sharedSecret is empty.
-    private func meshSignature(method: String, nonce: String, timestamp: Int, path: String, body: Data) -> String {
+    private func pruneNonces(now: Date) {
+        usedNonces = usedNonces.filter { now.timeIntervalSince($0.value) < 60 }
+    }
+
+    func meshSignature(method: String, nonce: String, timestamp: Int, path: String, body: Data) -> String {
         guard !sharedSecret.isEmpty,
               let keyData = sharedSecret.data(using: .utf8) else { return "" }
         let key = SymmetricKey(data: keyData)
@@ -444,15 +480,15 @@ actor ClusterCoordinator {
               let timestamp = Int(tsStr),
               let sigHex = headers["x-mesh-signature"] else { return false }
 
-        // Opportunistic sweep of expired nonces (older than 300s).
+        // Opportunistic sweep of expired nonces (older than 60s).
         let now = Date()
         let nowEpoch = Int(now.timeIntervalSince1970)
-        usedNonces = usedNonces.filter { now.timeIntervalSince($0.value) < 300 }
+        pruneNonces(now: now)
 
-        // Timestamp skew check — fail-closed if outside ±300s window.
+        // Timestamp skew check — fail-closed if outside ±60s window.
         let skew = abs(nowEpoch - timestamp)
-        guard skew <= 300 else {
-            meshLogger.warning("Mesh auth rejected: timestamp skew \(skew)s exceeds 300s window")
+        guard skew <= 60 else {
+            meshLogger.warning("Mesh auth rejected: timestamp skew \(skew)s exceeds 60s window")
             return false
         }
 
@@ -488,11 +524,17 @@ actor ClusterCoordinator {
     }
 
     private func restartServerIfNeeded() async {
+        // Skip if already listening on the correct port — prevents double-bind from
+        // multiple applySettings call sites (startup, settings save, bot start).
+        if listener != nil, listenerActivePort == listenPort, mode != .standalone {
+            return
+        }
+
         stopMeshDiscovery()
         listener?.cancel()
         listener = nil
 
-        guard mode == .worker || mode == .leader else {
+        guard mode != .standalone else {
             snapshot.serverState = .inactive
             snapshot.serverStatusText = "Disabled"
             return
@@ -531,15 +573,18 @@ actor ClusterCoordinator {
     private func handleListenerState(_ state: NWListener.State) async {
         switch state {
         case .ready:
+            listenerActivePort = listenPort
             snapshot.serverState = .listening
             snapshot.serverStatusText = "Listening on :\(listenPort)"
             snapshot.diagnostics = "Worker server listening on port \(listenPort)"
             meshLogger.info("Mesh server started on port \(self.listenPort, privacy: .public)")
         case .failed(let error):
+            listenerActivePort = nil
             snapshot.serverState = .failed
             snapshot.serverStatusText = "Server failed: \(error.localizedDescription)"
             snapshot.diagnostics = "Worker server failed: \(error.localizedDescription)"
         case .cancelled:
+            listenerActivePort = nil
             snapshot.serverState = .stopped
             snapshot.serverStatusText = "Stopped"
             snapshot.diagnostics = "Worker server stopped"
@@ -626,9 +671,10 @@ actor ClusterCoordinator {
 
     private func handleConnection(_ connection: NWConnection) async {
         connection.start(queue: .global(qos: .utility))
+        let remoteHost = remoteHostFromConnection(connection)
         do {
             let requestData = try await readHTTPRequest(connection)
-            let response = await processHTTPRequest(requestData)
+            let response = await processHTTPRequest(requestData, remoteHost: remoteHost)
             connection.send(content: response, completion: .contentProcessed { _ in
                 connection.cancel()
             })
@@ -638,6 +684,20 @@ actor ClusterCoordinator {
             connection.send(content: response, completion: .contentProcessed { _ in
                 connection.cancel()
             })
+        }
+    }
+
+    private func remoteHostFromConnection(_ connection: NWConnection) -> String? {
+        guard case let .hostPort(host, _) = connection.endpoint else { return nil }
+        switch host {
+        case .name(let name, _):
+            return name
+        case .ipv4(let address):
+            return address.debugDescription
+        case .ipv6(let address):
+            return address.debugDescription
+        @unknown default:
+            return nil
         }
     }
 
@@ -709,7 +769,7 @@ actor ClusterCoordinator {
         return 0
     }
 
-    private func processHTTPRequest(_ requestData: Data) async -> Data {
+    func processHTTPRequest(_ requestData: Data, remoteHost: String? = nil) async -> Data {
         guard let request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_request"}"#.utf8))
         }
@@ -746,7 +806,7 @@ actor ClusterCoordinator {
             let body = (try? encoder.encode(payload)) ?? Data()
             return httpResponse(status: "200 OK", body: body)
         case ("POST", "/cluster/register"):
-            return await handleWorkerRegistration(request.body)
+            return await handleWorkerRegistration(request.body, remoteHost: remoteHost)
         case ("GET", "/cluster/status"):
             let payload = await clusterStatusPayload()
             let body = (try? encoder.encode(payload)) ?? Data()
@@ -921,7 +981,7 @@ actor ClusterCoordinator {
             }
         }
     }
-    private func promoteToLeader() async {
+    func promoteToLeader() async {
         guard mode == .standby else { return }
 
         mode = .leader
@@ -944,9 +1004,11 @@ actor ClusterCoordinator {
         replicationCursors.removeAll()
         await onCursorsChanged?(replicationCursors)
 
-        // Stop standby monitoring
+        // Stop standby monitoring and registration — no longer a standby.
         standbyMonitorTask?.cancel()
         standbyMonitorTask = nil
+        workerRegistrationTask?.cancel()
+        workerRegistrationTask = nil
 
         // Restart server as leader
         await restartServerIfNeeded()
@@ -1047,11 +1109,11 @@ actor ClusterCoordinator {
         workerRegistrationTask?.cancel()
         workerRegistrationTask = nil
 
-        guard mode == .worker else { return }
+        guard mode == .worker || mode == .standby else { return }
         guard let normalizedLeader = normalizedBaseURL(leaderAddress), !normalizedLeader.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "Primary not configured"
-            snapshot.diagnostics = "Set Primary Address to enable worker registration"
+            snapshot.diagnostics = "Set Primary Address to enable registration"
             return
         }
 
@@ -1064,7 +1126,7 @@ actor ClusterCoordinator {
     }
 
     private func registerWithLeader(_ leaderBaseURL: String) async {
-        guard mode == .worker else { return }
+        guard mode == .worker || mode == .standby else { return }
         guard let url = URL(string: leaderBaseURL + "/cluster/register") else {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Invalid Primary address"
@@ -1099,11 +1161,11 @@ actor ClusterCoordinator {
 
             let ack = try? decoder.decode(WorkerRegistrationResponse.self, from: data)
             snapshot.workerState = .connected
-            snapshot.workerStatusText = "Registered with Primary"
+            snapshot.workerStatusText = mode == .standby ? "Standby Registered with Primary" : "Worker Registered with Primary"
             if let ack {
-                snapshot.diagnostics = "Registered with Primary \(ack.leaderNodeName) (\(ack.registeredWorkers) workers total)"
+                snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary \(ack.leaderNodeName) (\(ack.registeredWorkers) nodes total)"
             } else {
-                snapshot.diagnostics = "Registered with Primary via \(url.absoluteString)"
+                snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary via \(url.absoluteString)"
             }
             await publishSnapshot()
         } catch {
@@ -1114,14 +1176,17 @@ actor ClusterCoordinator {
         }
     }
 
-    private func handleWorkerRegistration(_ body: Data) async -> Data {
+    private func handleWorkerRegistration(_ body: Data, remoteHost: String?) async -> Data {
         guard mode == .leader else {
             return httpResponse(status: "409 Conflict", body: Data(#"{"error":"leader_mode_required"}"#.utf8))
         }
 
-        guard let registration = try? decoder.decode(WorkerRegistrationRequest.self, from: body),
-              let baseURL = normalizedBaseURL(registration.baseURL),
-              !baseURL.isEmpty else {
+        guard let registration = try? decoder.decode(WorkerRegistrationRequest.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_registration"}"#.utf8))
+        }
+        let advertisedBaseURL = normalizedBaseURL(registration.baseURL)
+        let observedBaseURL = observedRegistrationBaseURL(remoteHost: remoteHost, listenPort: registration.listenPort)
+        guard let baseURL = observedBaseURL ?? advertisedBaseURL, !baseURL.isEmpty else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_registration"}"#.utf8))
         }
 
@@ -1140,7 +1205,13 @@ actor ClusterCoordinator {
         snapshot.workerState = .connected
         let workerCount = registeredWorkers.count
         snapshot.workerStatusText = "\(workerCount) worker\(workerCount == 1 ? "" : "s") registered"
-        snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL)"
+        if let advertisedBaseURL,
+           let observedBaseURL,
+           advertisedBaseURL.lowercased() != observedBaseURL.lowercased() {
+            snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL) (advertised \(advertisedBaseURL))"
+        } else {
+            snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL)"
+        }
         await publishSnapshot()
 
         let response = WorkerRegistrationResponse(
@@ -1150,6 +1221,13 @@ actor ClusterCoordinator {
         )
         let payload = (try? encoder.encode(response)) ?? Data()
         return httpResponse(status: "200 OK", body: payload)
+    }
+
+    private func observedRegistrationBaseURL(remoteHost: String?, listenPort: Int) -> String? {
+        guard let remoteHost = remoteHost?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !remoteHost.isEmpty,
+              (1...Int(UInt16.max)).contains(listenPort) else { return nil }
+        return normalizedBaseURL("http://\(remoteHost):\(listenPort)")
     }
 
     private func sortedRegisteredWorkers() -> [RegisteredWorker] {
@@ -1169,7 +1247,7 @@ actor ClusterCoordinator {
         return "http://\(resolvedHost):\(listenPort)"
     }
 
-    private func normalizedBaseURL(_ raw: String) -> String? {
+    func normalizedBaseURL(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let candidate: String
@@ -1191,11 +1269,15 @@ actor ClusterCoordinator {
             return nil
         }
 
-        let portSuffix = url.port.map { ":\($0)" } ?? ""
-        return "\(scheme)://\(host)\(portSuffix)"
+        let resolvedPort: Int = {
+            if let explicit = url.port { return explicit }
+            // For host-only mesh endpoints, default to this node's configured mesh port.
+            return scheme.lowercased() == "https" ? 443 : listenPort
+        }()
+        return "\(scheme)://\(host):\(resolvedPort)"
     }
 
-    private func isSSRFSafeHost(_ host: String) -> Bool {
+    func isSSRFSafeHost(_ host: String) -> Bool {
         let lowerHost = host.lowercased()
         if lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "::1" {
             return true
@@ -1416,7 +1498,7 @@ actor ClusterCoordinator {
             let started = Date()
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
-            applyMeshAuth(to: &request, path: "/v1/cluster/status")
+            applyMeshAuth(to: &request, path: "/cluster/status")
             request.timeoutInterval = 3
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -1491,7 +1573,7 @@ actor ClusterCoordinator {
         return localHosts.contains(host) && port == listenPort
     }
 
-    private func publishSnapshot() async {
+    func publishSnapshot() async {
         await onSnapshot?(snapshot)
     }
 
@@ -1569,6 +1651,10 @@ actor ClusterCoordinator {
         guard let payload = try? decoder.decode(MeshWorkerRegistryPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
         }
+        guard payload.leaderTerm >= leaderTerm else {
+            meshLogger.warning("Worker registry sync rejected: stale term \(payload.leaderTerm, privacy: .public) < current \(self.leaderTerm, privacy: .public)")
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
+        }
 
         for worker in payload.workers {
             let key = worker.baseURL.lowercased()
@@ -1587,8 +1673,15 @@ actor ClusterCoordinator {
     }
 
     private func handleMeshConversationSync(_ body: Data) async -> Data {
+        guard mode == .standby else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+        }
         guard let payload = try? decoder.decode(MeshSyncPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        guard payload.leaderTerm >= leaderTerm else {
+            meshLogger.warning("Conversation sync rejected: stale term \(payload.leaderTerm, privacy: .public) < current \(self.leaderTerm, privacy: .public)")
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
         }
         await onSync?(payload)
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
@@ -1628,89 +1721,51 @@ actor ClusterCoordinator {
         }
         return httpResponse(status: "404 Not Found", body: Data(#"{"error":"cache_unavailable"}"#.utf8))
     }
-}
 
-#if DEBUG
-extension ClusterCoordinator {
-    func testIsSSRFSafeHost(_ host: String) -> Bool {
-        isSSRFSafeHost(host)
-    }
-
-    func testNormalizedBaseURL(_ raw: String) -> String? {
-        normalizedBaseURL(raw)
-    }
-
-    func testProcessHTTPRequest(_ data: Data) async -> Data {
-        await processHTTPRequest(data)
-    }
-
-    func testExceedsHTTPRequestSizeCap(_ contentLength: Int) -> Bool {
-        contentLength > Self.maxHTTPRequestSize
-    }
-
-    /// Simulates a single leader health miss without making a network call.
-    /// Increments the miss counter and triggers promotion if threshold is reached.
-    func testSimulateLeaderHealthMiss() async {
-        standbyHealthMisses += 1
-        snapshot.workerStatusText = "Primary unreachable (\(standbyHealthMisses)/\(Self.standbyPromotionThreshold))"
-        snapshot.diagnostics = "Simulated health miss \(standbyHealthMisses)"
-        await publishSnapshot()
-        if standbyHealthMisses >= Self.standbyPromotionThreshold {
-            await promoteToLeader()
+    /// Standby: fetch one page of conversation records from the leader using correct HMAC auth.
+    func fetchResyncPage(fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
+        guard mode == .standby,
+              let baseURL = normalizedBaseURL(leaderAddress),
+              !baseURL.isEmpty,
+              let url = URL(string: baseURL + "/v1/mesh/sync/conversations/resync") else { return nil }
+        let req = MeshResyncRequest(fromRecordID: fromRecordID, pageSize: pageSize)
+        guard let body = try? encoder.encode(req) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        applyMeshAuth(to: &request, path: "/v1/mesh/sync/conversations/resync")
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try? decoder.decode(MeshSyncPayload.self, from: data)
+        } catch {
+            return nil
         }
     }
 
-    func testCurrentMode() -> ClusterMode { mode }
-    func testCurrentSnapshot() -> ClusterSnapshot { snapshot }
-    func testCurrentLeaderTerm() -> Int { leaderTerm }
-    func testCurrentLeaderAddress() -> String { leaderAddress }
-    func testReplicationCursors() -> [String: ReplicationCursor] { replicationCursors }
-    func testMaxSyncBatchSize() -> Int { Self.maxSyncBatchSize }
-
-    /// Returns HTTP headers (nonce, timestamp, signature) for a request with the given method, path, and body.
-    /// Used by tests to construct properly signed requests against the coordinator's current sharedSecret.
-    func testMakeHMACHeaders(method: String = "POST", path: String, body: Data = Data()) -> [String: String] {
-        let nonce = UUID().uuidString
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let sig = meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: body)
-        return [
-            "X-Mesh-Nonce": nonce,
-            "X-Mesh-Timestamp": String(timestamp),
-            "X-Mesh-Signature": sig
-        ]
-    }
-
-    /// Injects a list of DiscoveredPeer values into the discovery table, applying the same
-    /// deterministic collision rule as handleDiscoveryResults (lexicographically smallest baseURL
-    /// wins when two entries share the same nodeName).
-    func testInjectDiscoveredPeers(_ peers: [DiscoveredPeer]) {
-        var result: [String: DiscoveredPeer] = [:]
-        for peer in peers {
-            if let existing = result[peer.nodeName] {
-                if peer.baseURL < existing.baseURL {
-                    result[peer.nodeName] = DiscoveredPeer(
-                        nodeName: peer.nodeName,
-                        baseURL: peer.baseURL,
-                        discoveredAt: existing.discoveredAt
-                    )
-                }
-            } else {
-                result[peer.nodeName] = peer
-            }
+    /// Standby: fetch wiki cache entries from the leader using correct HMAC auth.
+    func fetchWikiCache() async -> Data? {
+        guard mode == .standby,
+              let baseURL = normalizedBaseURL(leaderAddress),
+              !baseURL.isEmpty,
+              let url = URL(string: baseURL + "/v1/mesh/sync/wiki-cache") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/sync/wiki-cache")
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return data
+        } catch {
+            return nil
         }
-        discoveredPeers = result
-    }
-
-    /// Overrides the AI reply generator with a fixed response after a configurable delay.
-    /// Pass nil to clear the override and restore normal generation.
-    func testSetAIReplyOverride(response: String?, delaySeconds: Double = 0) {
-        _testAIReplyOverride = response
-        _testAIReplyDelaySeconds = delaySeconds
     }
 }
-#endif
 
-private struct RegisteredWorker: Hashable, Sendable {
+struct RegisteredWorker: Hashable, Sendable {
     var nodeName: String
     var baseURL: String
     var listenPort: Int

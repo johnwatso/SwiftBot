@@ -233,24 +233,28 @@ RuleEditorView(rule: selectedRuleBinding)
 - Controlled by `settings.localAIDMReplyEnabled`
 - Uses a shared prompt-composition path to keep direct and rule-triggered replies consistent
 
-## SwiftMesh High Availability (Current State)
+## SwiftMesh High Availability (March 2026 Stabilization)
 
-SwiftMesh now has phased HA support beyond basic leader/worker routing (Note: Worker mode is temporarily disabled in the UI for UX redesign):
+SwiftMesh is undergoing stabilization to improve reliability and comply with new safety standards:
 
-- **Phase 1 (implemented):**
-  - `standby` mode with leader health monitoring (10s poll, 3-miss promotion)
-  - term-based promotion safety (persisted monotonic `clusterLeaderTerm`)
-  - authenticated leader-change propagation to workers
-- **Phase 2 (implemented):**
-  - incremental conversation replication with per-node durable cursors
-  - gap detection + bounded resync pagination
-  - idempotent merge behavior for duplicate delivery/retry safety
-- **Phase 2.1 (implemented):**
-  - cursor-key hardening from endpoint URL keys to stable node identifiers (`nodeName`)
-- **Phase 3 (implemented):**
-  - wiki cache/state replication across nodes for failover knowledge continuity via background pull protocol (`/v1/mesh/sync/wiki-cache`)
+- **Phased Implementation (Complete through Phase 3):**
+  - **Phase 1:** Leader election, health monitoring, promotion safety.
+  - **Phase 2:** Incremental conversation sync, gap detection, durable cursors.
+  - **Phase 3:** Wiki cache replication.
+- **Stabilization Guardrails:**
+  - **Standby Server:** Standby nodes MUST run an HTTP server and register with the leader. This allows the leader to push conversation sync and worker registry updates to the standby in real-time.
+  - **Strict Term Validation:** All mesh endpoints must verify `leaderTerm` to prevent split-brain.
+  - **Replication Monotonicity:** Cursors must advance forward and only forward to prevent data regressions.
+  - **Clean Build Targets:** All test helpers and non-production logic are being moved out of the production targets.
 
-## Music Link Converter (Planned — not yet implemented)
+## Coding Standards & Performance
+
+### 1. Separation of Concerns (Test/Production)
+- **Production Code:** Must only contain logic for the application's runtime. No `test*` methods or automated test-only logic.
+- **Diagnostic Logic:** User-facing diagnostics (e.g., connection tests) are production features and should follow the standard naming convention (e.g., `runTest...`).
+- **Release Stability:** No logic required for a "Release" build should be gated by `#if DEBUG`.
+
+### 2. Memory & Performance
 
 See [`docs/music.md`](docs/music.md) for full design details. Inspired by [tunes.ninja](https://tunes.ninja).
 

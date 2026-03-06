@@ -261,11 +261,23 @@ case .myAction:
     // Perform action
 ```
 
-## Common Gotchas
+## Coding Standards & Safety (March 2026)
 
-### ❌ Don't: Reintroduce split AI prompt builders
-**Problem:** Separate prompt-composition paths cause tone drift and inconsistent reply quality.
-**Solution:** Keep prompt/message shaping in the shared composer path used by all local AI reply entry points.
+To ensure production stability and maintainable test coverage, follow these rules:
+
+- **❌ No `test*` calls from production code:** Methods prefixed with `test` (e.g., `testIsSSRFSafeHost`) are for diagnostic or unit test use only. Never call them from the main app runtime flow.
+- **❌ No release logic inside `#if DEBUG`:** Logic required for the production application to function must not be gated by `#if DEBUG`. If you need to override values for testing, use `TaskLocal`, environment variables, or dedicated test-only extensions in a separate file.
+- **✅ Test Helpers Location:** All automated test helpers and unit-test-only code should be located in the `Tests/SwiftBotTests` target or in files explicitly excluded from the production build.
+- **✅ Diagnostic Features:** User-initiated diagnostic features (like "Test Connection" in the UI) are production features. Name them accordingly (e.g., `runTestConnection()`, `performHealthProbe()`) to distinguish them from unit test helpers.
+
+## SwiftMesh Stabilization (March 2026)
+
+SwiftMesh is currently undergoing stabilization to address reliability issues:
+
+- **Split-Brain Protection:** ALL mesh sync routes (`/v1/mesh/sync/*`) MUST validate the `leaderTerm`. 
+  - **Rule:** `guard payload.leaderTerm >= currentLeaderTerm else { return HTTP 403 }`
+- **Monotonic Cursors:** When updating replication cursors, verify that the new `lastSentRecordID` is chronologically newer than the existing one to prevent state regression.
+- **Error Recovery:** Avoid `try?` on critical mesh networking. Log specific errors and implement retry logic where appropriate to prevent nodes from entering a "stale" state.
 
 ### ❌ Don't: Key mesh cursors by endpoint URL
 **Problem:** URL changes during failover/reconfiguration can orphan replication state.
@@ -322,6 +334,15 @@ When modifying this project, update these files:
 - [ ] **CHANGELOG.md** - Document what changed and why
 - [ ] **This file** - If you discover new patterns or gotchas
 - [ ] **ARCHITECTURE.md** - If you change core architecture
+
+## Troubleshooting & Diagnostics (March 2026)
+
+### Common Failure Modes:
+
+- **401 Unauthorized (Auth Mismatch):** If sync, resync, or wiki-pull requests consistently return 401, verify that the requester is using `applyMeshAuth` (HMAC) and NOT just a plain `X-Cluster-Secret` header. Standardized mesh routes (`/v1/mesh/*`) *require* HMAC.
+- **Standby Isolation:** If a Standby node doesn't receive sync pushes, check if its HTTP server is active (`snapshot.serverState == .listening`). If it's `.inactive`, it cannot receive pushes. Standby MUST run a server to participate in the mesh.
+- **Split-Brain Overwrites:** If a node's state regresses after a failover, check the `leaderTerm` validation in its sync handlers. A demoted leader may still be trying to push stale state; the receiver MUST reject it if the incoming term is less than the current local term.
+- **AI Icon Rendering Bug:** If the AI provider icons are falling back to the default "sparkles" image, ensure the code is using `NSImage(named:) != nil` for asset existence checks on macOS, as `Bundle.main.url` may fail for items in `.xcassets`.
 
 ## Debug Tips
 
