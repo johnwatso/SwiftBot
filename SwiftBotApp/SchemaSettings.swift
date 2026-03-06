@@ -4,6 +4,7 @@ enum SettingType: Hashable {
     case toggle
     case picker(options: [String])
     case text
+    case secureText
 }
 
 struct Setting: Identifiable, Hashable {
@@ -93,6 +94,7 @@ struct SettingRow: View {
             switch setting.type {
             case .toggle:
                 Toggle(setting.title, isOn: toggleBinding)
+                    .toggleStyle(.switch)
             case .picker(let options):
                 Picker(setting.title, selection: textBinding) {
                     ForEach(options, id: \.self) { option in
@@ -102,6 +104,8 @@ struct SettingRow: View {
                 .pickerStyle(.menu)
             case .text:
                 TextField(setting.title, text: textBinding)
+            case .secureText:
+                SecureField(setting.title, text: textBinding)
             }
 
             if let description = setting.description, !description.isEmpty {
@@ -135,6 +139,8 @@ private extension Setting {
         case .picker(let options):
             return .text(options.first ?? "")
         case .text:
+            return .text("")
+        case .secureText:
             return .text("")
         }
     }

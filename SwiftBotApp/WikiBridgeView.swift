@@ -27,7 +27,7 @@ struct WikiBridgeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -409,6 +409,7 @@ private struct WikiSourceEditorSheet: View {
                 .textFieldStyle(.roundedBorder)
 
             Toggle("Enabled", isOn: $draft.enabled)
+                .toggleStyle(.switch)
         } header: {
             Text("Source")
         }
@@ -463,6 +464,7 @@ private struct WikiSourceEditorSheet: View {
 
                             Toggle("", isOn: $command.enabled)
                                 .labelsHidden()
+                                .toggleStyle(.switch)
                                 .frame(width: 70)
 
                             Button(role: .destructive) {
@@ -495,8 +497,11 @@ private struct WikiSourceEditorSheet: View {
     private var formattingSection: some View {
         Section {
             Toggle("Include stat blocks", isOn: $draft.formatting.includeStatBlocks)
+                .toggleStyle(.switch)
             Toggle("Use embeds", isOn: $draft.formatting.useEmbeds)
+                .toggleStyle(.switch)
             Toggle("Compact mode", isOn: $draft.formatting.compactMode)
+                .toggleStyle(.switch)
         } header: {
             Text("Formatting")
         }
@@ -565,7 +570,7 @@ private struct WikiSourceEditorSheet: View {
                 Button("Run Test") {
                     runTestQuery()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GlassActionButtonStyle())
                 .disabled(isRunningTest || draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || testQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 

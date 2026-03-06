@@ -31,21 +31,17 @@ struct SwiftBotApp: App {
 
             let cornerRadius: CGFloat = 24
 
-            var currentView: NSView? = window.contentView
-            for _ in 0..<3 {
-                guard let view = currentView else { break }
-                view.wantsLayer = true
-                view.layer?.cornerRadius = cornerRadius
-                view.layer?.cornerCurve = .continuous
-                view.layer?.masksToBounds = true
-                currentView = view.superview
-            }
-
             if let contentView = window.contentView {
                 contentView.wantsLayer = true
-                contentView.layer?.cornerRadius = cornerRadius
-                contentView.layer?.cornerCurve = .continuous
-                contentView.layer?.masksToBounds = true
+                contentView.layer?.cornerRadius = 0
+                contentView.layer?.masksToBounds = false
+            }
+
+            if let frameView = window.contentView?.superview {
+                frameView.wantsLayer = true
+                frameView.layer?.cornerRadius = cornerRadius
+                frameView.layer?.cornerCurve = .continuous
+                frameView.layer?.masksToBounds = true
             }
 
             window.invalidateShadow()

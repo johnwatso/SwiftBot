@@ -205,6 +205,142 @@ struct OllamaEngine: AIEngine {
     }
 }
 
+struct OpenAIEngine: AIEngine {
+    let apiKey: String
+    let model: String
+    let baseURL: String
+    let session: URLSession
+
+    private struct ChatCompletionRequest: Encodable {
+        struct ChatMessage: Encodable {
+            let role: String
+            let content: String
+        }
+        let model: String
+        let messages: [ChatMessage]
+        let temperature: Double
+    }
+
+    private struct ChatCompletionResponse: Decodable {
+        struct Choice: Decodable {
+            struct Message: Decodable {
+                let content: String?
+            }
+            let message: Message
+        }
+        let choices: [Choice]
+    }
+
+    func generate(messages: [Message]) async -> String? {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return nil }
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedModel.isEmpty else { return nil }
+        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else { return nil }
+
+        let payloadMessages = messages.toEngineMessages().map { message in
+            ChatCompletionRequest.ChatMessage(role: message.role.rawValue, content: message.content)
+        }
+        guard payloadMessages.contains(where: { $0.role == "user" }) else { return nil }
+
+        let payload = ChatCompletionRequest(model: trimmedModel, messages: payloadMessages, temperature: 0.4)
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 25
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+            let content = decoded.choices.first?.message.content ?? ""
+            let cleaned = cleanOutput(content)
+            return cleaned.isEmpty ? nil : cleaned
+        } catch {
+            return nil
+        }
+    }
+
+    static func isOnline(apiKey: String, baseURL: String, session: URLSession) async -> Bool {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty, let url = URL(string: "\(baseURL)/v1/models") else { return false }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 10
+            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200..<300).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+}
+
+struct OpenAIImageEngine {
+    let apiKey: String
+    let model: String
+    let baseURL: String
+    let session: URLSession
+
+    private struct ImageGenerationRequest: Encodable {
+        let model: String
+        let prompt: String
+        let size: String
+    }
+
+    private struct ImageGenerationResponse: Decodable {
+        struct ImageData: Decodable {
+            let b64_json: String?
+        }
+        let data: [ImageData]
+    }
+
+    func generateImage(prompt: String) async -> Data? {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return nil }
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedModel.isEmpty else { return nil }
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPrompt.isEmpty else { return nil }
+        guard let url = URL(string: "\(baseURL)/v1/images/generations") else { return nil }
+
+        let payload = ImageGenerationRequest(
+            model: trimmedModel,
+            prompt: trimmedPrompt,
+            size: "1024x1024"
+        )
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 60
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+
+            let decoded = try JSONDecoder().decode(ImageGenerationResponse.self, from: data)
+            guard
+                let b64 = decoded.data.first?.b64_json,
+                let imageData = Data(base64Encoded: b64)
+            else {
+                return nil
+            }
+            return imageData
+        } catch {
+            return nil
+        }
+    }
+}
+
 actor DiscordService {
 
     private let discordLogger = Logger(subsystem: "com.swiftbot", category: "discord")
@@ -230,6 +366,9 @@ actor DiscordService {
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
     private var guildNamesById: [String: String] = [:]
+    private var guildOwnerIdByGuild: [String: String] = [:]
+    private var finalsWeaponAliasCache: [String: String] = [:]
+    private var finalsWeaponAliasCacheAt: Date?
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
@@ -239,6 +378,8 @@ actor DiscordService {
     private var localPreferredAIProvider: AIProviderPreference = .apple
     private var localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
     private var localAIModel = "local-model"
+    private var localOpenAIAPIKey = ""
+    private var localOpenAIModel = "gpt-4o-mini"
     private var localAISystemPrompt = ""
 
     private let session = URLSession(configuration: .default)
@@ -253,6 +394,10 @@ actor DiscordService {
         return c
     }()
     private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
+
+    private struct DiscordMessageEnvelope: Decodable {
+        let id: String
+    }
 
     var onPayload: ((GatewayPayload) async -> Void)?
     var onConnectionState: ((BotStatus) async -> Void)?
@@ -291,6 +436,8 @@ actor DiscordService {
         preferredProvider: AIProviderPreference,
         endpoint: String,
         model: String,
+        openAIAPIKey: String,
+        openAIModel: String,
         systemPrompt: String
     ) {
         localAIDMReplyEnabled = enabled
@@ -298,6 +445,8 @@ actor DiscordService {
         localPreferredAIProvider = preferredProvider
         localAIEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         localAIModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        localOpenAIAPIKey = openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        localOpenAIModel = openAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
         localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -305,11 +454,12 @@ actor DiscordService {
         await detectOllamaModel(baseURL: baseURL, preferredModel: nil)
     }
 
-    func currentAIStatus(ollamaBaseURL: String, ollamaModelHint: String?) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?) {
+    func currentAIStatus(ollamaBaseURL: String, ollamaModelHint: String?, openAIAPIKey: String) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?, openAIOnline: Bool) {
         let appleOnline = isAppleIntelligenceAvailable()
         let normalized = normalizedOllamaBaseURL(ollamaBaseURL)
         let model = await detectOllamaModel(baseURL: normalized, preferredModel: ollamaModelHint)
-        return (appleOnline, model != nil, model)
+        let openAIOnline = await OpenAIEngine.isOnline(apiKey: openAIAPIKey, baseURL: "https://api.openai.com", session: session)
+        return (appleOnline, model != nil, model, openAIOnline)
     }
 
     func generateSmartDMReply(
@@ -346,23 +496,15 @@ actor DiscordService {
             preferredModel: localAIModel,
             session: session
         )
+        let openAIEngine = OpenAIEngine(
+            apiKey: localOpenAIAPIKey,
+            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
+            baseURL: "https://api.openai.com",
+            session: session
+        )
 
-        let preferred = localPreferredAIProvider
-        if preferred == .apple {
-            if let reply = await appleEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                if !cleaned.isEmpty { return cleaned }
-            }
-            if let reply = await ollamaEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                if !cleaned.isEmpty { return cleaned }
-            }
-        } else {
-            if let reply = await ollamaEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                if !cleaned.isEmpty { return cleaned }
-            }
-            if let reply = await appleEngine.generate(messages: finalMessages) {
+        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
+            if let reply = await engine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 if !cleaned.isEmpty { return cleaned }
             }
@@ -382,27 +524,307 @@ actor DiscordService {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return nil }
 
-        if let direct = await fetchDirectFinalsWikiPage(query: trimmedQuery) {
-            return direct
+        for candidate in await finalsBroadQueryCandidates(for: trimmedQuery) {
+            if let result = await lookupFinalsWikiExact(query: candidate) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    private func lookupFinalsWikiExact(query: String) async -> FinalsWikiLookupResult? {
+        if let direct = await fetchDirectFinalsWikiPage(query: query) {
+            return await enrichFinalsResultWithWikitextStatsIfNeeded(direct)
         }
 
-        if let title = await searchFinalsWikiTitle(query: trimmedQuery) {
+        if let title = await searchFinalsWikiTitle(query: query) {
             if let pageResult = await fetchFinalsWikiPage(forTitle: title),
                pageResult.weaponStats != nil {
                 return pageResult
             }
 
             if let result = await fetchFinalsWikiSummary(title: title) {
-                return result
+                return await enrichFinalsResultWithWikitextStatsIfNeeded(result)
             }
         }
 
-        if let result = await searchFinalsWikiViaSiteSearch(query: trimmedQuery) {
-            return result
+        if let result = await searchFinalsWikiViaSiteSearch(query: query) {
+            return await enrichFinalsResultWithWikitextStatsIfNeeded(result)
         }
 
-        return await searchFinalsWikiViaWeb(query: trimmedQuery)
+        if let result = await searchFinalsWikiViaWeb(query: query) {
+            return await enrichFinalsResultWithWikitextStatsIfNeeded(result)
+        }
+        return nil
     }
+
+    private func finalsBroadQueryCandidates(for query: String) async -> [String] {
+        let cleaned = query
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+
+        let key = finalsLookupKey(cleaned)
+        var candidates: [String] = [cleaned]
+        var seen: Set<String> = [cleaned.lowercased()]
+        let aliases = await finalsWeaponAliases()
+
+        if let canonical = aliases[key] {
+            let normalizedCanonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedCanonical.isEmpty, seen.insert(normalizedCanonical.lowercased()).inserted {
+                candidates.append(normalizedCanonical)
+            }
+        }
+
+        if cleaned.contains("-") {
+            let spaced = cleaned.replacingOccurrences(of: "-", with: " ")
+            if seen.insert(spaced.lowercased()).inserted {
+                candidates.append(spaced)
+            }
+        } else if cleaned.contains(" ") {
+            let hyphenated = cleaned.replacingOccurrences(of: " ", with: "-")
+            if seen.insert(hyphenated.lowercased()).inserted {
+                candidates.append(hyphenated)
+            }
+        }
+
+        let compact = cleaned.replacingOccurrences(of: " ", with: "")
+        if seen.insert(compact.lowercased()).inserted {
+            candidates.append(compact)
+        }
+
+        return candidates
+    }
+
+    private func finalsWeaponAliases() async -> [String: String] {
+        let now = Date()
+        if let fetchedAt = finalsWeaponAliasCacheAt,
+           now.timeIntervalSince(fetchedAt) < 6 * 60 * 60,
+           !finalsWeaponAliasCache.isEmpty {
+            return Self.finalsCanonicalAliases.merging(finalsWeaponAliasCache, uniquingKeysWith: { _, new in new })
+        }
+
+        let fetchedAliases = await fetchFinalsWeaponAliasesFromWiki()
+        finalsWeaponAliasCache = fetchedAliases
+        finalsWeaponAliasCacheAt = now
+        return Self.finalsCanonicalAliases.merging(fetchedAliases, uniquingKeysWith: { _, new in new })
+    }
+
+    private func fetchFinalsWeaponAliasesFromWiki() async -> [String: String] {
+        var aliases: [String: String] = [:]
+        var cmcontinue: String?
+        var pageCount = 0
+
+        while pageCount < 4 {
+            var components = URLComponents(url: finalsWikiAPI, resolvingAgainstBaseURL: false)
+            var items: [URLQueryItem] = [
+                URLQueryItem(name: "action", value: "query"),
+                URLQueryItem(name: "list", value: "categorymembers"),
+                URLQueryItem(name: "cmtitle", value: "Category:Weapons"),
+                URLQueryItem(name: "cmtype", value: "page"),
+                URLQueryItem(name: "cmlimit", value: "500"),
+                URLQueryItem(name: "format", value: "json"),
+                URLQueryItem(name: "origin", value: "*")
+            ]
+            if let cmcontinue, !cmcontinue.isEmpty {
+                items.append(URLQueryItem(name: "cmcontinue", value: cmcontinue))
+            }
+            components?.queryItems = items
+            guard let url = components?.url else { break }
+
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let query = json["query"] as? [String: Any],
+                      let members = query["categorymembers"] as? [[String: Any]] else {
+                    break
+                }
+
+                for member in members {
+                    guard let title = member["title"] as? String else { continue }
+                    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { continue }
+                    aliases[finalsLookupKey(trimmed)] = trimmed
+                    aliases[finalsLookupKey(trimmed.replacingOccurrences(of: "-", with: ""))] = trimmed
+                    aliases[finalsLookupKey(trimmed.replacingOccurrences(of: "-", with: " "))] = trimmed
+                    aliases[finalsLookupKey(trimmed.replacingOccurrences(of: " ", with: ""))] = trimmed
+                }
+
+                if let `continue` = json["continue"] as? [String: Any],
+                   let next = `continue`["cmcontinue"] as? String,
+                   !next.isEmpty {
+                    cmcontinue = next
+                    pageCount += 1
+                    continue
+                }
+                break
+            } catch {
+                break
+            }
+        }
+
+        return aliases
+    }
+
+    private func enrichFinalsResultWithWikitextStatsIfNeeded(_ result: FinalsWikiLookupResult) async -> FinalsWikiLookupResult {
+        guard result.weaponStats == nil else { return result }
+        guard let stats = await fetchFinalsWeaponStatsFromWikitext(title: result.title) else { return result }
+        return FinalsWikiLookupResult(
+            title: result.title,
+            extract: result.extract,
+            url: result.url,
+            weaponStats: stats
+        )
+    }
+
+    private func fetchFinalsWeaponStatsFromWikitext(title: String) async -> FinalsWeaponStats? {
+        var components = URLComponents(url: finalsWikiAPI, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "prop", value: "revisions"),
+            URLQueryItem(name: "rvprop", value: "content"),
+            URLQueryItem(name: "rvslots", value: "main"),
+            URLQueryItem(name: "redirects", value: "1"),
+            URLQueryItem(name: "titles", value: title),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+        guard let url = components?.url else { return nil }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let query = object["query"] as? [String: Any],
+                  let pages = query["pages"] as? [String: Any] else { return nil }
+
+            var wikitext: String?
+            for pageValue in pages.values {
+                guard let page = pageValue as? [String: Any],
+                      let revisions = page["revisions"] as? [[String: Any]],
+                      let revision = revisions.first,
+                      let slots = revision["slots"] as? [String: Any],
+                      let main = slots["main"] as? [String: Any] else { continue }
+                if let raw = main["*"] as? String, !raw.isEmpty {
+                    wikitext = raw
+                    break
+                }
+            }
+            guard let wikitext, !wikitext.isEmpty else { return nil }
+            return parseWeaponStatsFromWikitext(wikitext)
+        } catch {
+            return nil
+        }
+    }
+
+    private func parseWeaponStatsFromWikitext(_ wikitext: String) -> FinalsWeaponStats? {
+        let lines = wikitext.components(separatedBy: .newlines)
+
+        func value(for labels: [String]) -> String? {
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("|"),
+                      let equals = trimmed.firstIndex(of: "=") else { continue }
+                let rawKey = String(trimmed[trimmed.index(after: trimmed.startIndex)..<equals])
+                let rawValue = String(trimmed[trimmed.index(after: equals)...])
+                let key = rawKey
+                    .lowercased()
+                    .replacingOccurrences(of: #"[^a-z0-9]"#, with: "", options: .regularExpression)
+                let cleanedValue = cleanWikitextValue(rawValue)
+                if cleanedValue.isEmpty { continue }
+                for label in labels where key == label {
+                    return cleanedValue
+                }
+            }
+            return nil
+        }
+
+        let type = value(for: ["type", "class", "weapontype"])
+        let bodyDamage = value(for: ["body", "damage", "damagepershot", "basedamage"])
+        let headshotDamage = value(for: ["head", "headshot", "headshotdamage", "criticalhit"])
+        let fireRate = value(for: ["rpm", "firerate", "rateoffire"])
+        let dropoffStart = value(for: ["minrange", "dropoffstart", "effectiverangestart"])
+        let dropoffEnd = value(for: ["maxrange", "dropoffend", "effectiverangeend"])
+        let minimumDamage = value(for: ["minimumdamage", "mindamage"])
+        let magazineSize = value(for: ["magazine", "magsize", "magazinesize", "ammo"])
+        let shortReload = value(for: ["tacticalreload", "shortreload", "reloadpartial", "reloadtime"])
+        let longReload = value(for: ["emptyreload", "longreload", "reloadempty"])
+
+        let stats = FinalsWeaponStats(
+            type: cleanedStatValue(type),
+            bodyDamage: cleanedStatValue(bodyDamage),
+            headshotDamage: cleanedStatValue(headshotDamage),
+            fireRate: cleanedStatValue(fireRate),
+            dropoffStart: cleanedStatValue(dropoffStart),
+            dropoffEnd: cleanedStatValue(dropoffEnd),
+            minimumDamage: cleanedStatValue(minimumDamage),
+            magazineSize: cleanedStatValue(magazineSize),
+            shortReload: cleanedStatValue(shortReload),
+            longReload: cleanedStatValue(longReload)
+        )
+
+        let hasUsefulData = [
+            stats.bodyDamage,
+            stats.headshotDamage,
+            stats.fireRate,
+            stats.magazineSize,
+            stats.shortReload,
+            stats.longReload
+        ].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+        return hasUsefulData ? stats : nil
+    }
+
+    private func cleanWikitextValue(_ value: String) -> String {
+        var output = value
+        output = output.replacingOccurrences(of: #"\{\{[^{}]*\|([^{}|]+)\}\}"#, with: "$1", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"\[\[([^|\]]+)\|([^\]]+)\]\]"#, with: "$2", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"\[\[([^\]]+)\]\]"#, with: "$1", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"'''"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"''"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"\{\{[^{}]*\}\}"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func finalsLookupKey(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]"#, with: "", options: .regularExpression)
+    }
+
+    private static let finalsCanonicalAliases: [String: String] = [
+        "fcar": "FCAR",
+        "akm": "AKM",
+        "cl40": "CL-40",
+        "model1887": "Model 1887",
+        "pike556": "Pike-556",
+        "r357": ".357",
+        "357": ".357",
+        "m11": "M11",
+        "xp54": "XP-54",
+        "v9s": "V9S",
+        "v95": "V9S",
+        "arn220": "ARN-220",
+        "arn": "ARN-220",
+        "arn220rifle": "ARN-220",
+        "arnrifle": "ARN-220",
+        "lh1": "LH1",
+        "sr84": "SR-84",
+        "recurvedbow": "Recurve Bow",
+        "shak50": "SHaK-50",
+        "shak": "SHaK-50",
+        "m60": "M60",
+        "lewismg": "Lewis Gun",
+        "sa1216": "SA1216",
+        "ks23": "KS-23",
+        "sledgehammer": "Sledgehammer",
+        "flamethrower": "Flamethrower"
+    ]
 
     private func lookupGenericMediaWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -762,6 +1184,44 @@ actor DiscordService {
         }
     }
 
+    /// Returns the guild owner_id for permission-sensitive commands.
+    /// Uses an in-memory cache and falls back to GET /guilds/{guild.id} when needed.
+    func guildOwnerID(guildID: String) async -> String? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty else { return nil }
+
+        if let cached = guildOwnerIdByGuild[trimmedGuildID], !cached.isEmpty {
+            return cached
+        }
+
+        guard let token = botToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            return nil
+        }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 10
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let ownerID = json["owner_id"] as? String,
+                !ownerID.isEmpty
+            else {
+                return nil
+            }
+            guildOwnerIdByGuild[trimmedGuildID] = ownerID
+            return ownerID
+        } catch {
+            return nil
+        }
+    }
+
     private func startHeartbeat() {
         heartbeatTask?.cancel()
         heartbeatTask = Task {
@@ -800,6 +1260,288 @@ actor DiscordService {
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
         _ = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
+    }
+
+    func registerGlobalApplicationCommands(
+        applicationID: String,
+        commands: [[String: Any]],
+        token: String
+    ) async throws {
+        let trimmedAppID = applicationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAppID.isEmpty else { return }
+        var req = URLRequest(url: restBase.appendingPathComponent("applications/\(trimmedAppID)/commands"))
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: commands)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to register slash commands",
+                    "responseBody": String(data: data, encoding: .utf8) ?? ""
+                ]
+            )
+        }
+    }
+
+    func registerGuildApplicationCommands(
+        applicationID: String,
+        guildID: String,
+        commands: [[String: Any]],
+        token: String
+    ) async throws {
+        let trimmedAppID = applicationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAppID.isEmpty, !trimmedGuildID.isEmpty else { return }
+        var req = URLRequest(url: restBase.appendingPathComponent("applications/\(trimmedAppID)/guilds/\(trimmedGuildID)/commands"))
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: commands)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to register guild slash commands",
+                    "responseBody": String(data: data, encoding: .utf8) ?? ""
+                ]
+            )
+        }
+    }
+
+    func respondToInteraction(
+        interactionID: String,
+        interactionToken: String,
+        payload: [String: Any]
+    ) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("interactions/\(interactionID)/\(interactionToken)/callback"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to respond to interaction",
+                    "responseBody": String(data: data, encoding: .utf8) ?? ""
+                ]
+            )
+        }
+    }
+
+    func editOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String,
+        content: String
+    ) async throws {
+        try await editOriginalInteractionResponse(
+            applicationID: applicationID,
+            interactionToken: interactionToken,
+            payload: ["content": content]
+        )
+    }
+
+    func editOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String,
+        payload: [String: Any]
+    ) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("webhooks/\(applicationID)/\(interactionToken)/messages/@original"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to edit interaction response",
+                    "responseBody": String(data: data, encoding: .utf8) ?? ""
+                ]
+            )
+        }
+    }
+
+    func fetchFinalsMetaFromSkycoach() async -> String? {
+        guard let url = URL(string: "https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds") else {
+            return nil
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let cleanedHTML = html
+                .replacingOccurrences(of: #"<script[\s\S]*?</script>"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"<style[\s\S]*?</style>"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"<noscript[\s\S]*?</noscript>"#, with: " ", options: .regularExpression)
+
+            let headingRegex = try NSRegularExpression(
+                pattern: #"<h[2-4][^>]*>(.*?)</h[2-4]>(.*?)(?=<h[2-4][^>]*>|$)"#,
+                options: [.caseInsensitive, .dotMatchesLineSeparators]
+            )
+
+            func normalize(_ value: String) -> String {
+                value
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            func cleanFieldValue(_ raw: String) -> String {
+                var value = normalize(stripHTML(raw))
+                value = value.replacingOccurrences(of: #"^[\-\:\•\s]+"#, with: "", options: .regularExpression)
+                value = value.replacingOccurrences(of: #"\s+\|\s+.*$"#, with: "", options: .regularExpression)
+                value = value.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+                value = value.replacingOccurrences(of: "â€˜", with: "'")
+                value = value.replacingOccurrences(of: "â€™", with: "'")
+                if let cut = value.range(
+                    of: #"(?i)\b(the reason|players|gameplay|balancing|this build|this class|speaking of|adding a few|it embodies|it epitomizes)\b"#,
+                    options: .regularExpression
+                ) {
+                    value = String(value[..<cut.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let dot = value.firstIndex(of: ".") {
+                    value = String(value[..<dot]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return value
+            }
+
+            func plainTextForSection(_ bodyHTML: String) -> String {
+                let withLineBreaks = bodyHTML
+                    .replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+                    .replacingOccurrences(of: #"(?i)</p>"#, with: "\n", options: .regularExpression)
+                    .replacingOccurrences(of: #"(?i)</li>"#, with: "\n", options: .regularExpression)
+                    .replacingOccurrences(of: #"(?i)</div>"#, with: "\n", options: .regularExpression)
+                return withLineBreaks
+            }
+
+            func extractLabeledValue(from text: String, labelPattern: String, stopLabels: [String]) -> String? {
+                let stopPattern = stopLabels.joined(separator: "|")
+                let pattern = #"(?is)\b(?:best\s+)?"# + labelPattern + #"\b\s*:\s*(.+?)(?=\b(?:best\s+)?(?:"# + stopPattern + #")\b\s*:|[\n\r]|$)"#
+                guard let raw = text.firstMatch(for: pattern) else { return nil }
+                let cleaned = cleanFieldValue(raw)
+                return cleaned.isEmpty ? nil : cleaned
+            }
+
+            func extractField(in bodyText: String, bodyItems: [String], labels: [String], stopLabels: [String]) -> String? {
+                for label in labels {
+                    if let match = extractLabeledValue(from: bodyText, labelPattern: label, stopLabels: stopLabels) {
+                        if !match.isEmpty { return match }
+                    }
+                    for item in bodyItems {
+                        if item.lowercased().contains(label.lowercased()) {
+                            let pattern = #"(?i)(?:best\s+)?"# + label + #"\s*[:\-]\s*(.+)"#
+                            guard let match = item.firstMatch(for: pattern) else { continue }
+                            let value = cleanFieldValue(match)
+                            if !value.isEmpty { return value }
+                        }
+                    }
+                }
+                return nil
+            }
+
+            struct MetaBuildSection {
+                let title: String
+                var weapon: String?
+                var specialization: String?
+                var gadgets: String?
+            }
+
+            var parsed: [String: MetaBuildSection] = [:]
+            let range = NSRange(location: 0, length: (cleanedHTML as NSString).length)
+
+            for match in headingRegex.matches(in: cleanedHTML, options: [], range: range) {
+                guard match.numberOfRanges >= 3 else { continue }
+                let headingRange = match.range(at: 1)
+                let bodyRange = match.range(at: 2)
+                guard headingRange.location != NSNotFound, bodyRange.location != NSNotFound else { continue }
+
+                let heading = normalize(stripHTML((cleanedHTML as NSString).substring(with: headingRange)))
+                let headingLower = heading.lowercased()
+
+                let sectionKey: String
+                if headingLower.contains("light") {
+                    sectionKey = "Light"
+                } else if headingLower.contains("medium") {
+                    sectionKey = "Medium"
+                } else if headingLower.contains("heavy") {
+                    sectionKey = "Heavy"
+                } else {
+                    continue
+                }
+
+                let bodyHTML = (cleanedHTML as NSString).substring(with: bodyRange)
+                let bodyText = normalize(stripHTML(plainTextForSection(bodyHTML)))
+                let bodyItems = htmlMatches(for: #"<li[^>]*>(.*?)</li>"#, in: bodyHTML)
+                    .map { normalize(stripHTML($0)) }
+                    .filter { !$0.isEmpty && !$0.contains("{") && !$0.lowercased().contains("googletagmanager") }
+
+                var section = parsed[sectionKey] ?? MetaBuildSection(title: sectionKey, weapon: nil, specialization: nil, gadgets: nil)
+                section.weapon = section.weapon ?? extractField(
+                    in: bodyText,
+                    bodyItems: bodyItems,
+                    labels: ["weapon"],
+                    stopLabels: ["specialization", "specialisation", "special", "gadgets?", "utility"]
+                )
+                section.specialization = section.specialization ?? extractField(
+                    in: bodyText,
+                    bodyItems: bodyItems,
+                    labels: ["specialization", "specialisation", "special"],
+                    stopLabels: ["weapon", "gadgets?", "utility"]
+                )
+                section.gadgets = section.gadgets ?? extractField(
+                    in: bodyText,
+                    bodyItems: bodyItems,
+                    labels: ["gadgets?", "utility"],
+                    stopLabels: ["weapon", "specialization", "specialisation", "special"]
+                )
+
+                parsed[sectionKey] = section
+            }
+
+            let orderedKeys = ["Light", "Medium", "Heavy"]
+            let sections = orderedKeys.compactMap { parsed[$0] }
+                .filter { $0.weapon != nil || $0.specialization != nil || $0.gadgets != nil }
+            guard !sections.isEmpty else { return nil }
+
+            var lines: [String] = ["Current THE FINALS meta (Skycoach):"]
+            for section in sections {
+                lines.append("")
+                lines.append("\(section.title):")
+                lines.append("Best Weapon: \(section.weapon ?? "N/A")")
+                lines.append("Best Specialization: \(section.specialization ?? "N/A")")
+                lines.append("Best Gadgets: \(section.gadgets ?? "N/A")")
+            }
+            lines.append("")
+            lines.append("Source: https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds")
+            return lines.joined(separator: "\n")
+        } catch {
+            return nil
+        }
+    }
+
+    func sendMessageReturningID(channelId: String, content: String, token: String) async throws -> String {
+        let response = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
+        guard let data = response.responseBody.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(DiscordMessageEnvelope.self, from: data) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to parse Discord message id"]
+            )
+        }
+        return decoded.id
     }
 
     @discardableResult
@@ -848,6 +1590,135 @@ actor DiscordService {
             )
         }
         return (http.statusCode, responseBody)
+    }
+
+    func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["content": content])
+        let (_, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to edit message"])
+        }
+    }
+
+    @discardableResult
+    func sendMessageWithImage(
+        channelId: String,
+        content: String,
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws -> String {
+        let url = restBase.appendingPathComponent("channels/\(channelId)/messages")
+        return try await sendMultipartImage(
+            url: url,
+            method: "POST",
+            content: content,
+            imageData: imageData,
+            filename: filename,
+            token: token
+        )
+    }
+
+    func editMessageWithImage(
+        channelId: String,
+        messageId: String,
+        content: String,
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws {
+        let url = restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)")
+        _ = try await sendMultipartImage(
+            url: url,
+            method: "PATCH",
+            content: content,
+            imageData: imageData,
+            filename: filename,
+            token: token
+        )
+    }
+
+    func generateOpenAIImage(prompt: String, apiKey: String, model: String) async -> Data? {
+        let engine = OpenAIImageEngine(
+            apiKey: apiKey,
+            model: model,
+            baseURL: "https://api.openai.com",
+            session: session
+        )
+        return await engine.generateImage(prompt: prompt)
+    }
+
+    private func sendMultipartImage(
+        url: URL,
+        method: String,
+        content: String,
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws -> String {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.timeoutInterval = 90
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "content": content,
+            "attachments": [
+                [
+                    "id": "0",
+                    "filename": filename
+                ]
+            ]
+        ]
+        let payloadData = try JSONSerialization.data(withJSONObject: payload)
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n".data(using: .utf8)!)
+        body.append(payloadData)
+        body.append("\r\n".data(using: .utf8)!)
+
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"files[0]\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/png\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        req.httpBody = body
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to upload image", "responseBody": responseBody]
+            )
+        }
+
+        if let decoded = try? JSONDecoder().decode(DiscordMessageEnvelope.self, from: data) {
+            return decoded.id
+        }
+        return ""
+    }
+
+    private func htmlMatches(for pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return regex.matches(in: text, options: [], range: range).compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            let capture = match.range(at: 1)
+            guard capture.location != NSNotFound else { return nil }
+            return (text as NSString).substring(with: capture)
+        }
     }
 
     /// Sends a typing indicator to the given channel. Fire-and-forget; errors are silently discarded.
@@ -1206,28 +2077,31 @@ actor DiscordService {
             preferredModel: localAIModel,
             session: session
         )
+        let openAIEngine = OpenAIEngine(
+            apiKey: localOpenAIAPIKey,
+            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
+            baseURL: "https://api.openai.com",
+            session: session
+        )
 
-        let preferred = localPreferredAIProvider
-        if preferred == .apple {
-            if let reply = await appleEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                return cleaned.isEmpty ? nil : cleaned
-            }
-            if let reply = await ollamaEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                return cleaned.isEmpty ? nil : cleaned
-            }
-        } else {
-            if let reply = await ollamaEngine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                return cleaned.isEmpty ? nil : cleaned
-            }
-            if let reply = await appleEngine.generate(messages: finalMessages) {
+        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
+            if let reply = await engine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
             }
         }
         return nil
+    }
+
+    private func orderedEngines(preferred: AIProviderPreference, apple: AIEngine, ollama: AIEngine, openAI: AIEngine) -> [AIEngine] {
+        switch preferred {
+        case .apple:
+            return [apple, openAI, ollama]
+        case .ollama:
+            return [ollama, openAI, apple]
+        case .openAI:
+            return [openAI, apple, ollama]
+        }
     }
 
     private func detectOllamaModel(baseURL: String, preferredModel: String?) async -> String? {
@@ -1645,6 +2519,10 @@ actor DiscordService {
             return parsedFromNormalizedText
         }
 
+        if let parsedFromLooseLines = extractWeaponStatsFromLooseLines(html: html) {
+            return parsedFromLooseLines
+        }
+
         let profileSection = extractSectionHTML(named: "Profile", from: html)
         let damageSection = extractSectionHTML(named: "Damage", from: html)
         let falloffSection = extractSectionHTML(named: "Damage Falloff", from: html)
@@ -1686,6 +2564,82 @@ actor DiscordService {
             dropoffStart: cleanedStatValue(dropoffStart),
             dropoffEnd: cleanedStatValue(dropoffEnd),
             minimumDamage: cleanedStatValue(minimumDamage),
+            magazineSize: cleanedStatValue(magazineSize),
+            shortReload: cleanedStatValue(shortReload),
+            longReload: cleanedStatValue(longReload)
+        )
+
+        let hasUsefulData = [
+            stats.bodyDamage,
+            stats.headshotDamage,
+            stats.fireRate,
+            stats.magazineSize,
+            stats.shortReload,
+            stats.longReload
+        ].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+
+        return hasUsefulData ? stats : nil
+    }
+
+    private func extractWeaponStatsFromLooseLines(html: String) -> FinalsWeaponStats? {
+        let lines = readableTextLines(from: html)
+            .map {
+                $0.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+
+        func value(for labels: [String]) -> String? {
+            // Inline `Label: value`
+            for line in lines {
+                guard let separator = line.firstIndex(of: ":") else { continue }
+                let key = String(line[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawValue = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if rawValue.isEmpty { continue }
+                for label in labels where normalizedLabel(key) == normalizedLabel(label) {
+                    return rawValue
+                }
+            }
+
+            // Two-line `Label` then `value`
+            for (index, line) in lines.enumerated() {
+                for label in labels where normalizedLabel(line) == normalizedLabel(label) {
+                    if let next = nextValue(in: lines, after: index) {
+                        return next
+                    }
+                }
+            }
+
+            return nil
+        }
+
+        let type = value(for: ["Type", "Class", "Weapon Type"])
+        let bodyDamage = value(for: ["Body", "Damage", "Damage per Shot", "Base Damage"])
+        let headshotDamage = value(for: ["Head", "Headshot", "Headshot Damage", "Critical Hit"])
+        let fireRate = value(for: ["RPM", "Fire Rate", "Rate of Fire"])
+        let dropoffStart = value(for: ["Min Range", "Dropoff Start", "Effective Range Start"])
+        let dropoffEnd = value(for: ["Max Range", "Dropoff End", "Effective Range End"])
+        let minimumDamage = value(for: ["Minimum Damage", "Min Damage"])
+        let magazineSize = value(for: ["Magazine", "Mag Size", "Magazine Size", "Ammo"])
+        let shortReload = value(for: ["Tactical Reload", "Short Reload", "Reload (Partial)", "Reload Time"])
+        let longReload = value(for: ["Empty Reload", "Long Reload", "Reload (Empty)"])
+
+        let computedMinimum = minimumDamage ?? computeMinimumDamage(
+            bodyDamage: bodyDamage,
+            multiplier: value(for: ["Multiplier", "Min Damage Multiplier"])
+        )
+
+        let stats = FinalsWeaponStats(
+            type: cleanedStatValue(type),
+            bodyDamage: cleanedStatValue(bodyDamage),
+            headshotDamage: cleanedStatValue(headshotDamage),
+            fireRate: cleanedStatValue(fireRate),
+            dropoffStart: cleanedStatValue(dropoffStart),
+            dropoffEnd: cleanedStatValue(dropoffEnd),
+            minimumDamage: cleanedStatValue(computedMinimum),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
             longReload: cleanedStatValue(longReload)
