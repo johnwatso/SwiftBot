@@ -83,6 +83,15 @@ struct CommandCatalog {
                 isAdminOnly: false
             ),
             CommandEntry(
+                name: "image",
+                aliases: ["imagine"],
+                usage: "\(prefix)image <prompt>",
+                description: "Generates an image using OpenAI and posts it in chat.",
+                examples: ["\(prefix)image neon cyberpunk cat", "\(prefix)imagine logo concept for SwiftBot"],
+                category: .fun,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "userinfo",
                 aliases: [],
                 usage: "\(prefix)userinfo [@user]",
@@ -116,6 +125,24 @@ struct CommandCatalog {
                 description: "Reports the current notification channel configuration.",
                 examples: ["\(prefix)notifystatus"],
                 category: .moderation,
+                isAdminOnly: false
+            ),
+            CommandEntry(
+                name: "debug",
+                aliases: [],
+                usage: "\(prefix)debug",
+                description: "Shows runtime and build diagnostics for this SwiftBot node.",
+                examples: ["\(prefix)debug"],
+                category: .moderation,
+                isAdminOnly: true
+            ),
+            CommandEntry(
+                name: "meta",
+                aliases: [],
+                usage: "\(prefix)meta",
+                description: "Fetches THE FINALS meta summary from Skycoach (non-AI parser).",
+                examples: ["\(prefix)meta"],
+                category: .wiki,
                 isAdminOnly: false
             ),
             CommandEntry(

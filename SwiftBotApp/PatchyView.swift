@@ -14,7 +14,7 @@ struct PatchyView: View {
             sourceTargetList
             debugArea
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
         .sheet(item: $editorDraft) { draft in
@@ -74,6 +74,7 @@ struct PatchyView: View {
                         app.saveSettings()
                     }
                 ))
+                .toggleStyle(.switch)
                 Text("Enable scheduled checks for release updates.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -88,6 +89,7 @@ struct PatchyView: View {
                         app.saveSettings()
                     }
                 ))
+                .toggleStyle(.switch)
                 Text("Show additional diagnostic logs and controls.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -479,6 +481,7 @@ private struct PatchyTargetEditorSheet: View {
                 PatchyRoleMultiSelect(selectedRoleIDs: $draft.roleIDs, roles: rolesByServer[draft.serverId] ?? [])
 
                 Toggle("Enabled", isOn: $draft.isEnabled)
+                    .toggleStyle(.switch)
             }
             .formStyle(.grouped)
 

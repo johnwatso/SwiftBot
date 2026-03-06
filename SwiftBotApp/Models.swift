@@ -142,7 +142,7 @@ struct GuildSettings: Codable, Hashable {
 
 struct BotSettings: Codable, Hashable {
     var token: String = ""
-    var prefix: String = "!"
+    var prefix: String = "/"
     var autoStart: Bool = false
     var guildSettings: [String: GuildSettings] = [:]
     var clusterMode: ClusterMode = .standalone
@@ -159,6 +159,14 @@ struct BotSettings: Codable, Hashable {
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
     var ollamaBaseURL: String = "http://localhost:11434"
+    var openAIEnabled: Bool = true
+    var openAIAPIKey: String = ""
+    var openAIModel: String = "gpt-4o-mini"
+    var openAIImageGenerationEnabled: Bool = true
+    var openAIImageModel: String = "gpt-image-1"
+    var openAIImageMonthlyLimitPerUser: Int = 5
+    var openAIImageUsageByUserMonth: [String: Int] = [:]
+    var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
@@ -183,6 +191,14 @@ struct BotSettings: Codable, Hashable {
         case localAIEndpoint
         case localAIModel
         case ollamaBaseURL
+        case openAIEnabled
+        case openAIAPIKey
+        case openAIModel
+        case openAIImageGenerationEnabled
+        case openAIImageModel
+        case openAIImageMonthlyLimitPerUser
+        case openAIImageUsageByUserMonth
+        case aiMemoryNotes
         case localAISystemPrompt
         case behavior
         case wikiBot
@@ -195,7 +211,7 @@ struct BotSettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
-        prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "!"
+        prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "/"
         autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
         clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
@@ -211,6 +227,14 @@ struct BotSettings: Codable, Hashable {
         localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
         localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
+        openAIEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIEnabled) ?? true
+        openAIAPIKey = try container.decodeIfPresent(String.self, forKey: .openAIAPIKey) ?? ""
+        openAIModel = try container.decodeIfPresent(String.self, forKey: .openAIModel) ?? "gpt-4o-mini"
+        openAIImageGenerationEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIImageGenerationEnabled) ?? true
+        openAIImageModel = try container.decodeIfPresent(String.self, forKey: .openAIImageModel) ?? "gpt-image-1"
+        openAIImageMonthlyLimitPerUser = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyLimitPerUser) ?? 5
+        openAIImageUsageByUserMonth = try container.decodeIfPresent([String: Int].self, forKey: .openAIImageUsageByUserMonth) ?? [:]
+        aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
@@ -237,6 +261,14 @@ struct BotSettings: Codable, Hashable {
         try container.encode(localAIEndpoint, forKey: .localAIEndpoint)
         try container.encode(localAIModel, forKey: .localAIModel)
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
+        try container.encode(openAIEnabled, forKey: .openAIEnabled)
+        try container.encode(openAIAPIKey, forKey: .openAIAPIKey)
+        try container.encode(openAIModel, forKey: .openAIModel)
+        try container.encode(openAIImageGenerationEnabled, forKey: .openAIImageGenerationEnabled)
+        try container.encode(openAIImageModel, forKey: .openAIImageModel)
+        try container.encode(openAIImageMonthlyLimitPerUser, forKey: .openAIImageMonthlyLimitPerUser)
+        try container.encode(openAIImageUsageByUserMonth, forKey: .openAIImageUsageByUserMonth)
+        try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)
         try container.encode(wikiBot, forKey: .wikiBot)
@@ -733,6 +765,7 @@ struct HelpSettings: Codable, Hashable {
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case appleIntelligence = "Apple Intelligence"
     case ollama = "Ollama"
+    case openAI = "OpenAI (ChatGPT)"
 
     var id: String { rawValue }
 }
@@ -740,6 +773,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 enum AIProviderPreference: String, Codable, CaseIterable, Identifiable {
     case apple = "Apple Intelligence"
     case ollama = "Ollama"
+    case openAI = "OpenAI (ChatGPT)"
 
     var id: String { rawValue }
 }
@@ -748,6 +782,28 @@ enum MessageRole: String, Codable, Hashable, Sendable {
     case user
     case assistant
     case system
+}
+
+struct AIMemoryNote: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    let createdByUserID: String
+    let createdByUsername: String
+    let text: String
+
+    init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        createdByUserID: String,
+        createdByUsername: String,
+        text: String
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.createdByUserID = createdByUserID
+        self.createdByUsername = createdByUsername
+        self.text = text
+    }
 }
 
 enum MemoryScopeType: String, Codable, Hashable, Sendable {

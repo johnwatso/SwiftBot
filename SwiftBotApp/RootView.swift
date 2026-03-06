@@ -10,6 +10,7 @@ struct RootView: View {
         if !app.isOnboardingComplete {
             OnboardingGateView()
                 .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
         } else {
         HSplitView {
             DashboardSidebar(selection: $selection)
@@ -26,6 +27,7 @@ struct RootView: View {
                 case .patchy: PatchyView()
                 case .voice: VoiceView()
                 case .commands: CommandsView()
+                case .commandLog: CommandLogView()
                 case .wikiBridge: WikiBridgeView()
                 case .logs: LogsView()
                 case .settings: GeneralSettingsView(showToken: $showToken)
@@ -40,6 +42,7 @@ struct RootView: View {
         .padding(.top, -30)
         .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
+        .toggleStyle(.switch)
         .overlay(alignment: .topTrailing) {
             if app.isBetaBuild {
                 BetaBadgeView()
@@ -114,10 +117,13 @@ private struct OnboardingGateView: View {
     @State private var inviteConfirmed: Bool = false
     @State private var isLoadingInviteURL: Bool = false
     @State private var inviteLoadFailed: Bool = false
+    @State private var movesForward: Bool = true
 
     var body: some View {
         ZStack {
             SwiftBotGlassBackground()
+            OnboardingAnimatedSymbolBackground()
+                .allowsHitTesting(false)
 
             VStack(spacing: 32) {
                 // Icon + title (always visible)
@@ -135,24 +141,37 @@ private struct OnboardingGateView: View {
                 }
 
                 // Step content
-                Group {
+                ZStack {
                     switch step {
                     case .choosePath:
                         choosePathView
+                            .id("choosePath")
                     case .entry, .validating, .confirmed, .failed:
                         standaloneFlow
+                            .id("standaloneFlow")
                     case .meshSetup, .meshTesting, .meshConfirmed, .meshFailed:
                         meshFlow
+                            .id("meshFlow")
                     }
                 }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: movesForward ? .trailing : .leading).combined(with: .opacity),
+                        removal: .move(edge: movesForward ? .leading : .trailing).combined(with: .opacity)
+                    )
+                )
+                .animation(.smooth(duration: 0.26), value: step)
             }
             .padding(48)
         }
         .ignoresSafeArea()
         .onAppear { tokenInput = app.settings.token }
-        .onChange(of: app.workerConnectionTestInProgress) { inProgress in
+        .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
             guard step == .meshTesting, !inProgress else { return }
             step = app.workerConnectionTestIsSuccess ? .meshConfirmed : .meshFailed
+        }
+        .onChange(of: step) { oldStep, newStep in
+            movesForward = stepOrder(newStep) >= stepOrder(oldStep)
         }
     }
 
@@ -220,7 +239,7 @@ private struct OnboardingGateView: View {
                         SecureField("Bot token", text: $tokenInput)
                     }
                 }
-                .textFieldStyle(.roundedBorder)
+                .onboardingTextFieldStyle()
                 .font(.system(.body, design: .monospaced))
                 .disabled(step == .validating || step == .confirmed)
 
@@ -261,7 +280,7 @@ private struct OnboardingGateView: View {
                         Label("Validate Token", systemImage: "checkmark.shield.fill")
                             .frame(minWidth: 200)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(GlassActionButtonStyle()).controlSize(.large)
                     .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
@@ -309,7 +328,7 @@ private struct OnboardingGateView: View {
                                 } label: {
                                     Label("Copy Invite Link", systemImage: "doc.on.doc")
                                 }
-                                .buttonStyle(.bordered).controlSize(.small)
+                                .onboardingGlassButton()
                                 .accessibilityHint("Copies the bot invite link to your clipboard")
 
                                 Button {
@@ -317,7 +336,7 @@ private struct OnboardingGateView: View {
                                 } label: {
                                     Label("Open Invite", systemImage: "arrow.up.right.square")
                                 }
-                                .buttonStyle(.bordered).controlSize(.small)
+                                .onboardingGlassButton()
                                 .accessibilityHint("Opens the Discord bot authorization page in your browser")
                             }
                         }
@@ -325,17 +344,17 @@ private struct OnboardingGateView: View {
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                         Toggle(isOn: $inviteConfirmed) {
-                            Text("I have invited the bot to at least one server").font(.callout)
+                            Text("I have invited SwiftBot already").font(.callout)
                         }
-                        .toggleStyle(.checkbox)
-                        .frame(maxWidth: 560, alignment: .leading)
+                        .toggleStyle(.switch)
+                        .frame(maxWidth: 560, alignment: .center)
                     }
 
                     Button { app.completeOnboarding() } label: {
                         Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
                             .frame(minWidth: 200)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .onboardingGlassButton()
                     .disabled(inviteURL != nil && !inviteConfirmed)
                 }
                 .task {
@@ -382,7 +401,7 @@ private struct OnboardingGateView: View {
                     Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
                         .frame(minWidth: 200)
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large)
+                .buttonStyle(GlassActionButtonStyle()).controlSize(.large)
             }
 
         case .meshFailed:
@@ -407,7 +426,7 @@ private struct OnboardingGateView: View {
                         Label("Set Up Later (Limited Mode)", systemImage: "clock.arrow.2.circlepath")
                             .frame(minWidth: 200)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(GlassActionButtonStyle()).controlSize(.large)
                 }
                 Text("Limited Mode launches SwiftBot without Discord or SwiftMesh. Configure both from Settings after launch.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -427,11 +446,11 @@ private struct OnboardingGateView: View {
             .pickerStyle(.segmented).frame(maxWidth: 560)
 
             TextField("Node Name", text: $app.settings.clusterNodeName)
-                .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+                .onboardingTextFieldStyle().frame(maxWidth: 560)
 
             if app.settings.clusterMode == .standby {
                 TextField("Leader Address (host:port)", text: $app.settings.clusterLeaderAddress)
-                    .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+                    .onboardingTextFieldStyle().frame(maxWidth: 560)
             }
 
             HStack {
@@ -441,12 +460,12 @@ private struct OnboardingGateView: View {
                     get: { String(app.settings.clusterListenPort) },
                     set: { if let v = Int($0) { app.settings.clusterListenPort = v } }
                 ))
-                .textFieldStyle(.roundedBorder).frame(width: 100)
+                .onboardingTextFieldStyle().frame(width: 110)
             }
             .frame(maxWidth: 560)
 
             SecureField("Shared Secret", text: $app.settings.clusterSharedSecret)
-                .textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+                .onboardingTextFieldStyle().frame(maxWidth: 560)
 
             HStack(spacing: 12) {
                 Button { step = .choosePath } label: {
@@ -463,7 +482,7 @@ private struct OnboardingGateView: View {
                         Label("Save & Continue", systemImage: "square.and.arrow.down")
                             .frame(minWidth: 200)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(GlassActionButtonStyle()).controlSize(.large)
                 } else {
                     // Standby nodes test connectivity to the leader before proceeding.
                     Button {
@@ -473,13 +492,163 @@ private struct OnboardingGateView: View {
                         Label("Test Connection", systemImage: "antenna.radiowaves.left.and.right")
                             .frame(minWidth: 200)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(GlassActionButtonStyle()).controlSize(.large)
                     .disabled(app.settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .frame(maxWidth: 560, alignment: .leading)
         }
         .frame(maxWidth: 560)
+    }
+
+    private func stepOrder(_ step: Step) -> Int {
+        switch step {
+        case .choosePath: return 0
+        case .entry, .failed: return 1
+        case .validating: return 2
+        case .confirmed: return 3
+        case .meshSetup: return 4
+        case .meshTesting: return 5
+        case .meshConfirmed, .meshFailed: return 6
+        }
+    }
+}
+
+private struct OnboardingAnimatedSymbolBackground: View {
+    @State private var animationStart = Date()
+
+    private let symbols = [
+        "book.pages.fill",
+        "hammer.fill",
+        "terminal.fill",
+        "waveform.path.ecg",
+        "sparkles",
+        "point.3.connected.trianglepath.dotted",
+        "server.rack",
+        "person.3.sequence",
+        "gearshape.2.fill",
+        "cpu.fill",
+        "wrench.and.screwdriver.fill",
+        "bolt.horizontal.circle.fill"
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                animatedCanvas(size: proxy.size, date: timeline.date)
+            }
+        }
+        .clipped()
+        .opacity(0.78)
+    }
+
+    @ViewBuilder
+    private func animatedCanvas(size: CGSize, date: Date) -> some View {
+        let width = max(size.width, 1)
+        let height = max(size.height, 1)
+        let diagonal = hypot(width, height)
+        let elapsed = date.timeIntervalSince(animationStart)
+
+        Canvas { context, _ in
+            let trackWidth = diagonal * 2.2
+            let trackHeight = diagonal * 1.6
+            let rowStep: CGFloat = 108
+            let rows = Int(trackHeight / rowStep) + 3
+            let iconSize: CGFloat = 40
+            let spacing: CGFloat = 50
+            let step = iconSize + spacing
+            let cols = Int(trackWidth / step) + 12
+
+            context.opacity = 0.10
+            context.translateBy(x: width / 2, y: height / 2)
+            context.rotate(by: .radians(-.pi / 4))
+
+            var resolvedSymbols: [String: GraphicsContext.ResolvedSymbol] = [:]
+            for symbol in symbols {
+                if let resolved = context.resolveSymbol(id: symbol) {
+                    resolvedSymbols[symbol] = resolved
+                }
+            }
+
+            for row in 0..<rows {
+                let direction: CGFloat = row.isMultiple(of: 2) ? 1 : -1
+                let speed: CGFloat = 8 + CGFloat(deterministicInt(row, seed: 19, modulus: 6))
+                let y = -trackHeight / 2 + CGFloat(row) * rowStep
+                let rowOffset = deterministicInt(row, seed: 31, modulus: symbols.count)
+                let strideChoices = [5, 7, 11]
+                let stride = strideChoices[deterministicInt(row, seed: 47, modulus: strideChoices.count)]
+                let sequencePeriod = symbols.count / greatestCommonDivisor(stride, symbols.count)
+                let cycleWidth = CGFloat(sequencePeriod) * step
+                var offset = (CGFloat(elapsed) * speed * direction).truncatingRemainder(dividingBy: cycleWidth)
+                if offset < 0 { offset += cycleWidth }
+                for col in -6...cols {
+                    let x = -trackWidth / 2 + CGFloat(col) * step + offset
+                    let symbolIndex = positiveModulo(rowOffset + (col * stride), symbols.count)
+                    let symbolID = symbols[symbolIndex]
+                    if let resolved = resolvedSymbols[symbolID] {
+                        context.draw(resolved, at: CGPoint(x: x, y: y), anchor: .center)
+                    }
+                }
+            }
+        } symbols: {
+            ForEach(symbols, id: \.self) { symbol in
+                Image(systemName: symbol)
+                    .font(.system(size: 40, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.white.opacity(0.42))
+                    .tag(symbol)
+            }
+        }
+    }
+
+    private func positiveModulo(_ value: Int, _ modulus: Int) -> Int {
+        let m = max(modulus, 1)
+        let r = value % m
+        return r >= 0 ? r : r + m
+    }
+
+    private func deterministicInt(_ row: Int, seed: Int, modulus: Int) -> Int {
+        let m = max(modulus, 1)
+        let mixed = (row &* 73) ^ (seed &* 131) ^ (row &* seed &* 17)
+        let r = mixed % m
+        return r >= 0 ? r : r + m
+    }
+
+    private func greatestCommonDivisor(_ a: Int, _ b: Int) -> Int {
+        var x = abs(a)
+        var y = abs(b)
+        while y != 0 {
+            let t = x % y
+            x = y
+            y = t
+        }
+        return max(x, 1)
+    }
+}
+
+private extension View {
+    func onboardingTextFieldStyle() -> some View {
+        self
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+            )
+    }
+
+    func onboardingGlassButton() -> some View {
+        self
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.10), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(.white.opacity(0.24), lineWidth: 1)
+            )
     }
 }
 
@@ -573,6 +742,14 @@ struct DashboardSidebar: View {
 
                     SidebarSection(title: "Automation") {
                         SidebarRow(item: .commands, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        if selection == .commands || selection == .commandLog {
+                            SidebarRow(
+                                item: .commandLog,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace,
+                                isChild: true
+                            )
+                        }
                         SidebarRow(item: .voice, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace, count: app.activeVoice.count)
                         SidebarRow(item: .patchy, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .wikiBridge, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
@@ -601,7 +778,7 @@ struct DashboardSidebar: View {
                         Label(startButtonTitle, systemImage: "play.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GlassActionButtonStyle())
                 } else {
                     Button {
                         app.stopBot()
@@ -646,6 +823,7 @@ struct SidebarRow: View {
     @Binding var selection: SidebarItem
     let selectionHighlightNamespace: Namespace.ID
     var count: Int?
+    var isChild: Bool = false
 
     var body: some View {
         Button {
@@ -654,6 +832,12 @@ struct SidebarRow: View {
             }
         } label: {
             HStack(spacing: 10) {
+                if isChild {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 12)
+                }
                 Image(systemName: item.icon)
                     .frame(width: 16)
                 Text(item.rawValue)
@@ -666,7 +850,7 @@ struct SidebarRow: View {
                         .background(Color.accentColor.opacity(0.20), in: Capsule())
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, isChild ? 24 : 12)
             .padding(.vertical, 9)
             .background {
                 if selection == item {
@@ -726,6 +910,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case patchy = "Patchy"
     case voice = "Actions"
     case commands = "Commands"
+    case commandLog = "Command Log"
     case wikiBridge = "WikiBridge"
     case logs = "Logs"
     case settings = "Settings"
@@ -741,6 +926,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .patchy: return "hammer.fill"
         case .voice: return "point.3.filled.connected.trianglepath.dotted"
         case .commands: return "terminal.fill"
+        case .commandLog: return "list.bullet.clipboard.fill"
         case .wikiBridge: return "book.pages.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .settings: return "gearshape.2.fill"
@@ -755,6 +941,12 @@ struct OverviewView: View {
     @EnvironmentObject var app: AppModel
     var onOpenSwiftMesh: (() -> Void)?
 
+    private struct VoiceChannelGroup: Identifiable {
+        let id: String
+        let title: String
+        let members: [VoiceMemberPresence]
+    }
+
     private var recentVoice: [VoiceEventLogEntry] {
         Array(app.voiceLog.prefix(5))
     }
@@ -768,7 +960,7 @@ struct OverviewView: View {
     }
 
     private var aiProviderSummary: String {
-        app.settings.preferredAIProvider == .apple ? "Apple Intelligence" : "Ollama"
+        app.settings.preferredAIProvider.rawValue
     }
 
     private var enabledWikiSourceCount: Int {
@@ -803,13 +995,39 @@ struct OverviewView: View {
         "\(app.settings.help.mode.rawValue) · \(app.settings.help.tone.rawValue)"
     }
 
+    private var groupedActiveVoice: [VoiceChannelGroup] {
+        let grouped = Dictionary(grouping: app.activeVoice) { member in
+            "\(member.guildId):\(member.channelId)"
+        }
+
+        return grouped.map { key, members in
+            let first = members.first
+            let serverName = first.map { app.connectedServers[$0.guildId] ?? $0.guildId } ?? "Unknown Server"
+            let channelName = first?.channelName ?? "Voice Channel"
+            let orderedMembers = members.sorted { lhs, rhs in
+                lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
+            }
+            return VoiceChannelGroup(
+                id: key,
+                title: "\(channelName) · \(serverName)",
+                members: orderedMembers
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.members.count != rhs.members.count {
+                return lhs.members.count > rhs.members.count
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ViewSectionHeader(title: "Overview", symbol: "speedometer")
 
                 LazyVGrid(columns: [
-                    GridItem(.adaptive(minimum: 150), spacing: 10)
+                    GridItem(.adaptive(minimum: 185), spacing: 10)
                 ], spacing: 12) {
                     if app.settings.clusterMode == .worker {
                         DashboardMetricCard(
@@ -833,7 +1051,7 @@ struct OverviewView: View {
                             value: "\(app.clusterSnapshot.listenPort)",
                             subtitle: "worker HTTP service",
                             symbol: "antenna.radiowaves.left.and.right",
-                            detail: "Prefix \(app.settings.prefix)",
+                            detail: "Node \(app.settings.clusterNodeName.isEmpty ? "Unnamed" : app.settings.clusterNodeName)",
                             color: .blue
                         )
                         DashboardMetricCard(
@@ -890,7 +1108,7 @@ struct OverviewView: View {
                             value: "\(app.stats.commandsRun)",
                             subtitle: "this session",
                             symbol: "terminal.fill",
-                            detail: "Prefix \(app.settings.prefix)",
+                            detail: "Recent commands activity",
                             color: .red
                         )
                         DashboardMetricCard(
@@ -975,19 +1193,31 @@ struct OverviewView: View {
                         } else if app.activeVoice.isEmpty {
                             PlaceholderPanelLine(text: "No one is in voice right now")
                         } else {
-                            ForEach(app.activeVoice) { member in
-                                PanelLine(
-                                    title: "\(member.username) in \(member.channelName)",
-                                    subtitle: member.joinedAt.formatted(date: .omitted, time: .shortened),
-                                    tone: .indigo
-                                )
+                            ForEach(groupedActiveVoice) { group in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(group.title)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ForEach(group.members) { member in
+                                            VoicePresenceMemberRow(
+                                                member: member,
+                                                avatarURL: app.avatarURL(forUserId: member.userId, guildId: member.guildId) ?? app.fallbackAvatarURL(forUserId: member.userId)
+                                            )
+                                        }
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 8)
+                                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
                             }
                         }
                     }
 
                     DashboardPanel(title: "Bot Info") {
                         InfoRow(label: "Uptime", value: app.settings.clusterMode == .worker ? "--" : (app.uptime?.text ?? "--"))
-                        InfoRow(label: "Prefix", value: app.settings.prefix)
                         InfoRow(label: "Errors", value: "\(app.stats.errors)")
                         InfoRow(label: "State", value: app.settings.clusterMode == .worker ? app.primaryServiceStatusText : app.status.rawValue.capitalized)
                         if app.settings.clusterMode != .standalone {
@@ -1042,7 +1272,7 @@ struct OverviewClusterSummaryCard: View {
             Button("View in SwiftMesh") {
                 onOpenSwiftMesh?()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(GlassActionButtonStyle())
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1215,16 +1445,8 @@ struct VoiceWorkspaceView: View {
                     let cid = app.availableTextChannelsByServer[sid]?.first?.id ?? ""
                     ruleStore.addNewRule(serverId: sid, channelId: cid)
                 },
-                onDeleteOffsets: { offsets in
-                    ruleStore.deleteRules(at: offsets, undoManager: undoManager)
-                },
                 onDeleteRuleID: { ruleID in
                     ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
-                },
-                onDeleteSelected: {
-                    if let selected = ruleStore.selectedRuleID {
-                        ruleStore.deleteRule(id: selected, undoManager: undoManager)
-                    }
                 }
             )
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
@@ -1249,15 +1471,12 @@ struct VoiceWorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-        )
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.white.opacity(0.04))
         )
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .onChange(of: ruleStore.rules) {
             if let selected = ruleStore.selectedRuleID,
                !ruleStore.rules.contains(where: { $0.id == selected }) {
@@ -1265,26 +1484,6 @@ struct VoiceWorkspaceView: View {
             }
             ruleStore.scheduleAutoSave()
         }
-
-        // Default Action Channel — global fallback used when a rule's action has no channel set.
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.turn.down.right")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-                .accessibilityHidden(true)
-            Text("Default Action Channel (Fallback)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField("Channel ID", text: $app.settings.behavior.voiceActivityLogChannelId)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.caption, design: .monospaced))
-                .frame(maxWidth: 200)
-                .onChange(of: app.settings.behavior.voiceActivityLogChannelId) { _, newValue in
-                    app.settings.behavior.voiceActivityLogEnabled = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
         } // end VStack
     }
 
@@ -1329,122 +1528,6 @@ struct VoiceWorkspaceView: View {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
         }
-    }
-}
-
-struct RuleListView: View {
-    @Binding var rules: [Rule]
-    @Binding var selectedRuleID: UUID?
-    let onAddNew: () -> Void
-    let onDeleteOffsets: (IndexSet) -> Void
-    let onDeleteRuleID: (UUID) -> Void
-    let onDeleteSelected: () -> Void
-    @State private var showDeleteSelectedConfirm = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            RulePaneHeader(
-                title: "Actions",
-                subtitle: "Build reusable flows from triggers, filters, and outputs.",
-                systemImage: "point.3.filled.connected.trianglepath.dotted"
-            )
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Button(action: onAddNew) {
-                        Label("New Rule", systemImage: "plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    LazyVStack(spacing: 10) {
-                        ForEach($rules) { $rule in
-                            RuleRowView(
-                                rule: $rule,
-                                isSelected: selectedRuleID == rule.id,
-                                onSelect: {
-                                    withAnimation(.snappy(duration: 0.12)) {
-                                        selectedRuleID = rule.id
-                                    }
-                                },
-                                onDelete: { onDeleteRuleID(rule.id) }
-                            )
-                        }
-                    }
-
-                    Button(role: .destructive) { showDeleteSelectedConfirm = true } label: {
-                        Label("Delete Selected", systemImage: "trash")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(selectedRuleID == nil)
-                    .alert("Delete Rule?", isPresented: $showDeleteSelectedConfirm) {
-                        Button("Delete", role: .destructive) { onDeleteSelected() }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This rule will be permanently deleted.")
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-            }
-        }
-        .background(rulePaneBackground)
-    }
-
-    private var rulePaneBackground: some View {
-        Rectangle()
-            .fill(.white.opacity(0.04))
-    }
-}
-
-struct RuleRowView: View {
-    @Binding var rule: Rule
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onDelete: () -> Void
-    @State private var showDeleteConfirm = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rule.name)
-                    .font(.headline)
-                Text(rule.triggerSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("Enabled", isOn: $rule.isEnabled)
-                .labelsHidden()
-            Button(role: .destructive) { showDeleteConfirm = true } label: {
-                Image(systemName: "trash")
-                    .font(.caption.bold())
-            }
-            .buttonStyle(.borderless)
-            .alert("Delete Rule?", isPresented: $showDeleteConfirm) {
-                Button("Delete", role: .destructive) { onDelete() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("\"\(rule.name)\" will be permanently deleted.")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(selectionBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(isSelected ? .white.opacity(0.28) : .white.opacity(0.12), lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture(perform: onSelect)
-    }
-
-    private var selectionBackground: some ShapeStyle {
-        if isSelected {
-            return AnyShapeStyle(.thinMaterial)
-        }
-        return AnyShapeStyle(Color.white.opacity(0.05))
     }
 }
 
@@ -1498,8 +1581,18 @@ struct RuleEditorView: View {
                 )
 
                 TextField("Rule Name", text: $rule.name)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
                     .font(.title2.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.white.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(.white.opacity(0.20), lineWidth: 1)
+                    )
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
                     .padding(.bottom, 16)
@@ -1724,10 +1817,10 @@ struct RulePaneHeader: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 58, alignment: .bottomLeading)
+        .frame(height: 46, alignment: .bottomLeading)
         .padding(.horizontal, 20)
-        .padding(.top, 11)
-        .padding(.bottom, 13)
+        .padding(.top, 0)
+        .padding(.bottom, 8)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -2078,12 +2171,13 @@ struct ActionSectionView: View {
                     Text("Message")
                         .font(.subheadline.weight(.semibold))
                     TextEditor(text: $action.message)
+                        .scrollContentBackground(.hidden)
                         .frame(minHeight: 120)
                         .padding(6)
-                        .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
                         )
                 }
             case .addLogEntry:
@@ -2114,10 +2208,124 @@ struct ActionSectionView: View {
 
 struct CommandsView: View {
     @EnvironmentObject var app: AppModel
+    @State private var baselineHelpSettings = HelpSettings()
+
+    private var hasUnsavedChanges: Bool {
+        app.settings.help != baselineHelpSettings
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Help & Commands")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Picker("Help Mode", selection: $app.settings.help.mode) {
+                            ForEach(HelpMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        if app.settings.help.mode != .classic {
+                            Text(app.settings.help.mode.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Picker("Tone", selection: $app.settings.help.tone) {
+                            ForEach(HelpTone.allCases) { tone in
+                                Text(tone.rawValue).tag(tone)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Custom Intro")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            TextField("Optional intro text", text: $app.settings.help.customIntro)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Custom Footer")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            TextField("Optional footer text", text: $app.settings.help.customFooter)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        DisclosureGroup("Preview (embed fields)") {
+                            let prefix = "/"
+                            let catalog = CommandCatalog.build(
+                                prefix: prefix,
+                                wikiCommands: app.settings.wikiBot.sources
+                                    .filter(\.enabled)
+                                    .flatMap { source in
+                                        source.commands
+                                            .filter(\.enabled)
+                                            .map { cmd in WikiCommandInfo(trigger: cmd.trigger, sourceName: source.name, description: cmd.description) }
+                                    }
+                            )
+                            let renderer = HelpRenderer(prefix: prefix, helpSettings: app.settings.help)
+                            let previewText = renderer.overview(catalog: catalog)
+
+                            ScrollView {
+                                Text(previewText)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8)
+                            }
+                            .frame(maxHeight: 220)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                            )
+
+                            Text("Live output is a Discord embed. Preview shows field content only.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
+                }
+                .padding(.top, 2)
+                .padding(.bottom, 16)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .overlay(alignment: .bottomTrailing) {
+            if hasUnsavedChanges {
+                StickySaveButton(label: "Save Command Settings", systemImage: "square.and.arrow.down.fill") {
+                    app.saveSettings()
+                    baselineHelpSettings = app.settings.help
+                }
+                .padding(.trailing, 22)
+                .padding(.bottom, 18)
+            }
+        }
+        .onAppear { baselineHelpSettings = app.settings.help }
+    }
+}
+
+struct CommandLogView: View {
+    @EnvironmentObject var app: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ViewSectionHeader(title: "Command Log", symbol: "list.bullet.clipboard.fill")
 
             Table(app.commandLog) {
                 TableColumn("Time") { Text($0.time.formatted(date: .omitted, time: .standard)) }
@@ -2196,7 +2404,6 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var app: AppModel
     @EnvironmentObject var updater: AppUpdater
     @Binding var showToken: Bool
-    @State private var prefixDraft = "!"
     @State private var clusterNodeNameDraft = ""
     @State private var leaderAddressDraft = ""
     @State private var listenPortDraft = ""
@@ -2205,8 +2412,23 @@ struct GeneralSettingsView: View {
     @State private var primaryAddressError: String? = nil
     @State private var sharedSecretError: String? = nil
     @State private var showClearKeyConfirmation = false
+    @State private var baselineSettings = GeneralSettingsSnapshot()
 
-    private let allowedPrefixes = ["$", "#", "!", "?", "%"]
+    private var currentSettingsSnapshot: GeneralSettingsSnapshot {
+        GeneralSettingsSnapshot(
+            token: app.settings.token,
+            autoStart: app.settings.autoStart,
+            clusterMode: app.settings.clusterMode,
+            clusterNodeName: clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            clusterLeaderAddress: leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            clusterListenPort: Int(listenPortDraft) ?? app.settings.clusterListenPort,
+            clusterSharedSecret: clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private var hasUnsavedChanges: Bool {
+        currentSettingsSnapshot != baselineSettings
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2214,7 +2436,11 @@ struct GeneralSettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    settingsBlock(title: "General") {
+                    settingsBlock(
+                        title: "General",
+                        symbol: "slider.horizontal.3",
+                        subtitle: "Identity and startup behavior."
+                    ) {
                         HStack {
                             Group {
                                 if showToken {
@@ -2249,17 +2475,14 @@ struct GeneralSettingsView: View {
                             }
                         }
 
-                        Picker("Command Prefix", selection: $prefixDraft) {
-                            ForEach(allowedPrefixes, id: \.self) { prefix in
-                                Text(prefix).tag(prefix)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
                         Toggle("Auto Start", isOn: $app.settings.autoStart)
                     }
                     
-                    settingsBlock(title: "SwiftMesh") {
+                    settingsBlock(
+                        title: "SwiftMesh",
+                        symbol: "point.3.connected.trianglepath.dotted",
+                        subtitle: "Cluster role and node connectivity."
+                    ) {
                     // Worker mode is temporarily hidden pending UX redesign.
                     // The .worker case and all runtime code remain intact for future re-enable.
                     Picker("Mode", selection: $app.settings.clusterMode) {
@@ -2331,155 +2554,53 @@ struct GeneralSettingsView: View {
                         .foregroundStyle((app.clusterSnapshot.workerState == .connected || app.clusterSnapshot.serverState == .listening) ? .green : .secondary)
                     }
 
-                    settingsBlock(title: "Help & Commands") {
-                    Picker("Help Mode", selection: $app.settings.help.mode) {
-                        ForEach(HelpMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                    settingsBlock(
+                        title: "Software Updates",
+                        symbol: "arrow.triangle.2.circlepath",
+                        subtitle: "Update channel and Sparkle status."
+                    ) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Update Channel")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            updateChannelOption(.stable)
+                            updateChannelOption(.beta)
                         }
                     }
-                    .pickerStyle(.menu)
 
-                    if app.settings.help.mode != .classic {
-                        Text(app.settings.help.mode.description)
+                    if updater.selectedChannel == .beta {
+                        Label("Beta channel enabled. Updates will come from the beta appcast feed.", systemImage: "flask.fill")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.orange)
                     }
 
-                    Picker("Tone", selection: $app.settings.help.tone) {
-                        ForEach(HelpTone.allCases) { tone in
-                            Text(tone.rawValue).tag(tone)
-                        }
+                    Button("Check for Updates...") {
+                        updater.checkForUpdates()
                     }
-                    .pickerStyle(.segmented)
+                    .buttonStyle(GlassActionButtonStyle())
+                    .disabled(!updater.canCheckForUpdates)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Custom Intro")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("Optional intro text", text: $app.settings.help.customIntro)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Custom Footer")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("Optional footer text", text: $app.settings.help.customFooter)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    DisclosureGroup("Preview (embed fields)") {
-                        let prefix = app.settings.prefix
-                        let catalog = CommandCatalog.build(
-                            prefix: prefix,
-                            wikiCommands: app.settings.wikiBot.sources
-                                .filter(\.enabled)
-                                .flatMap { source in
-                                    source.commands
-                                        .filter(\.enabled)
-                                        .map { cmd in WikiCommandInfo(trigger: cmd.trigger, sourceName: source.name, description: cmd.description) }
-                                }
-                        )
-                        let renderer = HelpRenderer(prefix: prefix, helpSettings: app.settings.help)
-                        let previewText = renderer.overview(catalog: catalog)
-
-                        ScrollView {
-                            Text(previewText)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                        }
-                        .frame(maxHeight: 200)
-                        .background(Color.black.opacity(0.25))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Text("Live output is a Discord embed. Preview shows field content only.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    }
-
-                    settingsBlock(title: "Software Updates") {
-                    LabeledContent("Updater") {
-                        Text(updater.isConfigured ? "Configured" : "Not Configured")
-                            .foregroundStyle(updater.isConfigured ? .green : .secondary)
-                    }
-
-                    LabeledContent("Feed URL Found") {
-                        Text(updater.feedURLString.isEmpty ? "No" : "Yes")
-                            .foregroundStyle(updater.feedURLString.isEmpty ? Color.secondary : Color.green)
-                    }
-
-                    LabeledContent("Public Key Found") {
-                        Text(updater.hasPublicKey ? "Yes" : "No")
-                            .foregroundStyle(updater.hasPublicKey ? Color.green : Color.secondary)
-                    }
-
-                    if updater.isConfigured {
-                        LabeledContent("Feed URL") {
-                            Text(updater.feedURLString)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-
-                        Button("Check for Updates...") {
-                            updater.checkForUpdates()
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!updater.canCheckForUpdates)
-                    } else {
+                    if !updater.isConfigured {
                         Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-
-                    LabeledContent("Bundle") {
-                        Text(updater.bundlePath)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
                     }
-                    }
-
-                Button("Save") {
-                    validateAll()
-                    guard clusterConfigValid else { return }
-                    applyDraftsToSettings()
-                    app.saveSettings()
-                    prefixDraft = app.settings.prefix
-                    clusterNodeNameDraft = app.settings.clusterNodeName
-                    leaderAddressDraft = app.settings.clusterLeaderAddress
-                    listenPortDraft = "\(app.settings.clusterListenPort)"
-                    clusterSharedSecretDraft = app.settings.clusterSharedSecret
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!clusterConfigValid)
-
-                Link("Discord Developer Portal", destination: URL(string: "https://discord.com/developers/applications")!)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
                 .padding(.vertical, 8)
             }
             .onAppear {
-                prefixDraft = allowedPrefixes.contains(app.settings.prefix) ? app.settings.prefix : "!"
                 clusterNodeNameDraft = app.settings.clusterNodeName
                 leaderAddressDraft = app.settings.clusterLeaderAddress
                 listenPortDraft = "\(app.settings.clusterListenPort)"
                 clusterSharedSecretDraft = app.settings.clusterSharedSecret
                 validateAll()
-            }
-            .onChange(of: app.settings.prefix) { _, newValue in
-                prefixDraft = allowedPrefixes.contains(newValue) ? newValue : "!"
+                baselineSettings = currentSettingsSnapshot
             }
             .onChange(of: app.settings.clusterMode) { validateAll() }
-            .padding(.horizontal, 0)
-            .background(Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .glassCard(cornerRadius: 24, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
 
             if app.settings.clusterMode == .worker {
                 GroupBox("Cluster Controls") {
@@ -2518,7 +2639,7 @@ struct GeneralSettingsView: View {
                                 applyDraftsToSettings()
                                 Task { await app.startBot() }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(GlassActionButtonStyle())
                             .disabled(!clusterConfigValid)
                         }
                     }
@@ -2526,22 +2647,74 @@ struct GeneralSettingsView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 6)
+        .padding(.top, 16)
         .padding(.bottom, 16)
+        .overlay(alignment: .bottomTrailing) {
+            if hasUnsavedChanges {
+                StickySaveButton(
+                    label: "Save Settings",
+                    systemImage: "square.and.arrow.down.fill",
+                    disabled: !clusterConfigValid
+                ) {
+                    validateAll()
+                    guard clusterConfigValid else { return }
+                    applyDraftsToSettings()
+                    app.saveSettings()
+                    clusterNodeNameDraft = app.settings.clusterNodeName
+                    leaderAddressDraft = app.settings.clusterLeaderAddress
+                    listenPortDraft = "\(app.settings.clusterListenPort)"
+                    clusterSharedSecretDraft = app.settings.clusterSharedSecret
+                    baselineSettings = currentSettingsSnapshot
+                }
+                .padding(.trailing, 22)
+                .padding(.bottom, 18)
+            }
+        }
     }
 
     @ViewBuilder
-    private func settingsBlock<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func settingsBlock<Content: View>(
+        title: String,
+        symbol: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.headline.weight(.semibold))
+            }
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             content()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func updateChannelOption(_ channel: AppUpdater.UpdateChannel) -> some View {
+        let isSelected = updater.selectedChannel == channel
+        return Button {
+            updater.setUpdateChannel(channel)
+        } label: {
+            Label(channel.label, systemImage: channel.symbolName)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .background(isSelected ? .ultraThinMaterial : .regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(isSelected ? 0.26 : 0.14), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Validation
@@ -2586,7 +2759,6 @@ struct GeneralSettingsView: View {
     }
 
     private func applyDraftsToSettings() {
-        app.settings.prefix = prefixDraft
         app.settings.clusterNodeName = clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
@@ -2596,15 +2768,31 @@ struct GeneralSettingsView: View {
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
+    @State private var showAppleSettings = false
+    @State private var showOllamaSettings = false
+    @State private var showOpenAISettings = false
+    @State private var baselineSettings = AIBotsSettingsSnapshot()
 
-    private enum AISettingKey {
-        static let enableReplies = "ai.enableReplies"
-        static let guildChannels = "ai.useGuildTextChannels"
-        static let allowDMs = "ai.allowDirectMessages"
-        static let primaryEngine = "ai.primaryEngine"
-        static let ollamaHost = "ai.ollamaHost"
-        static let ollamaModel = "ai.ollamaModel"
-        static let systemPrompt = "ai.systemPrompt"
+    private var hasUnsavedChanges: Bool {
+        currentSettingsSnapshot != baselineSettings
+    }
+
+    private var currentSettingsSnapshot: AIBotsSettingsSnapshot {
+        AIBotsSettingsSnapshot(
+            localAIDMReplyEnabled: app.settings.localAIDMReplyEnabled,
+            useAIInGuildChannels: app.settings.behavior.useAIInGuildChannels,
+            allowDMs: app.settings.behavior.allowDMs,
+            preferredAIProvider: app.settings.preferredAIProvider,
+            ollamaBaseURL: app.settings.ollamaBaseURL,
+            ollamaModel: app.settings.localAIModel,
+            openAIEnabled: app.settings.openAIEnabled,
+            openAIAPIKey: app.settings.openAIAPIKey,
+            openAIModel: app.settings.openAIModel,
+            openAIImageGenerationEnabled: app.settings.openAIImageGenerationEnabled,
+            openAIImageModel: app.settings.openAIImageModel,
+            openAIImageMonthlyLimitPerUser: app.settings.openAIImageMonthlyLimitPerUser,
+            localAISystemPrompt: app.settings.localAISystemPrompt
+        )
     }
 
     var body: some View {
@@ -2621,6 +2809,16 @@ struct AIBotsView: View {
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
         }
+        .overlay(alignment: .bottomTrailing) {
+            if hasUnsavedChanges {
+                StickySaveButton(label: "Save AI Settings", systemImage: "square.and.arrow.down.fill") {
+                    app.saveSettings()
+                    baselineSettings = currentSettingsSnapshot
+                }
+                .padding(.trailing, 22)
+                .padding(.bottom, 18)
+            }
+        }
         .task {
             await app.refreshAIStatus()
             syncProviderSelectionFromPreference()
@@ -2635,12 +2833,20 @@ struct AIBotsView: View {
         .onChange(of: app.settings.ollamaBaseURL) { _, _ in
             Task { await app.refreshAIStatus() }
         }
+        .onChange(of: app.settings.openAIAPIKey) { _, _ in
+            Task { await app.refreshAIStatus() }
+        }
+        .onChange(of: app.settings.openAIEnabled) { _, _ in
+            Task { await app.refreshAIStatus() }
+        }
+        .onAppear {
+            baselineSettings = currentSettingsSnapshot
+        }
     }
 
     private var overviewCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("AI Engines")
-                .font(.title3.weight(.semibold))
+            diagnosticsStyleSectionHeader(title: "AI Engines", symbol: "sparkles")
 
             HStack(alignment: .top, spacing: 12) {
                 providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
@@ -2653,6 +2859,12 @@ struct AIBotsView: View {
                 }
                 Spacer()
                 statusStack(isOnline: app.appleIntelligenceOnline, isPrimary: app.settings.preferredAIProvider == .apple)
+            }
+            DisclosureGroup("Apple Intelligence Settings", isExpanded: $showAppleSettings) {
+                Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
             }
 
             Divider()
@@ -2677,6 +2889,86 @@ struct AIBotsView: View {
                 Spacer()
                 statusStack(isOnline: app.ollamaOnline, isPrimary: app.settings.preferredAIProvider == .ollama)
             }
+            DisclosureGroup("Ollama Settings", isExpanded: $showOllamaSettings) {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
+                    TextField("Model", text: $app.settings.localAIModel)
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            app.detectOllamaModel()
+                        } label: {
+                            Label("Auto Detect Model", systemImage: "wand.and.stars")
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 6)
+            }
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 12) {
+                providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("OpenAI (ChatGPT)")
+                        .font(.headline)
+                    Text("Cloud API provider")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    let model = app.settings.openAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !model.isEmpty {
+                        Text("Model: \(model)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    let imageModel = app.settings.openAIImageModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !imageModel.isEmpty {
+                        Text("Image model: \(imageModel)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                statusStack(isOnline: app.openAIOnline, isPrimary: app.settings.preferredAIProvider == .openAI)
+            }
+            DisclosureGroup("OpenAI Settings", isExpanded: $showOpenAISettings) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Enable OpenAI Provider", isOn: $app.settings.openAIEnabled)
+
+                    SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
+                        .disabled(!app.settings.openAIEnabled)
+                    TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
+                        .disabled(!app.settings.openAIEnabled)
+                    Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
+                        .disabled(!app.settings.openAIEnabled)
+                    TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
+                        .disabled(!app.settings.openAIEnabled || !app.settings.openAIImageGenerationEnabled)
+                    TextField(
+                        "Monthly Image Limit Per User",
+                        text: Binding(
+                            get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
+                            set: { raw in
+                                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if let parsed = Int(trimmed) {
+                                    app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
+                                }
+                            }
+                        )
+                    )
+                    .disabled(!app.settings.openAIEnabled || !app.settings.openAIImageGenerationEnabled)
+                }
+                .padding(.top, 6)
+            }
         }
         .padding(12)
         .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
@@ -2684,167 +2976,35 @@ struct AIBotsView: View {
 
     private var configurationCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Configuration")
-                .font(.title3.weight(.semibold))
+            diagnosticsStyleSectionHeader(title: "Configuration", symbol: "slider.horizontal.3")
 
-            SettingsView(sections: aiSettingsSections, values: aiSettingsValues)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
-                .padding(.horizontal, 0)
+            VStack(alignment: .leading, spacing: 10) {
+                diagnosticsStyleSectionHeader(title: "General", symbol: "switch.2")
 
-            if app.settings.preferredAIProvider == .ollama {
-                HStack {
-                    Spacer()
-                    Button {
-                        app.detectOllamaModel()
-                    } label: {
-                        Label("Auto Detect Model", systemImage: "wand.and.stars")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                            )
+                Toggle("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
+                Toggle("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
+                Toggle("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
+                Picker("Primary AI Engine", selection: $app.settings.preferredAIProvider) {
+                    ForEach(AIProviderPreference.allCases) { provider in
+                        Text(provider.rawValue).tag(provider)
                     }
-                    .buttonStyle(.plain)
                 }
+                .pickerStyle(.menu)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            HStack {
-                Spacer()
-                Button {
-                    app.saveSettings()
-                } label: {
-                    Label("Save AI Settings", systemImage: "checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 8) {
+                diagnosticsStyleSectionHeader(title: "System Prompt", symbol: "text.bubble")
+                TextField("System Prompt", text: $app.settings.localAISystemPrompt)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(12)
         .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-    }
-
-    private var aiSettingsSections: [SettingSection] {
-        var engineSettings: [Setting] = [
-            Setting(
-                key: AISettingKey.primaryEngine,
-                title: "Primary AI Engine",
-                description: "Select the preferred AI provider.",
-                type: .picker(options: AIProviderPreference.allCases.map(\.rawValue))
-            )
-        ]
-
-        if app.settings.preferredAIProvider == .ollama {
-            engineSettings.append(
-                Setting(
-                    key: AISettingKey.ollamaHost,
-                    title: "Ollama Host (localhost)",
-                    description: "Base URL for your local Ollama server.",
-                    type: .text
-                )
-            )
-            engineSettings.append(
-                Setting(
-                    key: AISettingKey.ollamaModel,
-                    title: "Model",
-                    description: "Default Ollama model name for replies.",
-                    type: .text
-                )
-            )
-        }
-
-        return [
-            SettingSection(
-                title: "AI Behavior",
-                settings: [
-                    Setting(
-                        key: AISettingKey.enableReplies,
-                        title: "Enable AI Replies",
-                        description: "Allow SwiftBot to generate AI replies.",
-                        type: .toggle
-                    ),
-                    Setting(
-                        key: AISettingKey.guildChannels,
-                        title: "Use AI in Guild Text Channels",
-                        description: "Enable AI replies in server text channels.",
-                        type: .toggle
-                    )
-                ]
-            ),
-            SettingSection(
-                title: "Messaging",
-                settings: [
-                    Setting(
-                        key: AISettingKey.allowDMs,
-                        title: "Allow Direct Messages",
-                        description: "Allow bot interactions over direct messages.",
-                        type: .toggle
-                    )
-                ]
-            ),
-            SettingSection(title: "AI Engine", settings: engineSettings),
-            SettingSection(
-                title: "System Prompt",
-                settings: [
-                    Setting(
-                        key: AISettingKey.systemPrompt,
-                        title: "System Prompt",
-                        description: "Base instruction used for AI responses.",
-                        type: .text
-                    )
-                ]
-            )
-        ]
-    }
-
-    private var aiSettingsValues: Binding<[String: SettingValue]> {
-        Binding(
-            get: {
-                [
-                    AISettingKey.enableReplies: .toggle(app.settings.localAIDMReplyEnabled),
-                    AISettingKey.guildChannels: .toggle(app.settings.behavior.useAIInGuildChannels),
-                    AISettingKey.allowDMs: .toggle(app.settings.behavior.allowDMs),
-                    AISettingKey.primaryEngine: .text(app.settings.preferredAIProvider.rawValue),
-                    AISettingKey.ollamaHost: .text(app.settings.ollamaBaseURL),
-                    AISettingKey.ollamaModel: .text(app.settings.localAIModel),
-                    AISettingKey.systemPrompt: .text(app.settings.localAISystemPrompt)
-                ]
-            },
-            set: { updated in
-                if let enabled = updated[AISettingKey.enableReplies]?.boolValue {
-                    app.settings.localAIDMReplyEnabled = enabled
-                }
-                if let useGuildChannels = updated[AISettingKey.guildChannels]?.boolValue {
-                    app.settings.behavior.useAIInGuildChannels = useGuildChannels
-                }
-                if let allowDMs = updated[AISettingKey.allowDMs]?.boolValue {
-                    app.settings.behavior.allowDMs = allowDMs
-                }
-                if let providerRaw = updated[AISettingKey.primaryEngine]?.textValue,
-                   let provider = AIProviderPreference(rawValue: providerRaw) {
-                    app.settings.preferredAIProvider = provider
-                }
-                if let ollamaHost = updated[AISettingKey.ollamaHost]?.textValue {
-                    app.settings.ollamaBaseURL = ollamaHost
-                }
-                if let model = updated[AISettingKey.ollamaModel]?.textValue {
-                    app.settings.localAIModel = model
-                }
-                if let prompt = updated[AISettingKey.systemPrompt]?.textValue {
-                    app.settings.localAISystemPrompt = prompt
-                }
-            }
-        )
     }
 
     @ViewBuilder
@@ -2890,11 +3050,56 @@ struct AIBotsView: View {
     }
 
     private func syncProviderSelectionFromPreference() {
-        let mapped: AIProvider = (app.settings.preferredAIProvider == .apple) ? .appleIntelligence : .ollama
+        let mapped: AIProvider
+        switch app.settings.preferredAIProvider {
+        case .apple:
+            mapped = .appleIntelligence
+        case .ollama:
+            mapped = .ollama
+        case .openAI:
+            mapped = .openAI
+        }
         if app.settings.localAIProvider != mapped {
             app.settings.localAIProvider = mapped
         }
     }
+
+    @ViewBuilder
+    private func diagnosticsStyleSectionHeader(title: String, symbol: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline.weight(.semibold))
+        }
+    }
+}
+
+private struct AIBotsSettingsSnapshot: Equatable {
+    var localAIDMReplyEnabled = false
+    var useAIInGuildChannels = true
+    var allowDMs = false
+    var preferredAIProvider: AIProviderPreference = .apple
+    var ollamaBaseURL = ""
+    var ollamaModel = ""
+    var openAIEnabled = true
+    var openAIAPIKey = ""
+    var openAIModel = ""
+    var openAIImageGenerationEnabled = true
+    var openAIImageModel = ""
+    var openAIImageMonthlyLimitPerUser = 5
+    var localAISystemPrompt = ""
+}
+
+private struct GeneralSettingsSnapshot: Equatable {
+    var token = ""
+    var autoStart = false
+    var clusterMode: ClusterMode = .standalone
+    var clusterNodeName = ""
+    var clusterLeaderAddress = ""
+    var clusterListenPort = 38787
+    var clusterSharedSecret = ""
 }
 
 struct MemoryOverviewView: View {
@@ -3111,6 +3316,55 @@ struct PanelLine: View {
     }
 }
 
+struct VoicePresenceMemberRow: View {
+    let member: VoiceMemberPresence
+    let avatarURL: URL?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                if let avatarURL {
+                    AsyncImage(url: avatarURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        default:
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable()
+                                .scaledToFit()
+                                .foregroundStyle(.secondary)
+                                .padding(2)
+                        }
+                    }
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(.secondary)
+                        .padding(2)
+                }
+            }
+            .frame(width: 22, height: 22)
+            .clipShape(Circle())
+
+            Text(member.username)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+            Spacer()
+            Text("Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+        )
+    }
+}
+
 struct PlaceholderPanelLine: View {
     let text: String
 
@@ -3145,6 +3399,23 @@ struct InfoRow: View {
                 .fontWeight(.semibold)
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct StickySaveButton: View {
+    let label: String
+    let systemImage: String
+    var disabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(label, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(GlassActionButtonStyle())
+        .disabled(disabled)
+        .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
     }
 }
 
@@ -3215,6 +3486,25 @@ struct SwiftBotGlassBackground: View {
     }
 }
 
+struct GlassActionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(configuration.isPressed ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(.thickMaterial))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.white.opacity(configuration.isPressed ? 0.26 : 0.14), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.04 : 0.1), radius: 10, y: 6)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+    }
+}
+
 private struct SwiftBotGlassCardModifier: ViewModifier {
     let cornerRadius: CGFloat
     let tint: Color
@@ -3222,24 +3512,7 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.55), .white.opacity(0.04)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .allowsHitTesting(false)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(stroke, lineWidth: 1)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 10)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 

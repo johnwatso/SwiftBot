@@ -18,8 +18,7 @@ struct SwiftMeshView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Cluster Map")
-                        .font(.headline)
+                    sectionHeader(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted")
 
                     if app.settings.clusterMode == .standalone {
                         PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Worker mode to use SwiftMesh.")
@@ -31,15 +30,10 @@ struct SwiftMeshView: View {
                 }
                 .padding(14)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(.white.opacity(0.20), lineWidth: 1)
-                )
                 .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Node Details")
-                        .font(.headline)
+                    sectionHeader(title: "Node Details", symbol: "cpu")
 
                     if app.clusterNodes.isEmpty {
                         PlaceholderPanelLine(text: "No node details yet")
@@ -81,6 +75,17 @@ struct SwiftMeshView: View {
 
     private var topologyNodes: [ClusterNodeStatus] {
         app.clusterNodes
+    }
+
+    @ViewBuilder
+    private func sectionHeader(title: String, symbol: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline.weight(.semibold))
+        }
     }
 }
 
@@ -145,10 +150,6 @@ struct ClusterMapView: View {
         }
         .frame(height: mapHeight)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 6)
     }
 
@@ -303,10 +304,6 @@ extension ClusterNodeView {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 6)
     }
 
@@ -489,8 +486,13 @@ private struct SwiftMeshJobDistributionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Job Distribution")
-                .font(.headline)
+            HStack(spacing: 8) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Job Distribution")
+                    .font(.headline.weight(.semibold))
+            }
 
             if nodes.isEmpty {
                 PlaceholderPanelLine(text: "No nodes available")
@@ -526,10 +528,6 @@ private struct SwiftMeshJobDistributionCard: View {
         }
         .padding(14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(.white.opacity(0.20), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
     }
 
