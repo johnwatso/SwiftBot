@@ -704,11 +704,10 @@ actor DiscordService {
         var scope = "bot"
         if includeSlashCommands { scope += " applications.commands" }
 
-        components.queryItems = [
-            URLQueryItem(name: "client_id",   value: trimmed),
-            URLQueryItem(name: "permissions", value: "274877991936"),
-            URLQueryItem(name: "scope",       value: scope)
-        ]
+        // Manually construct the encoded query to ensure space -> + for scope.
+        let encodedScope = scope.replacingOccurrences(of: " ", with: "+")
+        let query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)"
+        components.percentEncodedQuery = query
 
         return components.url?.absoluteString
     }

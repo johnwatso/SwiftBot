@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### P2 — UX Hardening + Release Quality (2026-03-06)
+
+#### Fixed
+- **Onboarding: app icon** — replaced generic `cpu.fill` placeholder in setup splash with the real app icon (`NSApp.applicationIconImage`). Icon is now always in sync with the Xcode asset without hardcoding an asset name.
+- **Onboarding: invite link** — repaired broken Share Link on splash screen. Corrected invite URL endpoint to canonical `https://discord.com/oauth2/authorize` (was `https://discord.com/api/oauth2/authorize`). Scopes now use `+`-encoded spaces. Regression test added in `InviteLinkTests`.
+- **Onboarding: degraded invite state** — when the bot's client ID cannot be resolved, the setup screen now shows a clear "Could not generate an invite link" message with guidance, rather than silently hiding the invite section.
+- **Onboarding: invite loading state** — a spinner is now shown while the invite URL is being generated so users know the fetch is in progress.
+
+#### Accessibility
+- Decorative images in onboarding (app icon, success checkmark) marked `accessibilityHidden(true)`.
+- Validating-token spinner exposes a combined VoiceOver label: "Validating token, please wait".
+- Invite URL text now reads the full URL to VoiceOver instead of the truncated display form.
+- Sidebar status-indicator dot marked `accessibilityHidden(true)`; status is conveyed via the adjacent text label.
+
 ### Planned (March 2026)
 
 #### API Debugging & Onboarding

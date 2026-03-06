@@ -808,7 +808,7 @@ final class AppModel: ObservableObject {
 
     /// Generates a Discord invite URL for the bot using the resolved OAuth2 client ID.
     /// Returns `nil` if `resolvedClientID` has not yet been set.
-    func generateInviteURL(includeSlashCommands: Bool = true) async -> String? {
+    func generateInviteURL(includeSlashCommands: Bool = false) async -> String? {
         guard let cid = resolvedClientID else { return nil }
         return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlashCommands)
     }
@@ -2058,8 +2058,15 @@ final class AppModel: ObservableObject {
                     group.cancelAll()
                     return .reply(text)
                 default:
-                    // Engine returned nil
+                    // Engine returned nil. If the soft notice was already sent the user is
+                    // waiting for a terminal reply — send the hard-timeout fallback so they
+                    // are not left hanging. Without a soft notice, return .noReply so callers
+                    // can decide whether to send their own fallback.
                     group.cancelAll()
+                    if softNoticeSent {
+                        _ = await send(channelId, "Whoops — that one's a bit beyond my current limits. Try a shorter or more specific prompt.")
+                        return .handledFallback
+                    }
                     return .noReply
                 }
             }
@@ -2928,9 +2935,12 @@ final class AppModel: ObservableObject {
     // MARK: - P0.5: Member join welcome
 
     private func handleMemberJoin(_ raw: DiscordJSON?) async {
-        guard settings.behavior.memberJoinWelcomeEnabled,
-              !settings.behavior.memberJoinWelcomeChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return }
+        // Legacy settings path still active for backward compatibility.
+        // New config: use a "Member Joined" trigger rule in Actions instead.
+        let legacyEnabled = settings.behavior.memberJoinWelcomeEnabled &&
+            !settings.behavior.memberJoinWelcomeChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasRules = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .memberJoined }
+        guard legacyEnabled || hasRules else { return }
 
         guard case let .object(map)? = raw,
               case let .object(user)? = map["user"],
@@ -2995,9 +3005,37 @@ final class AppModel: ObservableObject {
             .replacingOccurrences(of: "{server}", with: serverName)
             .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
 
-        let channelId = settings.behavior.memberJoinWelcomeChannelId
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        _ = await send(channelId, message)
+        if legacyEnabled {
+            let channelId = settings.behavior.memberJoinWelcomeChannelId
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = await send(channelId, message)
+        }
+
+        // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
+        let ruleEvent = VoiceRuleEvent(
+            kind: .memberJoin,
+            guildId: guildId,
+            userId: userId,
+            username: safeUsername,
+            channelId: "",
+            fromChannelId: nil,
+            toChannelId: nil,
+            durationSeconds: nil,
+            messageContent: nil,
+            isDirectMessage: false
+        )
+        let matchedActions = ruleEngine.evaluate(event: ruleEvent)
+        for action in matchedActions where action.type == .sendMessage {
+            let ruleMessage = action.message
+                .replacingOccurrences(of: "{username}", with: safeUsername)
+                .replacingOccurrences(of: "{server}", with: serverName)
+                .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
+                .replacingOccurrences(of: "{userId}", with: userId)
+            let targetChannel = action.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !targetChannel.isEmpty else { continue }
+            _ = await send(targetChannel, ruleMessage)
+        }
+
         // Log username only — no internal IDs or metadata.
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "👋 \(safeUsername) joined \(serverName)"))
         logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
