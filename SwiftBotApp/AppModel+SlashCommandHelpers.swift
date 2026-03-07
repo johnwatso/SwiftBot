@@ -20,6 +20,10 @@ extension AppModel {
             ["name": "weekly", "description": "Show weekly summary", "type": 1],
             ["name": "bugreport", "description": "Show bug tracking status counts", "type": 1],
             ["name": "logabug", "description": "Create a tracked bug from typed error text", "type": 1, "options": [["type": 3, "name": "error", "description": "Bug/error details", "required": true]]],
+            ["name": "featurerequest", "description": "Submit a feature request to swiftbot-dev", "type": 1, "options": [
+                ["type": 3, "name": "feature", "description": "Feature request details", "required": true],
+                ["type": 3, "name": "reason", "description": "Why this feature is needed (optional)", "required": false]
+            ]],
             ["name": "image", "description": "Generate an image with OpenAI", "type": 1, "options": [["type": 3, "name": "prompt", "description": "Image prompt", "required": true]]],
             ["name": "wiki", "description": "Query WikiBridge", "type": 1, "options": [["type": 3, "name": "query", "description": "Your wiki query", "required": true]]],
             ["name": "compare", "description": "Compare two THE FINALS weapons", "type": 1, "options": [

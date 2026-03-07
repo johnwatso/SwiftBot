@@ -176,6 +176,7 @@ struct BotSettings: Codable, Hashable {
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
     var ollamaBaseURL: String = "http://localhost:11434"
+    var ollamaEnabled: Bool = true
     var openAIEnabled: Bool = true
     var openAIAPIKey: String = ""
     var openAIModel: String = "gpt-4o-mini"
@@ -213,6 +214,7 @@ struct BotSettings: Codable, Hashable {
         case localAIEndpoint
         case localAIModel
         case ollamaBaseURL
+        case ollamaEnabled
         case openAIEnabled
         case openAIAPIKey
         case openAIModel
@@ -254,6 +256,7 @@ struct BotSettings: Codable, Hashable {
         localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
         localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
+        ollamaEnabled = try container.decodeIfPresent(Bool.self, forKey: .ollamaEnabled) ?? true
         openAIEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIEnabled) ?? true
         openAIAPIKey = try container.decodeIfPresent(String.self, forKey: .openAIAPIKey) ?? ""
         openAIModel = try container.decodeIfPresent(String.self, forKey: .openAIModel) ?? "gpt-4o-mini"
@@ -293,6 +296,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(localAIEndpoint, forKey: .localAIEndpoint)
         try container.encode(localAIModel, forKey: .localAIModel)
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
+        try container.encode(ollamaEnabled, forKey: .ollamaEnabled)
         try container.encode(openAIEnabled, forKey: .openAIEnabled)
         try container.encode(openAIAPIKey, forKey: .openAIAPIKey)
         try container.encode(openAIModel, forKey: .openAIModel)
@@ -2025,6 +2029,11 @@ struct VoiceRuleEvent {
     let toChannelId: String?
     let durationSeconds: Int?
     let messageContent: String?
+    let messageId: String?
+    let triggerMessageId: String?
+    let triggerChannelId: String?
+    let triggerGuildId: String
+    let triggerUserId: String
     let isDirectMessage: Bool
 }
 

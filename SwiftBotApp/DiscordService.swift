@@ -1973,6 +1973,11 @@ actor DiscordService {
                 toChannelId: newChannel,
                 durationSeconds: nil,
                 messageContent: nil,
+                messageId: nil,
+                triggerMessageId: nil,
+                triggerChannelId: nil,
+                triggerGuildId: guildId,
+                triggerUserId: userId,
                 isDirectMessage: false
             )
         }
@@ -1992,6 +1997,11 @@ actor DiscordService {
                 toChannelId: newChannel,
                 durationSeconds: durationSeconds,
                 messageContent: nil,
+                messageId: nil,
+                triggerMessageId: nil,
+                triggerChannelId: nil,
+                triggerGuildId: guildId,
+                triggerUserId: userId,
                 isDirectMessage: false
             )
         }
@@ -2011,6 +2021,11 @@ actor DiscordService {
                 toChannelId: nil,
                 durationSeconds: durationSeconds,
                 messageContent: nil,
+                messageId: nil,
+                triggerMessageId: nil,
+                triggerChannelId: nil,
+                triggerGuildId: guildId,
+                triggerUserId: userId,
                 isDirectMessage: false
             )
         }
@@ -2020,6 +2035,7 @@ actor DiscordService {
 
     private func parseMessageRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
         guard case let .object(map)? = raw,
+              case let .string(messageId)? = map["id"],
               case let .object(author)? = map["author"],
               case let .string(userId)? = author["id"],
               case let .string(username)? = author["username"],
@@ -2048,6 +2064,11 @@ actor DiscordService {
             toChannelId: nil,
             durationSeconds: nil,
             messageContent: content,
+            messageId: messageId,
+            triggerMessageId: messageId,
+            triggerChannelId: channelId,
+            triggerGuildId: guildId,
+            triggerUserId: userId,
             isDirectMessage: isDirectMessage
         )
     }
@@ -2072,7 +2093,12 @@ actor DiscordService {
         switch action.type {
         case .sendMessage:
             guard let token = botToken else { return }
-            let targetChannelId = (event.kind == .message) ? event.channelId : action.channelId
+            let targetChannelId: String
+            if action.replyToTriggerMessage {
+                targetChannelId = event.triggerChannelId ?? ""
+            } else {
+                targetChannelId = action.channelId
+            }
             guard !targetChannelId.isEmpty else { return }
 
             let rendered: String
@@ -2110,7 +2136,20 @@ actor DiscordService {
                 rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
             }
 
-            try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
+            if action.replyToTriggerMessage,
+               let triggerMessageId = event.triggerMessageId {
+                let payload: [String: Any] = [
+                    "content": rendered,
+                    "message_reference": [
+                        "message_id": triggerMessageId,
+                        "channel_id": targetChannelId,
+                        "fail_if_not_exists": false
+                    ]
+                ]
+                _ = try? await sendMessage(channelId: targetChannelId, payload: payload, token: token)
+            } else {
+                try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
+            }
         case .addLogEntry:
             return
         case .setStatus:

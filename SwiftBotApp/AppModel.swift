@@ -1468,6 +1468,11 @@ final class AppModel: ObservableObject {
             toChannelId: nil,
             durationSeconds: nil,
             messageContent: nil,
+            messageId: nil,
+            triggerMessageId: nil,
+            triggerChannelId: nil,
+            triggerGuildId: guildId,
+            triggerUserId: userId,
             isDirectMessage: false
         )
         let matchedActions = ruleEngine.evaluate(event: ruleEvent)
