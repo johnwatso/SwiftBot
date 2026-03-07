@@ -10,6 +10,8 @@ extension AppModel {
         switch eventName {
         case "MESSAGE_CREATE":
             await handleMessageCreate(payload.d)
+        case "MESSAGE_REACTION_ADD":
+            await handleMessageReactionAdd(payload.d)
         case "INTERACTION_CREATE":
             await handleInteractionCreate(payload.d)
         case "VOICE_STATE_UPDATE":
@@ -261,6 +263,18 @@ extension AppModel {
             isDirectMessage: isDMChannel
         ))
 
+        if isGuildTextChannel, isMentioningBot(map) {
+            let mentionText = contentWithoutBotMention(content)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if mentionText == "bug" {
+                if settings.bugTrackingEnabled {
+                    await handleBugTrackCommand(raw: map, username: username, responseChannelId: channelId)
+                }
+                return
+            }
+        }
+
         if isGuildTextChannel,
            settings.localAIDMReplyEnabled,
            settings.behavior.useAIInGuildChannels,
@@ -336,6 +350,11 @@ extension AppModel {
         ), at: 0)
         logs.append(result ? "✅ Command success: \(content)" : "❌ Command failed: \(content)")
         if !result { stats.errors += 1 }
+    }
+
+    func handleMessageReactionAdd(_ raw: DiscordJSON?) async {
+        guard case let .object(map)? = raw else { return }
+        await handleBugReactionAdd(raw: map)
     }
 
     func handleInteractionCreate(_ raw: DiscordJSON?) async {
@@ -619,6 +638,25 @@ extension AppModel {
             return statusEmbed(title: "Cluster", ok: ok)
         case "weekly":
             return embed(title: "Weekly Summary", description: weeklyPlugin?.snapshotSummary() ?? "No data yet.")
+        case "bugreport":
+            return embed(title: "Bug Report", description: bugReportText(for: context.rawLikeMessage))
+        case "logabug":
+            let errorText = slashOptionString(named: "error", in: data)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !errorText.isEmpty else {
+                return embed(title: "Log a Bug", description: "Usage: `/logabug error:<what happened>`", color: 15_790_767)
+            }
+            let result = await handleLogABugSlash(
+                raw: context.rawLikeMessage,
+                username: context.username,
+                channelId: context.channelId,
+                errorText: errorText
+            )
+            return embed(
+                title: "Log a Bug",
+                description: result.message,
+                color: result.ok ? 3_062_954 : 15_790_767
+            )
         case "debug":
             guard await canRunDebugCommand(raw: context.rawLikeMessage) else {
                 return embed(title: "Debug", description: "⛔ Restricted to server owners or admins.", color: 15_790_767)

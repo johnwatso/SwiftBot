@@ -140,6 +140,59 @@ extension AppModel {
         }
     }
 
+    func fetchMessage(channelId: String, messageId: String) async -> [String: DiscordJSON]? {
+        do {
+            return try await service.fetchMessage(channelId: channelId, messageId: messageId, token: settings.token)
+        } catch {
+            return nil
+        }
+    }
+
+    func addReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
+        do {
+            try await service.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeOwnReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
+        do {
+            try await service.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func pinMessage(channelId: String, messageId: String) async -> Bool {
+        do {
+            try await service.pinMessage(channelId: channelId, messageId: messageId, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func unpinMessage(channelId: String, messageId: String) async -> Bool {
+        do {
+            try await service.unpinMessage(channelId: channelId, messageId: messageId, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func createThreadFromMessage(channelId: String, messageId: String, name: String) async -> Bool {
+        do {
+            try await service.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: settings.token)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func sendMessageWithImage(
         channelId: String,
         content: String,

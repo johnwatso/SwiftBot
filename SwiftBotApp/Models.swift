@@ -158,6 +158,7 @@ struct BotSettings: Codable, Hashable {
     var commandsEnabled: Bool = true
     var prefixCommandsEnabled: Bool = true
     var slashCommandsEnabled: Bool = true
+    var bugTrackingEnabled: Bool = true
     var disabledCommandKeys: Set<String> = []
     var autoStart: Bool = false
     var guildSettings: [String: GuildSettings] = [:]
@@ -195,6 +196,7 @@ struct BotSettings: Codable, Hashable {
         case commandsEnabled
         case prefixCommandsEnabled
         case slashCommandsEnabled
+        case bugTrackingEnabled
         case disabledCommandKeys
         case autoStart
         case guildSettings
@@ -235,6 +237,7 @@ struct BotSettings: Codable, Hashable {
         commandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .commandsEnabled) ?? true
         prefixCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .prefixCommandsEnabled) ?? true
         slashCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .slashCommandsEnabled) ?? true
+        bugTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugTrackingEnabled) ?? true
         disabledCommandKeys = try container.decodeIfPresent(Set<String>.self, forKey: .disabledCommandKeys) ?? []
         autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
@@ -273,6 +276,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(commandsEnabled, forKey: .commandsEnabled)
         try container.encode(prefixCommandsEnabled, forKey: .prefixCommandsEnabled)
         try container.encode(slashCommandsEnabled, forKey: .slashCommandsEnabled)
+        try container.encode(bugTrackingEnabled, forKey: .bugTrackingEnabled)
         try container.encode(disabledCommandKeys, forKey: .disabledCommandKeys)
         try container.encode(autoStart, forKey: .autoStart)
         try container.encode(guildSettings, forKey: .guildSettings)
@@ -1611,6 +1615,40 @@ struct CommandLogEntry: Identifiable, Hashable {
     let executionRoute: String
     let executionNode: String
     let ok: Bool
+}
+
+enum BugStatus: String, Codable, Hashable {
+    case new = "New"
+    case workingOn = "Working On"
+    case inProgress = "In Progress"
+    case blocked = "Blocked"
+    case resolved = "Resolved"
+
+    var emoji: String {
+        switch self {
+        case .new:
+            return "🐞"
+        case .workingOn:
+            return "🔧"
+        case .inProgress:
+            return "🟡"
+        case .blocked:
+            return "⛔"
+        case .resolved:
+            return "✅"
+        }
+    }
+}
+
+struct BugEntry: Hashable, Codable {
+    let bugMessageID: String
+    let sourceMessageID: String
+    let channelID: String
+    let guildID: String
+    let reporterID: String
+    let createdBy: String
+    var status: BugStatus
+    var timestamp: Date
 }
 
 struct VoiceMemberPresence: Identifiable, Hashable {
