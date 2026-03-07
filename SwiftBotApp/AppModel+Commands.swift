@@ -181,12 +181,27 @@ extension AppModel {
             : settings.openAIImageModel.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let limit = max(0, settings.openAIImageMonthlyLimitPerUser)
+        let hardCap = max(limit, settings.openAIImageMonthlyHardCap)
         let usageKey = imageUsageKey(userID: userId)
         let used = settings.openAIImageUsageByUserMonth[usageKey] ?? 0
+        
         if limit > 0, used >= limit {
             return await send(
                 channelId,
                 "🧾 Monthly image limit reached (\(used)/\(limit)). Try again next month or increase the limit in settings."
+            )
+        }
+
+        // Aggregate mesh-wide total usage for this month
+        let currentMonthPrefix = usageKey.prefix(7) // "YYYY-MM"
+        let totalMonthlyUsage = settings.openAIImageUsageByUserMonth
+            .filter { $0.key.hasPrefix(currentMonthPrefix) }
+            .reduce(0) { $0 + $1.value }
+
+        if hardCap > 0, totalMonthlyUsage >= hardCap {
+            return await send(
+                channelId,
+                "🛑 Mesh-wide hard cap for image generation reached (\(totalMonthlyUsage)/\(hardCap)). Please contact the administrator."
             )
         }
 
@@ -205,6 +220,11 @@ extension AppModel {
         pruneOldImageUsageMonths()
         settings.openAIImageUsageByUserMonth[usageKey] = used + 1
         _ = await persistSettings()
+        
+        // SwiftMesh: broadcast updated usage to other nodes
+        if settings.clusterMode == .leader {
+            await pushImageUsageToAllNodes()
+        }
 
         let summary = "✅ Generated with `\(model)` • \(used + 1)/\(limit > 0 ? limit : (used + 1)) this month"
         let filename = "swiftbot-image-\(Int(Date().timeIntervalSince1970)).png"

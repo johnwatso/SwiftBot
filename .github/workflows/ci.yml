@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -23,3 +25,6 @@ jobs:
 
       - name: Run UpdateEngine tests
         run: swift test --package-path Sources/UpdateEngine --parallel
+
+      - name: Validate Sparkle release pipeline
+        run: ./scripts/validate_sparkle.sh

@@ -1729,8 +1729,14 @@ actor ClusterCoordinator {
         let limit = min(max(1, req.pageSize), Self.maxSyncBatchSize)
         let (records, hasMore) = await fetcher(req.fromRecordID, limit)
         let lastID = records.last?.id
+        
+        // Also fetch current image usage if this is the last page (or just always for simplicity)
+        let imageUsage = await meshHandler?("image-usage")
+        let decodedUsage = imageUsage.flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) }
+
         let payload = MeshSyncPayload(
             conversations: records,
+            imageUsage: decodedUsage,
             leaderTerm: leaderTerm,
             cursorRecordID: lastID,
             hasMore: hasMore,

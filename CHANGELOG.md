@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed - 2026-03-08
 
+#### UI Maintainability Refactor
+**Issue:** `RootView.swift` was a massive 4300-line file containing onboarding, settings, automation, and dashboard logic, making it difficult to maintain and prone to merge conflicts.
+
+**Solution:**
+- Decomposed `RootView.swift` into 8 focused feature modules: `OverviewView`, `VoiceActionsView`, `CommandsView`, `LogsView`, `AIBotsView`, `SettingsView`, `OnboardingView`, and `CommonUI`.
+- Reduced `RootView.swift` to ~350 lines, serving primarily as a navigation container.
+- Migrated domain models (`Rule`, `TriggerType`, etc.) to `Models.swift` to decouple the data layer from the view layer.
+
+**Impact:** Improved code readability, reduced compile times for incremental UI changes, and established a modular architecture for future feature development.
+
+#### OpenAI Cost Control & Mesh Synchronization
+**Issue:** Image generation quotas were tracked locally per-node, allowing users to bypass limits by switching nodes or resetting local settings.
+
+**Solution:**
+- Implemented mesh-wide image usage synchronization via `MeshSyncPayload`.
+- Added a `openAIImageMonthlyHardCap` setting (default: 100) enforced cluster-wide.
+- Primary node now broadcasts updated usage counts to all standbys immediately after generation.
+
+**Impact:** Reliable enforcement of AI usage policies across distributed clusters, protecting against runaway API costs.
+
 #### Repository Hygiene
 **Issue:** The repository mixed published Pages content with internal planning docs, carried assistant-local metadata in version control, and duplicated several image resources.
 
