@@ -39,6 +39,34 @@ SwiftBot installs are distributed through [GitHub Releases](https://github.com/j
 
 Future updates are handled in-app through Sparkle auto-updates.
 
+## Discord Bot Setup
+
+SwiftBot requires a Discord application with a bot user.
+
+1. Go to the Discord Developer Portal  
+   https://discord.com/developers/applications
+
+2. Click **New Application**
+
+3. Give the application a name (for example `SwiftBot`)
+
+4. Open the **Bot** section
+
+5. Click **Add Bot**
+
+6. Enable the required **Privileged Gateway Intents**:
+
+   - Server Members Intent
+   - Message Content Intent
+
+7. Copy the **Bot Token**
+
+You will paste this token into SwiftBot during the onboarding process.
+
+After the token is validated, SwiftBot will automatically generate the correct **server invite link** for your bot.
+
+Invite the bot to your server using that generated link, then complete onboarding.
+
 ## Features
 
 ### Bot Control
