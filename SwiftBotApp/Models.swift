@@ -152,6 +152,23 @@ struct GuildSettings: Codable, Hashable {
     var moveNotificationTemplate: String = "🔁 {username} moved: {fromChannelName} → {toChannelName}"
 }
 
+struct AdminWebUISettings: Codable, Hashable {
+    var enabled: Bool = false
+    var bindHost: String = "127.0.0.1"
+    var port: Int = 38888
+    var publicBaseURL: String = ""
+    var discordClientID: String = ""
+    var discordClientSecret: String = ""
+    var redirectPath: String = "/auth/discord/callback"
+    var allowedUserIDs: [String] = []
+
+    var normalizedAllowedUserIDs: [String] {
+        allowedUserIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
 struct BotSettings: Codable, Hashable {
     var token: String = ""
     var prefix: String = "/"
@@ -190,6 +207,7 @@ struct BotSettings: Codable, Hashable {
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
     var help = HelpSettings()
+    var adminWebUI = AdminWebUISettings()
 
     private enum CodingKeys: String, CodingKey {
         case token
@@ -228,6 +246,7 @@ struct BotSettings: Codable, Hashable {
         case wikiBot
         case patchy
         case help
+        case adminWebUI
     }
 
     init() {}
@@ -270,6 +289,7 @@ struct BotSettings: Codable, Hashable {
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
+        adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -310,6 +330,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
         try container.encode(help, forKey: .help)
+        try container.encode(adminWebUI, forKey: .adminWebUI)
     }
 }
 
@@ -2335,7 +2356,12 @@ enum KeychainHelper {
     /// Saves the token to the Keychain.
     @discardableResult
     static func saveToken(_ token: String) -> Bool {
-        guard let data = token.data(using: .utf8) else { return false }
+        save(token, account: account)
+    }
+
+    @discardableResult
+    static func save(_ value: String, account: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -2353,13 +2379,17 @@ enum KeychainHelper {
 
     /// Retrieves the token from the Keychain.
     static func loadToken() -> String? {
-        let query: [String: Any] = [
+        load(account: account)
+    }
+
+    static func load(account: String) -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecAttrAccount as String: account
         ]
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var dataTypeRef: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
@@ -2374,6 +2404,11 @@ enum KeychainHelper {
     /// Deletes the token from the Keychain.
     @discardableResult
     static func deleteToken() -> Bool {
+        delete(account: account)
+    }
+
+    @discardableResult
+    static func delete(account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
