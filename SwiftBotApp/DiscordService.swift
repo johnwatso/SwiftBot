@@ -512,6 +512,22 @@ actor DiscordService {
         return nil
     }
 
+    private func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let speaker = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !speaker.isEmpty else { return trimmed }
+
+        guard let range = trimmed.range(of: speaker, options: [.anchored, .caseInsensitive]) else {
+            return trimmed
+        }
+        var remainder = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        guard let first = remainder.first, first == ":" || first == "-" else {
+            return trimmed
+        }
+        remainder.removeFirst()
+        return remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         let isFinalsSource = source.baseURL.lowercased().contains("thefinals.wiki")
         if isFinalsSource, let finalsResult = await lookupFinalsWiki(query: query) {
@@ -2104,6 +2120,7 @@ actor DiscordService {
             let rendered: String
             if event.kind == .message,
                event.isDirectMessage,
+               !action.replyWithAI,
                localAIDMReplyEnabled,
                let userMessage = event.messageContent {
                 
@@ -2133,7 +2150,16 @@ actor DiscordService {
                     rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
                 }
             } else {
-                rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+                if action.replyWithAI {
+                    let prompt = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+                    if let aiReply = await generateRuleActionAIReply(prompt: prompt, event: event) {
+                        rendered = aiReply
+                    } else {
+                        rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+                    }
+                } else {
+                    rendered = renderMessage(template: action.message, event: event, mentionUser: action.mentionUser)
+                }
             }
 
             if action.replyToTriggerMessage,
@@ -2153,8 +2179,18 @@ actor DiscordService {
         case .addLogEntry:
             return
         case .setStatus:
-            guard !action.statusText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            await updatePresence(text: action.statusText)
+            let statusText: String
+            if action.replyWithAI {
+                if let aiStatus = await generateRuleActionAIReply(prompt: action.statusText, event: event) {
+                    statusText = aiStatus
+                } else {
+                    statusText = action.statusText
+                }
+            } else {
+                statusText = action.statusText
+            }
+            guard !statusText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            await updatePresence(text: statusText)
         }
     }
 
@@ -2229,6 +2265,54 @@ actor DiscordService {
             if let reply = await engine.generate(messages: finalMessages) {
                 let cleaned = cleanOutput(reply)
                 return cleaned.isEmpty ? nil : cleaned
+            }
+        }
+        return nil
+    }
+
+    private func generateRuleActionAIReply(prompt: String, event: VoiceRuleEvent) async -> String? {
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPrompt.isEmpty else { return nil }
+
+        let channelId = event.triggerChannelId ?? event.channelId
+        let channelName = event.isDirectMessage
+            ? "Direct Message"
+            : resolvedChannelName(guildId: event.triggerGuildId, channelId: channelId)
+        let systemPrompt = PromptComposer.buildSystemPrompt(
+            base: localAISystemPrompt,
+            serverName: guildNamesById[event.triggerGuildId],
+            channelName: channelName,
+            wikiContext: nil
+        )
+        let messages = [
+            Message(
+                channelID: channelId,
+                userID: event.triggerUserId,
+                username: event.username,
+                content: trimmedPrompt,
+                role: .user
+            )
+        ]
+        let finalMessages = PromptComposer.buildMessages(systemPrompt: systemPrompt, history: messages)
+
+        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
+        let ollamaEngine = OllamaEngine(
+            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
+            preferredModel: localAIModel,
+            session: session
+        )
+        let openAIEngine = OpenAIEngine(
+            apiKey: localOpenAIAPIKey,
+            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
+            baseURL: "https://api.openai.com",
+            session: session
+        )
+
+        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
+            if let reply = await engine.generate(messages: finalMessages) {
+                let cleaned = cleanOutput(reply)
+                let normalized = stripLeadingSpeakerPrefix(cleaned, username: event.username)
+                if !normalized.isEmpty { return normalized }
             }
         }
         return nil
