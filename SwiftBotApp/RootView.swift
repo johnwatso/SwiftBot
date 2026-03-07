@@ -1389,6 +1389,7 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var channelId: String = ""
     var mentionUser: Bool = true
     var replyToTriggerMessage: Bool = false
+    var replyWithAI: Bool = false
     var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
     var statusText: String = "Voice notifier active"
 
@@ -1399,6 +1400,7 @@ struct RuleAction: Identifiable, Codable, Equatable {
         case channelId
         case mentionUser
         case replyToTriggerMessage
+        case replyWithAI
         case message
         case statusText
     }
@@ -1413,6 +1415,7 @@ struct RuleAction: Identifiable, Codable, Equatable {
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId) ?? ""
         mentionUser = try container.decodeIfPresent(Bool.self, forKey: .mentionUser) ?? true
         replyToTriggerMessage = try container.decodeIfPresent(Bool.self, forKey: .replyToTriggerMessage) ?? false
+        replyWithAI = try container.decodeIfPresent(Bool.self, forKey: .replyWithAI) ?? false
         message = try container.decodeIfPresent(String.self, forKey: .message) ?? "🔊 <@{userId}> connected to <#{channelId}>"
         statusText = try container.decodeIfPresent(String.self, forKey: .statusText) ?? "Voice notifier active"
     }
@@ -1425,6 +1428,7 @@ struct RuleAction: Identifiable, Codable, Equatable {
         try container.encode(channelId, forKey: .channelId)
         try container.encode(mentionUser, forKey: .mentionUser)
         try container.encode(replyToTriggerMessage, forKey: .replyToTriggerMessage)
+        try container.encode(replyWithAI, forKey: .replyWithAI)
         try container.encode(message, forKey: .message)
         try container.encode(statusText, forKey: .statusText)
     }
@@ -2196,6 +2200,7 @@ struct ActionSectionView: View {
 
                 Toggle("Mention user in message", isOn: $action.mentionUser)
                 Toggle("Reply to trigger message", isOn: $action.replyToTriggerMessage)
+                Toggle("Reply with AI", isOn: $action.replyWithAI)
 
                 if action.replyToTriggerMessage {
                     Text("Reply will be sent in the same channel as the triggering message.")
@@ -2215,7 +2220,7 @@ struct ActionSectionView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Message")
+                    Text(action.replyWithAI ? "AI Prompt" : "Message")
                         .font(.subheadline.weight(.semibold))
                     TextEditor(text: $action.message)
                         .scrollContentBackground(.hidden)
@@ -2227,10 +2232,21 @@ struct ActionSectionView: View {
                                 .strokeBorder(.white.opacity(0.16), lineWidth: 1)
                         )
                 }
+                if action.replyWithAI {
+                    Text("AI will generate the final reply from this prompt template.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             case .addLogEntry:
                 TextField("Log message", text: $action.message)
             case .setStatus:
-                TextField("Status text", text: $action.statusText)
+                Toggle("Reply with AI", isOn: $action.replyWithAI)
+                TextField(action.replyWithAI ? "AI Prompt" : "Status text", text: $action.statusText)
+                if action.replyWithAI {
+                    Text("AI will generate the final status text from this prompt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}, {duration}")
