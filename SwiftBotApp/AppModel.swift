@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
+    var lastSlashCommandsEnabledState: Bool?
 
     var botAvatarURL: URL? {
         guard let userId = botUserId, let hash = botAvatarHash else { return nil }
@@ -848,9 +849,10 @@ final class AppModel: ObservableObject {
 
     /// Generates a Discord invite URL for the bot using the resolved OAuth2 client ID.
     /// Returns `nil` if `resolvedClientID` has not yet been set.
-    func generateInviteURL(includeSlashCommands: Bool = true) async -> String? {
+    func generateInviteURL(includeSlashCommands: Bool? = nil) async -> String? {
         guard let cid = resolvedClientID else { return nil }
-        return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlashCommands)
+        let includeSlash = includeSlashCommands ?? (settings.commandsEnabled && settings.slashCommandsEnabled)
+        return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlash)
     }
 
     // MARK: - Diagnostics

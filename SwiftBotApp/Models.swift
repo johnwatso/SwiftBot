@@ -155,6 +155,10 @@ struct GuildSettings: Codable, Hashable {
 struct BotSettings: Codable, Hashable {
     var token: String = ""
     var prefix: String = "/"
+    var commandsEnabled: Bool = true
+    var prefixCommandsEnabled: Bool = true
+    var slashCommandsEnabled: Bool = true
+    var disabledCommandKeys: Set<String> = []
     var autoStart: Bool = false
     var guildSettings: [String: GuildSettings] = [:]
     var clusterMode: ClusterMode = .standalone
@@ -188,6 +192,10 @@ struct BotSettings: Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case token
         case prefix
+        case commandsEnabled
+        case prefixCommandsEnabled
+        case slashCommandsEnabled
+        case disabledCommandKeys
         case autoStart
         case guildSettings
         case clusterMode
@@ -224,6 +232,10 @@ struct BotSettings: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "/"
+        commandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .commandsEnabled) ?? true
+        prefixCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .prefixCommandsEnabled) ?? true
+        slashCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .slashCommandsEnabled) ?? true
+        disabledCommandKeys = try container.decodeIfPresent(Set<String>.self, forKey: .disabledCommandKeys) ?? []
         autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
         clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
@@ -258,6 +270,10 @@ struct BotSettings: Codable, Hashable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(token, forKey: .token)
         try container.encode(prefix, forKey: .prefix)
+        try container.encode(commandsEnabled, forKey: .commandsEnabled)
+        try container.encode(prefixCommandsEnabled, forKey: .prefixCommandsEnabled)
+        try container.encode(slashCommandsEnabled, forKey: .slashCommandsEnabled)
+        try container.encode(disabledCommandKeys, forKey: .disabledCommandKeys)
         try container.encode(autoStart, forKey: .autoStart)
         try container.encode(guildSettings, forKey: .guildSettings)
         try container.encode(clusterMode, forKey: .clusterMode)
