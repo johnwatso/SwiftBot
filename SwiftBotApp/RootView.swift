@@ -1388,8 +1388,46 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var serverId: String = ""
     var channelId: String = ""
     var mentionUser: Bool = true
+    var replyToTriggerMessage: Bool = false
     var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
     var statusText: String = "Voice notifier active"
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case serverId
+        case channelId
+        case mentionUser
+        case replyToTriggerMessage
+        case message
+        case statusText
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        type = try container.decodeIfPresent(ActionType.self, forKey: .type) ?? .sendMessage
+        serverId = try container.decodeIfPresent(String.self, forKey: .serverId) ?? ""
+        channelId = try container.decodeIfPresent(String.self, forKey: .channelId) ?? ""
+        mentionUser = try container.decodeIfPresent(Bool.self, forKey: .mentionUser) ?? true
+        replyToTriggerMessage = try container.decodeIfPresent(Bool.self, forKey: .replyToTriggerMessage) ?? false
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? "🔊 <@{userId}> connected to <#{channelId}>"
+        statusText = try container.decodeIfPresent(String.self, forKey: .statusText) ?? "Voice notifier active"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(serverId, forKey: .serverId)
+        try container.encode(channelId, forKey: .channelId)
+        try container.encode(mentionUser, forKey: .mentionUser)
+        try container.encode(replyToTriggerMessage, forKey: .replyToTriggerMessage)
+        try container.encode(message, forKey: .message)
+        try container.encode(statusText, forKey: .statusText)
+    }
 }
 
 typealias Action = RuleAction
@@ -2156,18 +2194,26 @@ struct ActionSectionView: View {
                     }
                 }
 
-                if textChannels.isEmpty {
-                    Text("No text channels discovered for this server.")
+                Toggle("Mention user in message", isOn: $action.mentionUser)
+                Toggle("Reply to trigger message", isOn: $action.replyToTriggerMessage)
+
+                if action.replyToTriggerMessage {
+                    Text("Reply will be sent in the same channel as the triggering message.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Picker("Text Channel", selection: $action.channelId) {
-                        ForEach(textChannels) { channel in
-                            Text("#\(channel.name)").tag(channel.id)
+                    if textChannels.isEmpty {
+                        Text("No text channels discovered for this server.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Text Channel", selection: $action.channelId) {
+                            ForEach(textChannels) { channel in
+                                Text("#\(channel.name)").tag(channel.id)
+                            }
                         }
                     }
                 }
 
-                Toggle("Mention user in message", isOn: $action.mentionUser)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Message")
                         .font(.subheadline.weight(.semibold))
@@ -3329,6 +3375,7 @@ struct AIBotsView: View {
             preferredAIProvider: app.settings.preferredAIProvider,
             ollamaBaseURL: app.settings.ollamaBaseURL,
             ollamaModel: app.settings.localAIModel,
+            ollamaEnabled: app.settings.ollamaEnabled,
             openAIEnabled: app.settings.openAIEnabled,
             openAIAPIKey: app.settings.openAIAPIKey,
             openAIModel: app.settings.openAIModel,
@@ -3364,13 +3411,14 @@ struct AIBotsView: View {
             }
         }
         .task {
+            normalizePreferredProviderIfNeeded()
             await app.refreshAIStatus()
             syncProviderSelectionFromPreference()
         }
         .onChange(of: app.settings.preferredAIProvider) { _, _ in
             syncProviderSelectionFromPreference()
             Task { await app.refreshAIStatus() }
-            if app.settings.preferredAIProvider == .ollama {
+            if app.settings.preferredAIProvider == .ollama, app.settings.ollamaEnabled {
                 app.detectOllamaModel()
             }
         }
@@ -3381,9 +3429,15 @@ struct AIBotsView: View {
             Task { await app.refreshAIStatus() }
         }
         .onChange(of: app.settings.openAIEnabled) { _, _ in
+            normalizePreferredProviderIfNeeded()
+            Task { await app.refreshAIStatus() }
+        }
+        .onChange(of: app.settings.ollamaEnabled) { _, _ in
+            normalizePreferredProviderIfNeeded()
             Task { await app.refreshAIStatus() }
         }
         .onAppear {
+            normalizePreferredProviderIfNeeded()
             baselineSettings = currentSettingsSnapshot
         }
     }
@@ -3392,126 +3446,141 @@ struct AIBotsView: View {
         VStack(alignment: .leading, spacing: 14) {
             diagnosticsStyleSectionHeader(title: "AI Engines", symbol: "sparkles")
 
-            HStack(alignment: .top, spacing: 12) {
-                providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Apple Intelligence")
-                        .font(.headline.weight(.semibold))
-                    Text("System-native engine")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                statusStack(isOnline: app.appleIntelligenceOnline, isPrimary: app.settings.preferredAIProvider == .apple)
-            }
-            DisclosureGroup("Apple Intelligence Settings", isExpanded: $showAppleSettings) {
-                Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 6)
-            }
-
-            Divider()
-
-            HStack(alignment: .top, spacing: 12) {
-                providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Ollama")
-                        .font(.headline)
-                    if let model = app.ollamaDetectedModel, !model.isEmpty {
-                        Text("Active model: \(model)")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Apple Intelligence")
+                            .font(.headline.weight(.semibold))
+                        Text("System-native engine")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    let host = app.settings.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !host.isEmpty {
-                        Text("Server: \(host)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer()
+                    statusStack(status: app.appleIntelligenceOnline ? .online : .offline, isPrimary: app.settings.preferredAIProvider == .apple)
                 }
-                Spacer()
-                statusStack(isOnline: app.ollamaOnline, isPrimary: app.settings.preferredAIProvider == .ollama)
-            }
-            DisclosureGroup("Ollama Settings", isExpanded: $showOllamaSettings) {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
-                    TextField("Model", text: $app.settings.localAIModel)
 
-                    HStack {
-                        Spacer()
-                        Button {
-                            app.detectOllamaModel()
-                        } label: {
-                            Label("Auto Detect Model", systemImage: "wand.and.stars")
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.top, 6)
-            }
+                Divider()
 
-            Divider()
-
-            HStack(alignment: .top, spacing: 12) {
-                providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("OpenAI (ChatGPT)")
-                        .font(.headline)
-                    Text("Cloud API provider")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    let model = app.settings.openAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !model.isEmpty {
-                        Text("Model: \(model)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    let imageModel = app.settings.openAIImageModel.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !imageModel.isEmpty {
-                        Text("Image model: \(imageModel)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                statusStack(isOnline: app.openAIOnline, isPrimary: app.settings.preferredAIProvider == .openAI)
-            }
-            DisclosureGroup("OpenAI Settings", isExpanded: $showOpenAISettings) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Enable OpenAI Provider", isOn: $app.settings.openAIEnabled)
-
-                    SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
-                        .disabled(!app.settings.openAIEnabled)
-                    TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
-                        .disabled(!app.settings.openAIEnabled)
-                    Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
-                        .disabled(!app.settings.openAIEnabled)
-                    TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
-                        .disabled(!app.settings.openAIEnabled || !app.settings.openAIImageGenerationEnabled)
-                    TextField(
-                        "Monthly Image Limit Per User",
-                        text: Binding(
-                            get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
-                            set: { raw in
-                                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if let parsed = Int(trimmed) {
-                                    app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
-                                }
-                            }
+                DisclosureGroup("Apple Intelligence Settings", isExpanded: $showAppleSettings) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        providerToggleRow(
+                            "Enable Apple Intelligence",
+                            isOn: Binding(
+                                get: { true },
+                                set: { _ in }
+                            )
                         )
-                    )
-                    .disabled(!app.settings.openAIEnabled || !app.settings.openAIImageGenerationEnabled)
+                        .disabled(true)
+
+                        Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 6)
+                    .padding(.leading, 12)
                 }
-                .padding(.top, 6)
+                .padding(.leading, 52)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Ollama")
+                            .font(.headline)
+                        Text("Local AI engine")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    statusStack(status: ollamaStatus, isPrimary: app.settings.preferredAIProvider == .ollama)
+                }
+
+                DisclosureGroup("Ollama Settings", isExpanded: $showOllamaSettings) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        providerToggleRow("Enable Ollama", isOn: $app.settings.ollamaEnabled)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
+                            TextField("Model", text: $app.settings.localAIModel)
+
+                            HStack {
+                                Spacer()
+                                Button {
+                                    app.detectOllamaModel()
+                                } label: {
+                                    Label("Auto Detect Model", systemImage: "wand.and.stars")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.leading, 12)
+                        .opacity(app.settings.ollamaEnabled ? 1.0 : 0.5)
+                        .disabled(!app.settings.ollamaEnabled)
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.leading, 52)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("OpenAI (ChatGPT)")
+                            .font(.headline)
+                        Text("Cloud AI engine")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    statusStack(status: openAIStatus, isPrimary: app.settings.preferredAIProvider == .openAI)
+                }
+
+                DisclosureGroup("OpenAI Settings", isExpanded: $showOpenAISettings) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        providerToggleRow("Enable OpenAI", isOn: $app.settings.openAIEnabled)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
+                            TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
+                            Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
+                            TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
+                                .disabled(!app.settings.openAIImageGenerationEnabled)
+                            TextField(
+                                "Monthly Image Limit Per User",
+                                text: Binding(
+                                    get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
+                                    set: { raw in
+                                        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if let parsed = Int(trimmed) {
+                                            app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
+                                        }
+                                    }
+                                )
+                            )
+                            .disabled(!app.settings.openAIImageGenerationEnabled)
+                        }
+                        .padding(.leading, 12)
+                        .opacity(app.settings.openAIEnabled ? 1.0 : 0.5)
+                        .disabled(!app.settings.openAIEnabled)
+                    }
+                    .padding(.top, 6)
+                }
+                .padding(.leading, 52)
             }
         }
         .padding(12)
@@ -3522,22 +3591,13 @@ struct AIBotsView: View {
         VStack(alignment: .leading, spacing: 16) {
             diagnosticsStyleSectionHeader(title: "Configuration", symbol: "slider.horizontal.3")
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
                 diagnosticsStyleSectionHeader(title: "General", symbol: "switch.2")
-
-                Toggle("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
-                Toggle("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
-                Toggle("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
-                Picker("Primary AI Engine", selection: $app.settings.preferredAIProvider) {
-                    ForEach(AIProviderPreference.allCases) { provider in
-                        Text(provider.rawValue).tag(provider)
-                    }
-                }
-                .pickerStyle(.menu)
+                settingsToggleRow("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
+                settingsToggleRow("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
+                settingsToggleRow("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
+                settingsPickerRow("Primary AI Engine", selection: preferredAIProviderBinding)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
                 diagnosticsStyleSectionHeader(title: "System Prompt", symbol: "text.bubble")
@@ -3569,27 +3629,115 @@ struct AIBotsView: View {
         }
     }
 
-    private func statusRow(isOnline: Bool) -> some View {
+    private var ollamaStatus: AIEngineStatus {
+        statusForEngine(isEnabled: app.settings.ollamaEnabled, isOnline: app.ollamaOnline)
+    }
+
+    private var openAIStatus: AIEngineStatus {
+        statusForEngine(isEnabled: app.settings.openAIEnabled, isOnline: app.openAIOnline)
+    }
+
+    private var enabledPrimaryProviders: [AIProviderPreference] {
+        var providers: [AIProviderPreference] = [.apple]
+        if app.settings.ollamaEnabled {
+            providers.append(.ollama)
+        }
+        if app.settings.openAIEnabled {
+            providers.append(.openAI)
+        }
+        return providers
+    }
+
+    private var preferredAIProviderBinding: Binding<AIProviderPreference> {
+        Binding(
+            get: {
+                let available = enabledPrimaryProviders
+                if available.contains(app.settings.preferredAIProvider) {
+                    return app.settings.preferredAIProvider
+                }
+                return available.first ?? .apple
+            },
+            set: { app.settings.preferredAIProvider = $0 }
+        )
+    }
+
+    private func statusRow(status: AIEngineStatus) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(isOnline ? Color.green : Color.red)
+                .fill(status.color)
                 .frame(width: 8, height: 8)
-            Text(isOnline ? "Online" : "Offline")
+            Text(status.label)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder
-    private func statusStack(isOnline: Bool, isPrimary: Bool) -> some View {
+    private func statusStack(status: AIEngineStatus, isPrimary: Bool) -> some View {
         VStack(alignment: .trailing, spacing: 8) {
-            statusRow(isOnline: isOnline)
+            statusRow(status: status)
             Text(isPrimary ? "Primary" : "Fallback")
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background((isPrimary ? Color.accentColor : Color.white).opacity(0.14), in: Capsule())
                 .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
+        }
+    }
+
+    private func statusForEngine(isEnabled: Bool, isOnline: Bool) -> AIEngineStatus {
+        guard isEnabled else { return .inactive }
+        return isOnline ? .online : .offline
+    }
+
+    private func normalizePreferredProviderIfNeeded() {
+        let available = enabledPrimaryProviders
+        guard !available.contains(app.settings.preferredAIProvider), let fallback = available.first else { return }
+        app.settings.preferredAIProvider = fallback
+        syncProviderSelectionFromPreference()
+    }
+
+    private func providerDisplayName(_ provider: AIProviderPreference) -> String {
+        switch provider {
+        case .apple:
+            return "Apple Intelligence"
+        case .ollama:
+            return "Ollama"
+        case .openAI:
+            return "OpenAI"
+        }
+    }
+
+    private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+        }
+    }
+
+    private func settingsPickerRow(_ title: String, selection: Binding<AIProviderPreference>) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(enabledPrimaryProviders) { provider in
+                    Text(providerDisplayName(provider)).tag(provider)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
+    }
+
+    private func providerToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.subheadline)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
         }
     }
 
@@ -3627,6 +3775,7 @@ private struct AIBotsSettingsSnapshot: Equatable {
     var preferredAIProvider: AIProviderPreference = .apple
     var ollamaBaseURL = ""
     var ollamaModel = ""
+    var ollamaEnabled = true
     var openAIEnabled = true
     var openAIAPIKey = ""
     var openAIModel = ""
@@ -3634,6 +3783,34 @@ private struct AIBotsSettingsSnapshot: Equatable {
     var openAIImageModel = ""
     var openAIImageMonthlyLimitPerUser = 5
     var localAISystemPrompt = ""
+}
+
+private enum AIEngineStatus {
+    case online
+    case offline
+    case inactive
+
+    var label: String {
+        switch self {
+        case .online:
+            return "Online"
+        case .offline:
+            return "Offline"
+        case .inactive:
+            return "Inactive"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .online:
+            return .green
+        case .offline:
+            return .red
+        case .inactive:
+            return .secondary
+        }
+    }
 }
 
 private struct GeneralSettingsSnapshot: Equatable {

@@ -657,6 +657,26 @@ extension AppModel {
                 description: result.message,
                 color: result.ok ? 3_062_954 : 15_790_767
             )
+        case "featurerequest":
+            let featureText = slashOptionString(named: "feature", in: data)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let reasonText = slashOptionString(named: "reason", in: data)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !featureText.isEmpty else {
+                return embed(title: "Feature Request", description: "Usage: `/featurerequest feature:<feature> [reason:<why>]`", color: 15_790_767)
+            }
+            let result = await handleFeatureRequestSlash(
+                raw: context.rawLikeMessage,
+                username: context.username,
+                channelId: context.channelId,
+                featureText: featureText,
+                reasonText: reasonText
+            )
+            return embed(
+                title: "Feature Request",
+                description: result.message,
+                color: result.ok ? 3_062_954 : 15_790_767
+            )
         case "debug":
             guard await canRunDebugCommand(raw: context.rawLikeMessage) else {
                 return embed(title: "Debug", description: "⛔ Restricted to server owners or admins.", color: 15_790_767)
