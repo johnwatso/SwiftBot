@@ -33,7 +33,7 @@ Features, UI, and configuration may change frequently as the app evolves. Occasi
 SwiftBot installs are distributed through [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases).
 
 1. Download the latest release from [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases).
-2. Open the `.dmg` or `.zip`.
+2. Open the `.zip`.
 3. Move `SwiftBot.app` to `/Applications`.
 4. Launch SwiftBot and complete onboarding.
 
