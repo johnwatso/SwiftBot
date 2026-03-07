@@ -1218,19 +1218,38 @@ extension AppModel {
     func performWorkerConnectionTest(leaderAddress rawValue: String) async -> WorkerConnectionTestOutcome {
         guard let baseURL = normalizedSwiftMeshBaseURL(from: rawValue),
               let host = baseURL.host else {
-            return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+            return WorkerConnectionTestOutcome(
+                message: "Invalid URL. Input: \"\(rawValue.trimmingCharacters(in: .whitespacesAndNewlines))\"",
+                isSuccess: false
+            )
         }
 
         let port = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
+        let endpoint = "\(baseURL.scheme?.uppercased() ?? "HTTP") \(host):\(port)"
         switch testReachability(host: host, port: port) {
-        case .hostUnreachable:
-            return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+        case .hostUnreachable(let reason):
+            return WorkerConnectionTestOutcome(
+                message: """
+                Step 1/3 Resolve+Reachability: FAILED
+                Target: \(endpoint)
+                Reason: \(reason)
+                """,
+                isSuccess: false
+            )
         case .reachable:
             break
         }
 
         guard let pingURL = URL(string: baseURL.absoluteString + "/cluster/ping") else {
-            return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+            return WorkerConnectionTestOutcome(
+                message: """
+                Step 1/3 Resolve+Reachability: OK
+                Step 2/3 Build Request: FAILED
+                Target: \(baseURL.absoluteString)/cluster/ping
+                Reason: Invalid URL
+                """,
+                isSuccess: false
+            )
         }
 
         var request = URLRequest(url: pingURL)
@@ -1242,40 +1261,81 @@ extension AppModel {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+                return WorkerConnectionTestOutcome(
+                    message: """
+                    Step 1/3 Resolve+Reachability: OK
+                    Step 2/3 HTTP GET /cluster/ping: FAILED
+                    Target: \(pingURL.absoluteString)
+                    Reason: No HTTP response
+                    """,
+                    isSuccess: false
+                )
             }
             if http.statusCode == 401 {
-                return WorkerConnectionTestOutcome(message: "Authentication failed (shared secret mismatch)", isSuccess: false)
+                let authMode = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "HMAC"
+                return WorkerConnectionTestOutcome(
+                    message: """
+                    Step 1/3 Resolve+Reachability: OK
+                    Step 2/3 HTTP GET /cluster/ping: FAILED (401)
+                    Target: \(pingURL.absoluteString)
+                    Auth: \(authMode)
+                    Reason: Authentication failed (shared secret mismatch or missing secret in clustered mode)
+                    """,
+                    isSuccess: false
+                )
             }
             guard (200..<300).contains(http.statusCode),
                   let payload = try? JSONDecoder().decode(SwiftMeshPingResponse.self, from: data),
                   payload.status.caseInsensitiveCompare("ok") == .orderedSame,
                   payload.role.caseInsensitiveCompare("leader") == .orderedSame else {
-                return WorkerConnectionTestOutcome(message: "Server reachable but not SwiftBot", isSuccess: false)
+                let snippet = String(data: data, encoding: .utf8)?
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
+                return WorkerConnectionTestOutcome(
+                    message: """
+                    Step 1/3 Resolve+Reachability: OK
+                    Step 2/3 HTTP GET /cluster/ping: FAILED (\(http.statusCode))
+                    Target: \(pingURL.absoluteString)
+                    Reason: Server reachable but response is not SwiftBot leader
+                    Response: \(String(snippet.prefix(180)))
+                    """,
+                    isSuccess: false
+                )
             }
 
             let latencyMs = max(1, Int((Date().timeIntervalSince(startedAt) * 1000).rounded()))
             return WorkerConnectionTestOutcome(
-                message: "Successful connection with latency: \(latencyMs) ms",
+                message: """
+                Step 1/3 Resolve+Reachability: OK (\(endpoint))
+                Step 2/3 HTTP GET /cluster/ping: OK (200)
+                Step 3/3 Validate role/status: OK (role=\(payload.role), node=\(payload.node))
+                Latency: \(latencyMs) ms
+                """,
                 isSuccess: true
             )
         } catch let error as URLError {
             switch error.code {
             case .badURL, .unsupportedURL:
-                return WorkerConnectionTestOutcome(message: "Invalid URL", isSuccess: false)
+                return WorkerConnectionTestOutcome(message: "Invalid URL (\(error.code.rawValue)) for \(pingURL.absoluteString)", isSuccess: false)
             case .cannotFindHost, .dnsLookupFailed, .timedOut, .notConnectedToInternet:
-                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+                return WorkerConnectionTestOutcome(
+                    message: "HTTP request to \(pingURL.absoluteString) failed (\(error.code.rawValue)): \(error.localizedDescription)",
+                    isSuccess: false
+                )
             case .cannotConnectToHost:
                 let portLabel = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
                 return WorkerConnectionTestOutcome(
-                    message: "Connection refused on port \(portLabel) (Primary may be offline or settings not saved)",
+                    message: "Connection refused to \(host):\(portLabel) (\(error.code.rawValue)). Primary may be offline, firewalled, or bound to a different port.",
                     isSuccess: false
                 )
             default:
-                return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+                return WorkerConnectionTestOutcome(
+                    message: "HTTP request failed (\(error.code.rawValue)) for \(pingURL.absoluteString): \(error.localizedDescription)",
+                    isSuccess: false
+                )
             }
         } catch {
-            return WorkerConnectionTestOutcome(message: "Host unreachable", isSuccess: false)
+            return WorkerConnectionTestOutcome(message: "Unexpected error for \(pingURL.absoluteString): \(error.localizedDescription)", isSuccess: false)
         }
     }
 
@@ -1297,8 +1357,9 @@ extension AppModel {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        let hadExplicitScheme = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
         let candidate: String
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+        if hadExplicitScheme {
             candidate = trimmed
         } else {
             candidate = "http://\(trimmed)"
@@ -1311,7 +1372,12 @@ extension AppModel {
               !host.isEmpty else {
             return nil
         }
-        let resolvedPort = url.port ?? settings.clusterListenPort
+        let resolvedPort = url.port ?? {
+            if hadExplicitScheme {
+                return scheme.lowercased() == "https" ? 443 : 80
+            }
+            return settings.clusterListenPort
+        }()
 
         var components = URLComponents()
         components.scheme = scheme
@@ -1323,7 +1389,7 @@ extension AppModel {
 
     func testReachability(host: String, port: Int) -> WorkerReachabilityResult {
         guard (1...Int(UInt16.max)).contains(port) else {
-            return .hostUnreachable
+            return .hostUnreachable(reason: "Invalid port \(port)")
         }
 
         var hints = addrinfo(
@@ -1347,7 +1413,12 @@ extension AppModel {
             freeaddrinfo(resultPointer)
         }
 
-        return status == 0 ? .reachable : .hostUnreachable
+        if status == 0 {
+            return .reachable
+        }
+
+        let reason = String(cString: gai_strerror(status))
+        return .hostUnreachable(reason: "DNS/addr resolution failed for \(host):\(port) (\(status): \(reason))")
     }
 
     func clusterCommand(action: String, channelId: String) async -> Bool {

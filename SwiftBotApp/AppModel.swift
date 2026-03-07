@@ -1710,7 +1710,7 @@ struct WorkerConnectionTestOutcome {
 
 enum WorkerReachabilityResult {
     case reachable
-    case hostUnreachable
+    case hostUnreachable(reason: String)
 }
 
 struct SwiftMeshPingResponse: Decodable {
