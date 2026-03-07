@@ -358,11 +358,23 @@ extension AppModel {
             return
         }
 
-        let response = await executeSlashCommand(
-            command: commandName.lowercased(),
-            data: data,
-            context: context
-        )
+        let response: SlashResponsePayload
+        if settings.commandsEnabled && settings.slashCommandsEnabled {
+            response = await executeSlashCommand(
+                command: commandName.lowercased(),
+                data: data,
+                context: context
+            )
+        } else {
+            response = (
+                content: nil,
+                embeds: [[
+                    "title": "Slash Commands Disabled",
+                    "description": "Slash commands are turned off in SwiftBot settings.",
+                    "color": 15_790_767
+                ]]
+            )
+        }
         stats.commandsRun += 1
         let slashCommandForLog = formatSlashCommandForLog(name: commandName, data: data)
         let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
@@ -428,6 +440,13 @@ extension AppModel {
         guard let appID = botUserId, !appID.isEmpty else { return }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
+        let slashEnabled = settings.commandsEnabled && settings.slashCommandsEnabled
+        if lastSlashCommandsEnabledState != slashEnabled {
+            lastSlashRegistrationAt = nil
+            lastSlashGuildRegistrationAt.removeAll()
+            clearedGlobalSlashCommands = false
+            lastSlashCommandsEnabledState = slashEnabled
+        }
         let commands = buildSlashCommandDefinitions()
         let now = Date()
         let guildIds = connectedServers.keys.sorted()
@@ -466,7 +485,11 @@ extension AppModel {
             }
         }
         if guildRegisteredCount > 0 {
-            logs.append("✅ Slash commands registered for \(guildRegisteredCount) guild(s)")
+            if slashEnabled {
+                logs.append("✅ Slash commands registered for \(guildRegisteredCount) guild(s)")
+            } else {
+                logs.append("✅ Slash commands disabled and cleared for \(guildRegisteredCount) guild(s)")
+            }
         } else if guildIds.isEmpty,
                   (lastSlashRegistrationAt == nil || now.timeIntervalSince(lastSlashRegistrationAt!) >= 300) {
             do {
@@ -476,7 +499,11 @@ extension AppModel {
                     token: token
                 )
                 lastSlashRegistrationAt = now
-                logs.append("✅ Slash commands registered globally (no guilds known yet)")
+                if slashEnabled {
+                    logs.append("✅ Slash commands registered globally (no guilds known yet)")
+                } else {
+                    logs.append("✅ Slash commands disabled and cleared globally")
+                }
             } catch {
                 logs.append("❌ Global slash command registration failed: \(error.localizedDescription)")
             }
@@ -537,13 +564,37 @@ extension AppModel {
             embed(title: title, description: ok ? "✅ Completed." : "❌ Failed.", color: ok ? 3_062_954 : 15_790_767)
         }
 
+        guard settings.commandsEnabled else {
+            return embed(title: "Commands Disabled", description: "Commands are turned off in SwiftBot settings.", color: 15_790_767)
+        }
+
+        guard settings.slashCommandsEnabled else {
+            return embed(title: "Slash Commands Disabled", description: "Slash commands are turned off in SwiftBot settings.", color: 15_790_767)
+        }
+
+        guard isCommandEnabled(name: command, surface: "slash") else {
+            return embed(title: "Slash Command Disabled", description: "`/\(command)` is disabled in command settings.", color: 15_790_767)
+        }
+
         switch command {
         case "help":
             let cmd = slashOptionString(named: "command", in: data)
             if let cmd, !cmd.isEmpty {
-                _ = await executeCommand("help \(cmd)", username: context.username, channelId: context.channelId, raw: context.rawLikeMessage)
+                _ = await executeCommand(
+                    "help \(cmd)",
+                    username: context.username,
+                    channelId: context.channelId,
+                    raw: context.rawLikeMessage,
+                    bypassSystemToggles: true
+                )
             } else {
-                _ = await executeCommand("help", username: context.username, channelId: context.channelId, raw: context.rawLikeMessage)
+                _ = await executeCommand(
+                    "help",
+                    username: context.username,
+                    channelId: context.channelId,
+                    raw: context.rawLikeMessage,
+                    bypassSystemToggles: true
+                )
             }
             return embed(title: "Help", description: "📘 Posted help details in this channel.")
         case "ping":

@@ -2209,17 +2209,8 @@ struct ActionSectionView: View {
 
 struct CommandsView: View {
     @EnvironmentObject var app: AppModel
-    @State private var baselineHelpSettings = HelpSettings()
-    @State private var commandSearchText = ""
-    @State private var commandSurface: CommandSurface = .all
-
-    private enum CommandSurface: String, CaseIterable, Identifiable {
-        case all = "All"
-        case prefix = "Prefix"
-        case slash = "Slash"
-
-        var id: String { rawValue }
-    }
+    @State private var showSettingsUpdatedToast = false
+    @State private var settingsToastTask: Task<Void, Never>?
 
     private struct VisualCommand: Identifiable {
         let id: String
@@ -2232,12 +2223,8 @@ struct CommandsView: View {
         let adminOnly: Bool
     }
 
-    private var hasUnsavedChanges: Bool {
-        app.settings.help != baselineHelpSettings
-    }
-
     private var visualPrefixCommands: [VisualCommand] {
-        let catalog = app.buildHelpCatalog(prefix: app.effectivePrefix())
+        let catalog = app.buildFullHelpCatalog(prefix: app.effectivePrefix())
         return catalog.entries.map { entry in
             VisualCommand(
                 id: "prefix-\(entry.name)",
@@ -2253,7 +2240,7 @@ struct CommandsView: View {
     }
 
     private var visualSlashCommands: [VisualCommand] {
-        app.buildSlashCommandDefinitions().compactMap { raw in
+        app.allSlashCommandDefinitions().compactMap { raw in
             guard let name = raw["name"] as? String else { return nil }
             let description = (raw["description"] as? String) ?? "No description"
             let options = (raw["options"] as? [[String: Any]]) ?? []
@@ -2275,31 +2262,25 @@ struct CommandsView: View {
         }
     }
 
-    private var filteredVisualCommands: [VisualCommand] {
-        let selected: [VisualCommand]
-        switch commandSurface {
-        case .all:
-            selected = visualPrefixCommands + visualSlashCommands
-        case .prefix:
-            selected = visualPrefixCommands
-        case .slash:
-            selected = visualSlashCommands
+    private func commandEnabledBinding(for command: VisualCommand) -> Binding<Bool> {
+        Binding(
+            get: { app.isCommandEnabled(name: command.name, surface: command.surface.lowercased()) },
+            set: { app.setCommandEnabled(name: command.name, surface: command.surface.lowercased(), enabled: $0) }
+        )
+    }
+
+    private var allVisualCommands: [VisualCommand] {
+        guard app.settings.commandsEnabled else { return [] }
+
+        var commands: [VisualCommand] = []
+        if app.settings.prefixCommandsEnabled {
+            commands += visualPrefixCommands
+        }
+        if app.settings.slashCommandsEnabled {
+            commands += visualSlashCommands
         }
 
-        let query = commandSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let filtered = query.isEmpty ? selected : selected.filter { item in
-            let haystack = [
-                item.name,
-                item.usage,
-                item.description,
-                item.category,
-                item.surface,
-                item.aliases.joined(separator: " ")
-            ].joined(separator: " ").lowercased()
-            return haystack.contains(query)
-        }
-
-        return filtered.sorted { lhs, rhs in
+        return commands.sorted { lhs, rhs in
             if lhs.surface != rhs.surface {
                 return lhs.surface < rhs.surface
             }
@@ -2310,174 +2291,186 @@ struct CommandsView: View {
         }
     }
 
+    private func persistCommandSettings(syncSlash: Bool) {
+        app.persistSettingsQuietly()
+        if syncSlash {
+            Task { await app.registerSlashCommandsIfNeeded() }
+        }
+        settingsToastTask?.cancel()
+        withAnimation(.easeOut(duration: 0.16)) {
+            showSettingsUpdatedToast = true
+        }
+        settingsToastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_100_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    showSettingsUpdatedToast = false
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
+            VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Command System")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Help & Commands")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        Picker("Help Mode", selection: $app.settings.help.mode) {
-                            ForEach(HelpMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
+                    VStack(alignment: .leading, spacing: 11) {
+                        HStack(spacing: 10) {
+                            Text("Enable Commands")
+                            Spacer(minLength: 0)
+                            Toggle("", isOn: $app.settings.commandsEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
                         }
-                        .pickerStyle(.menu)
-
-                        if app.settings.help.mode != .classic {
-                            Text(app.settings.help.mode.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Picker("Tone", selection: $app.settings.help.tone) {
-                            ForEach(HelpTone.allCases) { tone in
-                                Text(tone.rawValue).tag(tone)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Custom Intro")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            TextField("Optional intro text", text: $app.settings.help.customIntro)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Custom Footer")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            TextField("Optional footer text", text: $app.settings.help.customFooter)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        DisclosureGroup("Preview (embed fields)") {
-                            let prefix = "/"
-                            let catalog = CommandCatalog.build(
-                                prefix: prefix,
-                                wikiCommands: app.settings.wikiBot.sources
-                                    .filter(\.enabled)
-                                    .flatMap { source in
-                                        source.commands
-                                            .filter(\.enabled)
-                                            .map { cmd in WikiCommandInfo(trigger: cmd.trigger, sourceName: source.name, description: cmd.description) }
-                                    }
-                            )
-                            let renderer = HelpRenderer(prefix: prefix, helpSettings: app.settings.help)
-                            let previewText = renderer.overview(catalog: catalog)
-
-                            ScrollView {
-                                Text(previewText)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(8)
-                            }
-                            .frame(maxHeight: 220)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                            )
-
-                            Text("Live output is a Discord embed. Preview shows field content only.")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Command Catalog")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
 
                         HStack(spacing: 10) {
-                            TextField("Search commands, usage, or description", text: $commandSearchText)
-                                .textFieldStyle(.roundedBorder)
-
-                            Picker("Surface", selection: $commandSurface) {
-                                ForEach(CommandSurface.allCases) { item in
-                                    Text(item.rawValue).tag(item)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 220)
+                            Text("Enable Prefix Commands")
+                            Spacer(minLength: 0)
+                            Toggle("", isOn: $app.settings.prefixCommandsEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .disabled(!app.settings.commandsEnabled)
                         }
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
 
-                        if filteredVisualCommands.isEmpty {
-                            Text("No commands match your filters.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical, 8)
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(filteredVisualCommands) { command in
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack(spacing: 8) {
-                                            Text(command.name)
-                                                .font(.body.weight(.semibold))
-                                            CommandTag(text: command.surface, tint: command.surface == "Slash" ? .orange : .blue)
-                                            CommandTag(text: command.category, tint: .secondary)
-                                            if command.adminOnly {
-                                                CommandTag(text: "Admin", tint: .red)
+                        HStack(spacing: 10) {
+                            Text("Enable Slash Commands")
+                            Spacer(minLength: 0)
+                            Toggle("", isOn: $app.settings.slashCommandsEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .disabled(!app.settings.commandsEnabled)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    }
+                }
+                .controlSize(.small)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Command Catalog")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    if allVisualCommands.isEmpty {
+                        VStack {
+                            Spacer(minLength: 0)
+                            VStack(spacing: 6) {
+                                Text("No Commands Available")
+                                    .font(.headline)
+                                Text("Commands will appear here once the bot registers them.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .multilineTextAlignment(.center)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 13) {
+                                ForEach(allVisualCommands) { command in
+                                    HStack(alignment: .center, spacing: 16) {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack(spacing: 8) {
+                                                Text(command.name)
+                                                    .font(.body.weight(.semibold))
+                                                CommandTag(text: command.surface, tint: command.surface == "Slash" ? .orange : .blue)
+                                                CommandTag(text: command.category, tint: .secondary)
+                                                if command.adminOnly {
+                                                    CommandTag(text: "Admin", tint: .red)
+                                                }
+                                            }
+
+                                            Text(command.usage)
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                                .textSelection(.enabled)
+
+                                            Text(command.description)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+
+                                            if !command.aliases.isEmpty {
+                                                Text("Aliases: " + command.aliases.joined(separator: ", "))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
                                             }
                                         }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                                        Text(command.usage)
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-
-                                        Text(command.description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-
-                                        if !command.aliases.isEmpty {
-                                            Text("Aliases: " + command.aliases.joined(separator: ", "))
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
+                                        Toggle("Enabled", isOn: commandEnabledBinding(for: command))
+                                            .labelsHidden()
+                                            .toggleStyle(.switch)
+                                            .frame(maxHeight: .infinity, alignment: .center)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 8)
-                                    .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .padding(.leading, 14)
+                                    .padding(.trailing, 22)
+                                    .padding(.vertical, 10)
+                                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                                    )
                                 }
                             }
-                            .padding(.top, 2)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .glassCard(cornerRadius: 20, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
                 }
-                .padding(.top, 2)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges {
-                StickySaveButton(label: "Save Command Settings", systemImage: "square.and.arrow.down.fill") {
-                    app.saveSettings()
-                    baselineHelpSettings = app.settings.help
-                }
-                .padding(.trailing, 22)
-                .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            if showSettingsUpdatedToast {
+                Text("Settings updated")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                    )
+                    .padding(.trailing, 18)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .onAppear { baselineHelpSettings = app.settings.help }
+        .onChange(of: app.settings.commandsEnabled) { _, _ in
+            persistCommandSettings(syncSlash: true)
+        }
+        .onChange(of: app.settings.prefixCommandsEnabled) { _, _ in
+            persistCommandSettings(syncSlash: false)
+        }
+        .onChange(of: app.settings.slashCommandsEnabled) { _, _ in
+            persistCommandSettings(syncSlash: true)
+        }
+        .onChange(of: app.settings.disabledCommandKeys) { _, _ in
+            persistCommandSettings(syncSlash: true)
+        }
     }
 }
 

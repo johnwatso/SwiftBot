@@ -1,9 +1,56 @@
 import Foundation
 
 extension AppModel {
-    func executeCommand(_ commandText: String, username: String, channelId: String, raw: [String: DiscordJSON]) async -> Bool {
+    func commandKey(name: String, surface: String) -> String {
+        "\(surface.lowercased()):\(name.lowercased())"
+    }
+
+    func canonicalPrefixCommandName(_ name: String) -> String {
+        switch name.lowercased() {
+        case "imagine":
+            return "image"
+        case "worker":
+            return "cluster"
+        default:
+            return name.lowercased()
+        }
+    }
+
+    func isCommandEnabled(name: String, surface: String) -> Bool {
+        let key = commandKey(name: name, surface: surface)
+        return !settings.disabledCommandKeys.contains(key)
+    }
+
+    func setCommandEnabled(name: String, surface: String, enabled: Bool) {
+        let key = commandKey(name: name, surface: surface)
+        if enabled {
+            settings.disabledCommandKeys.remove(key)
+        } else {
+            settings.disabledCommandKeys.insert(key)
+        }
+    }
+
+    func executeCommand(
+        _ commandText: String,
+        username: String,
+        channelId: String,
+        raw: [String: DiscordJSON],
+        bypassSystemToggles: Bool = false
+    ) async -> Bool {
         let tokens = commandText.split(separator: " ").map(String.init)
         guard let command = tokens.first?.lowercased() else { return false }
+        if !bypassSystemToggles {
+            guard settings.commandsEnabled else {
+                return await send(channelId, "⛔ Commands are disabled in command settings.")
+            }
+            guard settings.prefixCommandsEnabled else {
+                return await send(channelId, "⛔ Prefix commands are disabled in command settings.")
+            }
+        }
+        let canonicalCommand = canonicalPrefixCommandName(command)
+        guard isCommandEnabled(name: canonicalCommand, surface: "prefix") else {
+            return await send(channelId, "⛔ `\(effectivePrefix())\(canonicalCommand)` is disabled in command settings.")
+        }
 
         let prefix = effectivePrefix()
 
@@ -236,7 +283,7 @@ extension AppModel {
     }
 
     /// Builds the full CommandCatalog including all enabled WikiBridge commands.
-    func buildHelpCatalog(prefix: String) -> CommandCatalog {
+    func buildFullHelpCatalog(prefix: String) -> CommandCatalog {
         var wikiCmds: [WikiCommandInfo] = []
         for source in orderedEnabledWikiSources() {
             for command in source.commands where command.enabled {
@@ -246,6 +293,12 @@ extension AppModel {
             }
         }
         return CommandCatalog.build(prefix: prefix, wikiCommands: wikiCmds)
+    }
+
+    func buildHelpCatalog(prefix: String) -> CommandCatalog {
+        let full = buildFullHelpCatalog(prefix: prefix)
+        let filtered = full.entries.filter { isCommandEnabled(name: $0.name, surface: "prefix") }
+        return CommandCatalog(entries: filtered, configuredWikiSources: full.configuredWikiSources)
     }
 
     /// Ensures custom intro/footer are always applied to AI help output.

@@ -1,8 +1,8 @@
 import Foundation
 
 extension AppModel {
-    func buildSlashCommandDefinitions() -> [[String: Any]] {
-        [
+    func allSlashCommandDefinitions() -> [[String: Any]] {
+        return [
             ["name": "help", "description": "Show help for SwiftBot", "type": 1, "options": [["type": 3, "name": "command", "description": "Optional command name", "required": false]]],
             ["name": "ping", "description": "Check if bot is alive", "type": 1],
             ["name": "roll", "description": "Roll dice, example: 2d6", "type": 1, "options": [["type": 3, "name": "notation", "description": "Dice notation NdS", "required": true]]],
@@ -26,6 +26,14 @@ extension AppModel {
             ]],
             ["name": "meta", "description": "Fetch current THE FINALS meta from Skycoach", "type": 1]
         ]
+    }
+
+    func buildSlashCommandDefinitions() -> [[String: Any]] {
+        guard settings.commandsEnabled, settings.slashCommandsEnabled else { return [] }
+        return allSlashCommandDefinitions().filter { raw in
+            guard let name = raw["name"] as? String else { return true }
+            return isCommandEnabled(name: name, surface: "slash")
+        }
     }
 
     func slashOptionString(named name: String, in data: [String: DiscordJSON]) -> String? {
