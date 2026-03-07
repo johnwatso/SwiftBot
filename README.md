@@ -158,7 +158,7 @@ SwiftBot supports both prefix commands and slash commands. The prefix is configu
 - `meta`
 - `wiki`
 
-### Cluster
+### Cluster - SwiftMesh
 
 - `cluster`
 
