@@ -21,6 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **Impact:** The repository root is easier to scan, published Pages content is cleaner, and the app now uses a single runtime source of truth for provider artwork.
 
+#### Risk Matrix Review
+**Issue:** `RISK_MATRIX.md` still described older planned features and no longer reflected the current operational risks in SwiftBot.
+
+**Solution:**
+- Replaced the stale feature-planning matrix with a current risk review covering secrets at rest, SwiftMesh contract drift, AI reliability, Sparkle publishing, CI gaps, and UI maintainability.
+
+**Impact:** The risk register now reflects the actual codebase and gives a clearer priority order for follow-up work.
+
 ### Changed - 2026-03-07
 
 #### SwiftMesh Internet Peer Networking + Reconciliation + UI Refresh
