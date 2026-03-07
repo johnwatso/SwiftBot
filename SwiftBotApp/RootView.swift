@@ -3630,8 +3630,8 @@ struct AIBotsView: View {
     @ViewBuilder
     private func providerIcon(imageName: String, fallbackSystemImage: String) -> some View {
         AIIconContainer {
-            if Bundle.main.url(forResource: imageName, withExtension: "png") != nil {
-                Image(imageName)
+            if let image = NSImage(named: NSImage.Name(imageName)) {
+                Image(nsImage: image)
                     .resizable()
                     .renderingMode(.original)
                     .scaledToFit()

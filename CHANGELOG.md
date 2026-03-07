@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed - 2026-03-08
+
+#### Repository Hygiene
+**Issue:** The repository mixed published Pages content with internal planning docs, carried assistant-local metadata in version control, and duplicated several image resources.
+
+**Solution:**
+- Added a canonical `LICENSE` file for the GPLv3 license already advertised in the README.
+- Ignored and removed `.ai-context` from version control.
+- Moved internal planning and design docs from `docs/` to `notes/` so GitHub Pages only publishes site/appcast content.
+- Moved README screenshots into `assets/readme/` to reduce root-level clutter.
+- Switched AI provider icon loading to named assets, allowing removal of duplicate loose PNG copies.
+- Removed unused Apple AI image resources that were no longer referenced at runtime.
+
+**Impact:** The repository root is easier to scan, published Pages content is cleaner, and the app now uses a single runtime source of truth for provider artwork.
+
 ### Changed - 2026-03-07
 
 #### SwiftMesh Internet Peer Networking + Reconciliation + UI Refresh

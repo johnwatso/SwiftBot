@@ -262,7 +262,7 @@ SwiftMesh is undergoing stabilization to improve reliability and comply with new
 
 ### 2. Memory & Performance
 
-See [`docs/music.md`](docs/music.md) for full design details. Inspired by [tunes.ninja](https://tunes.ninja).
+See [`notes/music.md`](notes/music.md) for full design details. Inspired by [tunes.ninja](https://tunes.ninja).
 
 ### Purpose
 When a user posts a Spotify/YouTube/Apple Music/etc. link, SwiftBot automatically replies with a cross-platform embed (via the [Odesli API](https://odesli.co)) so everyone can open the track in their preferred app.

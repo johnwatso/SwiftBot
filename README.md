@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="App Images/app-icon.png" width="120" alt="SwiftBot Icon">
+  <img src="assets/readme/app-icon.png" width="120" alt="SwiftBot Icon">
 </p>
 
 <h1 align="center">SwiftBot</h1>
@@ -25,7 +25,7 @@ Features, UI, and configuration may change frequently as the app evolves. Occasi
 ## Preview
 
 <p align="center">
-  <img src="App Images/ui-preview.png" alt="SwiftBot Dashboard Preview">
+  <img src="assets/readme/ui-preview.png" alt="SwiftBot Dashboard Preview">
 </p>
 
 ## Install
@@ -183,7 +183,8 @@ Bot tokens are stored securely in macOS Keychain.
 - `Sources/UpdateEngine/` - reusable update-checking engine used by Patchy
 - `Tools/SparklePublisher/` - Sparkle publishing helper
 - `Tests/SwiftBotTests/` - application test suite
-- `docs/` - release notes, appcasts, and planning/reference docs
+- `docs/` - GitHub Pages site, release notes, and Sparkle appcasts
+- `notes/` - internal planning, design, and review docs
 
 ## Documentation
 
@@ -191,7 +192,7 @@ Bot tokens are stored securely in macOS Keychain.
 - [AI Guide](AI_GUIDE.md)
 - [Changelog](CHANGELOG.md)
 - [Risk Matrix](RISK_MATRIX.md)
-- [Feature Plan](docs/FEATURE_PLAN_PHASE1.txt)
+- [Feature Plan](notes/FEATURE_PLAN_PHASE1.txt)
 
 ## Releases
 
