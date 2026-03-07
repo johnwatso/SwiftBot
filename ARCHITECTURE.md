@@ -246,6 +246,12 @@ SwiftMesh is undergoing stabilization to improve reliability and comply with new
   - **Strict Term Validation:** All mesh endpoints must verify `leaderTerm` to prevent split-brain.
   - **Replication Monotonicity:** Cursors must advance forward and only forward to prevent data regressions.
   - **Clean Build Targets:** All test helpers and non-production logic are being moved out of the production targets.
+- **Current Mesh Networking Policy (2026-03-07):**
+  - Internet hosts are allowed for peer addresses (not LAN-only), with unsafe targets blocked (metadata/wildcard hosts).
+  - Peer URLs without explicit port normalize to configured mesh port (`clusterListenPort`, default `38787`), not implicit `:80`/`:443`.
+  - Mesh auth stays fail-closed: non-`/health` routes require valid HMAC when a shared secret is configured.
+  - Startup leader reconciliation prevents returning-primary split brain by probing configured leader `/cluster/status` and demoting to standby when an active leader exists.
+  - Leader registration path stores callback address from observed source host plus declared listen port for better real-world reachability.
 
 ## Coding Standards & Performance
 

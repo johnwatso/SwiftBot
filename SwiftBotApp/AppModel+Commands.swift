@@ -1311,11 +1311,12 @@ extension AppModel {
               !host.isEmpty else {
             return nil
         }
+        let resolvedPort = url.port ?? settings.clusterListenPort
 
         var components = URLComponents()
         components.scheme = scheme
         components.host = host
-        components.port = url.port ?? (scheme.lowercased() == "https" ? 443 : settings.clusterListenPort)
+        components.port = resolvedPort
         components.path = ""
         return components.url
     }

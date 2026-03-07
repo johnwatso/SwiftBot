@@ -1264,15 +1264,15 @@ actor ClusterCoordinator {
             return nil
         }
         
-        // SSRF guard: only allow private network ranges or localhost
+        // Mesh host guard: allow internet peers while still blocking obvious unsafe targets.
         if !isSSRFSafeHost(host) {
             return nil
         }
 
         let resolvedPort: Int = {
             if let explicit = url.port { return explicit }
-            // For host-only mesh endpoints, default to this node's configured mesh port.
-            return scheme.lowercased() == "https" ? 443 : listenPort
+            // Never default mesh endpoints to :80/:443; use configured mesh port.
+            return listenPort
         }()
         return "\(scheme)://\(host):\(resolvedPort)"
     }
@@ -1282,21 +1282,21 @@ actor ClusterCoordinator {
         if lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "::1" {
             return true
         }
-        
-        // Basic private range check for typical home/office networks
-        let privatePrefixes = ["192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31."]
-        for prefix in privatePrefixes {
-            if lowerHost.hasPrefix(prefix) {
-                return true
-            }
+
+        // Deny wildcard/unspecified endpoints.
+        if lowerHost == "0.0.0.0" || lowerHost == "::" {
+            return false
         }
-        
-        // Also allow local .local hostnames (Bonjour)
-        if lowerHost.hasSuffix(".local") {
-            return true
+
+        // Deny cloud metadata and link-local ranges.
+        if lowerHost == "169.254.169.254"
+            || lowerHost.hasPrefix("169.254.")
+            || lowerHost == "metadata.google.internal" {
+            return false
         }
-        
-        return false
+
+        // Allow private LAN, public internet, and mDNS hosts.
+        return true
     }
 
     private func isWorkerReachable(_ baseURL: String) async -> Bool {
