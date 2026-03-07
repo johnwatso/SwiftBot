@@ -1,54 +1,46 @@
-# SwiftMesh Risk Matrix
+# SwiftMesh — Improvement Plan
 
 **Generated:** 2026-03-08
 **Authors:** Claude, Codex, Gemini, Kimi (agent team discussion)
 **Status:** Draft — awaiting John's review
-**Related:** `notes/swiftmesh-plan.md`, `RISK_MATRIX.md`
+**Related:** `notes/swiftmesh-plan.md`, `notes/swiftmesh-observed-behavior.md`, `RISK_MATRIX.md`
+
+This document tracks areas where SwiftMesh can be made better — new capabilities, reliability improvements, UX enhancements, and fixes. Risks are flagged inline where relevant.
 
 ---
 
-## Risk Matrix
+## Improvement Areas
 
-| # | Area | Risk | Likelihood | Impact | Priority | Current Controls | Recommended Fix |
-|---|------|------|:---:|:---:|:---:|---|---|
-| 1 | **Discovery** | Service type mismatch — nodes advertise `_swiftbot-mesh._tcp` but plan targets `_swiftmesh._tcp`. Mixed-version clusters partition silently: each side looks healthy in isolation. | High | High | P1 | None | Browse both `_swiftmesh._tcp` and `_swiftbot-mesh._tcp` during migration; advertise new type as primary. |
-| 2 | **Startup** | Race condition — `pollClusterStatus()` fires immediately when `SwiftMeshView` appears, but `NWListener` starts asynchronously (~100ms gap). Requests fail silently during that window. | High | High | P1 | None | Gate initial poll on `handleListenerState(.ready)` signal before attempting any cluster communication. |
-| 3 | **Listener Readiness** | Worker registers with leader before its own listener is fully `.ready`. Leader stores the registration and then fails callback/sync/probe traffic against a port that isn't listening yet. | High | High | P1 | None | Require listener `.ready` before initiating registration, or implement a callback-verified ACK loop on the leader side. |
-| 4 | **Promotion Safety** | False-positive promotion — 3 consecutive health misses trigger standby promotion. A transient network partition can cause both nodes to promote simultaneously (split-brain). | Medium | High | P2 | Stale `leaderTerm` rejection prevents divergent writes post-split. | Require witness confirmation: promote only if 1+ additional peers also see the leader as unreachable. |
-| 5 | **Port Normalization** | `normalizedBaseURL` treats `:80`/`:443` differently from the configured mesh port. Tests, runtime, and docs are out of alignment on the canonical policy. | High | High | P2 | HMAC auth prevents malformed requests from being accepted. | Decide canonical policy; align `ClusterCoordinator`, all tests, and docs in one pass. *(Tracked in main RISK_MATRIX.md)* |
-| 6 | **Sync Reliability** | Failed sync replication to standby nodes is silently dropped (`// best effort` comments). No retry mechanism exists; standby state diverges without any signal. | Medium | High | P3 | Cursor-based incremental sync allows eventual catch-up on reconnect. | Add a retry queue with exponential backoff for failed replication attempts. |
-| 7 | **Registration Storms** | Worker registration retries every 4s regardless of failure reason. A recovering leader receives a burst of simultaneous registration requests, potentially destabilizing recovery. | Medium | Medium | P3 | None | Add exponential backoff with jitter for registration retry failures. |
-| 8 | **Graceful Shutdown** | Nodes that stop cleanly do not notify peers. Workers appear as "disconnected" only after a 20s stale timeout, leaving the cluster map stale during intentional restarts. | Medium | Medium | P4 | Stale timeout eventually cleans up disconnected entries. | Implement a `/cluster/leave` endpoint; call it on clean shutdown before terminating the listener. |
-| 9 | **Discovery Health** | `discoveredPeerBaseURLs()` returns peers without verifying reachability. Stale or unreachable peers are handed to the connection layer, causing unnecessary failures. | Medium | Low | P4 | None | Add a lightweight reachability probe before returning discovered peers. |
-| 10 | **Test Port Conflicts** | All mesh tests bind to hardcoded ports (39100–39205). If any port is in use from a prior failed run or in CI, tests fail non-deterministically. | High | Medium | P4 | None | Switch to port 0 (OS-assigned) and read back the assigned port from the bound listener. |
-| 11 | **UI Diagnosability** | Cluster failures surface as generic "Disconnected" states. No reason codes are shown for `401/403`, bad port normalization, callback refusal, or standby-server-inactive scenarios. | High | Medium | P4 | None | Backend emits machine-readable reason codes (`auth_failed`, `listener_not_ready`, `leader_unreachable`, `stale_term_rejected`, `callback_probe_failed`, `service_discovery_mismatch`); UI maps these to human-readable messages. |
-| 12 | **UI Topology Visibility** | No topology visualization exists. Users cannot see which node is leader vs. standby, peer health, or current `leaderTerm` without reading logs. | Medium | Medium | P5 | `SwiftMeshView` shows node list but no health indicators or role distinction in compact map view. | Add a dedicated Cluster Topology view: leader/standby badges, per-peer health (green/yellow/red), current term display. |
-| 13 | **Configuration Guardrails** | No validation prevents enabling mesh without a shared secret or with an invalid port. Misconfiguration results in silent auth failure rather than a clear setup error. | Low | Medium | P5 | None | Validate shared secret presence and port format before applying mesh settings; block enable with actionable error if invalid. |
-| 14 | **Manual Peer Fallback** | Bonjour discovery is the only connection path in the UI. Networks that block mDNS (VPNs, managed Wi-Fi) leave users with no way to connect nodes. | Low | Medium | P5 | Static peer list exists in settings but is not surfaced prominently. | Surface the static peer list as a prominent "Manual Connection" input with clear instructions. |
+| # | Area | What to Improve | Type | Priority | Owner | Status | Risk if Not Addressed |
+| :- | :--- | :--- | :---: | :---: | :--- | :--- | :--- |
+| 1 | **Discovery** | Browse both `_swiftmesh._tcp` and `_swiftbot-mesh._tcp` during the migration period; advertise the new type as primary. Prevents mixed-version clusters from silently partitioning. | Fix | P1 | codex | Open | Nodes on different versions cannot see each other. |
+| 2 | **Startup Sequencing** | Gate the first cluster poll on `handleListenerState(.ready)` before attempting any network contact. Currently `pollClusterStatus()` fires ~100ms before the listener is ready. | Fix | P1 | codex | Open | Silent failures on startup; unreliable initial cluster state. |
+| 3 | **Listener Readiness on Register** | Require a node's own listener to be fully `.ready` before registering with the leader, or implement a callback-verified ACK loop. | Fix | P1 | codex | Open | Leader stores peer but cannot reach it; "registered but not participating" behavior. |
+| 4 | **Port Normalization** | Decide and document the canonical port-normalization policy, then align `ClusterCoordinator`, all tests, and docs in a single pass. | Fix | P2 | claude | Open | Tests and runtime disagree; hard to reason about URL handling. |
+| 5 | **Promotion Safety** | Add a witness requirement to standby promotion: only promote after 1+ other peers also confirm the leader is unreachable. Prevents false-positive split-brain during transient partitions. | Improvement | P2 | claude | Open | Two nodes promote simultaneously, causing a split-brain. |
+| 6 | **Sync Reliability** | Replace the current `// best effort` sync drops with a retry queue and exponential backoff for replication failures. | Improvement | P3 | codex | Open | Standby diverges silently; data loss for conversation history during failover. |
+| 7 | **Registration Backoff** | Add exponential backoff with jitter to worker registration retries (currently fixed 4s). | Improvement | P3 | codex | Open | Recovering leader overwhelmed by simultaneous registration storm. |
+| 8 | **Actionable Error Codes** | Emit machine-readable reason codes from the cluster layer (`auth_failed`, `listener_not_ready`, `leader_unreachable`, `stale_term_rejected`, `callback_probe_failed`, `service_discovery_mismatch`) and map them to clear UI messages. | Improvement | P3 | gemini | Open | Users see generic "Disconnected" with no way to self-diagnose. |
+| 9 | **Graceful Shutdown** | Add a `/cluster/leave` endpoint and call it on clean shutdown before listener teardown, so peers know immediately rather than waiting 20s for a stale timeout. | Improvement | P4 | codex | Open | Cluster map shows stale "disconnected" state for 20s after intentional exits. |
+| 10 | **Discovery Health Check** | Probe peer reachability before returning URLs from `discoveredPeerBaseURLs()`. Filter out stale or unreachable Bonjour entries before handing them to the connection layer. | Improvement | P4 | codex | Open | Unnecessary connection failures against stale discovered peers. |
+| 11 | **Manual Peer Fallback UI** | Surface the static peer list as a prominent "Manual Connection" field in the mesh UI, with clear instructions for networks that block mDNS (VPNs, managed Wi-Fi). | Improvement | P4 | gemini | Open | Users on restricted networks have no way to connect nodes. |
+| 12 | **Topology Visualization** | Add a Cluster Topology view showing leader/standby badges, per-peer health indicators (green/yellow/red), and the current `leaderTerm`. | Improvement | P4 | gemini | Open | Users cannot assess cluster health without reading logs. |
+| 13 | **Test Port Stability** | Replace hardcoded test ports (39100–39205) with port 0 (OS-assigned) across all mesh tests. | Fix | P4 | kimi | Open | Flaky CI failures when ports are already in use from prior runs. |
+| 14 | **Integration Tests** | Add `MeshIntegrationTests.swift` covering multi-node startup sequences, failover, partition, and delta-replay recovery scenarios. | Improvement | P4 | kimi | Open | Multi-node regressions only caught manually or in production. |
+| 15 | **Configuration Guardrails** | Validate shared secret presence and port format before applying mesh settings; block enable with an actionable error if configuration is incomplete. | Improvement | P5 | gemini | Open | Silent auth failures when users enable mesh without a shared secret. |
 
 ---
 
 ## Priority Summary
 
-| Priority | Items | Description |
-|----------|-------|-------------|
-| **P1** | #1, #2, #3 | Blocking — mesh will not reliably form without these fixes |
-| **P2** | #4, #5 | Safety — split-brain risk and protocol contract alignment |
-| **P3** | #6, #7 | Reliability — silent divergence and registration storm under load |
-| **P4** | #8, #9, #10, #11 | Hygiene — shutdown, discovery, test stability, and error visibility |
-| **P5** | #12, #13, #14 | Polish — UI topology, config guardrails, manual fallback |
+| Priority | Items | Theme |
+|----------|-------|-------|
+| **P1** | #1, #2, #3 | Mesh won't reliably form without these |
+| **P2** | #4, #5 | Protocol correctness and split-brain safety |
+| **P3** | #6, #7, #8 | Reliability under load and diagnosability |
+| **P4** | #9–#14 | Hygiene, visibility, and test robustness |
+| **P5** | #15 | UX polish and setup guardrails |
 
 ---
 
-## Ownership
-
-| Agent | Scope |
-|-------|-------|
-| **codex** | P1 listener readiness (#2, #3), service type migration (#1), protocol strictness |
-| **claude** | Architecture alignment — port normalization policy (#5), promotion safety design (#4) |
-| **gemini** | UI diagnosability (#11), topology view (#12), configuration guardrails (#13, #14) |
-| **kimi** | Test port conflicts (#10), sync reliability verification (#6), QA on all fixes |
-
----
-
-*Synthesized from agent team discussion in #general, 2026-03-08. Update ownership and status as work progresses.*
+*Generated from agent team discussion in #general, 2026-03-08. Update Status as work progresses.*
