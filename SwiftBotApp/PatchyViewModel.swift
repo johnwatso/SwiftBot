@@ -16,6 +16,9 @@ struct PatchyFetchResult: Sendable {
 }
 
 enum PatchyRuntime {
+    private static let lastPostedDriverVersionKey = "lastPostedDriverVersion"
+    private static let lastPostedSteamIdentifierKey = "lastPostedSteamIdentifier"
+
     static func makeSource(from target: PatchySourceTarget) throws -> any UpdateSource {
         switch target.source {
         case .nvidia:
@@ -106,6 +109,71 @@ enum PatchyRuntime {
             .appendingPathComponent(".swiftbot")
             .appendingPathComponent("update-engine")
             .appendingPathComponent("identifiers.json")
+    }
+
+    static func lastPostedDriverVersionKey(for sourceKey: String) -> String {
+        "\(sourceKey):\(lastPostedDriverVersionKey)"
+    }
+
+    static func lastPostedSteamIdentifierKey(for sourceKey: String) -> String {
+        "\(sourceKey):\(lastPostedSteamIdentifierKey)"
+    }
+
+    static func makeSteamOrderingStamp(item: SteamUpdateItem) -> String {
+        "\(item.newsItem.date):\(item.newsItem.gid)"
+    }
+
+    static func compareSteamOrderingStamp(_ lhs: String, _ rhs: String) -> Int? {
+        guard let left = parseSteamOrderingStamp(lhs), let right = parseSteamOrderingStamp(rhs) else {
+            return nil
+        }
+
+        if left.date != right.date {
+            return left.date < right.date ? -1 : 1
+        }
+        if left.gid != right.gid {
+            return left.gid < right.gid ? -1 : 1
+        }
+        return 0
+    }
+
+    static func compareDriverVersions(_ lhs: String, _ rhs: String) -> Int? {
+        guard let left = parseDriverVersion(lhs), let right = parseDriverVersion(rhs) else {
+            return nil
+        }
+
+        let maxCount = max(left.count, right.count)
+        for index in 0..<maxCount {
+            let leftValue = index < left.count ? left[index] : 0
+            let rightValue = index < right.count ? right[index] : 0
+            if leftValue != rightValue {
+                return leftValue < rightValue ? -1 : 1
+            }
+        }
+        return 0
+    }
+
+    private static func parseDriverVersion(_ value: String) -> [Int]? {
+        let pattern = #"[0-9]+(?:\.[0-9]+)+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard let match = regex.firstMatch(in: value, range: range),
+              let matchRange = Range(match.range(at: 0), in: value) else {
+            return nil
+        }
+
+        let parts = value[matchRange].split(separator: ".").compactMap { Int($0) }
+        return parts.isEmpty ? nil : parts
+    }
+
+    private static func parseSteamOrderingStamp(_ value: String) -> (date: Int, gid: UInt64)? {
+        let parts = value.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, let date = Int(parts[0]), let gid = UInt64(parts[1]) else {
+            return nil
+        }
+        return (date, gid)
     }
 
     private static func renderSections(_ sections: [ReleaseSection]) -> String {

@@ -63,7 +63,7 @@ public struct SteamService: Sendable {
             throw SteamServiceError.invalidAppID(appID)
         }
 
-        let urlString = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=\(appID)&count=4&maxlength=5000"
+        let urlString = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=\(appID)&count=100&maxlength=5000"
         guard let url = URL(string: urlString) else {
             throw SteamServiceError.invalidURL
         }
@@ -78,7 +78,6 @@ public struct SteamService: Sendable {
         let decoder = JSONDecoder()
         let apiResponse = try decoder.decode(SteamAPIResponse.self, from: data)
 
-        let itemsToConsider = Array(apiResponse.appnews.newsitems.prefix(4))
         let acceptedSubstrings = ["update", "patch", "hotfix", "notes"]
         let rejectedSubstrings = ["store", "sale", "community", "event", "spotlight"]
 
@@ -89,7 +88,8 @@ public struct SteamService: Sendable {
             return containsAccepted && !containsRejected
         }
 
-        guard let newsItem = itemsToConsider.first(where: { isValidTitle($0.title) }) else {
+        let matchingItems = apiResponse.appnews.newsitems.filter { isValidTitle($0.title) }
+        guard let newsItem = matchingItems.max(by: { compareNewsItems($0, $1) < 0 }) else {
             throw SteamServiceError.noNewsItems
         }
 
@@ -112,6 +112,17 @@ public struct SteamService: Sendable {
             rawDebug: "Steam API Response:\n\(rawJSON)",
             releaseIdentifier: item.gid
         )
+    }
+
+    private func compareNewsItems(_ lhs: SteamAPIResponse.NewsItem, _ rhs: SteamAPIResponse.NewsItem) -> Int {
+        if lhs.date != rhs.date {
+            return lhs.date < rhs.date ? -1 : 1
+        }
+
+        guard let leftGID = UInt64(lhs.gid), let rightGID = UInt64(rhs.gid), leftGID != rightGID else {
+            return 0
+        }
+        return leftGID < rightGID ? -1 : 1
     }
 
     private func formatReleaseNotes(item: SteamNewsItem, appID: Int) -> ReleaseNotes {

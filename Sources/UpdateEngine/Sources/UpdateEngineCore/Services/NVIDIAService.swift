@@ -51,7 +51,7 @@ public struct NVIDIAService: Sendable {
             "dltype": "-1",
             "dch": "1",
             "sort1": "0",
-            "numberOfResults": "1"
+            "numberOfResults": "200"
         ]
 
         request.httpBody = params
@@ -67,29 +67,31 @@ public struct NVIDIAService: Sendable {
             throw NVIDIAServiceError.invalidJSONResponse
         }
 
-        guard let idsArray = jsonObject["IDS"] as? [[String: Any]],
-              let firstDriver = idsArray.first else {
+        guard let idsArray = jsonObject["IDS"] as? [[String: Any]], !idsArray.isEmpty else {
             throw NVIDIAServiceError.noDriverFound
         }
 
-        guard let downloadInfo = firstDriver["downloadInfo"] as? [String: Any] else {
-            throw NVIDIAServiceError.missingField("downloadInfo")
+        let candidates = try idsArray.compactMap { entry -> DriverCandidate? in
+            guard let downloadInfo = entry["downloadInfo"] as? [String: Any] else {
+                return nil
+            }
+            guard let versionString = downloadInfo["Version"] as? String else {
+                return nil
+            }
+            guard let releaseDate = downloadInfo["ReleaseDateTime"] as? String else {
+                return nil
+            }
+            let version = try extractVersionStrict(from: versionString)
+            return DriverCandidate(version: version, releaseDate: releaseDate)
         }
 
-        guard let versionString = downloadInfo["Version"] as? String else {
-            throw NVIDIAServiceError.missingField("Version")
+        guard let latestDriver = candidates.max(by: { compareVersions($0.version, $1.version) < 0 }) else {
+            throw NVIDIAServiceError.noDriverFound
         }
 
-        guard let releaseDate = downloadInfo["ReleaseDateTime"] as? String else {
-            throw NVIDIAServiceError.missingField("ReleaseDateTime")
-        }
-
-        guard let downloadURL = downloadInfo["DownloadURL"] as? String else {
-            throw NVIDIAServiceError.missingField("DownloadURL")
-        }
-
-        let version = try extractVersionStrict(from: versionString)
-        let releaseIdentifier = downloadURL.isEmpty ? "nvidia:\(version)" : downloadURL
+        let version = latestDriver.version
+        let releaseDate = latestDriver.releaseDate
+        let releaseIdentifier = "nvidia:\(version)"
 
         let releaseNotes = ReleaseNotes(
             title: "GeForce Game Ready Driver v\(version)",
@@ -116,6 +118,25 @@ public struct NVIDIAService: Sendable {
             rawDebug: "NVIDIA Driver API Response:\n\(rawJSON)",
             releaseIdentifier: releaseIdentifier
         )
+    }
+
+    private struct DriverCandidate: Sendable {
+        let version: String
+        let releaseDate: String
+    }
+
+    private func compareVersions(_ lhs: String, _ rhs: String) -> Int {
+        let leftParts = lhs.split(separator: ".").compactMap { Int($0) }
+        let rightParts = rhs.split(separator: ".").compactMap { Int($0) }
+        let maxCount = max(leftParts.count, rightParts.count)
+        for index in 0..<maxCount {
+            let left = index < leftParts.count ? leftParts[index] : 0
+            let right = index < rightParts.count ? rightParts[index] : 0
+            if left != right {
+                return left < right ? -1 : 1
+            }
+        }
+        return 0
     }
 
     private func extractVersionStrict(from text: String) throws -> String {

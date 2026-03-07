@@ -588,29 +588,127 @@ final class AppModel: ObservableObject {
                 resolveSteamNameIfNeeded(for: referenceTarget)
                 let source = try PatchyRuntime.makeSource(from: referenceTarget)
                 let item = try await source.fetchLatest()
-                let change = try await patchyChecker.check(item: item)
-                try await patchyChecker.save(item: item)
-                let mapped = PatchyRuntime.map(item: item, change: change)
-
-                for target in targets {
-                    updatePatchyTargetRuntimeState(id: target.id) { entry in
-                        entry.lastCheckedAt = Date()
-                        entry.lastStatus = mapped.statusSummary
-                    }
-                }
-
-                if change.isNewItem {
-                    let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                let mapped: PatchyFetchResult
+                if let driverItem = item as? DriverUpdateItem {
+                    let newestVersion = driverItem.version.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let versionKey = PatchyRuntime.lastPostedDriverVersionKey(for: item.sourceKey)
+                    let versionCheck = try await patchyChecker.check(identifier: newestVersion, for: versionKey)
+                    mapped = PatchyRuntime.map(item: item, change: versionCheck)
                     for target in targets {
-                        let delivery = await sendPatchyNotificationDetailed(
-                            channelId: target.channelId,
-                            message: fallback,
-                            embedJSON: mapped.embedJSON,
-                            roleIDs: target.roleIDs
-                        )
                         updatePatchyTargetRuntimeState(id: target.id) { entry in
-                            entry.lastRunAt = Date()
-                            entry.lastStatus = delivery.detail
+                            entry.lastCheckedAt = Date()
+                            entry.lastStatus = mapped.statusSummary
+                        }
+                    }
+
+                    switch versionCheck {
+                    case .firstSeen:
+                        try await patchyChecker.save(identifier: newestVersion, for: versionKey)
+                        appendPatchyLog("Patchy driver baseline initialized [\(referenceTarget.source.rawValue)] version=\(newestVersion)")
+                    case .unchanged:
+                        break
+                    case .changed(let oldVersion, _):
+                        guard let comparison = PatchyRuntime.compareDriverVersions(newestVersion, oldVersion) else {
+                            try await patchyChecker.save(identifier: newestVersion, for: versionKey)
+                            appendPatchyLog("Patchy migrated legacy driver baseline [\(referenceTarget.source.rawValue)] old=\(oldVersion) new=\(newestVersion)")
+                            break
+                        }
+
+                        guard comparison > 0 else {
+                            appendPatchyLog("Patchy ignored non-newer driver [\(referenceTarget.source.rawValue)] latest=\(newestVersion) lastPosted=\(oldVersion)")
+                            break
+                        }
+
+                        let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                        for target in targets {
+                            let delivery = await sendPatchyNotificationDetailed(
+                                channelId: target.channelId,
+                                message: fallback,
+                                embedJSON: mapped.embedJSON,
+                                roleIDs: target.roleIDs
+                            )
+                            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                entry.lastRunAt = Date()
+                                entry.lastStatus = delivery.detail
+                            }
+                            if delivery.ok {
+                                try await patchyChecker.save(identifier: newestVersion, for: versionKey)
+                            }
+                        }
+                    }
+                } else if let steamItem = item as? SteamUpdateItem {
+                    let newestStamp = PatchyRuntime.makeSteamOrderingStamp(item: steamItem)
+                    let steamKey = PatchyRuntime.lastPostedSteamIdentifierKey(for: item.sourceKey)
+                    let steamCheck = try await patchyChecker.check(identifier: newestStamp, for: steamKey)
+                    mapped = PatchyRuntime.map(item: item, change: steamCheck)
+
+                    for target in targets {
+                        updatePatchyTargetRuntimeState(id: target.id) { entry in
+                            entry.lastCheckedAt = Date()
+                            entry.lastStatus = mapped.statusSummary
+                        }
+                    }
+
+                    switch steamCheck {
+                    case .firstSeen:
+                        try await patchyChecker.save(identifier: newestStamp, for: steamKey)
+                        appendPatchyLog("Patchy Steam baseline initialized [\(referenceTarget.steamAppID)] stamp=\(newestStamp)")
+                    case .unchanged:
+                        break
+                    case .changed(let oldStamp, _):
+                        guard let comparison = PatchyRuntime.compareSteamOrderingStamp(newestStamp, oldStamp) else {
+                            try await patchyChecker.save(identifier: newestStamp, for: steamKey)
+                            appendPatchyLog("Patchy migrated legacy Steam baseline [\(referenceTarget.steamAppID)] old=\(oldStamp) new=\(newestStamp)")
+                            break
+                        }
+
+                        guard comparison > 0 else {
+                            appendPatchyLog("Patchy ignored non-newer Steam item [\(referenceTarget.steamAppID)] latest=\(newestStamp) lastPosted=\(oldStamp)")
+                            break
+                        }
+
+                        let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                        for target in targets {
+                            let delivery = await sendPatchyNotificationDetailed(
+                                channelId: target.channelId,
+                                message: fallback,
+                                embedJSON: mapped.embedJSON,
+                                roleIDs: target.roleIDs
+                            )
+                            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                entry.lastRunAt = Date()
+                                entry.lastStatus = delivery.detail
+                            }
+                            if delivery.ok {
+                                try await patchyChecker.save(identifier: newestStamp, for: steamKey)
+                            }
+                        }
+                    }
+                } else {
+                    let change = try await patchyChecker.check(item: item)
+                    try await patchyChecker.save(item: item)
+                    mapped = PatchyRuntime.map(item: item, change: change)
+
+                    for target in targets {
+                        updatePatchyTargetRuntimeState(id: target.id) { entry in
+                            entry.lastCheckedAt = Date()
+                            entry.lastStatus = mapped.statusSummary
+                        }
+                    }
+
+                    if change.isNewItem {
+                        let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                        for target in targets {
+                            let delivery = await sendPatchyNotificationDetailed(
+                                channelId: target.channelId,
+                                message: fallback,
+                                embedJSON: mapped.embedJSON,
+                                roleIDs: target.roleIDs
+                            )
+                            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                entry.lastRunAt = Date()
+                                entry.lastStatus = delivery.detail
+                            }
                         }
                     }
                 }
@@ -816,7 +914,7 @@ final class AppModel: ObservableObject {
     /// 1. Awaits gateway disconnect (cancels reconnect task, sets userInitiatedDisconnect).
     /// 2. Clears all bot runtime state.
     /// 3. Clears the token and persists via the Keychain-backed path (disk settings.json stays redacted).
-    /// 4. Resets all onboarding and session state so the user returns to the onboarding gate.
+    /// 4. Clears invite/token validation cache so setup can be run again on demand.
     func clearAPIKey() async {
         // Step 1: deterministic gateway disconnect — awaited before any state mutation.
         await service.disconnect()
@@ -840,17 +938,45 @@ final class AppModel: ObservableObject {
         // Step 3: secure token erase — empty token triggers KeychainHelper.deleteToken() in ConfigStore.
         settings.token = ""
         saveSettings()
-        // Step 4: onboarding/session state purge → gate returns to onboarding splash.
+        // Step 4: clear onboarding caches; caller decides whether to reopen setup flow.
         resolvedClientID = nil
         lastTokenValidationResult = nil
-        isOnboardingComplete = false
         logs.append("API key cleared. Please enter a new token to reconnect.")
     }
 
-    /// Generates a Discord invite URL for the bot using the resolved OAuth2 client ID.
-    /// Returns `nil` if `resolvedClientID` has not yet been set.
+    /// Returns the app to the initial onboarding/setup screen.
+    func runInitialSetup() {
+        resolvedClientID = nil
+        lastTokenValidationResult = nil
+        isOnboardingComplete = false
+    }
+
+    /// Generates a Discord invite URL for the bot, resolving/storing client ID on demand.
     func generateInviteURL(includeSlashCommands: Bool? = nil) async -> String? {
-        guard let cid = resolvedClientID else { return nil }
+        let cid: String
+        if let existing = resolvedClientID {
+            cid = existing
+        } else {
+            let token = normalizedDiscordToken(from: settings.token)
+            guard !token.isEmpty else { return nil }
+            let resolved = await service.resolveClientID(token: token, fallbackUserID: nil)
+            if let resolved {
+                resolvedClientID = resolved
+                cid = resolved
+            } else {
+                let validation = await service.validateBotTokenRich(token)
+                guard validation.isValid else {
+                    lastTokenValidationResult = validation
+                    return nil
+                }
+                lastTokenValidationResult = validation
+                guard let fallback = await service.resolveClientID(token: token, fallbackUserID: validation.userId) else {
+                    return nil
+                }
+                resolvedClientID = fallback
+                cid = fallback
+            }
+        }
         let includeSlash = includeSlashCommands ?? (settings.commandsEnabled && settings.slashCommandsEnabled)
         return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlash)
     }

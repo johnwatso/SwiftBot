@@ -46,6 +46,7 @@ public struct IntelService: Sendable {
     public func fetchLatestDriver() async throws -> DriverInfo {
         var debugParts: [String] = []
         var attemptFailures: [String] = []
+        var candidates: [DriverInfo] = []
 
         if let primaryResult = try await tryFetchAndParse(
             url: pageURL,
@@ -53,7 +54,7 @@ public struct IntelService: Sendable {
             debugParts: &debugParts,
             failures: &attemptFailures
         ) {
-            return primaryResult
+            candidates.append(primaryResult)
         }
 
         if let modelResult = try await tryFetchAndParse(
@@ -62,7 +63,7 @@ public struct IntelService: Sendable {
             debugParts: &debugParts,
             failures: &attemptFailures
         ) {
-            return modelResult
+            candidates.append(modelResult)
         }
 
         if let mirroredResult = try await tryFetchAndParse(
@@ -71,7 +72,11 @@ public struct IntelService: Sendable {
             debugParts: &debugParts,
             failures: &attemptFailures
         ) {
-            return mirroredResult
+            candidates.append(mirroredResult)
+        }
+
+        if let newest = candidates.max(by: { compareDriverVersions($0.releaseNotes.version, $1.releaseNotes.version) < 0 }) {
+            return newest
         }
 
         let failureSummary = attemptFailures.isEmpty
@@ -126,6 +131,20 @@ public struct IntelService: Sendable {
             rawDebug: rawDebug,
             releaseIdentifier: parsed.version
         )
+    }
+
+    private func compareDriverVersions(_ lhs: String, _ rhs: String) -> Int {
+        let leftParts = lhs.split(separator: ".").compactMap { Int($0) }
+        let rightParts = rhs.split(separator: ".").compactMap { Int($0) }
+        let maxCount = max(leftParts.count, rightParts.count)
+        for index in 0..<maxCount {
+            let left = index < leftParts.count ? leftParts[index] : 0
+            let right = index < rightParts.count ? rightParts[index] : 0
+            if left != right {
+                return left < right ? -1 : 1
+            }
+        }
+        return 0
     }
 
     private func fetchPayload(from url: URL) async throws -> PagePayload {

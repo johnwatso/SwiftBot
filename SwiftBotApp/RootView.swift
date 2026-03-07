@@ -2811,6 +2811,10 @@ struct GeneralSettingsView: View {
     @State private var primaryAddressError: String? = nil
     @State private var sharedSecretError: String? = nil
     @State private var showClearKeyConfirmation = false
+    @State private var showRunSetupPrompt = false
+    @State private var settingsShareURL: String? = nil
+    @State private var isLoadingShareURL = false
+    @State private var shareURLLoadFailed = false
     @State private var baselineSettings = GeneralSettingsSnapshot()
 
     private var currentSettingsSnapshot: GeneralSettingsSnapshot {
@@ -2840,41 +2844,140 @@ struct GeneralSettingsView: View {
                         symbol: "slider.horizontal.3",
                         subtitle: "Identity and startup behavior."
                     ) {
-                        HStack {
-                            Group {
-                                if showToken {
-                                    TextField("Bot Token", text: $app.settings.token)
-                                } else {
-                                    SecureField("Bot Token", text: $app.settings.token)
+                        VStack(alignment: .leading, spacing: 24) {
+                            VStack(alignment: .leading, spacing: 16) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Bot Token")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.primary)
+
+                                    HStack(alignment: .center, spacing: 12) {
+                                        ZStack(alignment: .trailing) {
+                                            Group {
+                                                if showToken {
+                                                    TextField("Bot Token", text: $app.settings.token)
+                                                } else {
+                                                    SecureField("Bot Token", text: $app.settings.token)
+                                                }
+                                            }
+                                            .textFieldStyle(.roundedBorder)
+                                            .padding(.trailing, 34)
+
+                                            Button {
+                                                showToken.toggle()
+                                            } label: {
+                                                Image(systemName: showToken ? "eye.slash" : "eye")
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.trailing, 10)
+                                            .accessibilityLabel(showToken ? "Hide token" : "Reveal token")
+                                        }
+                                        .frame(maxWidth: 520)
+
+                                        Button(role: .destructive) {
+                                            showClearKeyConfirmation = true
+                                        } label: {
+                                            Label("Clear Token", systemImage: "trash")
+                                                .font(.footnote)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.red)
+                                        .controlSize(.small)
+                                        .disabled(app.settings.token.isEmpty)
+                                    }
                                 }
                             }
-                            Button(showToken ? "Hide" : "Show") { showToken.toggle() }
-                        }
-
-                        HStack {
-                            Button(role: .destructive) {
-                                showClearKeyConfirmation = true
-                            } label: {
-                                Label("Clear API Key", systemImage: "key.slash.fill")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
-                            .disabled(app.settings.token.isEmpty || app.status == .stopped)
                             .confirmationDialog(
                                 "Clear API Key?",
                                 isPresented: $showClearKeyConfirmation,
                                 titleVisibility: .visible
                             ) {
                                 Button("Clear Key and Disconnect", role: .destructive) {
-                                    Task { await app.clearAPIKey() }
+                                    Task { @MainActor in
+                                        await app.clearAPIKey()
+                                        settingsShareURL = nil
+                                        shareURLLoadFailed = false
+                                        showRunSetupPrompt = true
+                                    }
                                 }
                                 Button("Cancel", role: .cancel) { }
                             } message: {
                                 Text("This will disconnect the bot and remove the stored token. You will need to enter a new token to reconnect.")
                             }
-                        }
+                            .confirmationDialog(
+                                "Run setup again?",
+                                isPresented: $showRunSetupPrompt,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Yes") {
+                                    app.runInitialSetup()
+                                }
+                                Button("No", role: .cancel) { }
+                            } message: {
+                                Text("Token cleared. Do you want to run setup again?")
+                            }
 
-                        Toggle("Auto Start", isOn: $app.settings.autoStart)
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Share Link")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                HStack(spacing: 12) {
+                                    Button {
+                                        Task { @MainActor in
+                                            guard let url = await resolveSettingsShareURL() else { return }
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(url, forType: .string)
+                                        }
+                                    } label: {
+                                        Label("Copy Share Link", systemImage: "doc.on.doc")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                                    Button {
+                                        Task { @MainActor in
+                                            guard let url = await resolveSettingsShareURL(),
+                                                  let link = URL(string: url) else { return }
+                                            NSWorkspace.shared.open(link)
+                                        }
+                                    } label: {
+                                        Label("Open Share Link", systemImage: "arrow.up.right.square")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                if isLoadingShareURL {
+                                    HStack(spacing: 8) {
+                                        ProgressView().controlSize(.small)
+                                        Text("Generating share link…")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else if shareURLLoadFailed {
+                                    Text("Could not generate a share link right now. Try again after token validation.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Startup Behavior")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                HStack {
+                                    Text("Auto Start")
+                                    Spacer()
+                                    Toggle("", isOn: $app.settings.autoStart)
+                                        .labelsHidden()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                     
                     settingsBlock(
@@ -3000,6 +3103,10 @@ struct GeneralSettingsView: View {
                 baselineSettings = currentSettingsSnapshot
             }
             .onChange(of: app.settings.clusterMode) { validateAll() }
+            .onChange(of: app.settings.token) {
+                settingsShareURL = nil
+                shareURLLoadFailed = false
+            }
 
             if app.settings.clusterMode == .worker {
                 GroupBox("Cluster Controls") {
@@ -3162,6 +3269,23 @@ struct GeneralSettingsView: View {
         app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
         app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @MainActor
+    private func resolveSettingsShareURL() async -> String? {
+        if let existing = settingsShareURL, !existing.isEmpty {
+            return existing
+        }
+        isLoadingShareURL = true
+        shareURLLoadFailed = false
+        let generated = await app.generateInviteURL()
+        isLoadingShareURL = false
+        guard let generated else {
+            shareURLLoadFailed = true
+            return nil
+        }
+        settingsShareURL = generated
+        return generated
     }
 }
 

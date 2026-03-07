@@ -45,7 +45,7 @@ public struct AMDService: Sendable {
         let rawSitemap = String(data: sitemapData, encoding: .utf8) ?? ""
         let entries = parseSitemapEntries(from: rawSitemap)
 
-        guard let latestEntry = entries.max(by: { $0.lastModified < $1.lastModified }) else {
+        guard let latestEntry = entries.max(by: { compareSitemapEntries($0, $1) < 0 }) else {
             throw AMDServiceError.noReleaseNotesFound
         }
 
@@ -88,7 +88,7 @@ public struct AMDService: Sendable {
             releaseNotes: releaseNotes,
             embedJSON: formatter.format(releaseNotes: releaseNotes),
             rawDebug: debugRaw,
-            releaseIdentifier: latestEntry.url.absoluteString
+            releaseIdentifier: "amd:\(version)"
         )
     }
 
@@ -125,6 +125,21 @@ public struct AMDService: Sendable {
                 lastModified: lastModified
             )
         }
+    }
+
+    private func compareSitemapEntries(_ lhs: SitemapEntry, _ rhs: SitemapEntry) -> Int {
+        if let left = parseSitemapVersion(lhs.version), let right = parseSitemapVersion(rhs.version), left != right {
+            return left.lexicographicallyPrecedes(right) ? -1 : 1
+        }
+        if lhs.lastModified != rhs.lastModified {
+            return lhs.lastModified < rhs.lastModified ? -1 : 1
+        }
+        return lhs.url.absoluteString < rhs.url.absoluteString ? -1 : 1
+    }
+
+    private func parseSitemapVersion(_ value: String) -> [Int]? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        return parts.count == 3 ? parts : nil
     }
 
     private func extractReleaseDate(from html: String, fallback: Date) -> String {
