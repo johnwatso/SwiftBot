@@ -1,6 +1,7 @@
 import Foundation
 
 actor ConfigStore {
+    private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -37,6 +38,15 @@ actor ConfigStore {
             }
         }
 
+        if let adminSecret = KeychainHelper.load(account: adminDiscordClientSecretAccount) {
+            settings.adminWebUI.discordClientSecret = adminSecret
+        } else if !settings.adminWebUI.discordClientSecret.isEmpty {
+            let secretToMigrate = settings.adminWebUI.discordClientSecret
+            if KeychainHelper.save(secretToMigrate, account: adminDiscordClientSecretAccount) {
+                settings.adminWebUI.discordClientSecret = secretToMigrate
+            }
+        }
+
         return settings
     }
 
@@ -53,8 +63,16 @@ actor ConfigStore {
             lastToken = settings.token
         }
 
+        let trimmedAdminSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedAdminSecret.isEmpty {
+            KeychainHelper.delete(account: adminDiscordClientSecretAccount)
+        } else {
+            KeychainHelper.save(trimmedAdminSecret, account: adminDiscordClientSecretAccount)
+        }
+
         // Always clear token from disk-stored settings.
         settingsToSave.token = ""
+        settingsToSave.adminWebUI.discordClientSecret = ""
 
         let data = try encoder.encode(settingsToSave)
         try data.write(to: url, options: .atomic)

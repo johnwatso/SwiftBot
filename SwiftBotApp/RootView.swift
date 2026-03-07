@@ -2890,9 +2890,17 @@ struct GeneralSettingsView: View {
     @State private var leaderAddressDraft = ""
     @State private var listenPortDraft = ""
     @State private var clusterSharedSecretDraft = ""
+    @State private var adminWebEnabledDraft = false
+    @State private var adminWebHostDraft = ""
+    @State private var adminWebPortDraft = ""
+    @State private var adminWebBaseURLDraft = ""
+    @State private var adminDiscordClientIDDraft = ""
+    @State private var adminDiscordClientSecretDraft = ""
+    @State private var adminAllowedUserIDsDraft = ""
     @State private var listenPortError: String? = nil
     @State private var primaryAddressError: String? = nil
     @State private var sharedSecretError: String? = nil
+    @State private var adminPortError: String? = nil
     @State private var showClearKeyConfirmation = false
     @State private var showRunSetupPrompt = false
     @State private var settingsShareURL: String? = nil
@@ -2908,7 +2916,14 @@ struct GeneralSettingsView: View {
             clusterNodeName: clusterNodeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines),
             clusterLeaderAddress: leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines),
             clusterListenPort: Int(listenPortDraft) ?? app.settings.clusterListenPort,
-            clusterSharedSecret: clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            clusterSharedSecret: clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            adminWebEnabled: adminWebEnabledDraft,
+            adminWebHost: adminWebHostDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            adminWebPort: Int(adminWebPortDraft) ?? app.settings.adminWebUI.port,
+            adminWebBaseURL: adminWebBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            adminDiscordClientID: adminDiscordClientIDDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            adminDiscordClientSecret: adminDiscordClientSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            adminAllowedUserIDs: adminAllowedUserIDsDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -3140,6 +3155,30 @@ struct GeneralSettingsView: View {
                     }
 
                     settingsBlock(
+                        title: "Admin Web UI",
+                        symbol: "network",
+                        subtitle: "Optional local web interface with Discord sign-in."
+                    ) {
+                    Toggle("Enable Admin Web UI", isOn: $adminWebEnabledDraft)
+
+                    TextField("Bind Host", text: $adminWebHostDraft, prompt: Text("127.0.0.1"))
+                    TextField("Port", text: $adminWebPortDraft, prompt: Text("38888"))
+                        .onChange(of: adminWebPortDraft) { validateAdminPort() }
+                    if let err = adminPortError {
+                        Text(err).font(.caption).foregroundStyle(.red)
+                    }
+
+                    TextField("Public Base URL", text: $adminWebBaseURLDraft, prompt: Text("http://127.0.0.1:38888"))
+                    TextField("Discord OAuth Client ID", text: $adminDiscordClientIDDraft)
+                    SecureField("Discord OAuth Client Secret", text: $adminDiscordClientSecretDraft)
+                    TextField("Allowed Discord User IDs (comma separated)", text: $adminAllowedUserIDsDraft)
+
+                    Text("Callback path is fixed to `\(app.normalizedAdminRedirectPath(app.settings.adminWebUI.redirectPath))`. Configure your Discord OAuth redirect URI to match the public base URL plus that path.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                    settingsBlock(
                         title: "Software Updates",
                         symbol: "arrow.triangle.2.circlepath",
                         subtitle: "Update channel and Sparkle status."
@@ -3182,6 +3221,13 @@ struct GeneralSettingsView: View {
                 leaderAddressDraft = app.settings.clusterLeaderAddress
                 listenPortDraft = "\(app.settings.clusterListenPort)"
                 clusterSharedSecretDraft = app.settings.clusterSharedSecret
+                adminWebEnabledDraft = app.settings.adminWebUI.enabled
+                adminWebHostDraft = app.settings.adminWebUI.bindHost
+                adminWebPortDraft = "\(app.settings.adminWebUI.port)"
+                adminWebBaseURLDraft = app.settings.adminWebUI.publicBaseURL
+                adminDiscordClientIDDraft = app.settings.adminWebUI.discordClientID
+                adminDiscordClientSecretDraft = app.settings.adminWebUI.discordClientSecret
+                adminAllowedUserIDsDraft = app.settings.adminWebUI.allowedUserIDs.joined(separator: ", ")
                 validateAll()
                 baselineSettings = currentSettingsSnapshot
             }
@@ -3309,13 +3355,14 @@ struct GeneralSettingsView: View {
     // MARK: - Validation
 
     private var clusterConfigValid: Bool {
-        listenPortError == nil && primaryAddressError == nil && sharedSecretError == nil
+        listenPortError == nil && primaryAddressError == nil && sharedSecretError == nil && adminPortError == nil
     }
 
     private func validateAll() {
         validatePrimaryAddress()
         validateListenPort()
         validateSharedSecret()
+        validateAdminPort()
     }
 
     private func validatePrimaryAddress() {
@@ -3352,6 +3399,28 @@ struct GeneralSettingsView: View {
         app.settings.clusterLeaderAddress = leaderAddressDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         app.settings.clusterListenPort = Int(listenPortDraft) ?? 38787
         app.settings.clusterSharedSecret = clusterSharedSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.enabled = adminWebEnabledDraft
+        app.settings.adminWebUI.bindHost = adminWebHostDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.port = Int(adminWebPortDraft) ?? 38888
+        app.settings.adminWebUI.publicBaseURL = adminWebBaseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.discordClientID = adminDiscordClientIDDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.discordClientSecret = adminDiscordClientSecretDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        app.settings.adminWebUI.allowedUserIDs = adminAllowedUserIDsDraft
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func validateAdminPort() {
+        guard adminWebEnabledDraft else {
+            adminPortError = nil
+            return
+        }
+        if let port = Int(adminWebPortDraft), (1024...65535).contains(port) {
+            adminPortError = nil
+        } else {
+            adminPortError = "Admin Web UI port must be between 1024 and 65535."
+        }
     }
 
     @MainActor
@@ -3837,6 +3906,13 @@ private struct GeneralSettingsSnapshot: Equatable {
     var clusterLeaderAddress = ""
     var clusterListenPort = 38787
     var clusterSharedSecret = ""
+    var adminWebEnabled = false
+    var adminWebHost = ""
+    var adminWebPort = 38888
+    var adminWebBaseURL = ""
+    var adminDiscordClientID = ""
+    var adminDiscordClientSecret = ""
+    var adminAllowedUserIDs = ""
 }
 
 struct MemoryOverviewView: View {
