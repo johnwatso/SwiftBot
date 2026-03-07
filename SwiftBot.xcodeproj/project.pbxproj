@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		080011223344556677AABBCE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07080011223344556677AABB /* SettingsView.swift */; };
 		0A6B7D101122334455667788 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 0A6B7D201122334455667788 /* Resources */; };
+		11223344556677AABBCCDDFF /* CommonUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0011223344556677AABBCCDD /* CommonUI.swift */; };
 		11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D441122334455667788 /* ClusterCoordinator.swift */; };
 		11C22D551122334455667788 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D661122334455667788 /* AdminWebServer.swift */; };
 		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
@@ -29,15 +31,23 @@
 		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
+		B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708001122A3 /* CommandsView.swift */; };
 		B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6C2021122334455667788 /* SchemaSettings.swift */; };
+		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
 		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
 		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
+		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
+		D4E5F607080011223344556B /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6070800112233445C /* LogsView.swift */; };
 		E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C1A9010102030405060708 /* WikiBridgeView.swift */; };
 		F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9564766EDA4C18D06A84BCB /* Persistence.swift */; };
+		F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */; };
+		F607080011223344556677AD /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607080011223344556677 /* AIBotsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0011223344556677AABBCCDD /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		010969C7B6435248430DD012 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		07080011223344556677AABB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0A6B7D201122334455667788 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		0B3205CAA1A44F7E79578277 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
 		11C22D441122334455667788 /* ClusterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterCoordinator.swift; sourceTree = "<group>"; };
@@ -56,13 +66,19 @@
 		6F1B40D4A2B3C4D5E6F70819 /* AppModel+AI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AI.swift"; sourceTree = "<group>"; };
 		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60708001122A3 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
 		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
+		C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
 		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		E4C1A9010102030405060708 /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
+		E5F607080011223344556677 /* AIBotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBotsView.swift; sourceTree = "<group>"; };
 		EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp.swift; sourceTree = "<group>"; };
+		F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
 		F9564766EDA4C18D06A84BCB /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -124,6 +140,14 @@
 				5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */,
 				0A6B7D201122334455667788 /* Resources */,
 				35480F12EB2C7DFB546BD550 /* RootView.swift */,
+				C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */,
+				D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */,
+				F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */,
+				A1B2C3D4E5F60708001122A3 /* CommandsView.swift */,
+				C3D4E5F6070800112233445C /* LogsView.swift */,
+				E5F607080011223344556677 /* AIBotsView.swift */,
+				07080011223344556677AABB /* SettingsView.swift */,
+				0011223344556677AABBCCDD /* CommonUI.swift */,
 			);
 			path = SwiftBotApp;
 			sourceTree = "<group>";
@@ -220,6 +244,14 @@
 				B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */,
 				C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */,
 				538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */,
+				C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */,
+				D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */,
+				F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */,
+				B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */,
+				D4E5F607080011223344556B /* LogsView.swift in Sources */,
+				F607080011223344556677AD /* AIBotsView.swift in Sources */,
+				080011223344556677AABBCE /* SettingsView.swift in Sources */,
+				11223344556677AABBCCDDFF /* CommonUI.swift in Sources */,
 				5B1E9801A1B2C3D4E5F60718 /* VoiceRuleListView.swift in Sources */,
 				D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */,
 				E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */,
@@ -360,7 +392,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1814000;
+				CURRENT_PROJECT_VERSION = 1815000;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -385,7 +417,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.8.15;
+				MARKETING_VERSION = 1.8.16;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -407,7 +439,7 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1814000;
+				CURRENT_PROJECT_VERSION = 1815000;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -432,7 +464,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.8.15;
+				MARKETING_VERSION = 1.8.16;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

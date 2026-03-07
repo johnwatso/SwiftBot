@@ -200,6 +200,7 @@ struct BotSettings: Codable, Hashable {
     var openAIImageGenerationEnabled: Bool = true
     var openAIImageModel: String = "gpt-image-1"
     var openAIImageMonthlyLimitPerUser: Int = 5
+    var openAIImageMonthlyHardCap: Int = 100
     var openAIImageUsageByUserMonth: [String: Int] = [:]
     var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
@@ -239,6 +240,7 @@ struct BotSettings: Codable, Hashable {
         case openAIImageGenerationEnabled
         case openAIImageModel
         case openAIImageMonthlyLimitPerUser
+        case openAIImageMonthlyHardCap
         case openAIImageUsageByUserMonth
         case aiMemoryNotes
         case localAISystemPrompt
@@ -1318,6 +1320,7 @@ struct MeshWorkerRegistryPayload: Codable, Sendable {
 /// Records are ordered by (timestamp ascending, id ascending) for deterministic replay.
 struct MeshSyncPayload: Codable, Sendable {
     let conversations: [MemoryRecord]
+    let imageUsage: [String: Int]?
     let leaderTerm: Int
     /// ID of the last record in this batch — standby stores as its new cursor.
     let cursorRecordID: String?
@@ -1327,8 +1330,9 @@ struct MeshSyncPayload: Codable, Sendable {
     /// Node compares against its own lastMergedRecordID to detect gaps.
     let fromCursorRecordID: String?
 
-    init(conversations: [MemoryRecord], leaderTerm: Int, cursorRecordID: String? = nil, hasMore: Bool = false, fromCursorRecordID: String? = nil) {
+    init(conversations: [MemoryRecord], imageUsage: [String: Int]? = nil, leaderTerm: Int, cursorRecordID: String? = nil, hasMore: Bool = false, fromCursorRecordID: String? = nil) {
         self.conversations = conversations
+        self.imageUsage = imageUsage
         self.leaderTerm = leaderTerm
         self.cursorRecordID = cursorRecordID
         self.hasMore = hasMore
@@ -2417,5 +2421,213 @@ enum KeychainHelper {
 
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess
+    }
+}
+
+// MARK: - Navigation Models
+
+enum SidebarItem: String, CaseIterable, Identifiable {
+    case overview = "Overview"
+    case patchy = "Patchy"
+    case voice = "Actions"
+    case commands = "Commands"
+    case commandLog = "Command Log"
+    case wikiBridge = "WikiBridge"
+    case logs = "Logs"
+    case settings = "Settings"
+    case aiBots = "AI Bots"
+    case diagnostics = "Diagnostics"
+    case swiftMesh = "SwiftMesh"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .overview: return "square.grid.2x2.fill"
+        case .patchy: return "hammer.fill"
+        case .voice: return "point.3.filled.connected.trianglepath.dotted"
+        case .commands: return "terminal.fill"
+        case .commandLog: return "list.bullet.clipboard.fill"
+        case .wikiBridge: return "book.pages.fill"
+        case .logs: return "list.bullet.clipboard.fill"
+        case .settings: return "gearshape.2.fill"
+        case .aiBots: return "sparkles.rectangle.stack.fill"
+        case .diagnostics: return "waveform.path.ecg"
+        case .swiftMesh: return "point.3.connected.trianglepath.dotted"
+        }
+    }
+}
+
+// MARK: - Automation Models
+
+enum TriggerType: String, CaseIterable, Identifiable, Codable {
+    case userJoinedVoice = "User Joins Voice"
+    case userLeftVoice = "User Leaves Voice"
+    case userMovedVoice = "User Moves Voice"
+    case messageContains = "Message Contains"
+    case memberJoined = "Member Joined"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .userJoinedVoice: return "person.crop.circle.badge.plus"
+        case .userLeftVoice: return "person.crop.circle.badge.xmark"
+        case .userMovedVoice: return "arrow.left.arrow.right.circle"
+        case .messageContains: return "text.bubble"
+        case .memberJoined: return "person.badge.plus"
+        }
+    }
+
+    var defaultMessage: String {
+        switch self {
+        case .userJoinedVoice: return "🔊 <@{userId}> connected to <#{channelId}>"
+        case .userLeftVoice: return "🔌 <@{userId}> disconnected from <#{channelId}> (Online for {duration})"
+        case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
+        case .messageContains: return "nm you?"
+        case .memberJoined: return "👋 Welcome to {server}, {username}! You're member #{memberCount}."
+        }
+    }
+
+    var defaultRuleName: String {
+        switch self {
+        case .userJoinedVoice: return "Join Action"
+        case .userLeftVoice: return "Leave Action"
+        case .userMovedVoice: return "Move Action"
+        case .messageContains: return "Message Reply"
+        case .memberJoined: return "Member Join Welcome"
+        }
+    }
+
+    static var allDefaultMessages: Set<String> {
+        var messages = Set(allCases.map(\.defaultMessage))
+        // Include legacy defaults so trigger changes still auto-populate
+        messages.insert("🔊 <@{userId}> connected to <#{channelId}>")
+        messages.insert("🔌 <@{userId}> disconnected from <#{channelId}>")
+        messages.insert("🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>")
+        return messages
+    }
+}
+
+enum ConditionType: String, CaseIterable, Identifiable, Codable {
+    case server = "Server Is"
+    case voiceChannel = "Voice Channel Is"
+    case usernameContains = "Username Contains"
+    case minimumDuration = "Duration In Channel"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .server: return "building.2"
+        case .voiceChannel: return "waveform"
+        case .usernameContains: return "text.magnifyingglass"
+        case .minimumDuration: return "timer"
+        }
+    }
+}
+
+enum ActionType: String, CaseIterable, Identifiable, Codable {
+    case sendMessage = "Send Message"
+    case addLogEntry = "Add Log Entry"
+    case setStatus = "Set Bot Status"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .sendMessage: return "paperplane.fill"
+        case .addLogEntry: return "list.bullet.clipboard"
+        case .setStatus: return "dot.radiowaves.left.and.right"
+        }
+    }
+}
+
+struct Condition: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var type: ConditionType
+    var value: String = ""
+    var secondaryValue: String = ""
+    var enabled: Bool = true
+}
+
+struct RuleAction: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var type: ActionType = .sendMessage
+    var serverId: String = ""
+    var channelId: String = ""
+    var mentionUser: Bool = true
+    var replyToTriggerMessage: Bool = false
+    var replyWithAI: Bool = false
+    var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
+    var statusText: String = "Voice notifier active"
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case serverId
+        case channelId
+        case mentionUser
+        case replyToTriggerMessage
+        case replyWithAI
+        case message
+        case statusText
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        type = try container.decodeIfPresent(ActionType.self, forKey: .type) ?? .sendMessage
+        serverId = try container.decodeIfPresent(String.self, forKey: .serverId) ?? ""
+        channelId = try container.decodeIfPresent(String.self, forKey: .channelId) ?? ""
+        mentionUser = try container.decodeIfPresent(Bool.self, forKey: .mentionUser) ?? true
+        replyToTriggerMessage = try container.decodeIfPresent(Bool.self, forKey: .replyToTriggerMessage) ?? false
+        replyWithAI = try container.decodeIfPresent(Bool.self, forKey: .replyWithAI) ?? false
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? "🔊 <@{userId}> connected to <#{channelId}>"
+        statusText = try container.decodeIfPresent(String.self, forKey: .statusText) ?? "Voice notifier active"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(serverId, forKey: .serverId)
+        try container.encode(channelId, forKey: .channelId)
+        try container.encode(mentionUser, forKey: .mentionUser)
+        try container.encode(replyToTriggerMessage, forKey: .replyToTriggerMessage)
+        try container.encode(replyWithAI, forKey: .replyWithAI)
+        try container.encode(message, forKey: .message)
+        try container.encode(statusText, forKey: .statusText)
+    }
+}
+
+typealias Action = RuleAction
+
+struct Rule: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var name: String = "New Action"
+    var trigger: TriggerType = .userJoinedVoice
+    var conditions: [Condition] = []
+    var actions: [RuleAction] = [RuleAction()]
+    var isEnabled: Bool = true
+
+    var triggerServerId: String = ""
+    var triggerVoiceChannelId: String = ""
+    var triggerMessageContains: String = "up to?"
+    var replyToDMs: Bool = false
+
+    var includeStageChannels: Bool = true
+
+    var triggerSummary: String {
+        switch trigger {
+        case .userJoinedVoice: return "When someone joins voice"
+        case .userLeftVoice: return "When someone leaves voice"
+        case .userMovedVoice: return "When someone moves voice"
+        case .messageContains:
+            return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
+        case .memberJoined: return "When a member joins the server"
+        }
     }
 }
