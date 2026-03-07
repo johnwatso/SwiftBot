@@ -1,273 +1,177 @@
-```{=html}
 <p align="center">
-```
-`<img src="App Images/app-icon.png" width="120" alt="SwiftBot Icon">`{=html}
-```{=html}
+  <img src="App Images/app-icon.png" width="120" alt="SwiftBot Icon">
 </p>
-```
-```{=html}
-<h1 align="center">
-```
-SwiftBot
-```{=html}
-</h1>
-```
-```{=html}
-<p align="center">
-```
-Native macOS Discord bot dashboard built with SwiftUI
-```{=html}
-</p>
-```
-```{=html}
-<p align="center">
-```
-macOS 26 • Swift 5.9 • Apple Silicon • GPLv3
-```{=html}
-</p>
-```
 
-------------------------------------------------------------------------
+<h1 align="center">SwiftBot</h1>
+
+<p align="center">
+  Native macOS Discord bot dashboard built with SwiftUI
+</p>
+
+<p align="center">
+  macOS 26 • Swift 5.9 • Apple Silicon • GPLv3
+</p>
 
 ## Development Status
 
 SwiftBot is under active development.
 
-Features, UI, and configuration may change frequently while the project
-evolves.\
-Expect rapid iteration and occasional breakage between releases while
-core systems are refined.
-
-Feedback, bug reports, and suggestions are welcome.
-
-------------------------------------------------------------------------
+Features, UI, and configuration may change frequently as the app evolves. Occasional breakage between releases is expected while core systems are refined and stabilized.
 
 ## Preview
 
-```{=html}
 <p align="center">
-```
-`<img src="App Images/ui-preview.png" alt="SwiftBot Dashboard Preview">`{=html}
-```{=html}
+  <img src="App Images/ui-preview.png" alt="SwiftBot Dashboard Preview">
 </p>
-```
-```{=html}
-<p align="center">
-```
-`<em>`{=html}SwiftBot dashboard running on macOS`</em>`{=html}
-```{=html}
-</p>
-```
 
-------------------------------------------------------------------------
+## Install
 
-# Install
+SwiftBot installs are distributed through [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases).
 
-Download the latest build from GitHub Releases:
+1. Download the latest release from [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases).
+2. Open the `.dmg` or `.zip`.
+3. Move `SwiftBot.app` to `/Applications`.
+4. Launch SwiftBot and complete onboarding.
 
-https://github.com/johnwatso/SwiftBot/releases
+Future updates are handled in-app through Sparkle auto-updates.
 
-1.  Download the latest release
-2.  Open the `.dmg` or `.zip`
-3.  Move **SwiftBot.app** to Applications
-4.  Launch SwiftBot and complete onboarding
+## Features
 
-SwiftBot uses Sparkle for automatic updates, so future releases will
-install automatically.
+### Bot Control
 
-------------------------------------------------------------------------
+- Native Discord Gateway and REST runtime
+- Guided onboarding with token validation and invite link generation
+- Prefix and slash command support
+- Command logging and channel configuration tools
 
-# Features
+### Automation
 
-SwiftBot combines several bot management tools into one native macOS
-dashboard.
+- Voice event automation rules
+- Member join welcome flows
+- Message trigger rules
+- Per-guild notification templates and voice activity logging
 
-## Bot Control
+### AI Integration
 
--   Native Discord Gateway + REST runtime
--   Prefix and slash command support
--   Command logging
--   Invite link generation
--   Guided onboarding flow
+- Apple Intelligence support
+- Ollama local model support
+- OpenAI integration
+- Configurable AI routing for supported reply flows
 
-## Automation
+### Knowledge & Data
 
--   Voice event automation
--   Member join workflows
--   Message trigger rules
--   Notification templates
+- WikiBridge source management
+- Dynamic wiki-backed commands
+- Game metadata and reference query surfaces
 
-## AI Integration
+### Monitoring
 
--   Apple Intelligence routing
--   Ollama local model support
--   OpenAI integration
--   AI command surfaces
+- Patchy monitoring for AMD, NVIDIA, Intel, and Steam updates
+- Scheduled checks, delivery targets, and test sends
 
-## Knowledge & Data
+### Reliability
 
--   WikiBridge dynamic commands
--   External wiki sources
--   Game metadata queries
+- SwiftMesh primary and fail-over clustering
+- Conversation and wiki-cache replication
+- Persistent local settings and cached Discord metadata
 
-## Monitoring
+### Diagnostics
 
-Patchy monitoring for:
+- Gateway, REST, latency, rate-limit, permissions, and intents visibility
+- On-demand connection testing and runtime health checks
 
--   AMD driver releases
--   NVIDIA driver releases
--   Intel driver releases
--   Steam platform updates
+## Application Areas
 
-## Reliability
+| Area | Purpose |
+| --- | --- |
+| Overview | High-level bot status, activity, and summary information |
+| Voice / Actions | Automation rule builder for voice, message, and member-join flows |
+| Commands / Command Log | Command controls and recent command activity |
+| WikiBridge | External knowledge source management and dynamic command configuration |
+| Patchy | Driver and platform update monitoring |
+| AI Bots | Apple Intelligence, Ollama, and OpenAI configuration |
+| Diagnostics | Connection health, API checks, and remediation visibility |
+| SwiftMesh | Cluster topology, fail-over state, and mesh diagnostics |
+| Logs / Settings | Token management, runtime logs, and app configuration |
 
--   SwiftMesh clustering
--   Primary / worker failover
--   Mesh state synchronization
--   Conversation and wiki cache replication
+## Commands
 
-## Diagnostics
+SwiftBot supports both prefix commands and slash commands. The prefix is configurable in Settings, and WikiBridge can add commands from enabled sources.
 
--   Gateway connection health
--   REST API status
--   Rate limit monitoring
--   Permission validation
--   Latency testing
+### General
 
-------------------------------------------------------------------------
+- `help`
+- `ping`
+- `roll`
+- `8ball`
+- `poll`
+- `userinfo`
 
-# Application Areas
+### Server / Admin
 
-SwiftBot is organized into several main sections.
+- `setchannel`
+- `ignorechannel`
+- `notifystatus`
+- `debug`
+- `bugreport`
+- `weekly`
 
-  Area              Purpose
-  ----------------- ----------------------------------------------------
-  Overview          Bot status and activity
-  Voice / Actions   Automation rule builder
-  Commands / Log    Command configuration and activity
-  WikiBridge        External knowledge source management
-  Patchy            Driver and platform update monitoring
-  AI Bots           Apple Intelligence / Ollama / OpenAI configuration
-  Diagnostics       Gateway health and connectivity tests
-  SwiftMesh         Cluster topology and failover monitoring
-  Logs / Settings   Token management and runtime logs
+### AI / Media
 
-------------------------------------------------------------------------
+- `image`
+- `imagine`
 
-# Commands
+### Knowledge
 
-SwiftBot supports both prefix commands and slash commands.
+- `meta`
+- `wiki`
 
-The prefix is configurable in Settings.
+### Cluster
 
-WikiBridge can dynamically add commands from enabled sources.
+- `cluster`
 
-## General
+Additional slash commands include `compare`, `logabug`, and `featurerequest`.
 
-    help
-    ping
-    roll
-    8ball
-    poll
-    userinfo
+## Storage
 
-## Server / Admin
+SwiftBot stores application data in `~/Library/Application Support/SwiftBot/`.
 
-    setchannel
-    ignorechannel
-    notifystatus
-    debug
-    bugreport
-    weekly
+Common files include:
 
-## AI / Media
-
-    image
-    imagine
-
-## Knowledge
-
-    meta
-    wiki
-
-## Cluster
-
-    cluster
-
-Additional slash commands include:
-
-    compare
-    logabug
-    featurerequest
-
-------------------------------------------------------------------------
-
-# Storage
-
-SwiftBot stores local data in:
-
-    ~/Library/Application Support/SwiftBot/
-
-Files include:
-
-    settings.json
-    rules.json
-    discord-cache.json
-    mesh-cursors.json
+- `settings.json`
+- `rules.json`
+- `discord-cache.json`
+- `mesh-cursors.json`
 
 Bot tokens are stored securely in macOS Keychain.
 
-------------------------------------------------------------------------
+## Repository Layout
 
-# Repository Layout
+- `SwiftBotApp/` - main macOS application, SwiftUI interface, Discord runtime, diagnostics, and SwiftMesh
+- `Sources/UpdateEngine/` - reusable update-checking engine used by Patchy
+- `Tools/SparklePublisher/` - Sparkle publishing helper
+- `Tests/SwiftBotTests/` - application test suite
+- `docs/` - release notes, appcasts, and planning/reference docs
 
-    SwiftBotApp/
-      main macOS application
-      UI + runtime + clustering
+## Documentation
 
-    Sources/UpdateEngine/
-      Patchy monitoring engine
+- [Architecture](ARCHITECTURE.md)
+- [AI Guide](AI_GUIDE.md)
+- [Changelog](CHANGELOG.md)
+- [Risk Matrix](RISK_MATRIX.md)
+- [Feature Plan](docs/FEATURE_PLAN_PHASE1.txt)
 
-    Tools/SparklePublisher/
-      Sparkle publishing helper
+## Releases
 
-    Tests/SwiftBotTests/
-      app test suite
+- [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases) for installers and release notes
+- [Stable appcast](https://johnwatso.github.io/SwiftBot/appcast.xml)
+- [Beta appcast](https://johnwatso.github.io/SwiftBot/beta/appcast.xml)
 
-    docs/
-      planning and architecture docs
+Sparkle uses the published appcasts to deliver automatic updates after installation.
 
-------------------------------------------------------------------------
+## Contributing
 
-# Documentation
-
--   ARCHITECTURE.md
--   AI_GUIDE.md
--   CHANGELOG.md
--   RISK_MATRIX.md
--   docs/FEATURE_PLAN_PHASE1.txt
-
-------------------------------------------------------------------------
-
-# Releases
-
-Stable appcast
-
-    https://johnwatso.github.io/SwiftBot/appcast.xml
-
-Beta appcast
-
-    https://johnwatso.github.io/SwiftBot/beta/appcast.xml
-
-Release helper
-
-    scripts/publish_sparkle_release.sh
-
-------------------------------------------------------------------------
-
-# Contributing
-
-1.  Create a focused feature branch
-2.  Keep commits small and clearly scoped
-3.  Include screenshots for UI changes
-4.  Include testing notes for behaviour changes
+- Create a focused branch for each change.
+- Keep updates small, clear, and easy to review.
+- Include test notes and screenshots for behavior or UI changes.
+- Open a pull request with a concise summary of what changed.
