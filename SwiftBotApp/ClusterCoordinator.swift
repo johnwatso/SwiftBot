@@ -154,8 +154,8 @@ actor ClusterCoordinator {
         self.nodeName = nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
+        self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         self.mode = await startupReconciledMode(requestedMode: mode)
 
@@ -1148,13 +1148,19 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/cluster/register")
             request.timeoutInterval = 3
+            let authMode = sharedSecret.isEmpty ? "none" : "HMAC"
+            snapshot.diagnostics = "Registering with Primary: POST \(describeEndpoint(url)) auth=\(authMode) node=\(nodeName) listenPort=\(listenPort)"
+            await publishSnapshot()
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 snapshot.workerState = .degraded
                 snapshot.workerStatusText = "Registration failed (\(code))"
-                snapshot.diagnostics = "Primary rejected registration at \(url.absoluteString)"
+                let bodySnippet = String(data: data, encoding: .utf8)?
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
+                snapshot.diagnostics = "Registration failed: POST \(describeEndpoint(url)) status=\(code) body=\(String(bodySnippet.prefix(180)))"
                 await publishSnapshot()
                 return
             }
@@ -1171,7 +1177,11 @@ actor ClusterCoordinator {
         } catch {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Primary unavailable"
-            snapshot.diagnostics = "Registration request failed for \(url.absoluteString): \(error.localizedDescription)"
+            if let urlError = error as? URLError {
+                snapshot.diagnostics = "Registration request failed: POST \(describeEndpoint(url)) urlError=\(urlError.code.rawValue) reason=\(urlError.localizedDescription)"
+            } else {
+                snapshot.diagnostics = "Registration request failed: POST \(describeEndpoint(url)) reason=\(error.localizedDescription)"
+            }
             await publishSnapshot()
         }
     }
@@ -1227,7 +1237,10 @@ actor ClusterCoordinator {
         guard let remoteHost = remoteHost?.trimmingCharacters(in: .whitespacesAndNewlines),
               !remoteHost.isEmpty,
               (1...Int(UInt16.max)).contains(listenPort) else { return nil }
-        return normalizedBaseURL("http://\(remoteHost):\(listenPort)")
+        let hostLiteral = remoteHost.contains(":") && !remoteHost.hasPrefix("[")
+            ? "[\(remoteHost)]"
+            : remoteHost
+        return normalizedBaseURL("http://\(hostLiteral):\(listenPort)")
     }
 
     private func sortedRegisteredWorkers() -> [RegisteredWorker] {
@@ -1250,8 +1263,9 @@ actor ClusterCoordinator {
     func normalizedBaseURL(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        let hadExplicitScheme = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
         let candidate: String
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+        if hadExplicitScheme {
             candidate = trimmed
         } else {
             candidate = "http://\(trimmed)"
@@ -1271,7 +1285,12 @@ actor ClusterCoordinator {
 
         let resolvedPort: Int = {
             if let explicit = url.port { return explicit }
-            // Never default mesh endpoints to :80/:443; use configured mesh port.
+            // If caller provided a scheme explicitly, honor that scheme's default port.
+            if hadExplicitScheme {
+                if scheme.lowercased() == "https" { return 443 }
+                if scheme.lowercased() == "http" { return 80 }
+            }
+            // Host-only inputs (no explicit scheme) default to configured mesh port.
             return listenPort
         }()
         return "\(scheme)://\(host):\(resolvedPort)"
@@ -1312,6 +1331,14 @@ actor ClusterCoordinator {
         } catch {
             return false
         }
+    }
+
+    private func describeEndpoint(_ url: URL) -> String {
+        let scheme = url.scheme ?? "http"
+        let host = url.host ?? "-"
+        let port = url.port ?? (scheme.lowercased() == "https" ? 443 : 80)
+        let path = url.path.isEmpty ? "/" : url.path
+        return "\(scheme.uppercased()) \(host):\(port)\(path)"
     }
 
     private func performRemoteAI(_ job: AIJobRequest) async -> AIJobResponse? {
