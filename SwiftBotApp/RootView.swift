@@ -2263,7 +2263,13 @@ struct CommandsView: View {
     }
 
     private func commandEnabledBinding(for command: VisualCommand) -> Binding<Bool> {
-        Binding(
+        if command.id == "mention-bug" {
+            return Binding(
+                get: { app.settings.bugTrackingEnabled },
+                set: { app.settings.bugTrackingEnabled = $0 }
+            )
+        }
+        return Binding(
             get: { app.isCommandEnabled(name: command.name, surface: command.surface.lowercased()) },
             set: { app.setCommandEnabled(name: command.name, surface: command.surface.lowercased(), enabled: $0) }
         )
@@ -2279,6 +2285,18 @@ struct CommandsView: View {
         if app.settings.slashCommandsEnabled {
             commands += visualSlashCommands
         }
+        commands.append(
+            VisualCommand(
+                id: "mention-bug",
+                name: "bug",
+                usage: "@swiftbot bug (reply to a message)",
+                description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
+                category: "Server",
+                surface: "Mention",
+                aliases: [],
+                adminOnly: true
+            )
+        )
 
         return commands.sorted { lhs, rhs in
             if lhs.surface != rhs.surface {
@@ -2467,6 +2485,9 @@ struct CommandsView: View {
         }
         .onChange(of: app.settings.slashCommandsEnabled) { _, _ in
             persistCommandSettings(syncSlash: true)
+        }
+        .onChange(of: app.settings.bugTrackingEnabled) { _, _ in
+            persistCommandSettings(syncSlash: false)
         }
         .onChange(of: app.settings.disabledCommandKeys) { _, _ in
             persistCommandSettings(syncSlash: true)

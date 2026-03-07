@@ -18,6 +18,8 @@ extension AppModel {
                 ["type": 7, "name": "channel", "description": "Channel for add/remove", "required": false]
             ]],
             ["name": "weekly", "description": "Show weekly summary", "type": 1],
+            ["name": "bugreport", "description": "Show bug tracking status counts", "type": 1],
+            ["name": "logabug", "description": "Create a tracked bug from typed error text", "type": 1, "options": [["type": 3, "name": "error", "description": "Bug/error details", "required": true]]],
             ["name": "image", "description": "Generate an image with OpenAI", "type": 1, "options": [["type": 3, "name": "prompt", "description": "Image prompt", "required": true]]],
             ["name": "wiki", "description": "Query WikiBridge", "type": 1, "options": [["type": 3, "name": "query", "description": "Your wiki query", "required": true]]],
             ["name": "compare", "description": "Compare two THE FINALS weapons", "type": 1, "options": [

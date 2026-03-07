@@ -106,6 +106,7 @@ final class AppModel: ObservableObject {
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
     var lastSlashCommandsEnabledState: Bool?
+    var bugEntriesByMessageID: [String: BugEntry] = [:]
 
     var botAvatarURL: URL? {
         guard let userId = botUserId, let hash = botAvatarHash else { return nil }

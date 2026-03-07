@@ -1249,9 +1249,15 @@ actor DiscordService {
             "afk": false
         ]
 
+        // Intents:
+        // - guilds (1), guild members (2), guild voice states (128), guild presences (256),
+        // - guild messages (512), guild message reactions (1024), guild message typing (2048),
+        // - direct messages (4096), direct message reactions (8192), message content (32768)
+        let intents = 49_027
+
         let identify: [String: Any] = [
             "token": token,
-            "intents": 37_767,
+            "intents": intents,
             "properties": ["$os": "macOS", "$browser": "SwiftBot", "$device": "SwiftBot"],
             "presence": presence
         ]
@@ -1601,6 +1607,102 @@ actor DiscordService {
         let (_, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to edit message"])
+        }
+    }
+
+    func fetchMessage(channelId: String, messageId: String, token: String) async throws -> [String: DiscordJSON] {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch message", "responseBody": responseBody]
+            )
+        }
+        return try JSONDecoder().decode([String: DiscordJSON].self, from: data)
+    }
+
+    func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(emoji)/@me"))
+        req.httpMethod = "PUT"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to add reaction", "responseBody": responseBody]
+            )
+        }
+    }
+
+    func removeOwnReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(emoji)/@me"))
+        req.httpMethod = "DELETE"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to remove reaction", "responseBody": responseBody]
+            )
+        }
+    }
+
+    func pinMessage(channelId: String, messageId: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/pins/\(messageId)"))
+        req.httpMethod = "PUT"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to pin message", "responseBody": responseBody]
+            )
+        }
+    }
+
+    func unpinMessage(channelId: String, messageId: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/pins/\(messageId)"))
+        req.httpMethod = "DELETE"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to unpin message", "responseBody": responseBody]
+            )
+        }
+    }
+
+    func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/threads"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "name": name,
+            "auto_archive_duration": 1440
+        ])
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create thread", "responseBody": responseBody]
+            )
         }
     }
 

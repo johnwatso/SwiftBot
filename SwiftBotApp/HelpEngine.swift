@@ -137,6 +137,15 @@ struct CommandCatalog {
                 isAdminOnly: true
             ),
             CommandEntry(
+                name: "bugreport",
+                aliases: [],
+                usage: "\(prefix)bugreport",
+                description: "Shows tracked bug counts by status for this server.",
+                examples: ["\(prefix)bugreport"],
+                category: .moderation,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "meta",
                 aliases: [],
                 usage: "\(prefix)meta",
