@@ -17,7 +17,7 @@ Implementation Kickoff Protocol (Use When Coding Starts)
 To ensure coding work references the agreed docs, use this instruction format:
 
 "Implement only from these docs, in this order:
-1) docs/FEATURE_PLAN_PHASE1.txt
+1) notes/FEATURE_PLAN_PHASE1.txt
 2) ARCHITECTURE.md
 3) AI_GUIDE.md
 Constraints:
