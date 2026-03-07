@@ -9,7 +9,21 @@
 </p>
 
 <p align="center">
-  macOS 26 • Swift 5.9 • Apple Silicon • GPLv3
+  <img src="App Images/app-icon.png" width="120" alt="SwiftBot Icon">
+</p>
+
+<h1 align="center">SwiftBot</h1>
+
+<p align="center">
+  Native macOS Discord bot dashboard built with SwiftUI
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2026-blue">
+  <img src="https://img.shields.io/badge/swift-5.9-orange">
+  <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-black">
+  <img src="https://img.shields.io/badge/license-GPLv3-blue">
+  <img src="https://img.shields.io/badge/status-active%20development-orange">
 </p>
 
 ## Development Status
