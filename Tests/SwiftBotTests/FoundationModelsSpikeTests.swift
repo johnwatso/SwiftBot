@@ -83,7 +83,15 @@ final class FoundationModelsSpikeTests: XCTestCase {
         var results: [[String: Any]] = []
 
         for suite in promptSuite {
-            let session = LanguageModelSession(model: model)
+            let transcript = Transcript(entries: [
+                .instructions(
+                    Transcript.Instructions(
+                        segments: [.text(Transcript.TextSegment(content: suite.systemPrompt))],
+                        toolDefinitions: []
+                    )
+                )
+            ])
+            let session = LanguageModelSession(model: model, transcript: transcript)
             let start = Date()
             var timedOut = false
 
@@ -196,11 +204,17 @@ final class FoundationModelsSpikeTests: XCTestCase {
     /// Non-empty, plausible length, no bare error token.
     private func qualityCheck(response: String) -> Bool {
         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 10 else { return false }
+        guard trimmed.count >= 10 else {
+            if !trimmed.isEmpty { print("[QualityCheck] Failed: too short (\(trimmed.count) chars): \"\(trimmed)\"") }
+            return false
+        }
         let lower = trimmed.lowercased()
         // Reject responses that are literally just an error keyword
         let bareErrors = ["error", "exception", "nil", "null", "undefined", "fatal"]
-        if trimmed.count < 60 && bareErrors.contains(lower) { return false }
+        if trimmed.count < 60 && bareErrors.contains(lower) {
+            print("[QualityCheck] Failed: bare error token: \"\(trimmed)\"")
+            return false
+        }
         return true
     }
 

@@ -2,10 +2,14 @@ import Foundation
 
 actor ConfigStore {
     private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
+    private let openAIAPIKeyAccount = "openai-api-key"
+    private let clusterSharedSecretAccount = "cluster-shared-secret"
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var lastToken: String?
+    private var lastOpenAIAPIKey: String?
+    private var lastClusterSharedSecret: String?
 
     init(filename: String = "settings.json") {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -47,6 +51,20 @@ actor ConfigStore {
             }
         }
 
+        if let storedKey = KeychainHelper.load(account: openAIAPIKeyAccount) {
+            settings.openAIAPIKey = storedKey
+        } else if !settings.openAIAPIKey.isEmpty {
+            KeychainHelper.save(settings.openAIAPIKey, account: openAIAPIKeyAccount)
+        }
+        lastOpenAIAPIKey = settings.openAIAPIKey
+
+        if let storedSecret = KeychainHelper.load(account: clusterSharedSecretAccount) {
+            settings.clusterSharedSecret = storedSecret
+        } else if !settings.clusterSharedSecret.isEmpty {
+            KeychainHelper.save(settings.clusterSharedSecret, account: clusterSharedSecretAccount)
+        }
+        lastClusterSharedSecret = settings.clusterSharedSecret
+
         return settings
     }
 
@@ -70,9 +88,31 @@ actor ConfigStore {
             KeychainHelper.save(trimmedAdminSecret, account: adminDiscordClientSecretAccount)
         }
 
-        // Always clear token from disk-stored settings.
+        let trimmedOpenAIKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedOpenAIKey != lastOpenAIAPIKey {
+            if trimmedOpenAIKey.isEmpty {
+                KeychainHelper.delete(account: openAIAPIKeyAccount)
+            } else {
+                KeychainHelper.save(trimmedOpenAIKey, account: openAIAPIKeyAccount)
+            }
+            lastOpenAIAPIKey = trimmedOpenAIKey
+        }
+
+        let trimmedClusterSecret = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedClusterSecret != lastClusterSharedSecret {
+            if trimmedClusterSecret.isEmpty {
+                KeychainHelper.delete(account: clusterSharedSecretAccount)
+            } else {
+                KeychainHelper.save(trimmedClusterSecret, account: clusterSharedSecretAccount)
+            }
+            lastClusterSharedSecret = trimmedClusterSecret
+        }
+
+        // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordClientSecret = ""
+        settingsToSave.openAIAPIKey = ""
+        settingsToSave.clusterSharedSecret = ""
 
         let data = try encoder.encode(settingsToSave)
         try data.write(to: url, options: .atomic)

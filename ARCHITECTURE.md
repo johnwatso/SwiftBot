@@ -393,6 +393,9 @@ SwiftBot.xcodeproj
 ### Token Storage
 - Stored in Keychain via `KeychainHelper` (migrated automatically from any legacy disk-stored token on first load)
 - Settings JSON on disk always has token cleared (`token = ""`) — only Keychain holds the live value
+- `openAIAPIKey` → Keychain account `"openai-api-key"` (migrated 2026-03-08)
+- `clusterSharedSecret` → Keychain account `"cluster-shared-secret"` (migrated 2026-03-08)
+- `settings.json` on disk stores empty strings for all three secrets; Keychain is the sole source of truth
 - User responsible for token security
 
 ### Permissions
