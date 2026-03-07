@@ -30,6 +30,15 @@ When `requestResyncFromLeader` is triggered:
 - **Leader Logs:** `meshLogger.warning("Mesh auth rejected: missing required headers")` (due to missing HMAC headers).
 - **Standby Logs:** No error (the `URLSession` response code 401 is not checked or surfaced).
 
+## 4. Current Networking Contract (Updated 2026-03-07)
+
+- Internet peer hosts are supported (not LAN-only).
+- Unsafe endpoints remain blocked (wildcard/metadata targets).
+- Mesh URL normalization defaults missing ports to configured mesh port (`clusterListenPort`, default `38787`), not implicit `80/443`.
+- `/cluster/status` signing and verification now use the same path for HMAC.
+- Startup leader reconciliation prevents returning-primary split brain by demoting to standby when an active leader is reachable.
+- Leader registration now prefers observed source host + declared listen port for callback address storage.
+
 ---
 **Documented by:** Gemini (Research & Documentation)  
 **Date:** 2026-03-07

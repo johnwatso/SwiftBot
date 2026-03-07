@@ -24,20 +24,29 @@ final class ClusterSecurityTests: XCTestCase {
         XCTAssertTrue(bonjour)
         XCTAssertFalse(metadata)
         XCTAssertFalse(anyHost)
-        XCTAssertFalse(publicHost)
+        XCTAssertTrue(publicHost)
     }
 
-    func testNormalizedBaseURLRejectsPublicHosts() async {
+    func testNormalizedBaseURLAllowsPublicHostsOnMeshPort() async {
         let coordinator = ClusterCoordinator()
+        await coordinator.applySettings(
+            mode: .leader,
+            nodeName: "URLPolicy",
+            leaderAddress: "",
+            listenPort: 38787,
+            sharedSecret: "s"
+        )
 
         let privateURL = await coordinator.testNormalizedBaseURL("192.168.1.50:38787")
         let localhostURL = await coordinator.testNormalizedBaseURL("http://localhost:8080")
         let publicURL = await coordinator.testNormalizedBaseURL("https://evil.com")
+        let publicMeshPortURL = await coordinator.testNormalizedBaseURL("http://evil.com:38787")
         let metadataURL = await coordinator.testNormalizedBaseURL("169.254.169.254")
 
         XCTAssertEqual(privateURL, "http://192.168.1.50:38787")
         XCTAssertEqual(localhostURL, "http://localhost:8080")
-        XCTAssertNil(publicURL)
+        XCTAssertEqual(publicURL, "https://evil.com:38787")
+        XCTAssertEqual(publicMeshPortURL, "http://evil.com:38787")
         XCTAssertNil(metadataURL)
     }
 
@@ -55,7 +64,7 @@ final class ClusterSecurityTests: XCTestCase {
         let httpsHostOnly = await coordinator.testNormalizedBaseURL("https://10.0.0.6")
 
         XCTAssertEqual(hostOnly, "http://10.0.0.5:39055")
-        XCTAssertEqual(httpsHostOnly, "https://10.0.0.6:443")
+        XCTAssertEqual(httpsHostOnly, "https://10.0.0.6:39055")
     }
 
     func testClusterSecretAuthRoutes() async {

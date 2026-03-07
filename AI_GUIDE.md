@@ -66,6 +66,17 @@ This file provides quick answers to common questions and tasks for AI assistants
   - Wiki cache sync (Phase 3) — standbys pull `WikiContextEntry` batches from leader via `GET /v1/mesh/sync/wiki-cache`.
 - **Promotion side-effects:** `promoteToLeader()` clears all replication cursors and fires `onCursorsChanged([:])`.
 
+### Current Mesh Networking Contract (As Implemented 2026-03-07)
+
+- **Internet peers are allowed:** peer hosts are no longer limited to private LAN ranges.
+- **Unsafe targets are still blocked:** wildcard and metadata endpoints are rejected (`0.0.0.0`, `::`, `169.254.169.254`, `metadata.google.internal`).
+- **Port normalization rule:** if a peer URL omits a port, SwiftMesh defaults it to the node's configured mesh port (`clusterListenPort`, default `38787`).
+- **No implicit 80/443 fallback for mesh peers:** missing ports normalize to the mesh port.
+- **Explicit peer ports are allowed:** if a port is provided, it is preserved.
+- **Auth rule remains strict:** all non-`/health` mesh routes require valid HMAC when `sharedSecret` is configured. In non-standalone mode with empty secret, requests fail closed (`401`).
+- **Startup split-brain reconciliation:** a node configured as leader probes configured leader `/cluster/status` and starts in standby if an active remote leader is found.
+- **Registration callback hardening:** leader stores worker/standby callback URL using observed remote source host + declared listen port (fallback to advertised baseURL).
+
 ## Common Tasks
 
 ### SwiftMesh Status Checklist

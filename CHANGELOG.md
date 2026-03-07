@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed - 2026-03-07
 
+#### SwiftMesh Internet Peer Networking + Reconciliation + UI Refresh
+**Issue:** Mesh cluster behavior was too LAN-assumptive and could split-brain on returning primaries; SwiftMesh UI was visually heavy for macOS.
+
+**Solution:**
+- **Networking policy updates:**
+  - Allowed internet peer hosts in mesh address normalization.
+  - Blocked only clearly unsafe hosts (wildcard/metadata endpoints).
+  - Removed implicit `:80`/`:443` fallback for mesh peers; missing ports now normalize to configured mesh port (`clusterListenPort`, default `38787`).
+- **Auth + status pipeline hardening:**
+  - Fixed `/cluster/status` HMAC path mismatch (`/cluster/status` now signed consistently).
+  - Local `/cluster/status` polling now sends mesh HMAC headers when secret is configured.
+- **Split-brain prevention on startup:**
+  - Added startup leader reconciliation: nodes configured as leader probe configured leader `/cluster/status` and start as standby when an active leader exists.
+  - `startBot()` now respects runtime reconciled cluster mode before connecting Discord.
+- **Callback reachability reliability:**
+  - Leader registration path now prefers observed remote source host + declared listen port for worker/standby callback address.
+- **SwiftMesh UI redesign (native macOS tone):**
+  - Reduced glass/shadow weight, simplified node rows, compact metrics grid, left-to-right topology (Primary left, workers right), and less prominent stop controls.
+
+**Impact:** SwiftMesh can operate across internet peers with deterministic mesh-port behavior, stronger startup safety, and a lighter macOS-native operational UI.
+
 #### SwiftMesh Stabilization & Reliability (P0 Fixes)
 **Issue:** SwiftMesh was non-functional due to authentication mismatches, missing standby connectivity, and split-brain risks.
 
