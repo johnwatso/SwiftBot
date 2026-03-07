@@ -61,6 +61,7 @@ final class AppModel: ObservableObject {
     let discordCache = DiscordCache()
     let service = DiscordService()
     let cluster = ClusterCoordinator()
+    let adminWebServer = AdminWebServer()
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
@@ -280,6 +281,7 @@ final class AppModel: ObservableObject {
             }
             let restoredCursors = await meshCursorStore.load()
             await cluster.applyRestoredCursors(restoredCursors)
+            await configureAdminWebServer()
             configureMeshSync()
             setupBackgroundRefreshScheduler()
             await pollClusterStatus()
@@ -309,6 +311,14 @@ final class AppModel: ObservableObject {
             settings.prefix = trimmedPrefix
         }
         settings.wikiBot.normalizeSources()
+        settings.adminWebUI.bindHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "127.0.0.1"
+            : settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
+        settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
 
         Task {
             await service.configureLocalAIDMReplies(
@@ -328,6 +338,7 @@ final class AppModel: ObservableObject {
                 listenPort: settings.clusterListenPort,
                 sharedSecret: settings.clusterSharedSecret
             )
+            await configureAdminWebServer()
             configurePatchyMonitoring()
 
             do {
@@ -1053,6 +1064,197 @@ final class AppModel: ObservableObject {
             token = String(token.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return token
+    }
+
+    func normalizedAdminRedirectPath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "/auth/discord/callback" }
+        return trimmed.hasPrefix("/") ? trimmed : "/" + trimmed
+    }
+
+    func adminWebStatusSnapshot() -> AdminWebStatusPayload {
+        AdminWebStatusPayload(
+            botStatus: status.rawValue,
+            botUsername: botUsername,
+            connectedServerCount: connectedServers.count,
+            gatewayEventCount: gatewayEventCount,
+            uptimeText: uptime?.text,
+            webUIEnabled: settings.adminWebUI.enabled,
+            webUIBaseURL: adminWebBaseURL()
+        )
+    }
+
+    func adminWebOverviewSnapshot() -> AdminWebOverviewPayload {
+        let enabledWikiSourceCount = settings.wikiBot.sources.filter(\.enabled).count
+        let patchyTargetCount = settings.patchy.sourceTargets.count
+        let patchyEnabledTargetCount = settings.patchy.sourceTargets.filter(\.isEnabled).count
+        let actionRuleCount = ruleStore.rules.count
+        let enabledActionRuleCount = ruleStore.rules.filter(\.isEnabled).count
+        let aiProviderSummary = settings.preferredAIProvider.rawValue
+        let clusterLeader = clusterNodes.first(where: { $0.role == .leader })?.hostname
+            ?? clusterNodes.first?.hostname
+            ?? "Unavailable"
+        let connectedNodes = clusterNodes.filter { $0.status != .disconnected }.count
+
+        let metrics: [AdminWebMetricPayload] = [
+            AdminWebMetricPayload(
+                title: "Bot Status",
+                value: status.rawValue.capitalized,
+                subtitle: uptime?.text ?? "--"
+            ),
+            AdminWebMetricPayload(
+                title: "Servers Connected",
+                value: "\(connectedServers.count)",
+                subtitle: settings.clusterMode == .standalone ? "Standalone" : settings.clusterMode.displayName
+            ),
+            AdminWebMetricPayload(
+                title: "Users In Voice",
+                value: "\(activeVoice.count)",
+                subtitle: "users right now"
+            ),
+            AdminWebMetricPayload(
+                title: "Commands Run",
+                value: "\(stats.commandsRun)",
+                subtitle: "this session"
+            ),
+            AdminWebMetricPayload(
+                title: "WikiBridge Status",
+                value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                subtitle: "\(enabledWikiSourceCount) sources"
+            ),
+            AdminWebMetricPayload(
+                title: "Patchy Monitoring",
+                value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets"
+            ),
+            AdminWebMetricPayload(
+                title: "Active Actions",
+                value: "\(enabledActionRuleCount)",
+                subtitle: "\(actionRuleCount) total rules"
+            ),
+            AdminWebMetricPayload(
+                title: "AI Bots",
+                value: aiProviderSummary,
+                subtitle: settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled"
+            )
+        ]
+
+        let recentVoice = Array(voiceLog.prefix(5)).map {
+            AdminWebRecentVoicePayload(
+                description: $0.description,
+                timeText: $0.time.formatted(date: .omitted, time: .standard)
+            )
+        }
+
+        let recentCommands = Array(commandLog.prefix(5)).map {
+            AdminWebRecentCommandPayload(
+                title: "\($0.user) @ \($0.server) • \($0.command)",
+                timeText: $0.time.formatted(date: .omitted, time: .standard),
+                ok: $0.ok
+            )
+        }
+
+        return AdminWebOverviewPayload(
+            metrics: metrics,
+            cluster: AdminWebClusterPayload(
+                connectedNodes: connectedNodes,
+                leader: clusterLeader,
+                mode: clusterSnapshot.mode.rawValue
+            ),
+            recentVoice: recentVoice,
+            recentCommands: recentCommands,
+            botInfo: AdminWebBotInfoPayload(
+                uptime: uptime?.text ?? "--",
+                errors: stats.errors,
+                state: status.rawValue.capitalized,
+                cluster: settings.clusterMode != .standalone ? clusterSnapshot.mode.rawValue : nil
+            )
+        )
+    }
+
+    func adminWebBaseURL() -> String {
+        let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty {
+            return explicit
+        }
+        return "http://\(settings.adminWebUI.bindHost):\(settings.adminWebUI.port)"
+    }
+
+    func updatePrefixFromAdmin(_ prefix: String) -> Bool {
+        let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        settings.prefix = trimmed
+        saveSettings()
+        return true
+    }
+
+    func configureAdminWebServer() async {
+        let config = AdminWebServer.Configuration(
+            enabled: settings.adminWebUI.enabled,
+            bindHost: settings.adminWebUI.bindHost,
+            port: settings.adminWebUI.port,
+            publicBaseURL: adminWebBaseURL(),
+            discordClientID: settings.adminWebUI.discordClientID,
+            discordClientSecret: settings.adminWebUI.discordClientSecret,
+            redirectPath: settings.adminWebUI.redirectPath,
+            allowedUserIDs: settings.adminWebUI.normalizedAllowedUserIDs
+        )
+
+        await adminWebServer.configure(
+            config: config,
+            statusProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebStatusPayload(
+                        botStatus: "stopped",
+                        botUsername: "SwiftBot",
+                        connectedServerCount: 0,
+                        gatewayEventCount: 0,
+                        uptimeText: nil,
+                        webUIEnabled: false,
+                        webUIBaseURL: ""
+                    )
+                }
+                return await MainActor.run { model.adminWebStatusSnapshot() }
+            },
+            overviewProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebOverviewPayload(
+                        metrics: [],
+                        cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
+                        recentVoice: [],
+                        recentCommands: [],
+                        botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
+                    )
+                }
+                return await MainActor.run { model.adminWebOverviewSnapshot() }
+            },
+            connectedGuildIDsProvider: { [weak self] in
+                guard let model = self else { return [] }
+                return await MainActor.run { Set(model.connectedServers.keys) }
+            },
+            currentPrefixProvider: { [weak self] in
+                guard let model = self else { return "/" }
+                return await MainActor.run { model.settings.prefix }
+            },
+            updatePrefix: { [weak self] prefix in
+                guard let model = self else { return false }
+                return await MainActor.run { model.updatePrefixFromAdmin(prefix) }
+            },
+            startBot: { [weak self] in
+                guard let model = self else { return false }
+                await model.startBot()
+                return true
+            },
+            stopBot: { [weak self] in
+                guard let model = self else { return false }
+                await MainActor.run { model.stopBot() }
+                return true
+            },
+            log: { [weak self] message in
+                guard let model = self else { return }
+                await MainActor.run { model.logs.append(message) }
+            }
+        )
     }
 
     func stopBot() {
