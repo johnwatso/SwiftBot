@@ -126,6 +126,8 @@ final class AppModel: ObservableObject {
     var clusterNodesRefreshTask: Task<Void, Never>?
     var lastClusterStatusSuccessAt: Date?
     var lastGoodClusterNodes: [ClusterNodeStatus] = []
+    var registeredWorkersDebugCount: Int = 0
+    var registeredWorkersDebugSummary: String = "none"
     // P1b: off-peak background mesh refresh
     var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
@@ -2089,7 +2091,10 @@ final class AppModel: ObservableObject {
         guard let data = await cluster.fetchConfigFiles() else { return }
         let imported = await store.importMeshSyncedFiles(
             data,
-            excludingFileNames: Set([SwiftBotStorage.swiftMeshConfigFileName])
+            excludingFileNames: Set([
+                SwiftBotStorage.swiftMeshConfigFileName,
+                SwiftBotStorage.clusterStateFileName
+            ])
         )
         guard imported > 0 else { return }
 
@@ -2148,6 +2153,7 @@ final class AppModel: ObservableObject {
     func pollClusterStatus() async {
         guard settings.clusterMode != .standalone else {
             clusterNodes = []
+            await refreshRegisteredWorkersDebugInfo()
             return
         }
 
@@ -2157,26 +2163,20 @@ final class AppModel: ObservableObject {
 
         if settings.clusterMode == .standby,
            let remoteNodes = await fetchRemoteLeaderNodesIfAvailable() {
-            clusterNodes = remoteNodes
-            lastGoodClusterNodes = remoteNodes
-            lastClusterStatusSuccessAt = Date()
+            await applyClusterNodes(remoteNodes)
             return
         }
 
         if let localURL,
            let response = await clusterStatusService.fetchStatus(from: localURL, headers: localStatusHeaders) {
             let resolvedNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
-            clusterNodes = resolvedNodes
-            lastGoodClusterNodes = resolvedNodes
-            lastClusterStatusSuccessAt = Date()
+            await applyClusterNodes(resolvedNodes)
             return
         }
 
         if (settings.clusterMode == .worker || settings.clusterMode == .standby),
            let remoteNodes = await fetchRemoteLeaderNodesIfAvailable() {
-            clusterNodes = remoteNodes
-            lastGoodClusterNodes = remoteNodes
-            lastClusterStatusSuccessAt = Date()
+            await applyClusterNodes(remoteNodes)
             return
         }
 
@@ -2188,6 +2188,20 @@ final class AppModel: ObservableObject {
         } else {
             clusterNodes = fallbackClusterNodes()
         }
+        await refreshRegisteredWorkersDebugInfo()
+    }
+
+    private func applyClusterNodes(_ nodes: [ClusterNodeStatus]) async {
+        clusterNodes = nodes
+        lastGoodClusterNodes = nodes
+        lastClusterStatusSuccessAt = Date()
+        await refreshRegisteredWorkersDebugInfo()
+    }
+
+    private func refreshRegisteredWorkersDebugInfo() async {
+        let info = await cluster.registeredWorkersDebugInfo()
+        registeredWorkersDebugCount = info.count
+        registeredWorkersDebugSummary = info.summary
     }
 
     private func fetchRemoteLeaderNodesIfAvailable() async -> [ClusterNodeStatus]? {
@@ -2201,6 +2215,9 @@ final class AppModel: ObservableObject {
         let statusHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: emptyBody)
         if let response = await clusterStatusService.fetchStatus(from: statusURL, headers: statusHeaders) {
             let nodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+            if settings.clusterMode == .standby {
+                return ensureLocalStandbyNodePresent(in: nodes)
+            }
             return nodes
         }
 
@@ -2240,7 +2257,30 @@ final class AppModel: ObservableObject {
                 jobsActive: 0
             )
         )
+        if settings.clusterMode == .standby {
+            return ensureLocalStandbyNodePresent(in: nodes)
+        }
         return nodes
+    }
+
+    private func ensureLocalStandbyNodePresent(in nodes: [ClusterNodeStatus]) -> [ClusterNodeStatus] {
+        guard settings.clusterMode == .standby else { return nodes }
+        guard let localWorker = fallbackClusterNodes().first(where: { $0.role == .worker }) else {
+            return nodes
+        }
+
+        let hasLocal = nodes.contains { node in
+            guard node.role == .worker else { return false }
+            if node.displayName.caseInsensitiveCompare(localWorker.displayName) == .orderedSame {
+                return true
+            }
+            return node.hostname.caseInsensitiveCompare(localWorker.hostname) == .orderedSame
+        }
+        guard !hasLocal else { return nodes }
+
+        var merged = nodes
+        merged.append(localWorker)
+        return merged
     }
 
     private func meshStatusAuthHeaders(path: String, method: String, body: Data) async -> [String: String] {
