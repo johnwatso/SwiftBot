@@ -319,7 +319,8 @@ struct OverviewView: View {
                                 subtitle: widget.subtitle,
                                 symbol: widget.symbol,
                                 detail: widget.detail,
-                                color: widget.color
+                                color: widget.color,
+                                appleIntelligenceGlowEnabled: widget.id == "aiBots" && app.settings.preferredAIProvider == .apple
                             )
                             .rotationEffect(.degrees(isEditingDashboard ? wiggleAmplitude(for: widget.id) : 0))
                             .animation(
@@ -599,6 +600,20 @@ struct DashboardMetricCard: View {
     let symbol: String
     var detail: String = ""
     let color: Color
+    var appleIntelligenceGlowEnabled = false
+    @State private var isHovering = false
+    @State private var glowOpacity = 0.0
+    @State private var playPulse = false
+
+    private let cornerRadius: CGFloat = 18
+
+    private var isGlowActive: Bool {
+        appleIntelligenceGlowEnabled && isHovering
+    }
+
+    private var shouldRenderGlow: Bool {
+        isGlowActive || glowOpacity > 0.001
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -628,7 +643,59 @@ struct DashboardMetricCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .glassCard(cornerRadius: 18, tint: color.opacity(0.10), stroke: color.opacity(0.28))
+        .glassCard(cornerRadius: cornerRadius, tint: color.opacity(0.10), stroke: color.opacity(0.28))
+        .overlay {
+            if shouldRenderGlow || playPulse {
+                ZStack {
+                    if shouldRenderGlow {
+                        IntelligenceGlowBorder(cornerRadius: cornerRadius, isAnimating: isGlowActive)
+                            .opacity(glowOpacity)
+                    }
+
+                    if playPulse {
+                        IntelligenceGlowPulse(cornerRadius: cornerRadius) {
+                            playPulse = false
+                        }
+                    }
+                }
+            }
+        }
+        .onHover { hovering in
+            let wasHovering = isHovering
+            isHovering = hovering
+
+            if hovering && appleIntelligenceGlowEnabled && !wasHovering {
+                playPulse = true
+            } else if !hovering {
+                playPulse = false
+            }
+
+            updateGlowState()
+        }
+        .onAppear {
+            updateGlowState(animated: false)
+        }
+        .onChange(of: appleIntelligenceGlowEnabled) { _, enabled in
+            if !enabled {
+                playPulse = false
+            }
+            updateGlowState()
+        }
+        .onDisappear {
+            playPulse = false
+        }
+    }
+
+    private func updateGlowState(animated: Bool = true) {
+        let targetOpacity = isGlowActive ? 1.0 : 0.0
+
+        if animated {
+            withAnimation(.easeInOut(duration: isGlowActive ? 0.18 : 0.32)) {
+                glowOpacity = targetOpacity
+            }
+        } else {
+            glowOpacity = targetOpacity
+        }
     }
 }
 
