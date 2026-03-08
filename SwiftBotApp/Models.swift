@@ -204,6 +204,7 @@ struct BotSettings: Codable, Hashable {
     var openAIImageMonthlyLimitPerUser: Int = 5
     var openAIImageMonthlyHardCap: Int = 100
     var openAIImageUsageByUserMonth: [String: Int] = [:]
+    var devFeaturesEnabled: Bool = false
     var bugAutoFixEnabled: Bool = false
     var bugAutoFixTriggerEmoji: String = "🤖"
     var bugAutoFixCommandTemplate: String = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
@@ -278,6 +279,7 @@ struct BotSettings: Codable, Hashable {
         case openAIImageMonthlyLimitPerUser
         case openAIImageMonthlyHardCap
         case openAIImageUsageByUserMonth
+        case devFeaturesEnabled
         case bugAutoFixEnabled
         case bugAutoFixTriggerEmoji
         case bugAutoFixCommandTemplate
@@ -335,6 +337,7 @@ struct BotSettings: Codable, Hashable {
         openAIImageMonthlyLimitPerUser = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyLimitPerUser) ?? 5
         openAIImageMonthlyHardCap = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyHardCap) ?? 100
         openAIImageUsageByUserMonth = try container.decodeIfPresent([String: Int].self, forKey: .openAIImageUsageByUserMonth) ?? [:]
+        devFeaturesEnabled = try container.decodeIfPresent(Bool.self, forKey: .devFeaturesEnabled) ?? false
         bugAutoFixEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixEnabled) ?? false
         bugAutoFixTriggerEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixTriggerEmoji) ?? "🤖"
         bugAutoFixCommandTemplate = try container.decodeIfPresent(String.self, forKey: .bugAutoFixCommandTemplate) ?? "codex exec \"$SWIFTBOT_BUG_PROMPT\""
@@ -390,6 +393,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(openAIImageMonthlyLimitPerUser, forKey: .openAIImageMonthlyLimitPerUser)
         try container.encode(openAIImageMonthlyHardCap, forKey: .openAIImageMonthlyHardCap)
         try container.encode(openAIImageUsageByUserMonth, forKey: .openAIImageUsageByUserMonth)
+        try container.encode(devFeaturesEnabled, forKey: .devFeaturesEnabled)
         try container.encode(bugAutoFixEnabled, forKey: .bugAutoFixEnabled)
         try container.encode(bugAutoFixTriggerEmoji, forKey: .bugAutoFixTriggerEmoji)
         try container.encode(bugAutoFixCommandTemplate, forKey: .bugAutoFixCommandTemplate)
