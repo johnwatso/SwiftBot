@@ -201,3 +201,72 @@ struct ViewSectionHeader: View {
         }
     }
 }
+
+struct PreferencesTabContainer<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .padding(.bottom, 84)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct PreferencesCard<Content: View>: View {
+    let title: String
+    let systemImage: String?
+    let content: Content
+
+    init(_ title: String, systemImage: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let systemImage {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+            } else {
+                Text(title)
+                    .font(.headline)
+            }
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+struct PreferencesReadOnlyBanner: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 2)
+    }
+}

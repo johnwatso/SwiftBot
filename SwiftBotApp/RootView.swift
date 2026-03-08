@@ -5,7 +5,6 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var app: AppModel
     @State private var selection: SidebarItem = .overview
-    @State private var showToken = false
 
     var body: some View {
         if !app.isOnboardingComplete {
@@ -13,44 +12,43 @@ struct RootView: View {
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
         } else {
-        HSplitView {
-            DashboardSidebar(selection: $selection)
-                .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
+            HSplitView {
+                DashboardSidebar(selection: $selection)
+                    .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
 
-            Group {
-                switch selection {
-                case .overview:
-                    OverviewView(onOpenSwiftMesh: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selection = .swiftMesh
-                        }
-                    })
-                case .patchy: PatchyView()
-                case .voice: VoiceView()
-                case .commands: CommandsView()
-                case .commandLog: CommandLogView()
-                case .wikiBridge: WikiBridgeView()
-                case .logs: LogsView()
-                case .settings: GeneralSettingsView(showToken: $showToken)
-                case .aiBots: AIBotsView()
-                case .diagnostics: DiagnosticsView()
-                case .swiftMesh: SwiftMeshView()
+                Group {
+                    switch selection {
+                    case .overview:
+                        OverviewView(onOpenSwiftMesh: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selection = .swiftMesh
+                            }
+                        })
+                    case .patchy: PatchyView()
+                    case .voice: VoiceView()
+                    case .commands: CommandsView()
+                    case .commandLog: CommandLogView()
+                    case .wikiBridge: WikiBridgeView()
+                    case .logs: LogsView()
+                    case .aiBots: AIBotsView()
+                    case .diagnostics: DiagnosticsView()
+                    case .swiftMesh: SwiftMeshView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(SwiftBotGlassBackground())
+            }
+            .padding(.top, -30)
+            .ignoresSafeArea(.container, edges: .top)
+            .background(SwiftBotGlassBackground())
+            .toggleStyle(.switch)
+            .overlay(alignment: .topTrailing) {
+                if app.isBetaBuild {
+                    BetaBadgeView()
+                        .padding(.top, 14)
+                        .padding(.trailing, 18)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(SwiftBotGlassBackground())
-        }
-        .padding(.top, -30)
-        .ignoresSafeArea(.container, edges: .top)
-        .background(SwiftBotGlassBackground())
-        .toggleStyle(.switch)
-        .overlay(alignment: .topTrailing) {
-            if app.isBetaBuild {
-                BetaBadgeView()
-                    .padding(.top, 14)
-                    .padding(.trailing, 18)
-            }
-        }
         } // end else isOnboardingComplete
     }
 }
@@ -188,7 +186,6 @@ struct DashboardSidebar: View {
 
                     SidebarSection(title: "System") {
                         SidebarRow(item: .aiBots, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .settings, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .diagnostics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }
