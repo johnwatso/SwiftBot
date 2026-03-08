@@ -69,6 +69,7 @@ final class AppUpdater: NSObject, ObservableObject {
                 updaterDelegate: self,
                 userDriverDelegate: nil
             )
+            updaterController?.updater.automaticallyDownloadsUpdates = true
             canCheckForUpdates = true
         } else {
             updaterController = nil
@@ -82,6 +83,12 @@ final class AppUpdater: NSObject, ObservableObject {
     func checkForUpdates() {
 #if canImport(Sparkle)
         updaterController?.checkForUpdates(nil)
+#endif
+    }
+
+    func checkForUpdatesInBackground() {
+#if canImport(Sparkle)
+        updaterController?.updater.checkForUpdatesInBackground()
 #endif
     }
 
@@ -123,6 +130,15 @@ final class AppUpdater: NSObject, ObservableObject {
 extension AppUpdater: SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
         Self.resolvedFeedURL(stableFeedURL: stableFeedURL, channel: selectedChannel)
+    }
+
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        // Do not postpone relaunch; install immediately when Sparkle is ready.
+        return false
+    }
+
+    func updaterShouldRelaunchApplication(_ updater: SPUUpdater) -> Bool {
+        true
     }
 }
 #endif

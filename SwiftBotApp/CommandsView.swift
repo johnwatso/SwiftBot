@@ -12,7 +12,7 @@ struct CommandsView: View {
         let usage: String
         let description: String
         let category: String
-        let surface: String
+        let surfaces: [String]
         let aliases: [String]
         let adminOnly: Bool
     }
@@ -26,7 +26,7 @@ struct CommandsView: View {
                 usage: entry.usage,
                 description: entry.description,
                 category: entry.category.rawValue,
-                surface: "Prefix",
+                surfaces: ["Prefix"],
                 aliases: entry.aliases,
                 adminOnly: entry.isAdminOnly
             )
@@ -49,7 +49,7 @@ struct CommandsView: View {
                 usage: "/\(name)\(usageSuffix)",
                 description: description,
                 category: "Slash",
-                surface: "Slash",
+                surfaces: ["Slash"],
                 aliases: [],
                 adminOnly: name == "debug"
             )
@@ -64,42 +64,65 @@ struct CommandsView: View {
             )
         }
         return Binding(
-            get: { app.isCommandEnabled(name: command.name, surface: command.surface.lowercased()) },
-            set: { app.setCommandEnabled(name: command.name, surface: command.surface.lowercased(), enabled: $0) }
+            get: {
+                command.surfaces.allSatisfy { surface in
+                    app.isCommandEnabled(name: command.name, surface: surface.lowercased())
+                }
+            },
+            set: { enabled in
+                for surface in command.surfaces {
+                    app.setCommandEnabled(name: command.name, surface: surface.lowercased(), enabled: enabled)
+                }
+            }
         )
     }
 
     private var allVisualCommands: [VisualCommand] {
         guard app.settings.commandsEnabled else { return [] }
 
-        var commands: [VisualCommand] = []
+        var commandsByName: [String: VisualCommand] = [:]
         if app.settings.prefixCommandsEnabled {
-            commands += visualPrefixCommands
+            for command in visualPrefixCommands {
+                commandsByName[command.name.lowercased()] = command
+            }
         }
         if app.settings.slashCommandsEnabled {
-            commands += visualSlashCommands
+            for command in visualSlashCommands {
+                let key = command.name.lowercased()
+                if var existing = commandsByName[key] {
+                    let mergedSurfaces = Array(Set(existing.surfaces + command.surfaces))
+                        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+                    existing = VisualCommand(
+                        id: existing.id,
+                        name: existing.name,
+                        usage: existing.usage,
+                        description: existing.description,
+                        category: existing.category,
+                        surfaces: mergedSurfaces,
+                        aliases: existing.aliases,
+                        adminOnly: existing.adminOnly || command.adminOnly
+                    )
+                    commandsByName[key] = existing
+                } else {
+                    commandsByName[key] = command
+                }
+            }
         }
-        commands.append(
+        commandsByName["bug-mention"] = (
             VisualCommand(
                 id: "mention-bug",
                 name: "bug",
                 usage: "@swiftbot bug (reply to a message)",
                 description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
                 category: "Server",
-                surface: "Mention",
+                surfaces: ["Mention"],
                 aliases: [],
                 adminOnly: true
             )
         )
 
-        return commands.sorted { lhs, rhs in
-            if lhs.surface != rhs.surface {
-                return lhs.surface < rhs.surface
-            }
-            if lhs.category != rhs.category {
-                return lhs.category.localizedCaseInsensitiveCompare(rhs.category) == .orderedAscending
-            }
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        return commandsByName.values.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
     }
 
@@ -193,7 +216,9 @@ struct CommandsView: View {
                                             HStack(spacing: 8) {
                                                 Text(command.name)
                                                     .font(.body.weight(.semibold))
-                                                CommandTag(text: command.surface, tint: command.surface == "Slash" ? .orange : .blue)
+                                                ForEach(command.surfaces, id: \.self) { surface in
+                                                    CommandTag(text: surface, tint: surface == "Slash" ? .orange : (surface == "Prefix" ? .blue : .secondary))
+                                                }
                                                 CommandTag(text: command.category, tint: .secondary)
                                                 if command.adminOnly {
                                                     CommandTag(text: "Admin", tint: .red)
