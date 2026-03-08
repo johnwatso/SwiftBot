@@ -43,6 +43,7 @@
 		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
 		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
 		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
+		D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */; };
 		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
 		D4E5F607080011223344556B /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6070800112233445C /* LogsView.swift */; };
 		E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C1A9010102030405060708 /* WikiBridgeView.swift */; };
@@ -88,6 +89,7 @@
 		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
 		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
 		D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		E4C1A9010102030405060708 /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
 		E5F607080011223344556677 /* AIBotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBotsView.swift; sourceTree = "<group>"; };
@@ -150,6 +152,7 @@
 				B4F6C2021122334455667788 /* SchemaSettings.swift */,
 				C3D4E5F70112233445566778 /* SwiftMeshView.swift */,
 				D1A2B3C50102030405060708 /* DiagnosticsView.swift */,
+				D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */,
 				E4C1A9010102030405060708 /* WikiBridgeView.swift */,
 				5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */,
 				0A6B7D201122334455667788 /* Resources */,
@@ -266,6 +269,7 @@
 				C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */,
 				538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */,
 				C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */,
+				D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */,
 				D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */,
 				F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */,
 				B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */,
