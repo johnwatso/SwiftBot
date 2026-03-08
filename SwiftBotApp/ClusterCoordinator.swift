@@ -453,8 +453,9 @@ actor ClusterCoordinator {
     }
 
     func meshSignature(method: String, nonce: String, timestamp: Int, path: String, body: Data) -> String {
-        guard !sharedSecret.isEmpty,
-              let keyData = sharedSecret.data(using: .utf8) else { return "" }
+        let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSecret.isEmpty,
+              let keyData = normalizedSecret.data(using: .utf8) else { return "" }
         let key = SymmetricKey(data: keyData)
         var input = Data("\(method.uppercased()):\(path):\(nonce):\(timestamp):".utf8)
         input.append(body)
@@ -466,7 +467,8 @@ actor ClusterCoordinator {
     /// Only adds headers when sharedSecret is non-empty; otherwise leaves the request untouched
     /// (standalone mode makes no clustered calls so this is safe).
     private func applyMeshAuth(to request: inout URLRequest, path: String) {
-        guard !sharedSecret.isEmpty else { return }
+        let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSecret.isEmpty else { return }
         let method = request.httpMethod ?? "GET"
         let nonce = UUID().uuidString
         let timestamp = Int(Date().timeIntervalSince1970)
@@ -483,7 +485,8 @@ actor ClusterCoordinator {
     /// - Nonce has not been seen before (replay protection)
     /// - HMAC-SHA256 signature is valid (constant-time via CryptoKit)
     private func verifyMeshAuth(headers: [String: String], method: String, path: String, body: Data) -> Bool {
-        guard !sharedSecret.isEmpty else { return false }
+        let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSecret.isEmpty else { return false }
         guard let nonce = headers["x-mesh-nonce"],
               let tsStr = headers["x-mesh-timestamp"],
               let timestamp = Int(tsStr),
@@ -507,7 +510,7 @@ actor ClusterCoordinator {
             return false
         }
 
-        guard let keyData = sharedSecret.data(using: .utf8) else { return false }
+        guard let keyData = normalizedSecret.data(using: .utf8) else { return false }
         let key = SymmetricKey(data: keyData)
         var input = Data("\(method.uppercased()):\(path):\(nonce):\(timestamp):".utf8)
         input.append(body)
@@ -789,11 +792,12 @@ actor ClusterCoordinator {
         //   - Any mode + non-empty sharedSecret → require valid HMAC signature.
         //   - Standalone mode + empty sharedSecret → open (local-only node, no cluster traffic expected).
         if request.path != "/health" {
-            if mode != .standalone && sharedSecret.isEmpty {
+            let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            if mode != .standalone && normalizedSecret.isEmpty {
                 meshLogger.warning("Mesh auth rejected: non-standalone mode with no shared secret configured")
                 return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
             }
-            if !sharedSecret.isEmpty {
+            if !normalizedSecret.isEmpty {
                 guard verifyMeshAuth(headers: request.headers, method: request.method, path: request.path, body: request.body) else {
                     meshLogger.warning("Mesh auth rejected: invalid HMAC, stale timestamp, or replay for path \(request.path, privacy: .public)")
                     return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
