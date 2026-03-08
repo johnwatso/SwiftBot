@@ -132,36 +132,29 @@ struct CommandsView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    VStack(alignment: .leading, spacing: 11) {
-                        HStack(spacing: 10) {
-                            Text("Enable Commands")
-                            Spacer(minLength: 0)
-                            Toggle("", isOn: $app.settings.commandsEnabled)
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-
-                        HStack(spacing: 10) {
-                            Text("Enable Prefix Commands")
-                            Spacer(minLength: 0)
-                            Toggle("", isOn: $app.settings.prefixCommandsEnabled)
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                                .disabled(!app.settings.commandsEnabled)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-
-                        HStack(spacing: 10) {
-                            Text("Enable Slash Commands")
-                            Spacer(minLength: 0)
-                            Toggle("", isOn: $app.settings.slashCommandsEnabled)
-                                .labelsHidden()
-                                .toggleStyle(.switch)
-                                .disabled(!app.settings.commandsEnabled)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    HStack(spacing: 12) {
+                        compactToggleCard(
+                            title: "All",
+                            subtitle: "Master switch",
+                            icon: "switch.2",
+                            isOn: $app.settings.commandsEnabled
+                        )
+                        compactToggleCard(
+                            title: "Prefix",
+                            subtitle: "Legacy chat",
+                            icon: "exclamationmark.circle",
+                            isOn: $app.settings.prefixCommandsEnabled,
+                            disabled: !app.settings.commandsEnabled
+                        )
+                        compactToggleCard(
+                            title: "Slash",
+                            subtitle: "Discord UI",
+                            icon: "command",
+                            isOn: $app.settings.slashCommandsEnabled,
+                            disabled: !app.settings.commandsEnabled
+                        )
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .controlSize(.small)
                 .padding(12)
@@ -286,6 +279,41 @@ struct CommandsView: View {
         .onChange(of: app.settings.disabledCommandKeys) { _, _ in
             persistCommandSettings(syncSlash: true)
         }
+    }
+
+    @ViewBuilder
+    private func compactToggleCard(
+        title: String,
+        subtitle: String,
+        icon: String,
+        isOn: Binding<Bool>,
+        disabled: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(disabled)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 

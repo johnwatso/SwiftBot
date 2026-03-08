@@ -34,6 +34,14 @@ struct AdminWebRecentCommandPayload: Codable {
     let ok: Bool
 }
 
+struct AdminWebActiveVoicePayload: Codable {
+    let userId: String
+    let username: String
+    let channelName: String
+    let serverName: String
+    let joinedText: String
+}
+
 struct AdminWebBotInfoPayload: Codable {
     let uptime: String
     let errors: Int
@@ -44,9 +52,178 @@ struct AdminWebBotInfoPayload: Codable {
 struct AdminWebOverviewPayload: Codable {
     let metrics: [AdminWebMetricPayload]
     let cluster: AdminWebClusterPayload
+    let activeVoice: [AdminWebActiveVoicePayload]
     let recentVoice: [AdminWebRecentVoicePayload]
     let recentCommands: [AdminWebRecentCommandPayload]
     let botInfo: AdminWebBotInfoPayload
+}
+
+struct AdminWebConfigPayload: Codable {
+    struct Commands: Codable {
+        let enabled: Bool
+        let prefixEnabled: Bool
+        let slashEnabled: Bool
+        let bugTrackingEnabled: Bool
+        let prefix: String
+    }
+
+    struct AIBots: Codable {
+        let localAIDMReplyEnabled: Bool
+        let preferredProvider: String
+        let openAIEnabled: Bool
+        let openAIModel: String
+        let openAIImageGenerationEnabled: Bool
+        let openAIImageMonthlyLimitPerUser: Int
+    }
+
+    struct WikiBridge: Codable {
+        let enabled: Bool
+        let enabledSources: Int
+        let totalSources: Int
+    }
+
+    struct Patchy: Codable {
+        let monitoringEnabled: Bool
+        let enabledTargets: Int
+        let totalTargets: Int
+    }
+
+    struct SwiftMesh: Codable {
+        let mode: String
+        let nodeName: String
+        let leaderAddress: String
+        let listenPort: Int
+    }
+
+    struct General: Codable {
+        let autoStart: Bool
+        let webUIEnabled: Bool
+        let webUIBaseURL: String
+    }
+
+    let commands: Commands
+    let aiBots: AIBots
+    let wikiBridge: WikiBridge
+    let patchy: Patchy
+    let swiftMesh: SwiftMesh
+    let general: General
+}
+
+struct AdminWebConfigPatch: Codable {
+    var commandsEnabled: Bool?
+    var prefixCommandsEnabled: Bool?
+    var slashCommandsEnabled: Bool?
+    var bugTrackingEnabled: Bool?
+    var prefix: String?
+    var localAIDMReplyEnabled: Bool?
+    var preferredAIProvider: String?
+    var openAIEnabled: Bool?
+    var openAIModel: String?
+    var openAIImageGenerationEnabled: Bool?
+    var openAIImageMonthlyLimitPerUser: Int?
+    var wikiBridgeEnabled: Bool?
+    var patchyMonitoringEnabled: Bool?
+    var clusterMode: String?
+    var clusterNodeName: String?
+    var clusterLeaderAddress: String?
+    var clusterListenPort: Int?
+    var autoStart: Bool?
+}
+
+struct AdminWebCommandCatalogItem: Codable {
+    let id: String
+    let name: String
+    let usage: String
+    let description: String
+    let category: String
+    let surface: String
+    let aliases: [String]
+    let adminOnly: Bool
+    let enabled: Bool
+}
+
+struct AdminWebCommandCatalogPayload: Codable {
+    let commandsEnabled: Bool
+    let prefixCommandsEnabled: Bool
+    let slashCommandsEnabled: Bool
+    let items: [AdminWebCommandCatalogItem]
+}
+
+struct AdminWebCommandTogglePatch: Codable {
+    let name: String
+    let surface: String
+    let enabled: Bool
+}
+
+struct AdminWebSimpleOption: Codable {
+    let id: String
+    let name: String
+}
+
+struct AdminWebActionsPayload: Codable {
+    let rules: [Rule]
+    let servers: [AdminWebSimpleOption]
+    let textChannelsByServer: [String: [AdminWebSimpleOption]]
+    let voiceChannelsByServer: [String: [AdminWebSimpleOption]]
+    let conditionTypes: [String]
+    let actionTypes: [String]
+}
+
+struct AdminWebRulePatch: Codable {
+    let rule: Rule
+}
+
+struct AdminWebRuleIDPatch: Codable {
+    let ruleID: UUID
+}
+
+struct AdminWebPatchyPayload: Codable {
+    let monitoringEnabled: Bool
+    let showDebug: Bool
+    let isCycleRunning: Bool
+    let lastCycleAt: Date?
+    let debugLogs: [String]
+    let sourceKinds: [String]
+    let targets: [PatchySourceTarget]
+    let servers: [AdminWebSimpleOption]
+    let textChannelsByServer: [String: [AdminWebSimpleOption]]
+    let rolesByServer: [String: [AdminWebSimpleOption]]
+    let steamAppNames: [String: String]
+}
+
+struct AdminWebPatchyStatePatch: Codable {
+    let monitoringEnabled: Bool?
+    let showDebug: Bool?
+}
+
+struct AdminWebPatchyTargetPatch: Codable {
+    let target: PatchySourceTarget
+}
+
+struct AdminWebPatchyTargetEnabledPatch: Codable {
+    let targetID: UUID
+    let enabled: Bool
+}
+
+struct AdminWebPatchyTargetIDPatch: Codable {
+    let targetID: UUID
+}
+
+struct AdminWebWikiBridgePayload: Codable {
+    let enabled: Bool
+    let sources: [WikiSource]
+}
+
+struct AdminWebWikiBridgeStatePatch: Codable {
+    let enabled: Bool?
+}
+
+struct AdminWebWikiSourcePatch: Codable {
+    let source: WikiSource
+}
+
+struct AdminWebWikiSourceIDPatch: Codable {
+    let sourceID: UUID
 }
 
 actor AdminWebServer {
@@ -89,10 +266,11 @@ actor AdminWebServer {
         let body: Data
     }
 
-    private struct Session {
+    private struct Session: Codable {
         let id: String
         let userID: String
         let username: String
+        let globalName: String?
         let discriminator: String?
         let avatar: String?
         let csrfToken: String
@@ -107,6 +285,7 @@ actor AdminWebServer {
     private struct DiscordUser {
         let id: String
         let username: String
+        let globalName: String?
         let discriminator: String?
         let avatar: String?
     }
@@ -135,13 +314,39 @@ actor AdminWebServer {
     private var connectedGuildIDsProvider: (@Sendable () async -> Set<String>)?
     private var currentPrefixProvider: (@Sendable () async -> String)?
     private var updatePrefix: (@Sendable (String) async -> Bool)?
+    private var configProvider: (@Sendable () async -> AdminWebConfigPayload)?
+    private var updateConfig: (@Sendable (AdminWebConfigPatch) async -> Bool)?
+    private var commandCatalogProvider: (@Sendable () async -> AdminWebCommandCatalogPayload)?
+    private var updateCommandEnabled: (@Sendable (String, String, Bool) async -> Bool)?
+    private var actionsProvider: (@Sendable () async -> AdminWebActionsPayload)?
+    private var createActionRule: (@Sendable () async -> Rule?)?
+    private var updateActionRule: (@Sendable (Rule) async -> Bool)?
+    private var deleteActionRule: (@Sendable (UUID) async -> Bool)?
+    private var patchyProvider: (@Sendable () async -> AdminWebPatchyPayload)?
+    private var updatePatchyState: (@Sendable (AdminWebPatchyStatePatch) async -> Bool)?
+    private var createPatchyTarget: (@Sendable () async -> PatchySourceTarget?)?
+    private var updatePatchyTarget: (@Sendable (PatchySourceTarget) async -> Bool)?
+    private var setPatchyTargetEnabled: (@Sendable (UUID, Bool) async -> Bool)?
+    private var deletePatchyTarget: (@Sendable (UUID) async -> Bool)?
+    private var sendPatchyTestTarget: (@Sendable (UUID) async -> Bool)?
+    private var runPatchyCheckNow: (@Sendable () async -> Bool)?
+    private var wikiBridgeProvider: (@Sendable () async -> AdminWebWikiBridgePayload)?
+    private var updateWikiBridgeState: (@Sendable (AdminWebWikiBridgeStatePatch) async -> Bool)?
+    private var createWikiSource: (@Sendable () async -> WikiSource?)?
+    private var updateWikiSource: (@Sendable (WikiSource) async -> Bool)?
+    private var setWikiSourceEnabled: (@Sendable (UUID, Bool) async -> Bool)?
+    private var setWikiSourcePrimary: (@Sendable (UUID) async -> Bool)?
+    private var testWikiSource: (@Sendable (UUID) async -> Bool)?
+    private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
+    private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
     private let stateTTL: TimeInterval = 600
-    private let sessionTTL: TimeInterval = 8 * 60 * 60
+    private let sessionTTL: TimeInterval = 30 * 24 * 60 * 60
+    private let sessionsDefaultsKey = "swiftbot.admin.web.sessions"
     private let maxHTTPRequestSize = 1_024 * 1_024
 
     func configure(
@@ -151,8 +356,33 @@ actor AdminWebServer {
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
         updatePrefix: @escaping @Sendable (String) async -> Bool,
+        configProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
+        updateConfig: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
+        commandCatalogProvider: @escaping @Sendable () async -> AdminWebCommandCatalogPayload,
+        updateCommandEnabled: @escaping @Sendable (String, String, Bool) async -> Bool,
+        actionsProvider: @escaping @Sendable () async -> AdminWebActionsPayload,
+        createActionRule: @escaping @Sendable () async -> Rule?,
+        updateActionRule: @escaping @Sendable (Rule) async -> Bool,
+        deleteActionRule: @escaping @Sendable (UUID) async -> Bool,
+        patchyProvider: @escaping @Sendable () async -> AdminWebPatchyPayload,
+        updatePatchyState: @escaping @Sendable (AdminWebPatchyStatePatch) async -> Bool,
+        createPatchyTarget: @escaping @Sendable () async -> PatchySourceTarget?,
+        updatePatchyTarget: @escaping @Sendable (PatchySourceTarget) async -> Bool,
+        setPatchyTargetEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
+        deletePatchyTarget: @escaping @Sendable (UUID) async -> Bool,
+        sendPatchyTestTarget: @escaping @Sendable (UUID) async -> Bool,
+        runPatchyCheckNow: @escaping @Sendable () async -> Bool,
+        wikiBridgeProvider: @escaping @Sendable () async -> AdminWebWikiBridgePayload,
+        updateWikiBridgeState: @escaping @Sendable (AdminWebWikiBridgeStatePatch) async -> Bool,
+        createWikiSource: @escaping @Sendable () async -> WikiSource?,
+        updateWikiSource: @escaping @Sendable (WikiSource) async -> Bool,
+        setWikiSourceEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
+        setWikiSourcePrimary: @escaping @Sendable (UUID) async -> Bool,
+        testWikiSource: @escaping @Sendable (UUID) async -> Bool,
+        deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
+        refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async {
         self.statusProvider = statusProvider
@@ -160,10 +390,36 @@ actor AdminWebServer {
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
         self.updatePrefix = updatePrefix
+        self.configProvider = configProvider
+        self.updateConfig = updateConfig
+        self.commandCatalogProvider = commandCatalogProvider
+        self.updateCommandEnabled = updateCommandEnabled
+        self.actionsProvider = actionsProvider
+        self.createActionRule = createActionRule
+        self.updateActionRule = updateActionRule
+        self.deleteActionRule = deleteActionRule
+        self.patchyProvider = patchyProvider
+        self.updatePatchyState = updatePatchyState
+        self.createPatchyTarget = createPatchyTarget
+        self.updatePatchyTarget = updatePatchyTarget
+        self.setPatchyTargetEnabled = setPatchyTargetEnabled
+        self.deletePatchyTarget = deletePatchyTarget
+        self.sendPatchyTestTarget = sendPatchyTestTarget
+        self.runPatchyCheckNow = runPatchyCheckNow
+        self.wikiBridgeProvider = wikiBridgeProvider
+        self.updateWikiBridgeState = updateWikiBridgeState
+        self.createWikiSource = createWikiSource
+        self.updateWikiSource = updateWikiSource
+        self.setWikiSourceEnabled = setWikiSourceEnabled
+        self.setWikiSourcePrimary = setWikiSourcePrimary
+        self.testWikiSource = testWikiSource
+        self.deleteWikiSource = deleteWikiSource
         self.startBot = startBot
         self.stopBot = stopBot
+        self.refreshSwiftMesh = refreshSwiftMesh
         self.logger = log
 
+        loadPersistedSessions()
         let previous = self.config
         self.config = config
 
@@ -180,7 +436,6 @@ actor AdminWebServer {
     func stop() async {
         listener?.cancel()
         listener = nil
-        sessions.removeAll()
         pendingStates.removeAll()
         await logger?("Admin Web UI stopped")
     }
@@ -319,6 +574,8 @@ actor AdminWebServer {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
             return serveIndex()
+        case ("GET", "/assets/AppIcon.png"):
+            return serveAsset(named: "AppIcon", ext: "png")
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
         case ("GET", "/api/status"):
@@ -336,6 +593,7 @@ actor AdminWebServer {
             let payload = await overviewProvider?() ?? AdminWebOverviewPayload(
                 metrics: [],
                 cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
+                activeVoice: [],
                 recentVoice: [],
                 recentCommands: [],
                 botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
@@ -348,6 +606,7 @@ actor AdminWebServer {
             return jsonResponse([
                 "id": session.userID,
                 "username": session.username,
+                "globalName": session.globalName ?? "",
                 "discriminator": session.discriminator ?? "",
                 "avatar": session.avatar ?? "",
                 "csrfToken": session.csrfToken
@@ -358,6 +617,14 @@ actor AdminWebServer {
             }
             let prefix = await currentPrefixProvider?() ?? "/"
             return jsonResponse(["prefix": prefix])
+        case ("GET", "/api/config"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await configProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "config_unavailable"], status: "503 Service Unavailable")
         case ("POST", "/api/settings/prefix"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -373,6 +640,294 @@ actor AdminWebServer {
                 return jsonResponse(["error": "invalid_prefix"], status: "400 Bad Request")
             }
             await logger?("Admin Web UI updated command prefix")
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/config"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebConfigPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateConfig?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Admin Web UI updated configuration")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/commands"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await commandCatalogProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "commands_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/commands/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebCommandTogglePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateCommandEnabled?(patch.name, patch.surface, patch.enabled) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Admin Web UI toggled command \(patch.surface):\(patch.name) -> \(patch.enabled)")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/actions"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await actionsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "actions_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/actions/new"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let rule = await createActionRule?() else {
+                return jsonResponse(["error": "create_failed"], status: "400 Bad Request")
+            }
+            return codableResponse(rule)
+        case ("POST", "/api/actions/upsert"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebRulePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateActionRule?(patch.rule) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/actions/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebRuleIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deleteActionRule?(patch.ruleID) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/patchy"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await patchyProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "patchy_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/patchy/state"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyStatePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updatePatchyState?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/check"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard await runPatchyCheckNow?() == true else {
+                return jsonResponse(["error": "run_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/target/new"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let target = await createPatchyTarget?() else {
+                return jsonResponse(["error": "create_failed"], status: "400 Bad Request")
+            }
+            return codableResponse(target)
+        case ("POST", "/api/patchy/target/upsert"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updatePatchyTarget?(patch.target) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/target/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetEnabledPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await setPatchyTargetEnabled?(patch.targetID, patch.enabled) == true else {
+                return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/target/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deletePatchyTarget?(patch.targetID) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/target/test"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await sendPatchyTestTarget?(patch.targetID) == true else {
+                return jsonResponse(["error": "test_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/wikibridge"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await wikiBridgeProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "wikibridge_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/wikibridge/state"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebWikiBridgeStatePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateWikiBridgeState?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/new"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let source = await createWikiSource?() else {
+                return jsonResponse(["error": "create_failed"], status: "400 Bad Request")
+            }
+            return codableResponse(source)
+        case ("POST", "/api/wikibridge/source/upsert"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebWikiSourcePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateWikiSource?(patch.source) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetEnabledPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await setWikiSourceEnabled?(patch.targetID, patch.enabled) == true else {
+                return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/primary"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebWikiSourceIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await setWikiSourcePrimary?(patch.sourceID) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/test"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebWikiSourceIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await testWikiSource?(patch.sourceID) == true else {
+                return jsonResponse(["error": "test_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/wikibridge/source/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebWikiSourceIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deleteWikiSource?(patch.sourceID) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
             return jsonResponse(["ok": true])
         case ("POST", "/api/bot/start"):
             guard let session = authenticatedSession(for: request) else {
@@ -393,6 +948,16 @@ actor AdminWebServer {
             }
             _ = await stopBot?()
             await logger?("Admin Web UI requested bot stop")
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/swiftmesh/refresh"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            _ = await refreshSwiftMesh?()
+            await logger?("Admin Web UI requested SwiftMesh refresh")
             return jsonResponse(["ok": true])
         case ("GET", "/auth/discord/login"):
             return await handleDiscordLogin()
@@ -460,6 +1025,28 @@ actor AdminWebServer {
         return httpResponse(status: "200 OK", body: Data(fallback.utf8), contentType: "text/html; charset=utf-8")
     }
 
+    private func serveAsset(named name: String, ext: String) -> Data {
+        let candidates: [(Bundle, String)] = [
+            (.main, "Resources"),
+            (.main, "admin"),
+            (.main, "Resources/admin")
+        ]
+
+        for (bundle, subdirectory) in candidates {
+            if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory),
+               let data = try? Data(contentsOf: url) {
+                return httpResponse(status: "200 OK", body: data, contentType: "image/png")
+            }
+        }
+
+        if let url = Bundle.main.url(forResource: name, withExtension: ext),
+           let data = try? Data(contentsOf: url) {
+            return httpResponse(status: "200 OK", body: data, contentType: "image/png")
+        }
+
+        return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
+    }
+
     private func handleDiscordLogin() async -> Data {
         let clientID = config.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let clientSecret = config.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -507,12 +1094,14 @@ actor AdminWebServer {
                 id: randomToken(),
                 userID: user.id,
                 username: user.username,
+                globalName: user.globalName,
                 discriminator: user.discriminator,
                 avatar: user.avatar,
                 csrfToken: randomToken(),
                 expiresAt: Date().addingTimeInterval(sessionTTL)
             )
             sessions[session.id] = session
+            persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
             return redirectResponse(
                 to: "/",
@@ -528,6 +1117,7 @@ actor AdminWebServer {
     private func handleLogout(request: HTTPRequest) -> Data {
         if let sessionID = cookie(named: "swiftbot_admin_session", request: request) {
             sessions.removeValue(forKey: sessionID)
+            persistSessions()
         }
         return jsonResponse(
             ["ok": true],
@@ -648,6 +1238,7 @@ actor AdminWebServer {
         return DiscordUser(
             id: id,
             username: username,
+            globalName: object["global_name"] as? String,
             discriminator: object["discriminator"] as? String,
             avatar: object["avatar"] as? String
         )
@@ -719,7 +1310,30 @@ actor AdminWebServer {
 
     private func pruneExpiredSessions() {
         let now = Date()
+        let beforeCount = sessions.count
         sessions = sessions.filter { $0.value.expiresAt > now }
+        if sessions.count != beforeCount {
+            persistSessions()
+        }
+    }
+
+    private func loadPersistedSessions() {
+        guard let data = UserDefaults.standard.data(forKey: sessionsDefaultsKey),
+              let decoded = try? decoder.decode([String: Session].self, from: data) else {
+            sessions = [:]
+            return
+        }
+        let now = Date()
+        sessions = decoded.filter { $0.value.expiresAt > now }
+    }
+
+    private func persistSessions() {
+        if sessions.isEmpty {
+            UserDefaults.standard.removeObject(forKey: sessionsDefaultsKey)
+            return
+        }
+        guard let data = try? encoder.encode(sessions) else { return }
+        UserDefaults.standard.set(data, forKey: sessionsDefaultsKey)
     }
 
     private func codableResponse<T: Encodable>(_ value: T) -> Data {

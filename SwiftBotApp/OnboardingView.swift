@@ -420,6 +420,7 @@ struct OnboardingGateView: View {
 }
 
 private struct OnboardingAnimatedSymbolBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var animationStart = Date()
 
     private let symbols = [
@@ -444,7 +445,7 @@ private struct OnboardingAnimatedSymbolBackground: View {
             }
         }
         .clipped()
-        .opacity(0.78)
+        .opacity(colorScheme == .dark ? 0.78 : 0.96)
     }
 
     @ViewBuilder
@@ -464,7 +465,7 @@ private struct OnboardingAnimatedSymbolBackground: View {
             let step = iconSize + spacing
             let cols = Int(trackWidth / step) + 12
 
-            context.opacity = 0.10
+            context.opacity = colorScheme == .dark ? 0.10 : 0.18
             context.translateBy(x: width / 2, y: height / 2)
             context.rotate(by: .radians(-.pi / 4))
 
@@ -500,7 +501,11 @@ private struct OnboardingAnimatedSymbolBackground: View {
                 Image(systemName: symbol)
                     .font(.system(size: 40, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(
+                        colorScheme == .dark
+                            ? .white.opacity(0.42)
+                            : Color(red: 0.12, green: 0.24, blue: 0.37).opacity(0.46)
+                    )
                     .tag(symbol)
             }
         }

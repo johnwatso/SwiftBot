@@ -87,19 +87,38 @@ struct GlassActionButtonStyle: ButtonStyle {
 }
 
 private struct SwiftBotGlassCardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat
     let tint: Color
     let stroke: Color
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(.thinMaterial, in: shape)
+            .overlay(
+                shape
+                    .fill(tint.opacity(colorScheme == .dark ? 1.0 : 0.50))
+            )
+            .overlay(
+                shape
+                    .strokeBorder(stroke.opacity(colorScheme == .dark ? 1.0 : 0.90), lineWidth: 1)
+            )
     }
 }
 
 extension View {
     func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .white.opacity(0.18)) -> some View {
         modifier(SwiftBotGlassCardModifier(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
+    }
+
+    func commandCatalogSurface(cornerRadius: CGFloat = 16) -> some View {
+        self
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            )
     }
 
     func sidebarProfileCard() -> some View {
