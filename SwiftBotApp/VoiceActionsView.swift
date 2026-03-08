@@ -16,6 +16,18 @@ struct VoiceWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+        if app.isFailoverManagedNode {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.orange)
+                Text("Read-only on Failover nodes. Action rules sync from Primary.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+        }
         HSplitView {
             RuleListView(
                 rules: rulesBinding,
@@ -57,6 +69,8 @@ struct VoiceWorkspaceView: View {
         )
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .onChange(of: ruleStore.rules) {
             if let selected = ruleStore.selectedRuleID,
                !ruleStore.rules.contains(where: { $0.id == selected }) {

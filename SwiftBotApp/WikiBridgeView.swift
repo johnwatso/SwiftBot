@@ -18,6 +18,16 @@ struct WikiBridgeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if app.isFailoverManagedNode {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.orange)
+                    Text("Read-only on Failover nodes. WikiBridge settings sync from Primary.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 2)
+            }
 
             if app.settings.wikiBot.isEnabled {
                 overviewCard
@@ -30,6 +40,8 @@ struct WikiBridgeView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editorDraft) { draft in
             WikiSourceEditorSheet(

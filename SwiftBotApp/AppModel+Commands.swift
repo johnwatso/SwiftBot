@@ -1917,6 +1917,15 @@ extension AppModel {
         let wikiEnabled = settings.wikiBot.isEnabled ? "on" : "off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "on" : "off"
         let activeRules = ruleStore.rules.filter(\.isEnabled).count
+        let connectedNodes = clusterNodes.filter { $0.status != .disconnected }
+        let connectedNodeSummary = connectedNodes.prefix(3).map { node in
+            let latency = node.latencyMs.map { "\(Int($0.rounded()))ms" } ?? "n/a"
+            return "\(node.displayName) (\(node.role.rawValue), \(node.status.rawValue), \(latency))"
+        }.joined(separator: "; ")
+        let offloadedTasks = commandLog.reduce(into: 0) { count, entry in
+            let route = entry.executionRoute.lowercased()
+            if route == "worker" || route == "remote" { count += 1 }
+        }
 
         return [
             "🛠️ **SwiftBot Debug**",
@@ -1936,6 +1945,13 @@ extension AppModel {
             "WikiBridge: \(wikiEnabled)",
             "Patchy Monitoring: \(patchyEnabled)",
             "Action Rules: \(activeRules)/\(ruleStore.rules.count)",
+            "SwiftMesh Connected Nodes: \(connectedNodes.count)/\(clusterNodes.count)",
+            "SwiftMesh Node Summary: \(connectedNodeSummary.isEmpty ? "none" : connectedNodeSummary)",
+            "SwiftMesh Last Job: \(clusterSnapshot.lastJobSummary) [\(clusterSnapshot.lastJobRoute.rawValue)]",
+            "SwiftMesh Last Job Node: \(clusterSnapshot.lastJobNode)",
+            "Offload AI Replies: \(settings.clusterOffloadAIReplies ? "on" : "off")",
+            "Offload Wiki Lookups: \(settings.clusterOffloadWikiLookups ? "on" : "off")",
+            "Tasks Offloaded: \(offloadedTasks)",
             "Beta Build: \(isBetaBuild ? "yes" : "no")"
         ].joined(separator: "\n")
     }
@@ -1959,6 +1975,15 @@ extension AppModel {
         let wikiEnabled = settings.wikiBot.isEnabled ? "On" : "Off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "On" : "Off"
         let activeRules = ruleStore.rules.filter(\.isEnabled).count
+        let connectedNodes = clusterNodes.filter { $0.status != .disconnected }
+        let connectedNodeSummary = connectedNodes.prefix(3).map { node in
+            let latency = node.latencyMs.map { "\(Int($0.rounded()))ms" } ?? "n/a"
+            return "\(node.displayName) (\(node.role.rawValue), \(node.status.rawValue), \(latency))"
+        }.joined(separator: "\n")
+        let offloadedTasks = commandLog.reduce(into: 0) { count, entry in
+            let route = entry.executionRoute.lowercased()
+            if route == "worker" || route == "remote" { count += 1 }
+        }
 
         let fields: [[String: Any]] = [
             [
@@ -1990,6 +2015,21 @@ extension AppModel {
                 "name": "Counters",
                 "value": "Commands: `\(stats.commandsRun)`\nErrors: `\(stats.errors)`",
                 "inline": true
+            ],
+            [
+                "name": "SwiftMesh",
+                "value": "Connected: `\(connectedNodes.count)/\(clusterNodes.count)`\nLast Job: `\(clusterSnapshot.lastJobSummary)`\nRoute: `\(clusterSnapshot.lastJobRoute.rawValue)`\nNode: `\(clusterSnapshot.lastJobNode)`",
+                "inline": false
+            ],
+            [
+                "name": "Offload",
+                "value": "AI Replies: `\(settings.clusterOffloadAIReplies ? "On" : "Off")`\nWiki: `\(settings.clusterOffloadWikiLookups ? "On" : "Off")`\nTasks Offloaded: `\(offloadedTasks)`",
+                "inline": true
+            ],
+            [
+                "name": "Connected Nodes",
+                "value": connectedNodeSummary.isEmpty ? "None" : connectedNodeSummary,
+                "inline": false
             ]
         ]
 
@@ -2698,7 +2738,7 @@ extension AppModel {
         guard let baseURL = normalizedSwiftMeshBaseURL(from: rawValue),
               let host = baseURL.host else {
             return WorkerConnectionTestOutcome(
-                message: "Invalid URL. Input: \"\(rawValue.trimmingCharacters(in: .whitespacesAndNewlines))\"",
+                message: "Invalid URL. Use `host:port` or `http(s)://host[:port]`. Input: \"\(rawValue.trimmingCharacters(in: .whitespacesAndNewlines))\"",
                 isSuccess: false
             )
         }
@@ -2851,12 +2891,12 @@ extension AppModel {
               !host.isEmpty else {
             return nil
         }
-        let resolvedPort = url.port ?? {
-            if hadExplicitScheme {
-                return scheme.lowercased() == "https" ? 443 : 80
-            }
-            return settings.clusterListenPort
-        }()
+        // For host-only input (no scheme), require an explicit port to avoid
+        // silently probing the wrong endpoint and reporting timeouts.
+        if !hadExplicitScheme, url.port == nil {
+            return nil
+        }
+        let resolvedPort = url.port ?? (scheme.lowercased() == "https" ? 443 : 80)
 
         var components = URLComponents()
         components.scheme = scheme

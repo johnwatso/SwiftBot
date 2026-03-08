@@ -132,10 +132,14 @@ struct ClusterMapView: View {
             ZStack {
                 ForEach(Array(workers.enumerated()), id: \.element.id) { index, worker in
                     let workerPosition = layout.workerPositions[index]
+                    let endpoints = connectionEndpoints(
+                        leaderCenter: layout.leaderPosition,
+                        workerCenter: workerPosition
+                    )
 
                     HeartbeatConnectionView(
-                        start: layout.leaderPosition,
-                        end: workerPosition,
+                        start: endpoints.start,
+                        end: endpoints.end,
                         status: worker.status,
                         activeJobs: worker.jobsActive,
                         latencyMs: worker.latencyMs
@@ -199,6 +203,20 @@ struct ClusterMapView: View {
         )
     }
 
+    private func connectionEndpoints(leaderCenter: CGPoint, workerCenter: CGPoint) -> (start: CGPoint, end: CGPoint) {
+        let leaderInset: CGFloat = 8
+        let workerInset: CGFloat = 8
+        let start = CGPoint(
+            x: leaderCenter.x + (leaderCardWidth / 2) - leaderInset,
+            y: leaderCenter.y
+        )
+        let end = CGPoint(
+            x: workerCenter.x - (workerCardWidth / 2) + workerInset,
+            y: workerCenter.y
+        )
+        return (start, end)
+    }
+
     private var mapHeight: CGFloat {
         let workerCount = workers.count
         if workerCount <= 2 { return 280 }
@@ -251,11 +269,11 @@ private struct ClusterMapNodeChip: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(node.status == .disconnected ? 0.02 : 0.045))
+                .fill(Color.primary.opacity(node.status == .disconnected ? 0.07 : 0.12))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .opacity(node.status == .disconnected ? 0.7 : 1.0)
     }
@@ -342,10 +360,73 @@ struct ClusterConnectionShape: Shape {
     let start: CGPoint
     let end: CGPoint
 
+    static func waveformPoints(start: CGPoint, end: CGPoint) -> [CGPoint] {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = max(1, hypot(dx, dy))
+        let amplitude = min(10, max(4.5, length * 0.05))
+
+        // Use screen-space vertical offsets so peaks always point upward.
+        func point(_ t: CGFloat, _ upOffset: CGFloat = 0) -> CGPoint {
+            CGPoint(
+                x: start.x + dx * t,
+                y: start.y + dy * t - upOffset
+            )
+        }
+
+        return [
+            point(0),
+            point(0.14),
+            point(0.19, amplitude * 0.18),
+            point(0.22, amplitude * 0.82),
+            point(0.25, amplitude * 0.30),
+            point(0.33),
+            point(0.47),
+            point(0.52, amplitude * 0.22),
+            point(0.55, amplitude),
+            point(0.58, amplitude * 0.36),
+            point(0.66),
+            point(0.76),
+            point(0.80, amplitude * 0.16),
+            point(0.83, amplitude * 0.72),
+            point(0.86, amplitude * 0.28),
+            point(0.91),
+            point(1)
+        ]
+    }
+
+    static func point(at t: CGFloat, start: CGPoint, end: CGPoint) -> CGPoint {
+        let points = waveformPoints(start: start, end: end)
+        guard points.count > 1 else { return start }
+        let clamped = max(0, min(1, t))
+        let lengths = zip(points, points.dropFirst()).map { hypot($1.x - $0.x, $1.y - $0.y) }
+        let total = lengths.reduce(0, +)
+        guard total > 0 else { return start }
+
+        var remaining = clamped * total
+        for (idx, segLen) in lengths.enumerated() {
+            if remaining <= segLen || idx == lengths.count - 1 {
+                let a = points[idx]
+                let b = points[idx + 1]
+                let ratio = segLen > 0 ? (remaining / segLen) : 0
+                return CGPoint(
+                    x: a.x + (b.x - a.x) * ratio,
+                    y: a.y + (b.y - a.y) * ratio
+                )
+            }
+            remaining -= segLen
+        }
+        return end
+    }
+
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: start)
-        path.addLine(to: end)
+        let points = Self.waveformPoints(start: start, end: end)
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
         return path
     }
 }
@@ -375,9 +456,8 @@ struct HeartbeatConnectionView: View {
     }
 
     private let pulseStep: Double = 0.035
-
-    private var latencyLabel: String {
-        guard let latencyMs else { return "--" }
+    private var latencyLabel: String? {
+        guard let latencyMs else { return nil }
         return "\(Int(latencyMs.rounded()))ms"
     }
 
@@ -391,32 +471,50 @@ struct HeartbeatConnectionView: View {
 
     var body: some View {
         ZStack {
-            ClusterConnectionShape(start: start, end: end)
-                .stroke(lineColor.opacity(activeJobs > 0 ? 0.45 : 0.34), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-
             if pulseEnabled {
                 TimelineView(.periodic(from: .now, by: pulseStep)) { context in
                     let progress = context.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: pulseDuration) / pulseDuration
+                    let trailLength = activeJobs > 0 ? 0.32 : 0.24
+                    let trailStart = max(0, progress - trailLength)
+                    let trailEnd = min(1, progress)
+                    let lineWidth = activeJobs > 0 ? 3.0 : 2.5
 
-                    Circle()
-                        .fill(lineColor)
-                        .frame(width: activeJobs > 0 ? 6 : 5, height: activeJobs > 0 ? 6 : 5)
-                        .position(point(at: progress))
+                    Canvas { context, _ in
+                        let fullPath = ClusterConnectionShape(start: start, end: end).path(in: .zero)
+                        let segmentPath = fullPath.trimmedPath(from: trailStart, to: trailEnd)
+                        let gradientStart = ClusterConnectionShape.point(at: trailStart, start: start, end: end)
+                        let gradientEnd = ClusterConnectionShape.point(at: trailEnd, start: start, end: end)
+                        let shading = GraphicsContext.Shading.linearGradient(
+                            Gradient(stops: [
+                                .init(color: lineColor.opacity(0.0), location: 0.0),
+                                .init(color: lineColor.opacity(activeJobs > 0 ? 0.92 : 0.68), location: 1.0)
+                            ]),
+                            startPoint: gradientStart,
+                            endPoint: gradientEnd
+                        )
+                        context.stroke(
+                            segmentPath,
+                            with: shading,
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                        )
+                    }
                 }
             }
 
-            Text(latencyLabel)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.03), in: Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(lineColor.opacity(0.25), lineWidth: 1)
-                )
-                .position(midpoint)
+            if let latencyLabel {
+                Text(latencyLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.03), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(lineColor.opacity(0.25), lineWidth: 1)
+                    )
+                    .position(midpoint)
+            }
         }
     }
 
@@ -424,12 +522,6 @@ struct HeartbeatConnectionView: View {
         CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
     }
 
-    private func point(at progress: Double) -> CGPoint {
-        CGPoint(
-            x: start.x + (end.x - start.x) * progress,
-            y: start.y + (end.y - start.y) * progress
-        )
-    }
 }
 
 private enum ConnectionVisualState {

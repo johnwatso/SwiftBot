@@ -31,18 +31,30 @@ struct AIBotsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 ViewSectionHeader(title: "AI Bots", symbol: "sparkles.rectangle.stack.fill")
+                if app.isFailoverManagedNode {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.orange)
+                        Text("Read-only on Failover nodes. AI settings sync from Primary.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 2)
+                }
 
                 overviewCard
                 MemoryOverviewView(viewModel: app.memoryViewModel)
                 configurationCard
             }
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             .padding(.horizontal, 16)
             .padding(.top, 16)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
         }
         .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges {
+            if hasUnsavedChanges && !app.isFailoverManagedNode {
                 StickySaveButton(label: "Save AI Settings", systemImage: "square.and.arrow.down.fill") {
                     app.saveSettings()
                     baselineSettings = currentSettingsSnapshot
