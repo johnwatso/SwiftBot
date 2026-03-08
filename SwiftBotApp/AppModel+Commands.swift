@@ -1953,6 +1953,8 @@ extension AppModel {
             "SwiftMesh Registered Workers: \(registeredWorkersDebugCount)",
             "SwiftMesh Worker Heartbeats: \(registeredWorkersDebugSummary)",
             "SwiftMesh Node Summary: \(connectedNodeSummary.isEmpty ? "none" : connectedNodeSummary)",
+            "SwiftMesh Worker State: \(clusterSnapshot.workerStatusText)",
+            "SwiftMesh Diagnostics: \(clusterSnapshot.diagnostics)",
             "SwiftMesh Last Job: \(clusterSnapshot.lastJobSummary) [\(clusterSnapshot.lastJobRoute.rawValue)]",
             "SwiftMesh Last Job Node: \(clusterSnapshot.lastJobNode)",
             "Offload AI Replies: \(settings.clusterOffloadAIReplies ? "on" : "off")",
@@ -2024,7 +2026,7 @@ extension AppModel {
             ],
             [
                 "name": "SwiftMesh",
-                "value": "Connected: `\(connectedNodes.count)/\(clusterNodes.count)`\nRegistered Workers: `\(registeredWorkersDebugCount)`\nLast Job: `\(clusterSnapshot.lastJobSummary)`\nRoute: `\(clusterSnapshot.lastJobRoute.rawValue)`\nNode: `\(clusterSnapshot.lastJobNode)`",
+                "value": "Connected: `\(connectedNodes.count)/\(clusterNodes.count)`\nRegistered Workers: `\(registeredWorkersDebugCount)`\nWorker State: `\(clusterSnapshot.workerStatusText)`\nLast Job: `\(clusterSnapshot.lastJobSummary)`\nRoute: `\(clusterSnapshot.lastJobRoute.rawValue)`\nNode: `\(clusterSnapshot.lastJobNode)`",
                 "inline": false
             ],
             [

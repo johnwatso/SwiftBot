@@ -997,6 +997,9 @@ actor ClusterCoordinator {
                 await publishSnapshot()
             }
             standbyHealthMisses = 0
+            // Safety net: keep refreshing registration while standby monitoring is healthy.
+            // This avoids worker disappearance if the dedicated registration task is interrupted.
+            await registerWithLeader(leaderBaseURL)
         } else {
             standbyHealthMisses += 1
             snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
