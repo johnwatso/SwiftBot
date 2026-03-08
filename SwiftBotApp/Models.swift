@@ -185,8 +185,9 @@ struct BotSettings: Codable, Hashable {
     var clusterListenPort: Int = 38787
     var clusterSharedSecret: String = ""
     var clusterLeaderTerm: Int = 0
-    var clusterOffloadAIReplies: Bool = true
-    var clusterOffloadWikiLookups: Bool = true
+    var clusterWorkerOffloadEnabled: Bool = false
+    var clusterOffloadAIReplies: Bool = false
+    var clusterOffloadWikiLookups: Bool = false
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -262,6 +263,7 @@ struct BotSettings: Codable, Hashable {
         case clusterListenPort
         case clusterSharedSecret
         case clusterLeaderTerm
+        case clusterWorkerOffloadEnabled
         case clusterOffloadAIReplies
         case clusterOffloadWikiLookups
         case localAIDMReplyEnabled
@@ -320,8 +322,12 @@ struct BotSettings: Codable, Hashable {
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
         clusterSharedSecret = try container.decodeIfPresent(String.self, forKey: .clusterSharedSecret) ?? ""
         clusterLeaderTerm = try container.decodeIfPresent(Int.self, forKey: .clusterLeaderTerm) ?? 0
-        clusterOffloadAIReplies = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadAIReplies) ?? true
-        clusterOffloadWikiLookups = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadWikiLookups) ?? true
+        let decodedOffloadAIReplies = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadAIReplies) ?? false
+        let decodedOffloadWikiLookups = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadWikiLookups) ?? false
+        clusterWorkerOffloadEnabled = try container.decodeIfPresent(Bool.self, forKey: .clusterWorkerOffloadEnabled)
+            ?? (decodedOffloadAIReplies || decodedOffloadWikiLookups)
+        clusterOffloadAIReplies = decodedOffloadAIReplies
+        clusterOffloadWikiLookups = decodedOffloadWikiLookups
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
@@ -375,6 +381,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterListenPort, forKey: .clusterListenPort)
         try container.encode(clusterSharedSecret, forKey: .clusterSharedSecret)
         try container.encode(clusterLeaderTerm, forKey: .clusterLeaderTerm)
+        try container.encode(clusterWorkerOffloadEnabled, forKey: .clusterWorkerOffloadEnabled)
         try container.encode(clusterOffloadAIReplies, forKey: .clusterOffloadAIReplies)
         try container.encode(clusterOffloadWikiLookups, forKey: .clusterOffloadWikiLookups)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
@@ -2546,7 +2553,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case commandLog = "Command Log"
     case wikiBridge = "WikiBridge"
     case logs = "Logs"
-    case settings = "Settings"
     case aiBots = "AI Bots"
     case diagnostics = "Diagnostics"
     case swiftMesh = "SwiftMesh"
@@ -2562,7 +2568,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .commandLog: return "list.bullet.clipboard.fill"
         case .wikiBridge: return "book.pages.fill"
         case .logs: return "list.bullet.clipboard.fill"
-        case .settings: return "gearshape.2.fill"
         case .aiBots: return "sparkles.rectangle.stack.fill"
         case .diagnostics: return "waveform.path.ecg"
         case .swiftMesh: return "point.3.connected.trianglepath.dotted"

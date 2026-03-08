@@ -103,5 +103,12 @@ struct SwiftBotApp: App {
                 .disabled(!updater.canCheckForUpdates)
             }
         }
+
+        Settings {
+            PreferencesView()
+                .environmentObject(appModel)
+                .environmentObject(updater)
+        }
+        .windowResizability(.contentSize)
     }
 }

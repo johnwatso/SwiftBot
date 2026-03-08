@@ -1,0 +1,123 @@
+import SwiftUI
+
+struct PreferencesView: View {
+    @EnvironmentObject var app: AppModel
+
+    @State private var settingsSnapshot = PreferencesSnapshot()
+
+    private var hasUnsavedChanges: Bool {
+        currentSettingsSnapshot != settingsSnapshot
+    }
+
+    private var currentSettingsSnapshot: PreferencesSnapshot {
+        PreferencesSnapshot(
+            token: app.settings.token,
+            autoStart: app.settings.autoStart,
+            clusterMode: app.settings.clusterMode,
+            clusterNodeName: app.settings.clusterNodeName,
+            clusterLeaderAddress: app.settings.clusterLeaderAddress,
+            clusterListenPort: app.settings.clusterListenPort,
+            clusterSharedSecret: app.settings.clusterSharedSecret,
+            clusterWorkerOffloadEnabled: app.settings.clusterWorkerOffloadEnabled,
+            clusterOffloadAIReplies: app.settings.clusterOffloadAIReplies,
+            clusterOffloadWikiLookups: app.settings.clusterOffloadWikiLookups,
+            adminWebEnabled: app.settings.adminWebUI.enabled,
+            adminWebHost: app.settings.adminWebUI.bindHost,
+            adminWebPort: app.settings.adminWebUI.port,
+            adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
+            adminDiscordClientID: app.settings.adminWebUI.discordClientID,
+            adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
+            adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
+            devFeaturesEnabled: app.settings.devFeaturesEnabled,
+            bugAutoFixEnabled: app.settings.bugAutoFixEnabled,
+            bugAutoFixTriggerEmoji: app.settings.bugAutoFixTriggerEmoji,
+            bugAutoFixCommandTemplate: app.settings.bugAutoFixCommandTemplate,
+            bugAutoFixRepoPath: app.settings.bugAutoFixRepoPath,
+            bugAutoFixGitBranch: app.settings.bugAutoFixGitBranch,
+            bugAutoFixPushEnabled: app.settings.bugAutoFixPushEnabled,
+            bugAutoFixRequireApproval: app.settings.bugAutoFixRequireApproval,
+            bugAutoFixApproveEmoji: app.settings.bugAutoFixApproveEmoji,
+            bugAutoFixRejectEmoji: app.settings.bugAutoFixRejectEmoji,
+            bugAutoFixAllowedUsernames: app.settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
+        )
+    }
+
+    var body: some View {
+        TabView {
+            GeneralPreferencesView()
+                .tabItem {
+                    Label("General", systemImage: "gear")
+                }
+
+            DiscordPreferencesView()
+                .tabItem {
+                    Label("Discord", systemImage: "message")
+                }
+
+            MeshPreferencesView()
+                .tabItem {
+                    Label("SwiftMesh", systemImage: "network")
+                }
+
+            WebUIPreferencesView()
+                .tabItem {
+                    Label("Web UI", systemImage: "globe")
+                }
+
+            UpdatesPreferencesView()
+                .tabItem {
+                    Label("Updates", systemImage: "arrow.clockwise")
+                }
+
+            AdvancedPreferencesView()
+                .tabItem {
+                    Label("Advanced", systemImage: "wrench")
+                }
+        }
+        .frame(width: 720, height: 480)
+        .overlay(alignment: .bottomTrailing) {
+            if hasUnsavedChanges && !app.isFailoverManagedNode {
+                StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
+                    app.saveSettings()
+                    settingsSnapshot = currentSettingsSnapshot
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 18)
+            }
+        }
+        .onAppear {
+            settingsSnapshot = currentSettingsSnapshot
+        }
+    }
+}
+
+private struct PreferencesSnapshot: Equatable {
+    var token = ""
+    var autoStart = false
+    var clusterMode: ClusterMode = .standalone
+    var clusterNodeName = ""
+    var clusterLeaderAddress = ""
+    var clusterListenPort = 38787
+    var clusterSharedSecret = ""
+    var clusterWorkerOffloadEnabled = false
+    var clusterOffloadAIReplies = false
+    var clusterOffloadWikiLookups = false
+    var adminWebEnabled = false
+    var adminWebHost = ""
+    var adminWebPort = 38888
+    var adminWebBaseURL = ""
+    var adminDiscordClientID = ""
+    var adminDiscordClientSecret = ""
+    var adminAllowedUserIDs = ""
+    var devFeaturesEnabled = false
+    var bugAutoFixEnabled = false
+    var bugAutoFixTriggerEmoji = "🤖"
+    var bugAutoFixCommandTemplate = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
+    var bugAutoFixRepoPath = ""
+    var bugAutoFixGitBranch = "main"
+    var bugAutoFixPushEnabled = true
+    var bugAutoFixRequireApproval = true
+    var bugAutoFixApproveEmoji = "🚀"
+    var bugAutoFixRejectEmoji = "🛑"
+    var bugAutoFixAllowedUsernames = ""
+}
