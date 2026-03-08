@@ -185,6 +185,8 @@ struct BotSettings: Codable, Hashable {
     var clusterListenPort: Int = 38787
     var clusterSharedSecret: String = ""
     var clusterLeaderTerm: Int = 0
+    var clusterOffloadAIReplies: Bool = true
+    var clusterOffloadWikiLookups: Bool = true
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -221,6 +223,27 @@ struct BotSettings: Codable, Hashable {
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
 
+    var swiftMeshSettings: SwiftMeshSettings {
+        get {
+            SwiftMeshSettings(
+                mode: clusterMode,
+                nodeName: clusterNodeName,
+                leaderAddress: clusterLeaderAddress,
+                listenPort: clusterListenPort,
+                sharedSecret: clusterSharedSecret,
+                leaderTerm: clusterLeaderTerm
+            )
+        }
+        set {
+            clusterMode = newValue.mode
+            clusterNodeName = newValue.nodeName
+            clusterLeaderAddress = newValue.leaderAddress
+            clusterListenPort = newValue.listenPort
+            clusterSharedSecret = newValue.sharedSecret
+            clusterLeaderTerm = newValue.leaderTerm
+        }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case token
         case prefix
@@ -238,6 +261,8 @@ struct BotSettings: Codable, Hashable {
         case clusterListenPort
         case clusterSharedSecret
         case clusterLeaderTerm
+        case clusterOffloadAIReplies
+        case clusterOffloadWikiLookups
         case localAIDMReplyEnabled
         case localAIProvider
         case preferredAIProvider
@@ -293,6 +318,8 @@ struct BotSettings: Codable, Hashable {
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
         clusterSharedSecret = try container.decodeIfPresent(String.self, forKey: .clusterSharedSecret) ?? ""
         clusterLeaderTerm = try container.decodeIfPresent(Int.self, forKey: .clusterLeaderTerm) ?? 0
+        clusterOffloadAIReplies = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadAIReplies) ?? true
+        clusterOffloadWikiLookups = try container.decodeIfPresent(Bool.self, forKey: .clusterOffloadWikiLookups) ?? true
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
@@ -345,6 +372,8 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterListenPort, forKey: .clusterListenPort)
         try container.encode(clusterSharedSecret, forKey: .clusterSharedSecret)
         try container.encode(clusterLeaderTerm, forKey: .clusterLeaderTerm)
+        try container.encode(clusterOffloadAIReplies, forKey: .clusterOffloadAIReplies)
+        try container.encode(clusterOffloadWikiLookups, forKey: .clusterOffloadWikiLookups)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
 
         try container.encode(localAIProvider, forKey: .localAIProvider)
@@ -1309,6 +1338,25 @@ struct PatchySettings: Codable, Hashable {
     var targets: [PatchyDeliveryTarget] = []
 }
 
+struct SwiftMeshSettings: Codable, Hashable {
+    var mode: ClusterMode = .standalone
+    var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
+    var leaderAddress: String = ""
+    var listenPort: Int = 38787
+    var sharedSecret: String = ""
+    var leaderTerm: Int = 0
+}
+
+struct MeshSyncedFile: Codable, Hashable {
+    let fileName: String
+    let base64Data: String
+}
+
+struct MeshSyncedFilesPayload: Codable, Hashable {
+    let generatedAt: Date
+    let files: [MeshSyncedFile]
+}
+
 enum ClusterMode: String, Codable, CaseIterable, Identifiable {
     case standalone = "Standalone"
     case leader = "Leader"
@@ -1316,6 +1364,10 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
     case standby = "Standby"
 
     var id: String { rawValue }
+
+    static var selectableCases: [ClusterMode] {
+        [.standalone, .leader, .standby]
+    }
 
     var displayName: String {
         switch self {
@@ -2169,6 +2221,15 @@ final class RuleStore: ObservableObject {
         Task {
             try? await store.save(snapshot)
             lastSavedAt = Date()
+        }
+    }
+
+    func reloadFromDisk() async {
+        guard let loaded = await store.load() else { return }
+        rules = loaded.isEmpty ? [Rule(name: "Join Action")] : loaded
+        if let selected = selectedRuleID,
+           !rules.contains(where: { $0.id == selected }) {
+            selectedRuleID = nil
         }
     }
 

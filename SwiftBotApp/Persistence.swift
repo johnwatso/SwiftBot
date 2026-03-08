@@ -1,20 +1,32 @@
 import Foundation
 
+enum SwiftBotStorage {
+    static let appFolderName = "SwiftBot"
+    static let settingsFileName = "settings.json"
+    static let rulesFileName = "rules.json"
+    static let discordCacheFileName = "discord-cache.json"
+    static let meshCursorsFileName = "mesh-cursors.json"
+    static let swiftMeshConfigFileName = "swiftmesh-config.json"
+
+    static func folderURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let folder = appSupport.appendingPathComponent(appFolderName, isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+}
+
 actor ConfigStore {
     private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
     private let openAIAPIKeyAccount = "openai-api-key"
-    private let clusterSharedSecretAccount = "cluster-shared-secret"
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var lastToken: String?
     private var lastOpenAIAPIKey: String?
-    private var lastClusterSharedSecret: String?
 
-    init(filename: String = "settings.json") {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    init(filename: String = SwiftBotStorage.settingsFileName) {
+        let folder = SwiftBotStorage.folderURL()
         self.url = folder.appendingPathComponent(filename)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -58,13 +70,6 @@ actor ConfigStore {
         }
         lastOpenAIAPIKey = settings.openAIAPIKey
 
-        if let storedSecret = KeychainHelper.load(account: clusterSharedSecretAccount) {
-            settings.clusterSharedSecret = storedSecret
-        } else if !settings.clusterSharedSecret.isEmpty {
-            KeychainHelper.save(settings.clusterSharedSecret, account: clusterSharedSecretAccount)
-        }
-        lastClusterSharedSecret = settings.clusterSharedSecret
-
         return settings
     }
 
@@ -98,7 +103,94 @@ actor ConfigStore {
             lastOpenAIAPIKey = trimmedOpenAIKey
         }
 
-        let trimmedClusterSecret = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Always clear secrets from disk-stored settings.
+        settingsToSave.token = ""
+        settingsToSave.adminWebUI.discordClientSecret = ""
+        settingsToSave.openAIAPIKey = ""
+        settingsToSave.clusterSharedSecret = ""
+        settingsToSave.clusterMode = .standalone
+        settingsToSave.clusterNodeName = Host.current().localizedName ?? "SwiftBot Node"
+        settingsToSave.clusterLeaderAddress = ""
+        settingsToSave.clusterListenPort = 38787
+        settingsToSave.clusterLeaderTerm = 0
+
+        let data = try encoder.encode(settingsToSave)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func exportMeshSyncedFiles(excludingFileNames: Set<String>) -> Data? {
+        let folder = SwiftBotStorage.folderURL()
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+
+        var files: [MeshSyncedFile] = []
+        for fileURL in entries {
+            guard !excludingFileNames.contains(fileURL.lastPathComponent) else { continue }
+            let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            guard let data = try? Data(contentsOf: fileURL) else { continue }
+            files.append(MeshSyncedFile(fileName: fileURL.lastPathComponent, base64Data: data.base64EncodedString()))
+        }
+
+        let payload = MeshSyncedFilesPayload(generatedAt: Date(), files: files.sorted(by: { $0.fileName < $1.fileName }))
+        return try? encoder.encode(payload)
+    }
+
+    @discardableResult
+    func importMeshSyncedFiles(_ data: Data, excludingFileNames: Set<String>) -> Int {
+        guard let payload = try? decoder.decode(MeshSyncedFilesPayload.self, from: data) else { return 0 }
+        let folder = SwiftBotStorage.folderURL()
+        var imported = 0
+        for file in payload.files {
+            guard !excludingFileNames.contains(file.fileName) else { continue }
+            guard !file.fileName.contains("/"), !file.fileName.contains("..") else { continue }
+            guard let decoded = Data(base64Encoded: file.base64Data) else { continue }
+            let url = folder.appendingPathComponent(file.fileName)
+            do {
+                try decoded.write(to: url, options: .atomic)
+                imported += 1
+            } catch {
+                continue
+            }
+        }
+        return imported
+    }
+}
+
+actor SwiftMeshConfigStore {
+    private let clusterSharedSecretAccount = "cluster-shared-secret"
+    private let url: URL
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+    private var lastClusterSharedSecret: String?
+
+    init(filename: String = SwiftBotStorage.swiftMeshConfigFileName) {
+        let folder = SwiftBotStorage.folderURL()
+        self.url = folder.appendingPathComponent(filename)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
+    func load() -> SwiftMeshSettings? {
+        var settings: SwiftMeshSettings?
+        if let data = try? Data(contentsOf: url),
+           let decoded = try? decoder.decode(SwiftMeshSettings.self, from: data) {
+            settings = decoded
+        }
+
+        if let storedSecret = KeychainHelper.load(account: clusterSharedSecretAccount) {
+            lastClusterSharedSecret = storedSecret
+            if settings != nil {
+                settings?.sharedSecret = storedSecret
+            }
+        }
+        return settings
+    }
+
+    func save(_ settings: SwiftMeshSettings) throws {
+        let trimmedClusterSecret = settings.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedClusterSecret != lastClusterSharedSecret {
             if trimmedClusterSecret.isEmpty {
                 KeychainHelper.delete(account: clusterSharedSecretAccount)
@@ -108,13 +200,9 @@ actor ConfigStore {
             lastClusterSharedSecret = trimmedClusterSecret
         }
 
-        // Always clear secrets from disk-stored settings.
-        settingsToSave.token = ""
-        settingsToSave.adminWebUI.discordClientSecret = ""
-        settingsToSave.openAIAPIKey = ""
-        settingsToSave.clusterSharedSecret = ""
-
-        let data = try encoder.encode(settingsToSave)
+        var copy = settings
+        copy.sharedSecret = ""
+        let data = try encoder.encode(copy)
         try data.write(to: url, options: .atomic)
     }
 }
@@ -124,10 +212,8 @@ actor RuleConfigStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(filename: String = "rules.json") {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    init(filename: String = SwiftBotStorage.rulesFileName) {
+        let folder = SwiftBotStorage.folderURL()
         self.url = folder.appendingPathComponent(filename)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -150,10 +236,8 @@ actor DiscordCacheStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(filename: String = "discord-cache.json") {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    init(filename: String = SwiftBotStorage.discordCacheFileName) {
+        let folder = SwiftBotStorage.folderURL()
         self.url = folder.appendingPathComponent(filename)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
@@ -200,10 +284,8 @@ actor MeshCursorStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(filename: String = "mesh-cursors.json") {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let folder = appSupport.appendingPathComponent("SwiftBot", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    init(filename: String = SwiftBotStorage.meshCursorsFileName) {
+        let folder = SwiftBotStorage.folderURL()
         self.url = folder.appendingPathComponent(filename)
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }

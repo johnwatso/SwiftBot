@@ -10,6 +10,16 @@ struct PatchyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            if app.isFailoverManagedNode {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.orange)
+                    Text("Read-only on Failover nodes. Patchy settings sync from Primary.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 2)
+            }
             monitoringControls
             sourceTargetList
             debugArea
@@ -17,6 +27,8 @@ struct PatchyView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .sheet(item: $editorDraft) { draft in
             PatchyTargetEditorSheet(
                 draft: draft,

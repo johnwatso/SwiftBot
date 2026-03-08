@@ -13,6 +13,14 @@ struct GeneralSettingsView: View {
         currentSettingsSnapshot != settingsSnapshot
     }
 
+    private var isFailoverManagedNode: Bool {
+        app.settings.clusterMode == .worker || app.settings.clusterMode == .standby
+    }
+
+    private var canEditOffloadPolicy: Bool {
+        app.settings.clusterMode == .leader
+    }
+
     private var currentSettingsSnapshot: GeneralSettingsSnapshot {
         GeneralSettingsSnapshot(
             token: app.settings.token,
@@ -46,6 +54,16 @@ struct GeneralSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewSectionHeader(title: "Settings", symbol: "gearshape.2.fill")
+            if isFailoverManagedNode {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("This node is in Failover mode. Non‑SwiftMesh settings are synced from Primary and are read-only here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 4)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -79,6 +97,8 @@ struct GeneralSettingsView: View {
                 }
                 .padding(16)
                 .commandCatalogSurface(cornerRadius: 22)
+                .disabled(isFailoverManagedNode)
+                .opacity(isFailoverManagedNode ? 0.62 : 1)
 
                 VStack(alignment: .leading, spacing: 16) {
                     sectionTitle("Deployment", symbol: "wrench.and.screwdriver.fill")
@@ -102,6 +122,8 @@ struct GeneralSettingsView: View {
                 }
                 .padding(16)
                 .commandCatalogSurface(cornerRadius: 22)
+                .disabled(isFailoverManagedNode)
+                .opacity(isFailoverManagedNode ? 0.62 : 1)
 
                 VStack(alignment: .leading, spacing: 16) {
                     sectionTitle("SwiftMesh", symbol: "point.3.connected.trianglepath.dotted")
@@ -110,7 +132,7 @@ struct GeneralSettingsView: View {
                         Text("Role")
                             .font(.subheadline.weight(.medium))
                         Picker("Role", selection: $app.settings.clusterMode) {
-                            ForEach(ClusterMode.allCases) { mode in
+                            ForEach(ClusterMode.selectableCases) { mode in
                                 Text(mode.displayName).tag(mode)
                             }
                         }
@@ -127,9 +149,9 @@ struct GeneralSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    if app.settings.clusterMode == .worker || app.settings.clusterMode == .standby {
+                    if app.settings.clusterMode == .standby {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(app.settings.clusterMode == .standby ? "Primary Address" : "Leader Address")
+                            Text("Primary Address")
                                 .font(.subheadline.weight(.medium))
                             TextField("http://host:port", text: $app.settings.clusterLeaderAddress)
                                 .textFieldStyle(.roundedBorder)
@@ -152,7 +174,21 @@ struct GeneralSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    if app.settings.clusterMode == .worker || app.settings.clusterMode == .standby {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Worker Offload")
+                            .font(.subheadline.weight(.medium))
+                        Toggle("Offload AI replies to workers when Primary", isOn: $app.settings.clusterOffloadAIReplies)
+                            .toggleStyle(.switch)
+                        Toggle("Offload Wiki lookups to workers when Primary", isOn: $app.settings.clusterOffloadWikiLookups)
+                            .toggleStyle(.switch)
+                        Text("Applies only in Primary mode and only when workers are registered/reachable.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .disabled(!canEditOffloadPolicy)
+                    .opacity(canEditOffloadPolicy ? 1 : 0.62)
+
+                    if app.settings.clusterMode == .standby {
                         HStack(spacing: 10) {
                             Button {
                                 app.testWorkerLeaderConnection()
@@ -177,6 +213,7 @@ struct GeneralSettingsView: View {
                             Text(app.workerConnectionTestStatus)
                                 .font(.caption)
                                 .foregroundStyle(app.workerConnectionTestIsSuccess ? .green : .secondary)
+                                .textSelection(.enabled)
                         }
                     }
                 }
@@ -249,6 +286,8 @@ struct GeneralSettingsView: View {
                 }
                 .padding(16)
                 .commandCatalogSurface(cornerRadius: 22)
+                .disabled(isFailoverManagedNode)
+                .opacity(isFailoverManagedNode ? 0.62 : 1)
 
                 VStack(alignment: .leading, spacing: 16) {
                     sectionTitle("Bug Auto-Fix", symbol: "sparkles")
@@ -396,6 +435,8 @@ struct GeneralSettingsView: View {
                 }
                 .padding(16)
                 .commandCatalogSurface(cornerRadius: 22)
+                .disabled(isFailoverManagedNode)
+                .opacity(isFailoverManagedNode ? 0.62 : 1)
             }
             }
             .padding(.bottom, 16)
@@ -404,7 +445,7 @@ struct GeneralSettingsView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges {
+            if hasUnsavedChanges && !isFailoverManagedNode {
                 StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
                     app.saveSettings()
                     settingsSnapshot = currentSettingsSnapshot

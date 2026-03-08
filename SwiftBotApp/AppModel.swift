@@ -83,6 +83,7 @@ final class AppModel: ObservableObject {
     let ruleStore = RuleStore()
 
     let store = ConfigStore()
+    let swiftMeshConfigStore = SwiftMeshConfigStore()
     let discordCacheStore = DiscordCacheStore()
     let meshCursorStore = MeshCursorStore()
     let discordCache = DiscordCache()
@@ -123,6 +124,8 @@ final class AppModel: ObservableObject {
     var botUserId: String?
     let launchedAt = Date()
     var clusterNodesRefreshTask: Task<Void, Never>?
+    var lastClusterStatusSuccessAt: Date?
+    var lastGoodClusterNodes: [ClusterNodeStatus] = []
     // P1b: off-peak background mesh refresh
     var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
@@ -178,6 +181,9 @@ final class AppModel: ObservableObject {
             await startRateLimitCleanupTask()
 
             var loadedSettings = await store.load()
+            if let loadedMeshSettings = await swiftMeshConfigStore.load() {
+                loadedSettings.swiftMeshSettings = loadedMeshSettings
+            }
             var migrated = false
 
             if loadedSettings.localAIEndpoint.contains("mac-studio.local") {
@@ -194,9 +200,9 @@ final class AppModel: ObservableObject {
             if migrateLegacyWikiBridgeSettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
-            // Worker mode is temporarily disabled pending UX redesign — migrate to Standalone.
+            // Worker mode is deprecated in UI — migrate to Fail Over for existing users.
             if loadedSettings.clusterMode == .worker {
-                loadedSettings.clusterMode = .standalone
+                loadedSettings.clusterMode = .standby
                 workerModeMigrated = true
                 migrated = true
             }
@@ -218,6 +224,7 @@ final class AppModel: ObservableObject {
 
             if migrated {
                 try? await store.save(loadedSettings)
+                try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
             }
 
             await service.setRuleEngine(ruleEngine)
@@ -296,6 +303,10 @@ final class AppModel: ObservableObject {
                 listenPort: settings.clusterListenPort,
                 sharedSecret: settings.clusterSharedSecret,
                 leaderTerm: settings.clusterLeaderTerm
+            )
+            await cluster.setOffloadPolicy(
+                aiReplies: settings.clusterOffloadAIReplies,
+                wikiLookups: settings.clusterOffloadWikiLookups
             )
             await cluster.setTermChangedHandler { [weak self] newTerm in
                 guard let self else { return }
@@ -378,6 +389,7 @@ final class AppModel: ObservableObject {
 
             do {
                 try await store.save(settings)
+                try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
                 logs.append("✅ Settings saved")
                 await refreshAIStatus()
             } catch {
@@ -808,6 +820,7 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 try await store.save(snapshot)
+                try await swiftMeshConfigStore.save(snapshot.swiftMeshSettings)
             } catch {
                 await MainActor.run {
                     self.logs.append("❌ Failed saving settings: \(error.localizedDescription)")
@@ -862,10 +875,26 @@ final class AppModel: ObservableObject {
             sharedSecret: settings.clusterSharedSecret,
             leaderTerm: settings.clusterLeaderTerm
         )
+        await cluster.setOffloadPolicy(
+            aiReplies: settings.clusterOffloadAIReplies,
+            wikiLookups: settings.clusterOffloadWikiLookups
+        )
+        configureMeshSync()
 
         let runtimeMode = await cluster.currentSnapshot().mode
         if runtimeMode == .standby {
-            status = .stopped
+            let token = normalizedDiscordToken(from: settings.token)
+            if !token.isEmpty {
+                let tokenValidation = await service.validateBotTokenRich(token)
+                lastTokenValidationResult = tokenValidation
+                if tokenValidation.isValid {
+                    applyBotIdentity(from: tokenValidation)
+                    resolvedClientID = await service.resolveClientID(token: token, fallbackUserID: tokenValidation.userId)
+                } else {
+                    logs.append("⚠️ Fail Over identity probe failed: \(tokenValidation.errorMessage)")
+                }
+            }
+            status = .running
             logs.append("Fail Over mode active. Monitoring Primary; Discord connection deferred until promotion.")
             return
         }
@@ -914,6 +943,7 @@ final class AppModel: ObservableObject {
             logs.append("❌ Token validation failed: \(tokenValidation.errorMessage)")
             return
         }
+        applyBotIdentity(from: tokenValidation)
 
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
@@ -936,6 +966,28 @@ final class AppModel: ObservableObject {
 
         await service.connect(token: token)
         logs.append("Connecting to Discord Gateway")
+    }
+
+    private func applyBotIdentity(from validation: DiscordService.TokenValidationResult) {
+        if let userId = validation.userId, !userId.isEmpty {
+            botUserId = userId
+        }
+        if let username = validation.username, !username.isEmpty {
+            botUsername = username
+        }
+        if let discriminator = validation.discriminator,
+           !discriminator.isEmpty,
+           discriminator != "0" {
+            botDiscriminator = discriminator
+        } else {
+            botDiscriminator = nil
+        }
+        if let avatarURL = validation.avatarURL {
+            let filename = avatarURL.deletingPathExtension().lastPathComponent
+            botAvatarHash = filename.isEmpty ? nil : filename
+        } else {
+            botAvatarHash = nil
+        }
     }
 
     // MARK: - Onboarding integration
@@ -1211,6 +1263,19 @@ final class AppModel: ObservableObject {
                 )
             }
 
+        let webClusterNodes = clusterNodes.map { node in
+            AdminWebClusterNodePayload(
+                id: node.id,
+                displayName: node.displayName,
+                role: node.role.rawValue,
+                status: node.status.rawValue,
+                hostname: node.hostname,
+                hardwareModel: node.hardwareModel,
+                jobsActive: node.jobsActive,
+                latencyMs: node.latencyMs
+            )
+        }
+
         return AdminWebOverviewPayload(
             metrics: metrics,
             cluster: AdminWebClusterPayload(
@@ -1218,6 +1283,7 @@ final class AppModel: ObservableObject {
                 leader: clusterLeader,
                 mode: clusterSnapshot.mode.rawValue
             ),
+            clusterNodes: webClusterNodes,
             activeVoice: activeVoiceUsers,
             recentVoice: recentVoice,
             recentCommands: recentCommands,
@@ -1269,7 +1335,9 @@ final class AppModel: ObservableObject {
                 mode: settings.clusterMode.rawValue,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
-                listenPort: settings.clusterListenPort
+                listenPort: settings.clusterListenPort,
+                offloadAIReplies: settings.clusterOffloadAIReplies,
+                offloadWikiLookups: settings.clusterOffloadWikiLookups
             ),
             general: .init(
                 autoStart: settings.autoStart,
@@ -1303,6 +1371,8 @@ final class AppModel: ObservableObject {
         if let value = patch.clusterNodeName { settings.clusterNodeName = value }
         if let value = patch.clusterLeaderAddress { settings.clusterLeaderAddress = value }
         if let value = patch.clusterListenPort { settings.clusterListenPort = max(1, value) }
+        if let value = patch.clusterOffloadAIReplies { settings.clusterOffloadAIReplies = value }
+        if let value = patch.clusterOffloadWikiLookups { settings.clusterOffloadWikiLookups = value }
         if let value = patch.autoStart { settings.autoStart = value }
         saveSettings()
         return true
@@ -1664,6 +1734,7 @@ final class AppModel: ObservableObject {
                     return AdminWebOverviewPayload(
                         metrics: [],
                         cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
+                        clusterNodes: [],
                         activeVoice: [],
                         recentVoice: [],
                         recentCommands: [],
@@ -1691,7 +1762,7 @@ final class AppModel: ObservableObject {
                         aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
-                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787),
+                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: true, offloadWikiLookups: true),
                         general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: "")
                     )
                 }
@@ -1828,7 +1899,7 @@ final class AppModel: ObservableObject {
             },
             stopBot: { [weak self] in
                 guard let model = self else { return false }
-                await MainActor.run { model.stopBot() }
+                await model.stopBot()
                 return true
             },
             refreshSwiftMesh: { [weak self] in
@@ -1843,8 +1914,13 @@ final class AppModel: ObservableObject {
         )
     }
 
-    func stopBot() {
-        Task { await service.disconnect() }
+    func stopBot() async {
+        await service.disconnect()
+        await cluster.stopAll()
+        meshSyncTask?.cancel()
+        meshSyncTask = nil
+        clusterNodesRefreshTask?.cancel()
+        clusterNodesRefreshTask = nil
         uptimeTask?.cancel()
         uptime = nil
         activeVoice.removeAll()
@@ -1858,10 +1934,13 @@ final class AppModel: ObservableObject {
         botUsername = "OnlineBot"
         botDiscriminator = nil
         botAvatarHash = nil
-        Task { await pluginManager.removeAll() }
+        clusterNodes = []
+        lastGoodClusterNodes = []
+        lastClusterStatusSuccessAt = nil
+        clusterSnapshot = await cluster.currentSnapshot()
+        await pluginManager.removeAll()
         status = .stopped
-        // SwiftMesh intentionally keeps running — cluster topology is independent of Discord connection.
-        logs.append("Bot stopped")
+        logs.append("Bot stopped (SwiftMesh listener stopped)")
     }
 
     func refreshClusterStatus() {
@@ -1920,8 +1999,8 @@ final class AppModel: ObservableObject {
         meshSyncTask = Task { [weak self] in
             while !Task.isCancelled {
                 // Leader pushes, Standby pulls
-                // Sync every 60 seconds
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                // Sync every 10 seconds so failover config changes propagate quickly.
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 if Task.isCancelled { break }
 
                 guard let self else { break }
@@ -1932,7 +2011,8 @@ final class AppModel: ObservableObject {
                     // 2. Push incremental conversation batches per node
                     await self.pushIncrementalConversationsToAllNodes()
                 } else if self.settings.clusterMode == .standby {
-                    // 3. Standby: Pull Wiki Cache from Leader
+                    // 3. Standby: Pull config files and wiki cache from Primary
+                    await self.pullConfigFilesFromLeader()
                     await self.pullWikiCacheFromLeader()
                 }
             }
@@ -1961,6 +2041,7 @@ final class AppModel: ObservableObject {
 
     func runBackgroundMeshRefresh() async {
         guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
+        await pullConfigFilesFromLeader()
         await requestResyncFromLeader(fromRecordID: localLastMergedRecordID)
     }
 
@@ -1999,6 +2080,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func pullConfigFilesFromLeader() async {
+        guard settings.clusterMode == .standby else { return }
+        guard let data = await cluster.fetchConfigFiles() else { return }
+        let imported = await store.importMeshSyncedFiles(
+            data,
+            excludingFileNames: Set([SwiftBotStorage.swiftMeshConfigFileName])
+        )
+        guard imported > 0 else { return }
+
+        logs.append("SwiftMesh: pulled \(imported) config file(s) from Primary")
+        await reloadSyncedConfigFromDisk()
+    }
+
+    func reloadSyncedConfigFromDisk() async {
+        var reloaded = await store.load()
+        if let mesh = await swiftMeshConfigStore.load() {
+            reloaded.swiftMeshSettings = mesh
+        }
+        reloaded.wikiBot.normalizeSources()
+        settings = reloaded
+        await ruleStore.reloadFromDisk()
+        await service.configureLocalAIDMReplies(
+            enabled: settings.localAIDMReplyEnabled,
+            provider: settings.localAIProvider,
+            preferredProvider: settings.preferredAIProvider,
+            endpoint: localAIEndpointForService(),
+            model: settings.localAIModel,
+            openAIAPIKey: effectiveOpenAIAPIKey(),
+            openAIModel: settings.openAIModel,
+            systemPrompt: settings.localAISystemPrompt
+        )
+        configurePatchyMonitoring()
+        await refreshAIStatus()
+    }
+
     func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
         await cluster.applySettings(
             mode: mode,
@@ -2008,7 +2124,14 @@ final class AppModel: ObservableObject {
             sharedSecret: sharedSecret,
             leaderTerm: settings.clusterLeaderTerm
         )
+        await cluster.setOffloadPolicy(
+            aiReplies: settings.clusterOffloadAIReplies,
+            wikiLookups: settings.clusterOffloadWikiLookups
+        )
         configureMeshSync()
+        if mode == .standby {
+            await pullConfigFilesFromLeader()
+        }
         await pollClusterStatus()
     }
 
@@ -2021,11 +2144,21 @@ final class AppModel: ObservableObject {
         let authHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: Data())
         guard let localURL = URL(string: "http://127.0.0.1:\(settings.clusterListenPort)/cluster/status"),
               let response = await clusterStatusService.fetchStatus(from: localURL, headers: authHeaders) else {
-            clusterNodes = fallbackClusterNodes()
+            let graceWindow: TimeInterval = 12
+            if let lastSuccess = lastClusterStatusSuccessAt,
+               Date().timeIntervalSince(lastSuccess) <= graceWindow,
+               !lastGoodClusterNodes.isEmpty {
+                clusterNodes = lastGoodClusterNodes
+            } else {
+                clusterNodes = fallbackClusterNodes()
+            }
             return
         }
 
-        clusterNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+        let resolvedNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+        clusterNodes = resolvedNodes
+        lastGoodClusterNodes = resolvedNodes
+        lastClusterStatusSuccessAt = Date()
     }
 
     private func meshStatusAuthHeaders(path: String, method: String, body: Data) async -> [String: String] {
@@ -2053,7 +2186,7 @@ final class AppModel: ObservableObject {
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let hostname = ProcessInfo.processInfo.hostName
-        let role: ClusterNodeRole = settings.clusterMode == .worker ? .worker : .leader
+        let role: ClusterNodeRole = settings.clusterMode == .leader ? .leader : .worker
         let uptime = max(0, Date().timeIntervalSince(launchedAt))
         let hardwareInfo = HardwareInfo.current()
         var nodes: [ClusterNodeStatus] = [
@@ -2074,7 +2207,8 @@ final class AppModel: ObservableObject {
             )
         ]
 
-        if settings.clusterMode == .worker, !settings.clusterLeaderAddress.isEmpty {
+        if (settings.clusterMode == .worker || settings.clusterMode == .standby),
+           !settings.clusterLeaderAddress.isEmpty {
             let host = URL(string: settings.clusterLeaderAddress)?.host ?? "Primary"
             nodes.append(
                 ClusterNodeStatus(
@@ -2116,6 +2250,10 @@ final class AppModel: ObservableObject {
 
     var primaryServiceIsOnline: Bool {
         settings.clusterMode == .worker ? isWorkerServiceRunning : status == .running
+    }
+
+    var isFailoverManagedNode: Bool {
+        settings.clusterMode == .worker || settings.clusterMode == .standby
     }
 
     func configureServiceCallbacks() async {

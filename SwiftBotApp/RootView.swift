@@ -212,7 +212,7 @@ struct DashboardSidebar: View {
                     .buttonStyle(GlassActionButtonStyle())
                 } else {
                     Button {
-                        app.stopBot()
+                        Task { await app.stopBot() }
                     } label: {
                         Label(stopButtonTitle, systemImage: "stop.circle.fill")
                             .frame(maxWidth: .infinity)

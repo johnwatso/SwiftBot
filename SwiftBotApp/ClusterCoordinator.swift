@@ -59,6 +59,8 @@ actor ClusterCoordinator {
     var leaderAddress: String = ""
     var listenPort: Int = 38787
     var sharedSecret: String = ""
+    var offloadAIReplies: Bool = true
+    var offloadWikiLookups: Bool = true
     /// Nonce replay cache: maps nonce → expiry time. Swept opportunistically on each auth check.
     private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
@@ -174,6 +176,13 @@ actor ClusterCoordinator {
         await restartWorkerRegistrationIfNeeded()
         await restartStandbyMonitorIfNeeded()
         await refreshWorkerHealth()
+        await publishSnapshot()
+    }
+
+    func setOffloadPolicy(aiReplies: Bool, wikiLookups: Bool) async {
+        offloadAIReplies = aiReplies
+        offloadWikiLookups = wikiLookups
+        snapshot.diagnostics = "Offload policy updated (AI: \(aiReplies ? "on" : "off"), Wiki: \(wikiLookups ? "on" : "off"))"
         await publishSnapshot()
     }
 
@@ -347,7 +356,7 @@ actor ClusterCoordinator {
             channelName: channelName,
             wikiContext: wikiContext
         )
-        if mode == .leader, let remote = await performRemoteAI(job) {
+        if mode == .leader, offloadAIReplies, let remote = await performRemoteAI(job) {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "AI reply via worker"
             snapshot.lastJobNode = remote.nodeName
@@ -367,7 +376,7 @@ actor ClusterCoordinator {
     }
 
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
-        if mode == .leader, let remote = await performRemoteWikiLookup(query: query, source: source) {
+        if mode == .leader, offloadWikiLookups, let remote = await performRemoteWikiLookup(query: query, source: source) {
             snapshot.lastJobRoute = .remote
             snapshot.lastJobSummary = "Wiki lookup via worker (\(source.name))"
             snapshot.lastJobNode = remote.nodeName
@@ -902,6 +911,8 @@ actor ClusterCoordinator {
             return await handleMeshConversationResync(request.body)
         case ("GET", "/v1/mesh/sync/wiki-cache"):
             return await handleMeshWikiCacheSync()
+        case ("GET", "/v1/mesh/sync/config-files"):
+            return await handleMeshConfigFilesSync()
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -1203,6 +1214,11 @@ actor ClusterCoordinator {
         let workerName = registration.nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Worker"
             : registration.nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Keep one registration per node name to avoid duplicate stale entries
+        // when public/private endpoints for the same standby vary over time.
+        registeredWorkers = registeredWorkers.filter { $0.value.nodeName.lowercased() != workerName.lowercased() }
+
         let key = baseURL.lowercased()
         registeredWorkers[key] = RegisteredWorker(
             nodeName: workerName,
@@ -1283,15 +1299,15 @@ actor ClusterCoordinator {
             return nil
         }
 
+        // For host-only input (no scheme), require an explicit port to avoid
+        // silently targeting the wrong endpoint.
+        if !hadExplicitScheme, url.port == nil {
+            return nil
+        }
         let resolvedPort: Int = {
             if let explicit = url.port { return explicit }
-            // If caller provided a scheme explicitly, honor that scheme's default port.
-            if hadExplicitScheme {
-                if scheme.lowercased() == "https" { return 443 }
-                if scheme.lowercased() == "http" { return 80 }
-            }
-            // Host-only inputs (no explicit scheme) default to configured mesh port.
-            return listenPort
+            if scheme.lowercased() == "https" { return 443 }
+            return 80
         }()
         return "\(scheme)://\(host):\(resolvedPort)"
     }
@@ -1443,7 +1459,16 @@ actor ClusterCoordinator {
                         nodes.append(node)
                     }
                 } else {
-                    nodes.append(unreachableWorkerNode(worker: worker))
+                    let recentlySeen = Date().timeIntervalSince(worker.lastSeen) <= registrationStaleAfter
+                    if recentlySeen {
+                        reachable += 1
+                    }
+                    nodes.append(
+                        unreachableWorkerNode(
+                            worker: worker,
+                            status: recentlySeen ? .degraded : .disconnected
+                        )
+                    )
                 }
             }
 
@@ -1466,16 +1491,102 @@ actor ClusterCoordinator {
             }
         }
 
+        if mode == .standby,
+           let leaderBaseURL = normalizedBaseURL(leaderAddress),
+           !leaderBaseURL.isEmpty,
+           !isSelfClusterEndpoint(leaderBaseURL) {
+            if let remoteStatus = await fetchRemoteClusterStatus(baseURL: leaderBaseURL) {
+                var leaderFound = false
+                for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
+                    if node.role == .leader {
+                        node.latencyMs = remoteStatus.latencyMs
+                        leaderFound = true
+                    }
+                    nodes.append(node)
+                }
+                if !leaderFound {
+                    let host = URL(string: leaderBaseURL)?.host ?? "Primary"
+                    nodes.append(
+                        ClusterNodeStatus(
+                            id: "leader-\(host.lowercased())",
+                            hostname: host,
+                            displayName: host,
+                            role: .leader,
+                            hardwareModel: "Unknown",
+                            cpu: 0,
+                            mem: 0,
+                            cpuName: "Unknown CPU",
+                            physicalMemoryBytes: 0,
+                            uptime: 0,
+                            latencyMs: remoteStatus.latencyMs,
+                            status: .healthy,
+                            jobsActive: 0
+                        )
+                    )
+                }
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Primary reachable"
+                snapshot.diagnostics = "Fail Over monitoring \(leaderBaseURL) (latency \(Int(remoteStatus.latencyMs)) ms)"
+            } else {
+                snapshot.workerState = .degraded
+                snapshot.workerStatusText = "Primary unreachable"
+                snapshot.diagnostics = "Fail Over could not fetch \(leaderBaseURL)/cluster/status"
+            }
+        }
+
         return ClusterStatusResponse(
             mode: mode,
             generatedAt: ISO8601DateFormatter().string(from: Date()),
-            nodes: nodes
+            nodes: deduplicateClusterNodes(nodes)
         )
+    }
+
+    private func deduplicateClusterNodes(_ nodes: [ClusterNodeStatus]) -> [ClusterNodeStatus] {
+        var byKey: [String: ClusterNodeStatus] = [:]
+        for node in nodes {
+            let roleKey = node.role.rawValue
+            let nameKey = node.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let key = "\(roleKey)|\(nameKey)"
+            if let existing = byKey[key] {
+                byKey[key] = preferredNode(existing, node)
+            } else {
+                byKey[key] = node
+            }
+        }
+        return byKey.values.sorted {
+            if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    private func preferredNode(_ lhs: ClusterNodeStatus, _ rhs: ClusterNodeStatus) -> ClusterNodeStatus {
+        let lhsScore = nodeStatusScore(lhs.status)
+        let rhsScore = nodeStatusScore(rhs.status)
+        if lhsScore != rhsScore {
+            return lhsScore > rhsScore ? lhs : rhs
+        }
+        if let l = lhs.latencyMs, let r = rhs.latencyMs, l != r {
+            return l <= r ? lhs : rhs
+        }
+        if lhs.latencyMs != nil, rhs.latencyMs == nil { return lhs }
+        if rhs.latencyMs != nil, lhs.latencyMs == nil { return rhs }
+        if lhs.jobsActive != rhs.jobsActive {
+            return lhs.jobsActive >= rhs.jobsActive ? lhs : rhs
+        }
+        return lhs
+    }
+
+    private func nodeStatusScore(_ status: ClusterNodeHealthStatus) -> Int {
+        switch status {
+        case .healthy: return 3
+        case .degraded: return 2
+        case .disconnected: return 1
+        }
     }
 
     private func localNodeStatus() -> ClusterNodeStatus {
         let hostname = ProcessInfo.processInfo.hostName
-        let role: ClusterNodeRole = mode == .worker ? .worker : .leader
+        let role: ClusterNodeRole = mode == .leader ? .leader : .worker
         let uptime = max(0, Date().timeIntervalSince(startedAt))
         let status = snapshot.serverState.nodeHealthStatus
 
@@ -1496,7 +1607,7 @@ actor ClusterCoordinator {
         )
     }
 
-    private func unreachableWorkerNode(worker: RegisteredWorker) -> ClusterNodeStatus {
+    private func unreachableWorkerNode(worker: RegisteredWorker, status: ClusterNodeHealthStatus = .disconnected) -> ClusterNodeStatus {
         let host = URL(string: worker.baseURL)?.host ?? worker.nodeName
 
         return ClusterNodeStatus(
@@ -1511,7 +1622,7 @@ actor ClusterCoordinator {
             physicalMemoryBytes: 0,
             uptime: 0,
             latencyMs: nil,
-            status: .disconnected,
+            status: status,
             jobsActive: 0
         )
     }
@@ -1755,6 +1866,13 @@ actor ClusterCoordinator {
         return httpResponse(status: "404 Not Found", body: Data(#"{"error":"cache_unavailable"}"#.utf8))
     }
 
+    private func handleMeshConfigFilesSync() async -> Data {
+        if let data = await meshHandler?("config-files") {
+            return httpResponse(status: "200 OK", body: data)
+        }
+        return httpResponse(status: "404 Not Found", body: Data(#"{"error":"config_unavailable"}"#.utf8))
+    }
+
     /// Standby: fetch one page of conversation records from the leader using correct HMAC auth.
     func fetchResyncPage(fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
         guard mode == .standby,
@@ -1787,6 +1905,24 @@ actor ClusterCoordinator {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyMeshAuth(to: &request, path: "/v1/mesh/sync/wiki-cache")
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchConfigFiles() async -> Data? {
+        guard mode == .standby,
+              let baseURL = normalizedBaseURL(leaderAddress),
+              !baseURL.isEmpty,
+              let url = URL(string: baseURL + "/v1/mesh/sync/config-files") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/sync/config-files")
         request.timeoutInterval = 15
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

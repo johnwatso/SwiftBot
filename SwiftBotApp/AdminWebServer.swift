@@ -23,6 +23,17 @@ struct AdminWebClusterPayload: Codable {
     let mode: String
 }
 
+struct AdminWebClusterNodePayload: Codable {
+    let id: String
+    let displayName: String
+    let role: String
+    let status: String
+    let hostname: String
+    let hardwareModel: String
+    let jobsActive: Int
+    let latencyMs: Double?
+}
+
 struct AdminWebRecentVoicePayload: Codable {
     let description: String
     let timeText: String
@@ -52,6 +63,7 @@ struct AdminWebBotInfoPayload: Codable {
 struct AdminWebOverviewPayload: Codable {
     let metrics: [AdminWebMetricPayload]
     let cluster: AdminWebClusterPayload
+    let clusterNodes: [AdminWebClusterNodePayload]
     let activeVoice: [AdminWebActiveVoicePayload]
     let recentVoice: [AdminWebRecentVoicePayload]
     let recentCommands: [AdminWebRecentCommandPayload]
@@ -93,6 +105,8 @@ struct AdminWebConfigPayload: Codable {
         let nodeName: String
         let leaderAddress: String
         let listenPort: Int
+        let offloadAIReplies: Bool
+        let offloadWikiLookups: Bool
     }
 
     struct General: Codable {
@@ -127,6 +141,8 @@ struct AdminWebConfigPatch: Codable {
     var clusterNodeName: String?
     var clusterLeaderAddress: String?
     var clusterListenPort: Int?
+    var clusterOffloadAIReplies: Bool?
+    var clusterOffloadWikiLookups: Bool?
     var autoStart: Bool?
 }
 
@@ -593,6 +609,7 @@ actor AdminWebServer {
             let payload = await overviewProvider?() ?? AdminWebOverviewPayload(
                 metrics: [],
                 cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
+                clusterNodes: [],
                 activeVoice: [],
                 recentVoice: [],
                 recentCommands: [],

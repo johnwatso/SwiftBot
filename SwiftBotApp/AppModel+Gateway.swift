@@ -127,6 +127,10 @@ extension AppModel {
             return try? JSONEncoder().encode(all)
         case "image-usage":
             return try? JSONEncoder().encode(settings.openAIImageUsageByUserMonth)
+        case "config-files":
+            return await store.exportMeshSyncedFiles(
+                excludingFileNames: Set([SwiftBotStorage.swiftMeshConfigFileName])
+            )
         default:
             return nil
         }

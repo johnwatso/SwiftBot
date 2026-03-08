@@ -149,6 +149,16 @@ struct CommandsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
+            if app.isFailoverManagedNode {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.orange)
+                    Text("Read-only on Failover nodes. Command settings sync from Primary.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 2)
+            }
             VStack(alignment: .leading, spacing: 26) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Command System")
@@ -219,7 +229,9 @@ struct CommandsView: View {
                                                 ForEach(command.surfaces, id: \.self) { surface in
                                                     CommandTag(text: surface, tint: surface == "Slash" ? .orange : (surface == "Prefix" ? .blue : .secondary))
                                                 }
-                                                CommandTag(text: command.category, tint: .secondary)
+                                                if !command.surfaces.contains(where: { $0.caseInsensitiveCompare(command.category) == .orderedSame }) {
+                                                    CommandTag(text: command.category, tint: .secondary)
+                                                }
                                                 if command.adminOnly {
                                                     CommandTag(text: "Admin", tint: .red)
                                                 }
@@ -268,6 +280,8 @@ struct CommandsView: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
             }
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .padding(.horizontal, 16)

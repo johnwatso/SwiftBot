@@ -35,6 +35,8 @@
       --icon-color: rgba(232, 242, 255, 0.92);
       --nav-icon-bg: rgba(255,255,255,0.06);
       --section-title-color: rgba(198, 214, 233, 0.9);
+      --mesh-node-bg: rgba(21, 33, 50, 0.9);
+      --mesh-node-stroke: rgba(184, 212, 241, 0.24);
     }
 
     @media (prefers-color-scheme: light) {
@@ -54,6 +56,8 @@
         --icon-color: rgba(23, 47, 76, 0.94);
         --nav-icon-bg: rgba(84, 136, 198, 0.14);
         --section-title-color: rgba(39, 68, 99, 0.9);
+        --mesh-node-bg: rgba(250, 253, 255, 0.92);
+        --mesh-node-stroke: rgba(69, 103, 140, 0.24);
       }
 
       html:not([data-theme]), body:not([data-theme]) {
@@ -90,6 +94,8 @@
       --icon-color: rgba(23, 47, 76, 0.94);
       --nav-icon-bg: rgba(84, 136, 198, 0.14);
       --section-title-color: rgba(39, 68, 99, 0.9);
+      --mesh-node-bg: rgba(250, 253, 255, 0.92);
+      --mesh-node-stroke: rgba(69, 103, 140, 0.24);
     }
 
     :root[data-theme="dark"] {
@@ -108,6 +114,8 @@
       --icon-color: rgba(232, 242, 255, 0.92);
       --nav-icon-bg: rgba(255,255,255,0.06);
       --section-title-color: rgba(198, 214, 233, 0.9);
+      --mesh-node-bg: rgba(21, 33, 50, 0.9);
+      --mesh-node-stroke: rgba(184, 212, 241, 0.24);
     }
 
     html[data-theme="light"], html[data-theme="light"] body {
@@ -179,8 +187,8 @@
 
     .bg-row {
       position: absolute;
-      left: -55%;
-      width: 260%;
+      left: -120%;
+      width: 420%;
       display: flex;
       gap: 64px;
       white-space: nowrap;
@@ -1122,6 +1130,112 @@
     .settings-panel .panel-title,
     .diagnostics-panel .panel-title {
       margin-top: 0;
+    }
+
+    .settings-panel.full-span {
+      grid-column: 1 / -1;
+    }
+
+    .mesh-map-panel {
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      min-height: 320px;
+      position: relative;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .mesh-map-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .mesh-link-pulse {
+      fill: none;
+      stroke-linecap: round;
+      stroke-width: 3;
+      stroke-dasharray: 220 4000;
+      animation: meshPulseRun 2.6s linear infinite;
+      opacity: 1;
+    }
+
+    @keyframes meshPulseRun {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -460; }
+    }
+
+    .mesh-node {
+      position: absolute;
+      border-radius: 12px;
+      border: 1px solid var(--mesh-node-stroke);
+      background: var(--mesh-node-bg);
+      backdrop-filter: blur(14px) saturate(1.1);
+      -webkit-backdrop-filter: blur(14px) saturate(1.1);
+      padding: 8px 10px;
+      min-width: 172px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+    }
+
+    .mesh-node.leader {
+      min-width: 190px;
+    }
+
+    .mesh-node-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .mesh-node-icon {
+      width: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-family: "Material Symbols Rounded";
+      font-size: 18px;
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+      line-height: 1;
+    }
+
+    .mesh-node-name {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mesh-node-role {
+      margin-left: auto;
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 999px;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .mesh-node-sub {
+      margin-top: 5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .mesh-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      flex: 0 0 auto;
     }
 
     .setting-row {
@@ -3181,6 +3295,8 @@
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="setMeshNode" class="field-input" value="${(cfg.swiftMesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="setMeshLeader" class="field-input" value="${(cfg.swiftMesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="setMeshPort" class="field-input" type="number" min="1" value="${cfg.swiftMesh.listenPort || 0}"></div>
+          <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI reply jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadAI" type="checkbox" ${cfg.swiftMesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookup jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadWiki" type="checkbox" ${cfg.swiftMesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <button id="setMeshSave" class="mini-btn" type="button"><span class="ms">save</span> Save SwiftMesh</button>
         </section>
 
@@ -3211,7 +3327,9 @@
           clusterMode: panels.querySelector('#setMeshMode')?.value || 'Standalone',
           clusterNodeName: panels.querySelector('#setMeshNode')?.value || '',
           clusterLeaderAddress: panels.querySelector('#setMeshLeader')?.value || '',
-          clusterListenPort: Number(panels.querySelector('#setMeshPort')?.value || 0)
+          clusterListenPort: Number(panels.querySelector('#setMeshPort')?.value || 0),
+          clusterOffloadAIReplies: !!panels.querySelector('#setMeshOffloadAI')?.checked,
+          clusterOffloadWikiLookups: !!panels.querySelector('#setMeshOffloadWiki')?.checked
         });
       });
     }
@@ -3396,6 +3514,166 @@
       `);
     }
 
+    function meshStatusColor(status) {
+      const normalized = String(status || '').toLowerCase();
+      if (normalized === 'healthy') return '#45e38b';
+      if (normalized === 'degraded') return '#ffca57';
+      return '#ff7171';
+    }
+
+    function meshHardwareIcon(hardwareModel) {
+      const value = String(hardwareModel || '').toLowerCase();
+      if (value.startsWith('macbook')) return 'laptop_mac';
+      if (value.startsWith('macmini') || value.startsWith('macstudio') || value.startsWith('macpro') || value.startsWith('imac') || value.startsWith('mac')) {
+        return 'dns';
+      }
+      return 'developer_board';
+    }
+
+    function renderSwiftMeshClusterMap(container, nodes) {
+      if (!container) return;
+      container.innerHTML = '';
+
+      const connected = (nodes || []);
+      if (!connected.length) {
+        container.innerHTML = `<div class="placeholder">No cluster nodes available yet.</div>`;
+        return;
+      }
+
+      const leader = connected.find(node => String(node.role || '').toLowerCase() === 'leader') || connected[0];
+      const workers = connected.filter(node => node.id !== leader.id);
+      const mapHeight = workers.length <= 2 ? 286 : (workers.length <= 4 ? 340 : 400);
+      container.style.height = `${mapHeight}px`;
+
+      const width = Math.max(540, container.clientWidth || 540);
+      const leaderWidth = 190;
+      const workerWidth = 172;
+      const nodeHeight = 72;
+      const inset = 14;
+      const leaderLeft = inset;
+      const leaderTop = Math.round((mapHeight - nodeHeight) / 2);
+      const workerLeft = Math.max(leaderLeft + leaderWidth + 56, width - inset - workerWidth);
+      const workerTopList = workers.length <= 1
+        ? [Math.round((mapHeight - nodeHeight) / 2)]
+        : workers.map((_, idx) => {
+            const topRange = inset;
+            const bottomRange = mapHeight - inset - nodeHeight;
+            const step = (bottomRange - topRange) / Math.max(1, workers.length - 1);
+            return Math.round(topRange + idx * step);
+          });
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'mesh-map-svg');
+      svg.setAttribute('viewBox', `0 0 ${width} ${mapHeight}`);
+      svg.setAttribute('preserveAspectRatio', 'none');
+      container.appendChild(svg);
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      svg.appendChild(defs);
+
+      const createNode = (node, left, top, isLeader) => {
+        const el = document.createElement('article');
+        el.className = `mesh-node${isLeader ? ' leader' : ''}`;
+        el.style.left = `${left}px`;
+        el.style.top = `${top}px`;
+        const status = String(node.status || 'disconnected').toLowerCase();
+        const role = String(node.role || '').toLowerCase();
+        const roleLabel = role === 'leader' ? 'Primary' : 'Worker';
+        const hasLatency = typeof node.latencyMs === 'number';
+        const latencyLabel = hasLatency ? `${Math.round(node.latencyMs)} ms` : '';
+        el.innerHTML = `
+          <div class="mesh-node-header">
+            <span class="mesh-node-icon">${meshHardwareIcon(node.hardwareModel)}</span>
+            <span class="mesh-node-name">${node.displayName || node.hostname || 'Node'}</span>
+            <span class="mesh-node-role">${roleLabel}</span>
+          </div>
+          <div class="mesh-node-sub">
+            <span class="mesh-status-dot" style="background:${meshStatusColor(status)};"></span>
+            <span>${status}</span>
+            ${hasLatency ? `<span>•</span><span>${latencyLabel}</span>` : ''}
+          </div>
+        `;
+        container.appendChild(el);
+      };
+
+      const buildPulsePath = (x1, y1, x2, y2) => {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.max(1, Math.hypot(dx, dy));
+        const amp = Math.min(11, Math.max(5, length * 0.055));
+        const point = (t, up = 0) => {
+          const px = x1 + dx * t;
+          const py = y1 + dy * t - up;
+          return `${Math.round(px * 100) / 100} ${Math.round(py * 100) / 100}`;
+        };
+        return [
+          `M ${point(0)}`,
+          `L ${point(0.14)}`,
+          `L ${point(0.19, amp * 0.18)}`,
+          `L ${point(0.22, amp * 0.82)}`,
+          `L ${point(0.25, amp * 0.3)}`,
+          `L ${point(0.33)}`,
+          `L ${point(0.47)}`,
+          `L ${point(0.52, amp * 0.22)}`,
+          `L ${point(0.55, amp)}`,
+          `L ${point(0.58, amp * 0.36)}`,
+          `L ${point(0.66)}`,
+          `L ${point(0.76)}`,
+          `L ${point(0.80, amp * 0.16)}`,
+          `L ${point(0.83, amp * 0.72)}`,
+          `L ${point(0.86, amp * 0.28)}`,
+          `L ${point(0.91)}`,
+          `L ${point(1)}`
+        ].join(' ');
+      };
+
+      const leaderCenter = {
+        x: leaderLeft + leaderWidth,
+        y: leaderTop + Math.round(nodeHeight / 2)
+      };
+      createNode(leader, leaderLeft, leaderTop, true);
+
+      workers.forEach((worker, index) => {
+        const top = workerTopList[index] || leaderTop;
+        const workerCenter = {
+          x: workerLeft,
+          y: top + Math.round(nodeHeight / 2)
+        };
+        const status = String(worker.status || 'disconnected').toLowerCase();
+        const color = meshStatusColor(status);
+        const jobs = Math.max(0, Number(worker.jobsActive || 0));
+        const duration = jobs > 0 ? 2.2 : 3.0;
+        const pulsePath = buildPulsePath(leaderCenter.x, leaderCenter.y, workerCenter.x, workerCenter.y);
+        const gradId = `meshPulseGrad-${index}`;
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        gradient.setAttribute('id', gradId);
+        gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+        gradient.setAttribute('x1', String(leaderCenter.x));
+        gradient.setAttribute('y1', String(leaderCenter.y));
+        gradient.setAttribute('x2', String(workerCenter.x));
+        gradient.setAttribute('y2', String(workerCenter.y));
+        const stopA = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stopA.setAttribute('offset', '0%');
+        stopA.setAttribute('stop-color', color);
+        stopA.setAttribute('stop-opacity', '0');
+        const stopB = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stopB.setAttribute('offset', '100%');
+        stopB.setAttribute('stop-color', color);
+        stopB.setAttribute('stop-opacity', jobs > 0 ? '0.92' : '0.68');
+        gradient.appendChild(stopA);
+        gradient.appendChild(stopB);
+        defs.appendChild(gradient);
+
+        const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pulse.setAttribute('d', pulsePath);
+        pulse.setAttribute('class', 'mesh-link-pulse');
+        pulse.setAttribute('stroke', `url(#${gradId})`);
+        pulse.style.animationDuration = `${duration}s`;
+        svg.appendChild(pulse);
+
+        createNode(worker, workerLeft, top, false);
+      });
+    }
+
     function renderSwiftMeshView() {
       if (!dashboardOverview || !dashboardConfig || !dashboardStatus) return;
       const top = document.getElementById('swiftmeshTop');
@@ -3403,6 +3681,7 @@
       if (!top || !panels) return;
       const mesh = dashboardConfig.swiftMesh;
       const cluster = dashboardOverview.cluster;
+      const clusterNodes = dashboardOverview.clusterNodes || [];
 
       top.innerHTML = `
         <div class="commands-toggle-card">
@@ -3423,12 +3702,22 @@
       `;
 
       panels.innerHTML = `
+        <section class="settings-panel glass full-span">
+          <div class="panel-title"><span class="ms">account_tree</span> Cluster Map</div>
+          <div id="meshTopologyMap" class="mesh-map-panel"></div>
+        </section>
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">cpu</span> Nodes</div>
+          <div id="meshNodesList"></div>
+        </section>
         <section class="settings-panel glass">
           <div class="panel-title"><span class="ms">hub</span> Node Configuration</div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${mesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${(mesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="meshLeader" class="field-input" value="${(mesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="meshPort" class="field-input" type="number" min="1" value="${mesh.listenPort || 0}"></div>
+          <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI replies to workers when Primary.</div></div><label class="switch"><input id="meshOffloadAI" type="checkbox" ${mesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookups to workers when Primary.</div></div><label class="switch"><input id="meshOffloadWiki" type="checkbox" ${mesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div style="display:flex;gap:8px;">
             <button id="meshSave" class="mini-btn" type="button"><span class="ms">save</span> Save</button>
             <button id="meshRefresh" class="mini-btn" type="button"><span class="ms">refresh</span> Refresh</button>
@@ -3447,7 +3736,9 @@
           clusterMode: panels.querySelector('#meshMode')?.value || 'Standalone',
           clusterNodeName: panels.querySelector('#meshNode')?.value || '',
           clusterLeaderAddress: panels.querySelector('#meshLeader')?.value || '',
-          clusterListenPort: Number(panels.querySelector('#meshPort')?.value || 0)
+          clusterListenPort: Number(panels.querySelector('#meshPort')?.value || 0),
+          clusterOffloadAIReplies: !!panels.querySelector('#meshOffloadAI')?.checked,
+          clusterOffloadWikiLookups: !!panels.querySelector('#meshOffloadWiki')?.checked
         });
       });
       panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
@@ -3455,6 +3746,22 @@
         await Promise.all([loadOverview(), loadConfig(), loadStatus()]);
         renderSwiftMeshView();
       });
+
+      renderSwiftMeshClusterMap(panels.querySelector('#meshTopologyMap'), clusterNodes);
+
+      const listNode = panels.querySelector('#meshNodesList');
+      if (listNode) {
+        if (!clusterNodes.length) {
+          listNode.innerHTML = `<div class="placeholder">No nodes available.</div>`;
+        } else {
+          listNode.innerHTML = clusterNodes.map(node => `
+            <div class="info-row">
+              <span class="label">${node.displayName || node.hostname || 'Node'} (${String(node.role || '').toLowerCase() === 'leader' ? 'Primary' : 'Worker'})</span>
+              <span class="value">${String(node.status || '').toLowerCase()}${typeof node.latencyMs === 'number' ? ` • ${Math.round(node.latencyMs)} ms` : ''}</span>
+            </div>
+          `).join('');
+        }
+      }
     }
 
     function renderUserPrefsView() {
@@ -3625,6 +3932,46 @@
       const needle = (label || '').toLowerCase();
       const hit = metrics.find(item => (item.title || '').toLowerCase().includes(needle));
       return hit?.value || fallback;
+    }
+
+    function isFailoverWebLocked() {
+      const mode = String(dashboardConfig?.swiftMesh?.mode || '').toLowerCase();
+      return mode === 'standby';
+    }
+
+    function renderFailoverModeView(requestedView) {
+      const mode = dashboardConfig?.swiftMesh?.mode || 'Standby';
+      const leader = dashboardOverview?.cluster?.leader || dashboardConfig?.swiftMesh?.leaderAddress || '-';
+      const nodeName = dashboardConfig?.swiftMesh?.nodeName || '-';
+      const connectedNodes = String(dashboardOverview?.cluster?.connectedNodes || 0);
+      document.getElementById('sectionLabel').innerHTML = `<span class="ms" style="font-size:14px;">sync_alt</span>Failover Mode`;
+      document.getElementById('sectionTitle').textContent = 'Failover Mode Active';
+      document.getElementById('sectionCopy').textContent = 'This node is standing by for promotion. Configuration edits are disabled in Web UI while synced from Primary.';
+      document.getElementById('sectionPrimaryTitle').textContent = 'Node Status';
+      document.getElementById('sectionSecondaryTitle').textContent = 'Requested View';
+      document.getElementById('sectionEventsTitle').textContent = 'Why this is locked';
+
+      renderInfoRows('sectionPrimaryInfo', [
+        { label: 'Role', value: mode },
+        { label: 'Node Name', value: nodeName },
+        { label: 'Primary', value: leader },
+        { label: 'Connected Nodes', value: connectedNodes }
+      ]);
+
+      renderInfoRows('sectionSecondaryInfo', [
+        { label: 'Tab', value: viewCopy[requestedView]?.title || requestedView || '-' },
+        { label: 'Status', value: dashboardStatus?.botStatus || '-' },
+        { label: 'Gateway Events', value: String(dashboardStatus?.gatewayEventCount || 0) }
+      ]);
+
+      renderEvents('sectionEvents', [
+        { description: 'Settings are synchronized from Primary while in Failover mode.', timeText: '' },
+        { description: 'Open SwiftMesh in the native app to test connection, promote, or adjust node role.', timeText: '' }
+      ], '', item => `
+        <div class="event-item ok">
+          <div class="event-title">${item.description}</div>
+        </div>
+      `);
     }
 
     function renderSectionView(view) {
@@ -3863,6 +4210,27 @@
       const section = document.getElementById('sectionView');
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
+
+      if (isFailoverWebLocked()) {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.remove('hidden');
+        renderFailoverModeView(view);
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Failover Mode';
+        setMessage('', '');
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.remove('open');
+        return;
+      }
 
       if (view === 'overview') {
         overview.classList.remove('hidden');
@@ -4165,8 +4533,8 @@
         'dns', 'groups', 'settings_suggest', 'memory', 'handyman', 'bolt',
         'smart_toy', 'merge', 'update', 'shield'
       ];
-      const rowStep = 96;
-      const verticalBuffer = 1200;
+      const rowStep = 88;
+      const verticalBuffer = 2000;
       const rows = Math.max(18, Math.ceil((window.innerHeight + verticalBuffer) / rowStep));
       stream.innerHTML = '';
 
