@@ -4,28 +4,30 @@ struct DiagnosticsView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ViewSectionHeader(title: "Diagnostics", symbol: "waveform.path.ecg")
+        VStack(alignment: .leading, spacing: 12) {
+            ViewSectionHeader(title: "Diagnostics", symbol: "waveform.path.ecg")
 
-                diagnosticsSummaryCard
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    diagnosticsSummaryCard
 
-                connectionHealthCard
+                    connectionHealthCard
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 12)], spacing: 12) {
-                    gatewayCard
-                    voiceCard
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 12)], spacing: 12) {
+                        gatewayCard
+                        voiceCard
+                    }
+
+                    clusterCard
+                    clusterDiagnosticsCard
+                    activeVoiceCard
                 }
-
-                clusterCard
-                clusterDiagnosticsCard
-                activeVoiceCard
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 16)
-            .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var diagnosticsSummaryCard: some View {
@@ -188,7 +190,7 @@ struct DiagnosticsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .commandCatalogSurface(cornerRadius: 12)
     }
 
     private var gatewayCard: some View {
@@ -247,7 +249,7 @@ struct DiagnosticsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .commandCatalogSurface(cornerRadius: 10)
         }
     }
 
@@ -289,7 +291,7 @@ struct DiagnosticsView: View {
             content()
         }
         .padding(12)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .commandCatalogSurface(cornerRadius: 14)
     }
 
     private func diagnosticsMetric(title: String, value: String, symbol: String) -> some View {
@@ -308,7 +310,7 @@ struct DiagnosticsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .commandCatalogSurface(cornerRadius: 12)
     }
 
     private func compactInfoRow(label: String, value: String) -> some View {
@@ -328,6 +330,10 @@ struct DiagnosticsView: View {
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.white.opacity(0.08), in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            )
     }
 }

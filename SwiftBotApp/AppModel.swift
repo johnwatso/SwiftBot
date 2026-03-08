@@ -314,6 +314,11 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.bindHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "127.0.0.1"
             : settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedAdminPort = min(max(settings.adminWebUI.port, 1), 65535)
+        if normalizedAdminPort != settings.adminWebUI.port {
+            logs.append("⚠️ Admin Web UI port was out of range. Clamped to \(normalizedAdminPort).")
+            settings.adminWebUI.port = normalizedAdminPort
+        }
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
         settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -492,6 +497,12 @@ final class AppModel: ObservableObject {
     func togglePatchyTargetEnabled(_ targetID: UUID) {
         guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
         settings.patchy.sourceTargets[idx].isEnabled.toggle()
+        saveSettings()
+    }
+
+    func setPatchyTargetEnabled(_ targetID: UUID, enabled: Bool) {
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
+        settings.patchy.sourceTargets[idx].isEnabled = enabled
         saveSettings()
     }
 
@@ -1154,6 +1165,22 @@ final class AppModel: ObservableObject {
             )
         }
 
+        let activeVoiceUsers = activeVoice
+            .sorted { lhs, rhs in
+                if lhs.guildId != rhs.guildId { return lhs.guildId < rhs.guildId }
+                if lhs.channelName != rhs.channelName { return lhs.channelName.localizedCaseInsensitiveCompare(rhs.channelName) == .orderedAscending }
+                return lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
+            }
+            .map { member in
+                AdminWebActiveVoicePayload(
+                    userId: member.userId,
+                    username: member.username,
+                    channelName: member.channelName,
+                    serverName: connectedServers[member.guildId] ?? member.guildId,
+                    joinedText: "Joined \(member.joinedAt.formatted(date: .omitted, time: .shortened))"
+                )
+            }
+
         return AdminWebOverviewPayload(
             metrics: metrics,
             cluster: AdminWebClusterPayload(
@@ -1161,6 +1188,7 @@ final class AppModel: ObservableObject {
                 leader: clusterLeader,
                 mode: clusterSnapshot.mode.rawValue
             ),
+            activeVoice: activeVoiceUsers,
             recentVoice: recentVoice,
             recentCommands: recentCommands,
             botInfo: AdminWebBotInfoPayload(
@@ -1178,6 +1206,391 @@ final class AppModel: ObservableObject {
             return explicit
         }
         return "http://\(settings.adminWebUI.bindHost):\(settings.adminWebUI.port)"
+    }
+
+    func adminWebConfigSnapshot() -> AdminWebConfigPayload {
+        AdminWebConfigPayload(
+            commands: .init(
+                enabled: settings.commandsEnabled,
+                prefixEnabled: settings.prefixCommandsEnabled,
+                slashEnabled: settings.slashCommandsEnabled,
+                bugTrackingEnabled: settings.bugTrackingEnabled,
+                prefix: settings.prefix
+            ),
+            aiBots: .init(
+                localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
+                preferredProvider: settings.preferredAIProvider.rawValue,
+                openAIEnabled: settings.openAIEnabled,
+                openAIModel: settings.openAIModel,
+                openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
+                openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser
+            ),
+            wikiBridge: .init(
+                enabled: settings.wikiBot.isEnabled,
+                enabledSources: settings.wikiBot.sources.filter(\.enabled).count,
+                totalSources: settings.wikiBot.sources.count
+            ),
+            patchy: .init(
+                monitoringEnabled: settings.patchy.monitoringEnabled,
+                enabledTargets: settings.patchy.sourceTargets.filter(\.isEnabled).count,
+                totalTargets: settings.patchy.sourceTargets.count
+            ),
+            swiftMesh: .init(
+                mode: settings.clusterMode.rawValue,
+                nodeName: settings.clusterNodeName,
+                leaderAddress: settings.clusterLeaderAddress,
+                listenPort: settings.clusterListenPort
+            ),
+            general: .init(
+                autoStart: settings.autoStart,
+                webUIEnabled: settings.adminWebUI.enabled,
+                webUIBaseURL: adminWebBaseURL()
+            )
+        )
+    }
+
+    func applyAdminWebConfigPatch(_ patch: AdminWebConfigPatch) -> Bool {
+        if let value = patch.commandsEnabled { settings.commandsEnabled = value }
+        if let value = patch.prefixCommandsEnabled { settings.prefixCommandsEnabled = value }
+        if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
+        if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
+        if let value = patch.prefix { settings.prefix = value }
+        if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
+        if let value = patch.preferredAIProvider,
+           let provider = AIProviderPreference(rawValue: value) {
+            settings.preferredAIProvider = provider
+        }
+        if let value = patch.openAIEnabled { settings.openAIEnabled = value }
+        if let value = patch.openAIModel { settings.openAIModel = value }
+        if let value = patch.openAIImageGenerationEnabled { settings.openAIImageGenerationEnabled = value }
+        if let value = patch.openAIImageMonthlyLimitPerUser { settings.openAIImageMonthlyLimitPerUser = max(0, value) }
+        if let value = patch.wikiBridgeEnabled { settings.wikiBot.isEnabled = value }
+        if let value = patch.patchyMonitoringEnabled { settings.patchy.monitoringEnabled = value }
+        if let value = patch.clusterMode,
+           let mode = ClusterMode(rawValue: value) {
+            settings.clusterMode = mode
+        }
+        if let value = patch.clusterNodeName { settings.clusterNodeName = value }
+        if let value = patch.clusterLeaderAddress { settings.clusterLeaderAddress = value }
+        if let value = patch.clusterListenPort { settings.clusterListenPort = max(1, value) }
+        if let value = patch.autoStart { settings.autoStart = value }
+        saveSettings()
+        return true
+    }
+
+    func adminWebCommandCatalogSnapshot() -> AdminWebCommandCatalogPayload {
+        struct VisualCommand {
+            let id: String
+            let name: String
+            let usage: String
+            let description: String
+            let category: String
+            let surface: String
+            let aliases: [String]
+            let adminOnly: Bool
+        }
+
+        let prefixCatalog = buildFullHelpCatalog(prefix: effectivePrefix())
+        let prefixCommands = prefixCatalog.entries.map { entry in
+            VisualCommand(
+                id: "prefix-\(entry.name)",
+                name: entry.name,
+                usage: entry.usage,
+                description: entry.description,
+                category: entry.category.rawValue,
+                surface: "prefix",
+                aliases: entry.aliases,
+                adminOnly: entry.isAdminOnly
+            )
+        }
+        let slashCommands = allSlashCommandDefinitions().compactMap { raw -> VisualCommand? in
+            guard let name = raw["name"] as? String else { return nil }
+            let description = (raw["description"] as? String) ?? "No description"
+            let options = (raw["options"] as? [[String: Any]]) ?? []
+            let usageSuffix = options.compactMap { option in
+                guard let optionName = option["name"] as? String else { return nil }
+                let required = (option["required"] as? Bool) ?? false
+                return required ? " \(optionName):<value>" : " [\(optionName):<value>]"
+            }.joined()
+            return VisualCommand(
+                id: "slash-\(name)",
+                name: name,
+                usage: "/\(name)\(usageSuffix)",
+                description: description,
+                category: "Slash",
+                surface: "slash",
+                aliases: [],
+                adminOnly: name == "debug"
+            )
+        }
+
+        var commands = prefixCommands + slashCommands
+        commands.append(
+            VisualCommand(
+                id: "mention-bug",
+                name: "bug",
+                usage: "@swiftbot bug (reply to a message)",
+                description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
+                category: "Server",
+                surface: "mention",
+                aliases: [],
+                adminOnly: true
+            )
+        )
+
+        let items = commands.sorted { lhs, rhs in
+            if lhs.surface != rhs.surface {
+                return lhs.surface < rhs.surface
+            }
+            if lhs.category != rhs.category {
+                return lhs.category.localizedCaseInsensitiveCompare(rhs.category) == .orderedAscending
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        .map { command in
+            AdminWebCommandCatalogItem(
+                id: command.id,
+                name: command.name,
+                usage: command.usage,
+                description: command.description,
+                category: command.category,
+                surface: command.surface.capitalized,
+                aliases: command.aliases,
+                adminOnly: command.adminOnly,
+                enabled: isCommandEnabled(name: command.name, surface: command.surface)
+            )
+        }
+
+        return AdminWebCommandCatalogPayload(
+            commandsEnabled: settings.commandsEnabled,
+            prefixCommandsEnabled: settings.prefixCommandsEnabled,
+            slashCommandsEnabled: settings.slashCommandsEnabled,
+            items: items
+        )
+    }
+
+    func updateAdminWebCommandEnabled(name: String, surface: String, enabled: Bool) -> Bool {
+        setCommandEnabled(name: name, surface: surface, enabled: enabled)
+        saveSettings()
+        if surface.lowercased() == "slash" {
+            Task { await registerSlashCommandsIfNeeded() }
+        }
+        return true
+    }
+
+    func adminWebActionsSnapshot() -> AdminWebActionsPayload {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
+
+        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableTextChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+        let voiceChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableVoiceChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+
+        return AdminWebActionsPayload(
+            rules: ruleStore.rules,
+            servers: servers,
+            textChannelsByServer: textChannelsByServer,
+            voiceChannelsByServer: voiceChannelsByServer,
+            conditionTypes: ConditionType.allCases.map(\.rawValue),
+            actionTypes: ActionType.allCases.map(\.rawValue)
+        )
+    }
+
+    func adminWebPatchySnapshot() -> AdminWebPatchyPayload {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
+        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableTextChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+        let rolesByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let roles = (availableRolesByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, roles)
+        })
+
+        return AdminWebPatchyPayload(
+            monitoringEnabled: settings.patchy.monitoringEnabled,
+            showDebug: settings.patchy.showDebug,
+            isCycleRunning: patchyIsCycleRunning,
+            lastCycleAt: patchyLastCycleAt,
+            debugLogs: Array(patchyDebugLogs.prefix(80)),
+            sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
+            targets: settings.patchy.sourceTargets,
+            servers: servers,
+            textChannelsByServer: textChannelsByServer,
+            rolesByServer: rolesByServer,
+            steamAppNames: settings.patchy.steamAppNames
+        )
+    }
+
+    func adminWebWikiBridgeSnapshot() -> AdminWebWikiBridgePayload {
+        AdminWebWikiBridgePayload(
+            enabled: settings.wikiBot.isEnabled,
+            sources: settings.wikiBot.sources.sorted { lhs, rhs in
+                if lhs.isPrimary != rhs.isPrimary { return lhs.isPrimary && !rhs.isPrimary }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        )
+    }
+
+    func updateAdminWebWikiBridgeState(_ patch: AdminWebWikiBridgeStatePatch) -> Bool {
+        if let enabled = patch.enabled {
+            settings.wikiBot.isEnabled = enabled
+        }
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+        return true
+    }
+
+    func createAdminWebWikiSource() -> WikiSource? {
+        let source = WikiSource.genericTemplate()
+        addWikiBridgeSourceTarget(source)
+        return source
+    }
+
+    func upsertAdminWebWikiSource(_ source: WikiSource) -> Bool {
+        if settings.wikiBot.sources.contains(where: { $0.id == source.id }) {
+            updateWikiBridgeSourceTarget(source)
+        } else {
+            addWikiBridgeSourceTarget(source)
+        }
+        return true
+    }
+
+    func setAdminWebWikiSourceEnabled(_ sourceID: UUID, enabled: Bool) -> Bool {
+        guard let idx = settings.wikiBot.sources.firstIndex(where: { $0.id == sourceID }) else { return false }
+        settings.wikiBot.sources[idx].enabled = enabled
+        settings.wikiBot.normalizeSources()
+        saveSettings()
+        return true
+    }
+
+    func setAdminWebWikiSourcePrimary(_ sourceID: UUID) -> Bool {
+        guard settings.wikiBot.sources.contains(where: { $0.id == sourceID }) else { return false }
+        setWikiBridgePrimarySource(sourceID)
+        return true
+    }
+
+    func testAdminWebWikiSource(_ sourceID: UUID) -> Bool {
+        testWikiBridgeSource(targetID: sourceID)
+        return true
+    }
+
+    func deleteAdminWebWikiSource(_ sourceID: UUID) -> Bool {
+        deleteWikiBridgeSourceTarget(sourceID)
+        return true
+    }
+
+    func updateAdminWebPatchyState(_ patch: AdminWebPatchyStatePatch) -> Bool {
+        if let value = patch.monitoringEnabled {
+            settings.patchy.monitoringEnabled = value
+        }
+        if let value = patch.showDebug {
+            settings.patchy.showDebug = value
+        }
+        saveSettings()
+        return true
+    }
+
+    func createAdminWebPatchyTarget() -> PatchySourceTarget? {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let serverID = serverIDs.first ?? ""
+        let textChannelID = availableTextChannelsByServer[serverID]?.first?.id ?? ""
+        let target = PatchySourceTarget(
+            id: UUID(),
+            isEnabled: true,
+            source: .nvidia,
+            steamAppID: "570",
+            serverId: serverID,
+            channelId: textChannelID,
+            roleIDs: [],
+            lastCheckedAt: nil,
+            lastRunAt: nil,
+            lastStatus: "Never checked"
+        )
+        addPatchyTarget(target)
+        return target
+    }
+
+    func upsertAdminWebPatchyTarget(_ target: PatchySourceTarget) -> Bool {
+        if settings.patchy.sourceTargets.contains(where: { $0.id == target.id }) {
+            updatePatchyTarget(target)
+        } else {
+            addPatchyTarget(target)
+        }
+        return true
+    }
+
+    func deleteAdminWebPatchyTarget(_ targetID: UUID) -> Bool {
+        deletePatchyTarget(targetID)
+        return true
+    }
+
+    func setAdminWebPatchyTargetEnabled(_ targetID: UUID, enabled: Bool) -> Bool {
+        setPatchyTargetEnabled(targetID, enabled: enabled)
+        return true
+    }
+
+    func sendAdminWebPatchyTest(_ targetID: UUID) -> Bool {
+        sendPatchyTest(targetID: targetID)
+        return true
+    }
+
+    func runAdminWebPatchyCheckNow() -> Bool {
+        runPatchyManualCheck()
+        return true
+    }
+
+    func createAdminWebActionRule() -> Rule? {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let serverID = serverIDs.first ?? ""
+        let textChannelID = availableTextChannelsByServer[serverID]?.first?.id ?? ""
+        ruleStore.addNewRule(serverId: serverID, channelId: textChannelID)
+        return ruleStore.rules.last
+    }
+
+    func upsertAdminWebActionRule(_ rule: Rule) -> Bool {
+        if let index = ruleStore.rules.firstIndex(where: { $0.id == rule.id }) {
+            ruleStore.rules[index] = rule
+        } else {
+            ruleStore.rules.append(rule)
+        }
+        ruleStore.scheduleAutoSave()
+        return true
+    }
+
+    func deleteAdminWebActionRule(_ ruleID: UUID) -> Bool {
+        let before = ruleStore.rules.count
+        ruleStore.rules.removeAll { $0.id == ruleID }
+        if before == ruleStore.rules.count {
+            return false
+        }
+        if ruleStore.selectedRuleID == ruleID {
+            ruleStore.selectedRuleID = ruleStore.rules.first?.id
+        }
+        ruleStore.scheduleAutoSave()
+        return true
     }
 
     func updatePrefixFromAdmin(_ prefix: String) -> Bool {
@@ -1221,6 +1634,7 @@ final class AppModel: ObservableObject {
                     return AdminWebOverviewPayload(
                         metrics: [],
                         cluster: AdminWebClusterPayload(connectedNodes: 0, leader: "Unavailable", mode: "standalone"),
+                        activeVoice: [],
                         recentVoice: [],
                         recentCommands: [],
                         botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
@@ -1240,6 +1654,143 @@ final class AppModel: ObservableObject {
                 guard let model = self else { return false }
                 return await MainActor.run { model.updatePrefixFromAdmin(prefix) }
             },
+            configProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebConfigPayload(
+                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
+                        wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
+                        patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
+                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787),
+                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: "")
+                    )
+                }
+                return await MainActor.run { model.adminWebConfigSnapshot() }
+            },
+            updateConfig: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run { model.applyAdminWebConfigPatch(patch) }
+            },
+            commandCatalogProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebCommandCatalogPayload(
+                        commandsEnabled: true,
+                        prefixCommandsEnabled: true,
+                        slashCommandsEnabled: true,
+                        items: []
+                    )
+                }
+                return await MainActor.run { model.adminWebCommandCatalogSnapshot() }
+            },
+            updateCommandEnabled: { [weak self] name, surface, enabled in
+                guard let model = self else { return false }
+                return await MainActor.run { model.updateAdminWebCommandEnabled(name: name, surface: surface, enabled: enabled) }
+            },
+            actionsProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebActionsPayload(
+                        rules: [],
+                        servers: [],
+                        textChannelsByServer: [:],
+                        voiceChannelsByServer: [:],
+                        conditionTypes: ConditionType.allCases.map(\.rawValue),
+                        actionTypes: ActionType.allCases.map(\.rawValue)
+                    )
+                }
+                return await MainActor.run { model.adminWebActionsSnapshot() }
+            },
+            createActionRule: { [weak self] in
+                guard let model = self else { return nil }
+                return await MainActor.run { model.createAdminWebActionRule() }
+            },
+            updateActionRule: { [weak self] rule in
+                guard let model = self else { return false }
+                return await MainActor.run { model.upsertAdminWebActionRule(rule) }
+            },
+            deleteActionRule: { [weak self] ruleID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.deleteAdminWebActionRule(ruleID) }
+            },
+            patchyProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebPatchyPayload(
+                        monitoringEnabled: false,
+                        showDebug: false,
+                        isCycleRunning: false,
+                        lastCycleAt: nil,
+                        debugLogs: [],
+                        sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
+                        targets: [],
+                        servers: [],
+                        textChannelsByServer: [:],
+                        rolesByServer: [:],
+                        steamAppNames: [:]
+                    )
+                }
+                return await MainActor.run { model.adminWebPatchySnapshot() }
+            },
+            updatePatchyState: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run { model.updateAdminWebPatchyState(patch) }
+            },
+            createPatchyTarget: { [weak self] in
+                guard let model = self else { return nil }
+                return await MainActor.run { model.createAdminWebPatchyTarget() }
+            },
+            updatePatchyTarget: { [weak self] target in
+                guard let model = self else { return false }
+                return await MainActor.run { model.upsertAdminWebPatchyTarget(target) }
+            },
+            setPatchyTargetEnabled: { [weak self] targetID, enabled in
+                guard let model = self else { return false }
+                return await MainActor.run { model.setAdminWebPatchyTargetEnabled(targetID, enabled: enabled) }
+            },
+            deletePatchyTarget: { [weak self] targetID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.deleteAdminWebPatchyTarget(targetID) }
+            },
+            sendPatchyTestTarget: { [weak self] targetID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.sendAdminWebPatchyTest(targetID) }
+            },
+            runPatchyCheckNow: { [weak self] in
+                guard let model = self else { return false }
+                return await MainActor.run { model.runAdminWebPatchyCheckNow() }
+            },
+            wikiBridgeProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebWikiBridgePayload(enabled: false, sources: [])
+                }
+                return await MainActor.run { model.adminWebWikiBridgeSnapshot() }
+            },
+            updateWikiBridgeState: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run { model.updateAdminWebWikiBridgeState(patch) }
+            },
+            createWikiSource: { [weak self] in
+                guard let model = self else { return nil }
+                return await MainActor.run { model.createAdminWebWikiSource() }
+            },
+            updateWikiSource: { [weak self] source in
+                guard let model = self else { return false }
+                return await MainActor.run { model.upsertAdminWebWikiSource(source) }
+            },
+            setWikiSourceEnabled: { [weak self] sourceID, enabled in
+                guard let model = self else { return false }
+                return await MainActor.run { model.setAdminWebWikiSourceEnabled(sourceID, enabled: enabled) }
+            },
+            setWikiSourcePrimary: { [weak self] sourceID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.setAdminWebWikiSourcePrimary(sourceID) }
+            },
+            testWikiSource: { [weak self] sourceID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.testAdminWebWikiSource(sourceID) }
+            },
+            deleteWikiSource: { [weak self] sourceID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.deleteAdminWebWikiSource(sourceID) }
+            },
             startBot: { [weak self] in
                 guard let model = self else { return false }
                 await model.startBot()
@@ -1248,6 +1799,11 @@ final class AppModel: ObservableObject {
             stopBot: { [weak self] in
                 guard let model = self else { return false }
                 await MainActor.run { model.stopBot() }
+                return true
+            },
+            refreshSwiftMesh: { [weak self] in
+                guard let model = self else { return false }
+                _ = await MainActor.run { model.refreshClusterStatus() }
                 return true
             },
             log: { [weak self] message in

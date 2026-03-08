@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SwiftBot Admin</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,500,0,0');
+
     :root {
-      color-scheme: dark;
+      color-scheme: light dark;
       --bg-a: #09101a;
       --bg-b: #0c1623;
       --bg-c: #12253a;
@@ -27,6 +29,101 @@
       --radius-lg: 22px;
       --radius-md: 18px;
       --radius-sm: 14px;
+      --bg-symbol-color: rgba(214, 232, 255, 0.2);
+      --bg-stream-opacity: 0.14;
+      --bg-user-opacity: 0.72;
+      --icon-color: rgba(232, 242, 255, 0.92);
+      --nav-icon-bg: rgba(255,255,255,0.06);
+      --section-title-color: rgba(198, 214, 233, 0.9);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme]) {
+        --bg-a: #eef5ff;
+        --bg-b: #f3f8ff;
+        --bg-c: #f8fbff;
+        --bg-d: #e9f2ff;
+        --text: rgba(16, 30, 46, 0.96);
+        --muted: rgba(46, 73, 102, 0.75);
+        --glass-top: rgba(255, 255, 255, 0.72);
+        --glass-bottom: rgba(239, 247, 255, 0.58);
+        --glass-stroke: rgba(71, 108, 151, 0.18);
+        --shadow: 0 18px 44px rgba(43, 83, 130, 0.14);
+        --bg-symbol-color: rgba(36, 77, 124, 0.42);
+        --bg-stream-opacity: 0.22;
+        --icon-color: rgba(23, 47, 76, 0.94);
+        --nav-icon-bg: rgba(84, 136, 198, 0.14);
+        --section-title-color: rgba(39, 68, 99, 0.9);
+      }
+
+      html:not([data-theme]), body:not([data-theme]) {
+        background:
+          radial-gradient(circle at 50% 16%, rgba(107, 181, 255, 0.16), transparent 24%),
+          radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.6), transparent 30%),
+          radial-gradient(circle at 84% 82%, rgba(126, 174, 255, 0.2), transparent 28%),
+          linear-gradient(180deg, var(--bg-c) 0%, var(--bg-b) 44%, var(--bg-a) 100%);
+      }
+
+      body::before {
+        background: rgba(93, 172, 255, 0.2);
+      }
+
+      body::after {
+        background: rgba(109, 154, 255, 0.16);
+      }
+
+    }
+
+    :root[data-theme="light"] {
+      --bg-a: #eef5ff;
+      --bg-b: #f3f8ff;
+      --bg-c: #f8fbff;
+      --bg-d: #e9f2ff;
+      --text: rgba(16, 30, 46, 0.96);
+      --muted: rgba(46, 73, 102, 0.75);
+      --glass-top: rgba(255, 255, 255, 0.72);
+      --glass-bottom: rgba(239, 247, 255, 0.58);
+      --glass-stroke: rgba(71, 108, 151, 0.18);
+      --shadow: 0 18px 44px rgba(43, 83, 130, 0.14);
+      --bg-symbol-color: rgba(36, 77, 124, 0.42);
+      --bg-stream-opacity: 0.22;
+      --icon-color: rgba(23, 47, 76, 0.94);
+      --nav-icon-bg: rgba(84, 136, 198, 0.14);
+      --section-title-color: rgba(39, 68, 99, 0.9);
+    }
+
+    :root[data-theme="dark"] {
+      --bg-a: #09101a;
+      --bg-b: #0c1623;
+      --bg-c: #12253a;
+      --bg-d: #161c31;
+      --text: rgba(244, 248, 255, 0.96);
+      --muted: rgba(198, 214, 233, 0.72);
+      --glass-top: rgba(255, 255, 255, 0.11);
+      --glass-bottom: rgba(255, 255, 255, 0.06);
+      --glass-stroke: rgba(255, 255, 255, 0.12);
+      --shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+      --bg-symbol-color: rgba(214, 232, 255, 0.2);
+      --bg-stream-opacity: 0.14;
+      --icon-color: rgba(232, 242, 255, 0.92);
+      --nav-icon-bg: rgba(255,255,255,0.06);
+      --section-title-color: rgba(198, 214, 233, 0.9);
+    }
+
+    html[data-theme="light"], html[data-theme="light"] body {
+      background:
+        radial-gradient(circle at 50% 16%, rgba(107, 181, 255, 0.16), transparent 24%),
+        radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.6), transparent 30%),
+        radial-gradient(circle at 84% 82%, rgba(126, 174, 255, 0.2), transparent 28%),
+        linear-gradient(180deg, var(--bg-c) 0%, var(--bg-b) 44%, var(--bg-a) 100%);
+    }
+
+    html[data-theme="dark"], html[data-theme="dark"] body {
+      background:
+        radial-gradient(circle at 50% 16%, rgba(102, 191, 255, 0.14), transparent 24%),
+        radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.08), transparent 30%),
+        radial-gradient(circle at 84% 82%, rgba(56, 124, 255, 0.12), transparent 28%),
+        linear-gradient(180deg, var(--bg-c) 0%, var(--bg-b) 44%, var(--bg-a) 100%);
     }
 
     * { box-sizing: border-box; }
@@ -71,19 +168,55 @@
       background: rgba(36, 93, 198, 0.18);
     }
 
-    .pattern {
+    .bg-stream {
       position: fixed;
       inset: 0;
       z-index: 0;
-      opacity: 0.06;
+      overflow: hidden;
       pointer-events: none;
-      background-image:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'%3E%3Cg fill='none' stroke='white' stroke-opacity='0.95' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M48 54h28v18H48z'/%3E%3Cpath d='M54 72v16m16-16v16'/%3E%3Cpath d='M116 48l12 12-12 12-12-12z'/%3E%3Cpath d='M102 120h28'/%3E%3Cpath d='M116 106v28'/%3E%3Cpath d='M46 126c0-8 6-14 14-14s14 6 14 14-6 14-14 14-14-6-14-14zm8 0h12'/%3E%3Cpath d='M138 120c0-9 7-16 16-16'/%3E%3Cpath d='M138 120c0 9 7 16 16 16'/%3E%3Cpath d='M150 98v44'/%3E%3C/g%3E%3C/svg%3E");
-      background-size: 192px 192px;
-      background-position: center center;
+      opacity: calc(var(--bg-stream-opacity) * var(--bg-user-opacity));
     }
 
-    .pattern,
+    .bg-row {
+      position: absolute;
+      left: -55%;
+      width: 260%;
+      display: flex;
+      gap: 64px;
+      white-space: nowrap;
+      will-change: transform;
+      transform: rotate(-45deg) translate3d(0, 0, 0);
+      backface-visibility: hidden;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+    }
+
+    .bg-row.alt {
+      opacity: 0.92;
+    }
+
+    .bg-icon {
+      font-family: "Material Symbols Rounded";
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 48;
+      font-size: 64px !important;
+      line-height: 1;
+      color: var(--bg-symbol-color);
+      flex: 0 0 auto;
+      opacity: 0.95;
+      user-select: none;
+    }
+
+    @keyframes driftDiagForward {
+      from { transform: rotate(-45deg) translate3d(-18%, 0, 0); }
+      to { transform: rotate(-45deg) translate3d(18%, 0, 0); }
+    }
+
+    @keyframes driftDiagReverse {
+      from { transform: rotate(-45deg) translate3d(18%, 0, 0); }
+      to { transform: rotate(-45deg) translate3d(-18%, 0, 0); }
+    }
+
+    .bg-stream,
     body::before,
     body::after {
       pointer-events: none !important;
@@ -157,6 +290,14 @@
     .app-icon svg {
       width: 46px;
       height: 46px;
+    }
+
+    .app-icon-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: inherit;
+      display: block;
     }
 
     .title {
@@ -234,6 +375,7 @@
     .app-shell.active {
       display: grid;
       grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      align-items: start;
     }
 
     .sidebar {
@@ -249,26 +391,39 @@
     }
 
     .sidebar-inner {
-      height: 100%;
+      height: calc(100vh - 92px);
       border-radius: 24px;
-      padding: 18px 14px;
+      padding: 12px 14px;
       background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
       border: 1px solid rgba(255,255,255,0.08);
       box-shadow: 0 16px 40px rgba(0,0,0,0.16);
-      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     .sidebar-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 6px 6px 18px;
+      padding: 2px 8px 10px;
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+
+    .sidebar-scroll {
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
     }
 
     .sidebar-brand .app-icon {
       width: 44px;
       height: 44px;
       border-radius: 14px;
+      background: transparent;
+      border: 0;
       box-shadow: none;
     }
 
@@ -330,10 +485,18 @@
       display: grid;
       place-items: center;
       border-radius: 10px;
-      background: rgba(255,255,255,0.06);
-      color: rgba(232, 242, 255, 0.92);
-      font-size: 13px;
-      font-weight: 700;
+      background: var(--nav-icon-bg);
+      color: var(--icon-color);
+    }
+
+    .ms {
+      font-family: "Material Symbols Rounded";
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-block;
+      vertical-align: middle;
+      color: var(--icon-color);
     }
 
     .nav-text {
@@ -344,9 +507,85 @@
 
     .content {
       min-width: 0;
+      height: 100vh;
+      overflow: auto;
       padding: 20px;
       position: relative;
       z-index: 2;
+    }
+
+    .sidebar-user {
+      margin-top: auto;
+      padding: 8px 6px 2px;
+    }
+
+    .sidebar-user-card {
+      border-radius: 14px;
+      border: 1px solid var(--glass-stroke);
+      background: rgba(255,255,255,0.07);
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .sidebar-user-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.24);
+      object-fit: cover;
+      background: rgba(255,255,255,0.12);
+    }
+
+    .user-meta {
+      min-width: 0;
+      display: grid;
+      gap: 1px;
+    }
+
+    .user-display {
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-handle {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-user-actions { margin-left: auto; }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-stroke);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .icon-btn .ms {
+      font-size: 16px;
+    }
+
+    .view {
+      display: block;
     }
 
     .mobile-topbar {
@@ -395,10 +634,9 @@
     }
 
     .overview-meta {
-      text-align: right;
-      font-size: 14px;
-      color: var(--muted);
-      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     .section-label {
@@ -432,24 +670,702 @@
     .stat-card h3,
     .detail-card h2 {
       margin: 0;
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 600;
       letter-spacing: -0.02em;
     }
 
     .stat-value {
-      margin-top: 14px;
-      font-size: clamp(30px, 3.4vw, 42px);
-      line-height: 0.95;
-      letter-spacing: -0.06em;
+      margin-top: 10px;
+      font-size: clamp(20px, 2.1vw, 26px);
+      line-height: 1.02;
+      letter-spacing: -0.035em;
       font-weight: 700;
     }
 
     .stat-subtitle {
-      margin-top: 10px;
+      margin-top: 8px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.4;
+    }
+
+    .stat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .stat-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.07);
+      font-family: "Material Symbols Rounded";
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+      font-size: 15px;
+    }
+
+    .stat-detail {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .control-group {
+      display: grid;
+      gap: 10px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .control-label {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .control-row input[type="checkbox"] {
+      inline-size: 34px;
+      block-size: 20px;
+      accent-color: #5dbaff;
+    }
+
+    .section-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      margin-bottom: 10px;
+      padding: 8px 2px 6px;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    .section-sticky-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .section-mini-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--section-title-color);
+    }
+
+    .overview-edit-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .overview-edit-controls.hidden {
+      display: none !important;
+    }
+
+    .overview-add-select {
+      min-width: 220px;
+      max-width: 340px;
+      background: rgba(255,255,255,0.10);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font: inherit;
+    }
+
+    .dashboard-editing .stat-card,
+    .dashboard-editing .overview-panel {
+      animation: wiggle 0.16s ease-in-out infinite alternate;
+      cursor: grab;
+    }
+
+    .stat-card[draggable="true"],
+    .overview-panel[draggable="true"] {
+      user-select: none;
+    }
+
+    .widget-remove {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.24);
+      background: rgba(15,16,23,0.55);
+      color: #ff9a9a;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      font-family: "Material Symbols Rounded";
+      font-variation-settings: "FILL" 1, "wght" 600, "GRAD" 0, "opsz" 24;
+      font-size: 16px;
+    }
+
+    .stat-card,
+    .overview-panel {
+      position: relative;
+    }
+
+    @keyframes wiggle {
+      from { transform: rotate(-1deg); }
+      to { transform: rotate(1deg); }
+    }
+
+    .commands-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .commands-top {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+      border-radius: 18px;
+    }
+
+    .commands-toggle-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .commands-toggle-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .commands-toggle-card .value {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .switch {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      display: inline-block;
+    }
+
+    .switch input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.17);
+      border: 1px solid rgba(255,255,255,0.2);
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .switch-knob {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.92);
+      transition: transform 140ms ease;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+
+    .switch input:checked + .switch-track {
+      background: linear-gradient(180deg, #6ec6ff, #3c9aff);
+      border-color: rgba(129, 202, 255, 0.75);
+    }
+
+    .switch input:checked + .switch-track .switch-knob {
+      transform: translateX(18px);
+    }
+
+    .commands-catalog {
+      border-radius: 20px;
+      padding: 10px;
+      max-height: calc(100vh - 220px);
+      overflow: auto;
+    }
+
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.09);
+      margin-bottom: 9px;
+    }
+
+    .command-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .command-usage {
+      margin-top: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--muted);
+    }
+
+    .command-desc {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .badge-row {
+      margin-top: 5px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 3px 7px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+    }
+
+    .badge.admin {
+      color: #ffd2c4;
+      border-color: rgba(255,170,145,0.4);
+      background: rgba(255,150,130,0.15);
+    }
+
+    .patchy-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .patchy-top {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+      border-radius: 18px;
+      align-items: stretch;
+    }
+
+    .patchy-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+    }
+
+    .patchy-targets {
+      border-radius: 20px;
+      padding: 10px;
+      max-height: calc(100vh - 300px);
+      overflow: auto;
+    }
+
+    .patchy-target-card {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.09);
+      margin-bottom: 9px;
+    }
+
+    .patchy-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, max-content));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .patchy-kv {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+    }
+
+    .patchy-kv .field-input,
+    .patchy-kv .field-select {
+      width: auto;
+      min-width: 170px;
+      max-width: 280px;
+    }
+
+    .wiki-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .wiki-top {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+      border-radius: 18px;
+      align-items: stretch;
+    }
+
+    .wiki-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+    }
+
+    .wiki-sources {
+      border-radius: 20px;
+      padding: 10px;
+      max-height: calc(100vh - 300px);
+      overflow: auto;
+    }
+
+    .wiki-source-card {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.09);
+      margin-bottom: 9px;
+    }
+
+    .wiki-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, max-content));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .wiki-kv {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+    }
+
+    .wiki-kv .field-input {
+      width: auto;
+      min-width: 190px;
+      max-width: 420px;
+    }
+
+    .settings-shell,
+    .diagnostics-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .settings-top,
+    .diagnostics-top {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+      border-radius: 18px;
+      align-items: stretch;
+    }
+
+    .settings-panels,
+    .diagnostics-panels {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .settings-panel,
+    .diagnostics-panel {
+      border-radius: 18px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .settings-panel .panel-title,
+    .diagnostics-panel .panel-title {
+      margin-top: 0;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-radius: 12px;
+      padding: 8px 9px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.045);
+      margin-bottom: 8px;
+    }
+
+    .setting-row .left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .setting-row .left .title {
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    .setting-row .left .desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.2;
+    }
+
+    .setting-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .setting-inline .field-input,
+    .setting-inline .field-select {
+      width: auto;
+      min-width: 140px;
+      max-width: 260px;
+    }
+
+    @media (max-width: 980px) {
+      .settings-top,
+      .diagnostics-top,
+      .settings-panels,
+      .diagnostics-panels {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .actions-shell {
+      display: grid;
+      grid-template-columns: 280px 250px minmax(0, 1fr);
+      gap: 10px;
+      min-height: calc(100vh - 120px);
+    }
+
+    .actions-column {
+      border-radius: 20px;
+      padding: 10px;
+      overflow: auto;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--section-title-color);
+      margin: 2px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .rule-list-item {
+      border-radius: 12px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+
+    .rule-list-item.active {
+      border-color: rgba(116, 189, 255, 0.7);
+      background: rgba(76, 154, 255, 0.15);
+    }
+
+    .rule-name {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .rule-sub {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .library-btn, .mini-btn {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      margin-bottom: 7px;
+    }
+
+    .library-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .library-section-label {
+      margin: 2px 0 2px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .library-divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      margin: 4px 0;
+    }
+
+    .library-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 9px 10px;
+    }
+
+    .library-item .library-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,0.08);
+      color: rgba(226, 238, 255, 0.94);
+    }
+
+    .library-item .library-title {
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    .library-item .library-desc {
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.2;
+    }
+
+    .library-plus {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.10);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .mini-btn {
+      width: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 0;
+    }
+
+    .editor-section {
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .editor-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+    }
+
+    .editor-grid .full {
+      grid-column: 1 / -1;
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .field-input, .field-select, .field-textarea {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 10px;
+      font: inherit;
+      font-size: 12px;
+      padding: 8px 9px;
+    }
+
+    .field-textarea {
+      min-height: 74px;
+      resize: vertical;
+    }
+
+    .block-row {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    @media (max-width: 1200px) {
+      .actions-shell {
+        grid-template-columns: 1fr;
+      }
     }
 
     .detail-grid {
@@ -555,6 +1471,20 @@
       box-shadow: 0 0 0 4px rgba(86, 188, 255, 0.10);
     }
 
+    body.compact-density .settings-panel,
+    body.compact-density .diagnostics-panel,
+    body.compact-density .commands-catalog,
+    body.compact-density .patchy-targets,
+    body.compact-density .wiki-sources {
+      padding: 8px;
+    }
+
+    body.compact-density .command-row,
+    body.compact-density .patchy-target-card,
+    body.compact-density .wiki-source-card {
+      padding: 8px 10px;
+    }
+
     @media (max-width: 1024px) {
       .detail-grid {
         grid-template-columns: 1fr;
@@ -599,18 +1529,12 @@
   </style>
 </head>
 <body>
-  <div class="pattern" aria-hidden="true"></div>
+  <div class="bg-stream" id="bgStream" aria-hidden="true"></div>
 
   <main class="page">
     <section id="authScreen" class="onboarding-shell">
       <div class="onboarding">
-        <div class="app-icon" aria-hidden="true">
-          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M17 21.5h30v18H17z" fill="rgba(255,255,255,0.18)" stroke="white" stroke-width="2"/>
-            <path d="M24 39.5v8M32 39.5v8M40 39.5v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            <path d="M22 27.5h20M22 32.5h12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </div>
+        <div class="app-icon" aria-hidden="true"><img class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
         <h1 class="title">Welcome to SwiftBot</h1>
         <p class="subtitle">
           Sign in with Discord to access the local SwiftBot admin surface. Controls stay hidden until your session is authenticated.
@@ -624,47 +1548,58 @@
 
     <section id="appShell" class="app-shell">
       <aside id="sidebar" class="sidebar">
+        <div class="sidebar-brand">
+          <div class="app-icon" aria-hidden="true"><img class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
+          <div>
+            <div class="brand-title">SwiftBot</div>
+            <div class="brand-subtitle">Web Admin</div>
+          </div>
+        </div>
         <div class="sidebar-inner">
-          <div class="sidebar-brand">
-            <div class="app-icon" aria-hidden="true">
-              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17 21.5h30v18H17z" fill="rgba(255,255,255,0.18)" stroke="white" stroke-width="2"/>
-                <path d="M24 39.5v8M32 39.5v8M40 39.5v8" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              </svg>
+          <div class="sidebar-scroll">
+            <div class="nav-section">
+              <div class="nav-heading">Dashboard</div>
+              <button class="nav-link active" data-view="overview" type="button">
+                <span class="nav-icon"><span class="ms">dashboard</span></span>
+                <span class="nav-text">Overview</span>
+              </button>
             </div>
-            <div>
-              <div class="brand-title">SwiftBot</div>
-              <div class="brand-subtitle">Web Admin</div>
+
+            <div class="nav-section">
+              <div class="nav-heading">Automation</div>
+              <button class="nav-link" data-view="commands" type="button"><span class="nav-icon"><span class="ms">terminal</span></span><span class="nav-text">Commands</span></button>
+              <button class="nav-link" data-view="actions" type="button"><span class="nav-icon"><span class="ms">rule</span></span><span class="nav-text">Actions</span></button>
+              <button class="nav-link" data-view="patchy" type="button"><span class="nav-icon"><span class="ms">construction</span></span><span class="nav-text">Patchy</span></button>
+              <button class="nav-link" data-view="wikibridge" type="button"><span class="nav-icon"><span class="ms">menu_book</span></span><span class="nav-text">WikiBridge</span></button>
+            </div>
+
+            <div class="nav-section">
+              <div class="nav-heading">System</div>
+              <button class="nav-link" data-view="aibots" type="button"><span class="nav-icon"><span class="ms">smart_toy</span></span><span class="nav-text">AI Bots</span></button>
+              <button class="nav-link" data-view="settings" type="button"><span class="nav-icon"><span class="ms">settings</span></span><span class="nav-text">Settings</span></button>
+              <button class="nav-link" data-view="diagnostics" type="button"><span class="nav-icon"><span class="ms">monitoring</span></span><span class="nav-text">Diagnostics</span></button>
+              <button class="nav-link" data-view="logs" type="button"><span class="nav-icon"><span class="ms">history</span></span><span class="nav-text">Logs</span></button>
+            </div>
+
+            <div class="nav-section">
+              <div class="nav-heading">Infrastructure</div>
+              <button class="nav-link" data-view="swiftmesh" type="button"><span class="nav-icon"><span class="ms">hub</span></span><span class="nav-text">SwiftMesh</span></button>
             </div>
           </div>
 
-          <div class="nav-section">
-            <div class="nav-heading">Dashboard</div>
-            <button class="nav-link active" data-view="overview" type="button">
-              <span class="nav-icon">O</span>
-              <span class="nav-text">Overview</span>
-            </button>
-          </div>
-
-          <div class="nav-section">
-            <div class="nav-heading">Automation</div>
-            <button class="nav-link" data-view="commands" type="button"><span class="nav-icon">C</span><span class="nav-text">Commands</span></button>
-            <button class="nav-link" data-view="actions" type="button"><span class="nav-icon">A</span><span class="nav-text">Actions</span></button>
-            <button class="nav-link" data-view="patchy" type="button"><span class="nav-icon">P</span><span class="nav-text">Patchy</span></button>
-            <button class="nav-link" data-view="wikibridge" type="button"><span class="nav-icon">W</span><span class="nav-text">WikiBridge</span></button>
-          </div>
-
-          <div class="nav-section">
-            <div class="nav-heading">System</div>
-            <button class="nav-link" data-view="aibots" type="button"><span class="nav-icon">AI</span><span class="nav-text">AI Bots</span></button>
-            <button class="nav-link" data-view="settings" type="button"><span class="nav-icon">S</span><span class="nav-text">Settings</span></button>
-            <button class="nav-link" data-view="diagnostics" type="button"><span class="nav-icon">D</span><span class="nav-text">Diagnostics</span></button>
-            <button class="nav-link" data-view="logs" type="button"><span class="nav-icon">L</span><span class="nav-text">Logs</span></button>
-          </div>
-
-          <div class="nav-section">
-            <div class="nav-heading">Infrastructure</div>
-            <button class="nav-link" data-view="swiftmesh" type="button"><span class="nav-icon">M</span><span class="nav-text">SwiftMesh</span></button>
+          <div class="sidebar-user">
+            <div class="sidebar-user-card">
+              <div class="sidebar-user-main">
+                <img id="sidebarAvatar" class="user-avatar" alt="User avatar">
+                <div class="user-meta">
+                  <div id="sidebarDisplayName" class="user-display">Discord User</div>
+                  <div id="sidebarUsername" class="user-handle">@user</div>
+                </div>
+                <button id="sidebarUserSettings" class="icon-btn" type="button" aria-label="User settings">
+                  <span class="ms">settings</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
@@ -680,64 +1615,205 @@
         </div>
 
         <section id="overviewView" class="view">
-          <header class="overview-header glass">
-            <div>
-              <div class="section-label">Overview</div>
-              <h1 class="overview-title">SwiftBot Dashboard</h1>
-              <p class="overview-copy">
-                A browser-based view of the native SwiftBot app. The layout mirrors the macOS Overview screen: status cards,
-                cluster state, recent activity, and bot information.
-              </p>
-            </div>
-            <div class="overview-meta">
-              <div id="identity">Signed in</div>
-              <div id="botMeta">Loading bot metadata…</div>
-              <div class="utility-row">
-                <button id="logout" class="secondary-action" type="button">Log out</button>
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><span class="ms">dashboard</span> Dashboard</div>
+              <div id="overviewEditControls" class="overview-edit-controls hidden">
+                <select id="overviewAddSelect" class="overview-add-select"></select>
+                <button id="overviewAddApply" class="mini-btn" type="button"><span class="ms">add</span> Add</button>
+                <button id="overviewReset" class="secondary-action" type="button">Reset</button>
               </div>
+              <button id="overviewEditToggle" class="secondary-action" type="button">Edit</button>
             </div>
-          </header>
+          </div>
 
           <section id="statsGrid" class="stats-grid"></section>
 
-          <section class="detail-grid">
-            <article class="detail-card glass">
-              <h2>Cluster</h2>
+          <section id="overviewPanels" class="diagnostics-panels">
+            <article id="overviewPanelCluster" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">hub</span> Cluster</div>
               <div id="clusterInfo" class="info-list"></div>
               <div class="detail-actions">
                 <button id="swiftMeshButton" class="secondary-action" type="button">View in SwiftMesh</button>
               </div>
             </article>
 
-            <article class="detail-card glass">
-              <h2>Recent Voice Events</h2>
-              <div id="voiceEvents" class="event-list"></div>
-            </article>
-
-            <article class="detail-card glass">
-              <h2>Recent Commands</h2>
-              <div id="recentCommands" class="event-list"></div>
-            </article>
-          </section>
-
-          <section class="detail-grid" style="grid-template-columns: 1.2fr 1fr;">
-            <article class="detail-card glass">
-              <h2>Bot Info</h2>
+            <article id="overviewPanelBotInfo" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">smart_toy</span> Bot Info</div>
               <div id="botInfo" class="info-list"></div>
             </article>
 
-            <article class="detail-card glass">
-              <h2>Quick Controls</h2>
-              <p class="placeholder" style="padding-top:0;">Small runtime controls stay available here for parity with the current web admin feature set.</p>
+            <article id="overviewPanelVoiceEvents" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">record_voice_over</span> Recent Voice</div>
+              <div id="voiceEvents" class="event-list"></div>
+            </article>
+
+            <article id="overviewPanelRecentCommands" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">terminal</span> Recent Commands</div>
+              <div id="recentCommands" class="event-list"></div>
+            </article>
+
+            <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">groups</span> Currently In Voice</div>
+              <div id="activeVoiceList" class="event-list"></div>
+            </article>
+
+            <article id="overviewPanelQuickControls" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><span class="ms">tune</span> Quick Controls</div>
               <div class="utility-row">
-                <button id="startBot" class="primary-action" type="button">Start Bot</button>
-                <button id="stopBot" class="secondary-action" type="button">Stop Bot</button>
-              </div>
-              <div class="utility-row" style="margin-top:18px;">
-                <input id="prefixInput" class="utility-input" maxlength="12" value="/" aria-label="Command Prefix">
-                <button id="savePrefix" class="secondary-action" type="button">Save Prefix</button>
+                <button id="toggleBot" class="primary-action" type="button">Start Bot</button>
               </div>
               <div id="message" class="message"></div>
+            </article>
+          </section>
+        </section>
+
+        <section id="commandsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">terminal</span> Commands</div>
+          </div>
+          <div class="commands-shell">
+            <section id="commandsTop" class="commands-top glass"></section>
+            <section id="commandsCatalog" class="commands-catalog glass"></section>
+          </div>
+        </section>
+
+        <section id="patchyView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">construction</span> Patchy</div>
+          </div>
+          <div class="patchy-shell">
+            <section id="patchyTop" class="patchy-top glass"></section>
+            <div class="patchy-controls">
+              <button id="patchyAddTarget" class="mini-btn" type="button"><span class="ms">add</span> Add Target</button>
+              <button id="patchyRunCheck" class="mini-btn" type="button"><span class="ms">play_arrow</span> Run Check Now</button>
+            </div>
+            <section id="patchyTargets" class="patchy-targets glass"></section>
+          </div>
+        </section>
+
+        <section id="wikibridgeView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">menu_book</span> WikiBridge</div>
+          </div>
+          <div class="wiki-shell">
+            <section id="wikiTop" class="wiki-top glass"></section>
+            <div class="wiki-controls">
+              <button id="wikiAddSource" class="mini-btn" type="button"><span class="ms">add</span> Add Source</button>
+              <span class="command-desc">Set one source primary, test quickly, and edit inline.</span>
+            </div>
+            <section id="wikiSources" class="wiki-sources glass"></section>
+          </div>
+        </section>
+
+        <section id="settingsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">settings</span> Settings</div>
+          </div>
+          <div class="settings-shell">
+            <section id="settingsTop" class="settings-top glass"></section>
+            <section id="settingsPanels" class="settings-panels"></section>
+          </div>
+        </section>
+
+        <section id="diagnosticsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">monitoring</span> Diagnostics</div>
+          </div>
+          <div class="diagnostics-shell">
+            <section id="diagnosticsTop" class="diagnostics-top glass"></section>
+            <section id="diagnosticsPanels" class="diagnostics-panels"></section>
+          </div>
+        </section>
+
+        <section id="aibotsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">smart_toy</span> AI Bots</div>
+          </div>
+          <div class="settings-shell">
+            <section id="aibotsTop" class="settings-top glass"></section>
+            <section id="aibotsPanels" class="settings-panels"></section>
+          </div>
+        </section>
+
+        <section id="logsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">history</span> Logs</div>
+          </div>
+          <div class="diagnostics-shell">
+            <section id="logsTop" class="diagnostics-top glass"></section>
+            <section id="logsPanels" class="diagnostics-panels"></section>
+          </div>
+        </section>
+
+        <section id="swiftmeshView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">hub</span> SwiftMesh</div>
+          </div>
+          <div class="settings-shell">
+            <section id="swiftmeshTop" class="settings-top glass"></section>
+            <section id="swiftmeshPanels" class="settings-panels"></section>
+          </div>
+        </section>
+
+        <section id="userPrefsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">manage_accounts</span> User Settings</div>
+          </div>
+          <div class="settings-shell">
+            <section id="userPrefsTop" class="settings-top glass"></section>
+            <section id="userPrefsPanels" class="settings-panels"></section>
+          </div>
+        </section>
+
+        <section id="actionsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-mini-title"><span class="ms">rule</span> Actions</div>
+          </div>
+          <div class="actions-shell">
+            <section class="actions-column glass">
+              <div class="panel-title"><span class="ms">list_alt</span> Action Rules</div>
+              <div style="margin-bottom:8px;">
+                <button id="actionAddRule" class="mini-btn" type="button"><span class="ms">add</span> New Action</button>
+              </div>
+              <div id="actionRuleList"></div>
+            </section>
+
+            <section class="actions-column glass">
+              <div class="panel-title"><span class="ms">library_books</span> Block Library</div>
+              <div id="actionLibrary" class="library-list"></div>
+            </section>
+
+            <section class="actions-column glass">
+              <div id="actionEditor"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="sectionView" class="view hidden">
+          <header class="overview-header glass">
+            <div>
+              <div class="section-label" id="sectionLabel">Section</div>
+              <h1 class="overview-title" id="sectionTitle">Section</h1>
+              <p class="overview-copy" id="sectionCopy">
+                Runtime status for this area.
+              </p>
+            </div>
+          </header>
+          <section class="detail-grid" style="grid-template-columns: 1fr 1fr;">
+            <article class="detail-card glass">
+              <h2 id="sectionPrimaryTitle">Status</h2>
+              <div id="sectionPrimaryInfo" class="info-list"></div>
+            </article>
+            <article class="detail-card glass">
+              <h2 id="sectionSecondaryTitle">Details</h2>
+              <div id="sectionSecondaryInfo" class="info-list"></div>
+            </article>
+          </section>
+          <section class="detail-grid" style="grid-template-columns: 1fr;">
+            <article class="detail-card glass">
+              <h2 id="sectionEventsTitle">Recent Activity</h2>
+              <div id="sectionEvents" class="event-list"></div>
             </article>
           </section>
         </section>
@@ -747,7 +1823,167 @@
 
   <script>
     let csrfToken = null;
+    let currentUser = null;
+    let userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
     let currentView = 'overview';
+    let dashboardStatus = null;
+    let dashboardOverview = null;
+    let dashboardSettings = null;
+    let dashboardConfig = null;
+    let commandsCatalog = null;
+    let actionsData = null;
+    let patchyData = null;
+    let wikiBridgeData = null;
+    let selectedActionRuleID = null;
+    let actionSaveTimer = null;
+    let patchySaveTimers = {};
+    let wikiSaveTimers = {};
+    let actionsStaticBound = false;
+    let isOverviewEditing = false;
+    let draggingOverviewCardID = null;
+    let draggingOverviewPanelID = null;
+    let overviewLayout = {
+      cardsOrder: [],
+      cardsHidden: [],
+      panelsOrder: ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'],
+      panelsHidden: []
+    };
+    const actionConditionMeta = {
+      'Server Is': { icon: 'dns', desc: 'Match events from one specific server.' },
+      'Voice Channel Is': { icon: 'headset_mic', desc: 'Run only when users join a selected channel.' },
+      'Username Contains': { icon: 'person_search', desc: 'Filter by usernames containing text.' },
+      'Duration In Channel': { icon: 'timer', desc: 'Require a minimum voice duration.' }
+    };
+    const actionTypeMeta = {
+      'Send Message': { icon: 'send', desc: 'Post a message to a channel in Discord.' },
+      'Add Log Entry': { icon: 'history', desc: 'Write a custom line to the command log.' },
+      'Set Bot Status': { icon: 'bolt', desc: 'Change the bot presence status text.' }
+    };
+
+    function defaultDiscordAvatar(userID) {
+      try {
+        const mod = Number(BigInt(userID) % 6n);
+        return `https://cdn.discordapp.com/embed/avatars/${mod}.png`;
+      } catch {
+        return 'https://cdn.discordapp.com/embed/avatars/0.png';
+      }
+    }
+
+    function applyUserAvatar(user) {
+      const avatarURL = user.avatar
+        ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
+        : defaultDiscordAvatar(user.id);
+      const headerAvatar = document.getElementById('headerAvatar');
+      const sidebarAvatar = document.getElementById('sidebarAvatar');
+      if (headerAvatar) headerAvatar.src = avatarURL;
+      if (sidebarAvatar) sidebarAvatar.src = avatarURL;
+      const display = user.globalName || user.username || 'Discord User';
+      const handle = user.discriminator && user.discriminator !== '0'
+        ? `${user.username || 'user'}#${user.discriminator}`
+        : `@${user.username || 'user'}`;
+      const sidebarDisplay = document.getElementById('sidebarDisplayName');
+      const sidebarUsername = document.getElementById('sidebarUsername');
+      if (sidebarDisplay) sidebarDisplay.textContent = display;
+      if (sidebarUsername) sidebarUsername.textContent = handle;
+    }
+
+    function prefsStorageKey() {
+      return currentUser?.id ? `swiftbot.webui.prefs.${currentUser.id}` : null;
+    }
+
+    function lastViewStorageKey() {
+      return currentUser?.id ? `swiftbot.webui.lastview.${currentUser.id}` : null;
+    }
+
+    function overviewLayoutStorageKey() {
+      return currentUser?.id ? `swiftbot.webui.overview.layout.${currentUser.id}` : null;
+    }
+
+    function metricID(metric) {
+      return `metric:${(metric.title || 'metric').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    }
+
+    function defaultOverviewLayout() {
+      return {
+        cardsOrder: [],
+        cardsHidden: [],
+        panelsOrder: ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'],
+        panelsHidden: []
+      };
+    }
+
+    function loadOverviewLayout() {
+      const key = overviewLayoutStorageKey();
+      if (!key) {
+        overviewLayout = defaultOverviewLayout();
+        return;
+      }
+      try {
+        const raw = localStorage.getItem(key);
+        overviewLayout = raw ? { ...defaultOverviewLayout(), ...JSON.parse(raw) } : defaultOverviewLayout();
+      } catch {
+        overviewLayout = defaultOverviewLayout();
+      }
+    }
+
+    function saveOverviewLayout() {
+      const key = overviewLayoutStorageKey();
+      if (!key) return;
+      localStorage.setItem(key, JSON.stringify(overviewLayout));
+    }
+
+    function normalizeOverviewLayout(metrics) {
+      const defaultPanels = ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'];
+      const metricIDs = metrics.map(metricID);
+      const knownMetricIDs = new Set(metricIDs);
+      const orderedCards = (overviewLayout.cardsOrder || []).filter(id => knownMetricIDs.has(id));
+      overviewLayout.cardsOrder = [...orderedCards, ...metricIDs.filter(id => !orderedCards.includes(id))];
+      overviewLayout.cardsHidden = (overviewLayout.cardsHidden || []).filter(id => knownMetricIDs.has(id));
+
+      const knownPanelIDs = new Set(defaultPanels);
+      const orderedPanels = (overviewLayout.panelsOrder || []).filter(id => knownPanelIDs.has(id));
+      overviewLayout.panelsOrder = [...orderedPanels, ...defaultPanels.filter(id => !orderedPanels.includes(id))];
+      overviewLayout.panelsHidden = (overviewLayout.panelsHidden || []).filter(id => knownPanelIDs.has(id));
+    }
+
+    function loadUserPrefs() {
+      const key = prefsStorageKey();
+      if (!key) return;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        userPrefs = {
+          theme: ['auto', 'light', 'dark'].includes(parsed.theme) ? parsed.theme : 'auto',
+          backgroundAnimation: parsed.backgroundAnimation !== false,
+          backgroundOpacity: (typeof parsed.backgroundOpacity === 'number' && parsed.backgroundOpacity >= 0 && parsed.backgroundOpacity <= 1)
+            ? parsed.backgroundOpacity
+            : 0.72,
+          rememberLastTab: parsed.rememberLastTab !== false,
+          compactMode: parsed.compactMode === true
+        };
+      } catch {
+        userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+      }
+    }
+
+    function saveUserPrefs() {
+      const key = prefsStorageKey();
+      if (!key) return;
+      localStorage.setItem(key, JSON.stringify(userPrefs));
+    }
+
+    function applyUserPrefs() {
+      const root = document.documentElement;
+      const body = document.body;
+      if (userPrefs.theme === 'auto') {
+        root.removeAttribute('data-theme');
+      } else {
+        root.setAttribute('data-theme', userPrefs.theme);
+      }
+      const bg = document.getElementById('bgStream');
+      if (bg) bg.style.display = userPrefs.backgroundAnimation ? '' : 'none';
+      root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
+      if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
+    }
 
     function setMessage(text, kind) {
       const node = document.getElementById('message');
@@ -766,14 +2002,210 @@
     }
 
     function renderStats(metrics) {
+      const visualForMetric = (title) => {
+        const key = (title || '').toLowerCase();
+        if (key.includes('status')) return { icon: 'bolt', color: '#73f5ae' };
+        if (key.includes('server')) return { icon: 'dns', color: '#73c1ff' };
+        if (key.includes('voice')) return { icon: 'groups', color: '#ffcd76' };
+        if (key.includes('command')) return { icon: 'terminal', color: '#ff9f87' };
+        if (key.includes('wiki')) return { icon: 'menu_book', color: '#7edfc0' };
+        if (key.includes('patchy')) return { icon: 'construction', color: '#b5a7ff' };
+        if (key.includes('action')) return { icon: 'rule', color: '#9fc2ff' };
+        if (key.includes('ai')) return { icon: 'smart_toy', color: '#d1abff' };
+        return { icon: 'insights', color: '#8ecbff' };
+      };
+
       const grid = document.getElementById('statsGrid');
-      grid.innerHTML = metrics.map(metric => `
-        <article class="stat-card glass">
-          <h3>${metric.title}</h3>
+      const metricMap = new Map(metrics.map(metric => [metricID(metric), metric]));
+      const visibleIDs = (overviewLayout.cardsOrder || []).filter(id => !overviewLayout.cardsHidden.includes(id) && metricMap.has(id));
+
+      grid.innerHTML = visibleIDs.map(id => {
+        const metric = metricMap.get(id);
+        const visual = visualForMetric(metric.title);
+        const seed = [...id].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) >>> 0, 7);
+        const duration = (0.14 + ((seed % 8) * 0.01)).toFixed(2);
+        const delay = ((seed % 9) * 0.02).toFixed(2);
+        return `
+        <article class="stat-card glass" data-overview-card="${id}" draggable="${isOverviewEditing ? 'true' : 'false'}" style="${isOverviewEditing ? `animation-duration:${duration}s;animation-delay:-${delay}s;` : ''}">
+          <div class="stat-header">
+            <h3>${metric.title}</h3>
+            <span class="stat-icon" style="color:${visual.color};">${visual.icon}</span>
+          </div>
           <div class="stat-value">${metric.value}</div>
           <div class="stat-subtitle">${metric.subtitle}</div>
+          <div class="stat-detail">Live snapshot</div>
+          ${isOverviewEditing ? '<button class="widget-remove" data-remove-card="1" type="button">remove</button>' : ''}
         </article>
-      `).join('');
+      `;
+      }).join('');
+
+      grid.closest('.view')?.classList.toggle('dashboard-editing', isOverviewEditing);
+      bindOverviewCardInteractions();
+      renderOverviewAddList();
+    }
+
+    function bindOverviewCardInteractions() {
+      const cards = document.querySelectorAll('[data-overview-card]');
+      cards.forEach(card => {
+        const id = card.dataset.overviewCard;
+        const remove = card.querySelector('[data-remove-card]');
+        remove?.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (!overviewLayout.cardsHidden.includes(id)) {
+            overviewLayout.cardsHidden.push(id);
+            saveOverviewLayout();
+            if (dashboardOverview) renderStats(dashboardOverview.metrics || []);
+          }
+        });
+
+        card.addEventListener('dragstart', (event) => {
+          if (!isOverviewEditing) return event.preventDefault();
+          draggingOverviewCardID = id;
+          event.dataTransfer.setData('text/plain', id);
+          event.dataTransfer.effectAllowed = 'move';
+        });
+        card.addEventListener('dragend', () => { draggingOverviewCardID = null; });
+        card.addEventListener('dragover', (event) => {
+          if (!isOverviewEditing) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        });
+        card.addEventListener('drop', (event) => {
+          if (!isOverviewEditing) return;
+          event.preventDefault();
+          const fromID = draggingOverviewCardID;
+          const toID = id;
+          if (!fromID || fromID === toID) return;
+          const from = overviewLayout.cardsOrder.indexOf(fromID);
+          const to = overviewLayout.cardsOrder.indexOf(toID);
+          if (from < 0 || to < 0) return;
+          const next = [...overviewLayout.cardsOrder];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          overviewLayout.cardsOrder = next;
+          saveOverviewLayout();
+          if (dashboardOverview) renderStats(dashboardOverview.metrics || []);
+        });
+      });
+    }
+
+    function renderOverviewPanels() {
+      const panelHost = document.getElementById('overviewPanels');
+      if (!panelHost) return;
+
+      const panelNodeByID = {
+        cluster: document.getElementById('overviewPanelCluster'),
+        botinfo: document.getElementById('overviewPanelBotInfo'),
+        voice: document.getElementById('overviewPanelVoiceEvents'),
+        commands: document.getElementById('overviewPanelRecentCommands'),
+        invoice: document.getElementById('overviewPanelActiveVoice'),
+        controls: document.getElementById('overviewPanelQuickControls')
+      };
+
+      const visibleOrder = (overviewLayout.panelsOrder || []).filter(id => !overviewLayout.panelsHidden.includes(id));
+      visibleOrder.forEach(id => {
+        const node = panelNodeByID[id];
+        if (!node) return;
+        node.classList.remove('hidden');
+        panelHost.appendChild(node);
+      });
+
+      Object.entries(panelNodeByID).forEach(([id, node]) => {
+        if (!node) return;
+        const isVisible = visibleOrder.includes(id);
+        const seed = [...id].reduce((acc, ch) => ((acc * 33) + ch.charCodeAt(0)) >>> 0, 11);
+        node.classList.toggle('hidden', !isVisible);
+        node.setAttribute('draggable', isOverviewEditing ? 'true' : 'false');
+        node.dataset.overviewPanel = id;
+        node.style.animationDuration = isOverviewEditing ? `${(0.16 + ((seed % 7) * 0.012)).toFixed(3)}s` : '';
+        node.style.animationDelay = isOverviewEditing ? `-${((seed % 8) * 0.03).toFixed(2)}s` : '';
+        const prior = node.querySelector('[data-remove-panel]');
+        if (prior) prior.remove();
+        if (isOverviewEditing) {
+          const remove = document.createElement('button');
+          remove.className = 'widget-remove';
+          remove.type = 'button';
+          remove.dataset.removePanel = '1';
+          remove.textContent = 'remove';
+          remove.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (!overviewLayout.panelsHidden.includes(id)) {
+              overviewLayout.panelsHidden.push(id);
+              saveOverviewLayout();
+              renderOverviewPanels();
+              renderOverviewAddList();
+            }
+          });
+          node.appendChild(remove);
+        }
+      });
+
+      bindOverviewPanelInteractions();
+      panelHost.closest('.view')?.classList.toggle('dashboard-editing', isOverviewEditing);
+      renderOverviewAddList();
+    }
+
+    function bindOverviewPanelInteractions() {
+      document.querySelectorAll('[data-overview-panel]').forEach(panel => {
+        const id = panel.dataset.overviewPanel;
+        panel.addEventListener('dragstart', (event) => {
+          if (!isOverviewEditing) return event.preventDefault();
+          draggingOverviewPanelID = id;
+          event.dataTransfer.setData('text/plain', id);
+          event.dataTransfer.effectAllowed = 'move';
+        });
+        panel.addEventListener('dragend', () => { draggingOverviewPanelID = null; });
+        panel.addEventListener('dragover', (event) => {
+          if (!isOverviewEditing) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        });
+        panel.addEventListener('drop', (event) => {
+          if (!isOverviewEditing) return;
+          event.preventDefault();
+          const fromID = draggingOverviewPanelID;
+          const toID = id;
+          if (!fromID || fromID === toID) return;
+          const from = overviewLayout.panelsOrder.indexOf(fromID);
+          const to = overviewLayout.panelsOrder.indexOf(toID);
+          if (from < 0 || to < 0) return;
+          const next = [...overviewLayout.panelsOrder];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          overviewLayout.panelsOrder = next;
+          saveOverviewLayout();
+          renderOverviewPanels();
+        });
+      });
+    }
+
+    function renderOverviewAddList() {
+      const controls = document.getElementById('overviewEditControls');
+      const select = document.getElementById('overviewAddSelect');
+      const addButton = document.getElementById('overviewAddApply');
+      if (!controls || !select || !addButton) return;
+
+      controls.classList.toggle('hidden', !isOverviewEditing);
+      if (!isOverviewEditing) return;
+
+      const hiddenCards = (dashboardOverview?.metrics || [])
+        .map(metric => ({ id: metricID(metric), label: `${metric.title} (Card)`, kind: 'card' }))
+        .filter(item => overviewLayout.cardsHidden.includes(item.id));
+      const panelLabels = {
+        cluster: 'Cluster Panel',
+        botinfo: 'Bot Info Panel',
+        voice: 'Recent Voice Panel',
+        commands: 'Recent Commands Panel',
+        invoice: 'Currently In Voice Panel',
+        controls: 'Quick Controls Panel'
+      };
+      const hiddenPanels = (overviewLayout.panelsHidden || []).map(id => ({ id, label: panelLabels[id] || `${id} Panel`, kind: 'panel' }));
+      const entries = [...hiddenCards, ...hiddenPanels];
+
+      select.innerHTML = entries.length
+        ? entries.map(item => `<option value="${item.kind}:${item.id}">${item.label}</option>`).join('')
+        : '<option value="">No hidden widgets</option>';
+      addButton.disabled = entries.length === 0;
     }
 
     function renderInfoRows(nodeId, rows) {
@@ -796,10 +2228,106 @@
       node.innerHTML = events.map(formatter).join('');
     }
 
+    function renderActiveVoice(list) {
+      const node = document.getElementById('activeVoiceList');
+      if (!node) return;
+      if (!list || list.length === 0) {
+        node.innerHTML = `<div class="placeholder">No one is in voice right now</div>`;
+        return;
+      }
+
+      const grouped = new Map();
+      for (const item of list) {
+        const key = `${item.channelName}||${item.serverName}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(item);
+      }
+
+      const blocks = [];
+      for (const [key, members] of grouped.entries()) {
+        const [channelName, serverName] = key.split('||');
+        const rows = members.map(member => `
+          <div class="event-item ok">
+            <div class="event-title">${member.username}</div>
+            <div class="event-time">${member.joinedText} · ${channelName}</div>
+          </div>
+        `).join('');
+        blocks.push(`
+          <div style="display:grid;gap:6px;">
+            <div class="command-desc" style="font-weight:600;">${channelName} · ${serverName}</div>
+            ${rows}
+          </div>
+        `);
+      }
+      node.innerHTML = blocks.join('');
+    }
+
+    function commandBadge(label, extraClass = '') {
+      return `<span class="badge ${extraClass}">${label}</span>`;
+    }
+
+    function renderCommandsView() {
+      if (!commandsCatalog) return;
+      const top = document.getElementById('commandsTop');
+      const catalog = document.getElementById('commandsCatalog');
+      if (!top || !catalog) return;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Master Switch</span>
+          <span class="value">All Commands</span>
+          <label class="switch"><input id="cmdMaster" type="checkbox" ${commandsCatalog.commandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Prefix</span>
+          <span class="value">! style</span>
+          <label class="switch"><input id="cmdPrefix" type="checkbox" ${commandsCatalog.prefixCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Discord UI</span>
+          <span class="value">/ slash</span>
+          <label class="switch"><input id="cmdSlash" type="checkbox" ${commandsCatalog.slashCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+      `;
+      top.querySelector('#cmdMaster')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
+      top.querySelector('#cmdPrefix')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
+      top.querySelector('#cmdSlash')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+
+      const rows = (commandsCatalog.items || []).map(item => {
+        const badges = [
+          commandBadge(item.surface),
+          commandBadge(item.category)
+        ];
+        if (item.adminOnly) badges.push(commandBadge('Admin', 'admin'));
+        if (item.aliases && item.aliases.length > 0) {
+          badges.push(commandBadge(`Aliases: ${item.aliases.join(', ')}`));
+        }
+        return `
+          <article class="command-row">
+            <div>
+              <div class="command-name">${item.name}</div>
+              <div class="command-usage">${item.usage}</div>
+              <div class="command-desc">${item.description}</div>
+              <div class="badge-row">${badges.join('')}</div>
+            </div>
+            <label class="switch"><input data-command-name="${item.name}" data-command-surface="${item.surface.toLowerCase()}" type="checkbox" ${item.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          </article>
+        `;
+      }).join('');
+      catalog.innerHTML = rows || `<div class="placeholder">No commands available.</div>`;
+      catalog.querySelectorAll('input[data-command-name]').forEach((input) => {
+        input.addEventListener('change', async (e) => {
+          const node = e.currentTarget;
+          await toggleCommand(node.dataset.commandName, node.dataset.commandSurface, node.checked);
+        });
+      });
+    }
+
     async function loadStatus() {
       const response = await fetch('/api/status');
       const data = await response.json();
-      document.getElementById('botMeta').textContent = `${data.botUsername} • ${data.connectedServerCount} servers`;
+      dashboardStatus = data;
+      refreshBotToggleButton();
       return data;
     }
 
@@ -810,6 +2338,8 @@
       }
 
       const data = await response.json();
+      normalizeOverviewLayout(data.metrics || []);
+      saveOverviewLayout();
       renderStats(data.metrics || []);
       renderInfoRows('clusterInfo', [
         { label: 'Nodes Connected', value: String(data.cluster.connectedNodes) },
@@ -844,6 +2374,10 @@
           </div>
         `
       );
+      renderActiveVoice(data.activeVoice || []);
+      renderOverviewPanels();
+      dashboardOverview = data;
+      return data;
     }
 
     async function loadMe() {
@@ -851,7 +2385,10 @@
       if (!response.ok) return null;
       const data = await response.json();
       csrfToken = data.csrfToken;
-      document.getElementById('identity').textContent = `Signed in as ${data.username} (${data.id})`;
+      currentUser = data;
+      applyUserAvatar(data);
+      loadUserPrefs();
+      applyUserPrefs();
       return data;
     }
 
@@ -859,7 +2396,63 @@
       const response = await fetch('/api/settings');
       if (!response.ok) throw new Error('Settings unavailable');
       const data = await response.json();
-      document.getElementById('prefixInput').value = data.prefix || '/';
+      dashboardSettings = data;
+      return data;
+    }
+
+    function refreshBotToggleButton() {
+      const button = document.getElementById('toggleBot');
+      if (!button || !dashboardStatus) return;
+      const runningStates = ['running', 'connecting', 'reconnecting'];
+      const isRunning = runningStates.includes((dashboardStatus.botStatus || '').toLowerCase());
+      button.textContent = isRunning ? 'Stop Bot' : 'Start Bot';
+      button.className = isRunning ? 'secondary-action' : 'primary-action';
+    }
+
+    async function loadConfig() {
+      const response = await fetch('/api/config');
+      if (!response.ok) throw new Error('Config unavailable');
+      const data = await response.json();
+      dashboardConfig = data;
+      return data;
+    }
+
+    async function loadCommandsCatalog() {
+      const response = await fetch('/api/commands');
+      if (!response.ok) throw new Error('Commands catalog unavailable');
+      const data = await response.json();
+      commandsCatalog = data;
+      return data;
+    }
+
+    async function loadActions() {
+      const response = await fetch('/api/actions');
+      if (!response.ok) throw new Error('Actions unavailable');
+      const data = await response.json();
+      actionsData = data;
+      if (!selectedActionRuleID && data.rules && data.rules.length > 0) {
+        selectedActionRuleID = data.rules[0].id;
+      }
+      if (selectedActionRuleID && !(data.rules || []).some(r => r.id === selectedActionRuleID)) {
+        selectedActionRuleID = data.rules?.[0]?.id || null;
+      }
+      return data;
+    }
+
+    async function loadPatchy() {
+      const response = await fetch('/api/patchy');
+      if (!response.ok) throw new Error('Patchy unavailable');
+      const data = await response.json();
+      patchyData = data;
+      return data;
+    }
+
+    async function loadWikiBridge() {
+      const response = await fetch('/api/wikibridge');
+      if (!response.ok) throw new Error('WikiBridge unavailable');
+      const data = await response.json();
+      wikiBridgeData = data;
+      return data;
     }
 
     async function postJSON(path, payload) {
@@ -882,16 +2475,1590 @@
       return null;
     }
 
+    async function saveConfigPatch(patch) {
+      await postJSON('/api/config', patch);
+      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      refreshCurrentView();
+    }
+
+    async function toggleCommand(name, surface, enabled) {
+      await postJSON('/api/commands/toggle', { name, surface, enabled });
+      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      renderCommandsView();
+    }
+
+    function refreshCurrentView() {
+      if (currentView === 'overview') return;
+      if (currentView === 'commands') {
+        renderCommandsView();
+        return;
+      }
+      if (currentView === 'patchy') {
+        renderPatchyView();
+        return;
+      }
+      if (currentView === 'wikibridge') {
+        renderWikiBridgeView();
+        return;
+      }
+      if (currentView === 'settings') {
+        renderSettingsView();
+        return;
+      }
+      if (currentView === 'diagnostics') {
+        renderDiagnosticsView();
+        return;
+      }
+      if (currentView === 'aibots') {
+        renderAIBotsView();
+        return;
+      }
+      if (currentView === 'logs') {
+        renderLogsView();
+        return;
+      }
+      if (currentView === 'swiftmesh') {
+        renderSwiftMeshView();
+        return;
+      }
+      if (currentView === 'userprefs') {
+        renderUserPrefsView();
+        return;
+      }
+      if (currentView === 'actions') {
+        renderActionsView();
+        return;
+      }
+      renderSectionView(currentView);
+    }
+
+    function findSelectedRule() {
+      return (actionsData?.rules || []).find(rule => rule.id === selectedActionRuleID) || null;
+    }
+
+    function uuid() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function asOptions(options, selectedID) {
+      return (options || []).map(opt => `<option value="${opt.id}" ${opt.id === selectedID ? 'selected' : ''}>${opt.name}</option>`).join('');
+    }
+
+    async function createActionRule() {
+      await postJSON('/api/actions/new', {});
+      await loadActions();
+      renderActionsView();
+    }
+
+    async function deleteActionRule(ruleID) {
+      await postJSON('/api/actions/delete', { ruleID });
+      await loadActions();
+      renderActionsView();
+    }
+
+    function scheduleActionRuleSave(rule) {
+      if (actionSaveTimer) clearTimeout(actionSaveTimer);
+      actionSaveTimer = setTimeout(async () => {
+        await postJSON('/api/actions/upsert', { rule });
+        await loadActions();
+        if (currentView === 'actions') renderActionsView();
+      }, 220);
+    }
+
+    function bindActionsStaticButtons() {
+      if (actionsStaticBound) return;
+      document.getElementById('actionAddRule')?.addEventListener('click', async () => {
+        await createActionRule();
+      });
+      document.getElementById('actionLibrary')?.addEventListener('click', async (event) => {
+        const conditionButton = event.target.closest('[data-add-condition]');
+        const actionButton = event.target.closest('[data-add-action]');
+        if (!conditionButton && !actionButton) return;
+        const rule = findSelectedRule();
+        if (!rule) return;
+        const next = structuredClone(rule);
+        if (conditionButton) {
+          next.conditions = next.conditions || [];
+          const firstType = actionsData?.conditionTypes?.[0] || 'Server Is';
+          next.conditions.push({
+            id: uuid(),
+            type: conditionButton.dataset.addCondition || firstType,
+            value: '',
+            secondaryValue: '',
+            enabled: true
+          });
+        } else if (actionButton) {
+          next.actions = next.actions || [];
+          const firstType = actionsData?.actionTypes?.[0] || 'Send Message';
+          next.actions.push({
+            id: uuid(),
+            type: actionButton.dataset.addAction || firstType,
+            serverId: (actionsData?.servers?.[0]?.id || ''),
+            channelId: '',
+            mentionUser: true,
+            replyToTriggerMessage: false,
+            replyWithAI: false,
+            message: '🔊 <@{userId}> connected to <#{channelId}>',
+            statusText: 'Voice notifier active'
+          });
+        }
+        scheduleActionRuleSave(next);
+      });
+      actionsStaticBound = true;
+    }
+
+    function renderActionLibrary() {
+      const node = document.getElementById('actionLibrary');
+      if (!node) return;
+      if (!actionsData) {
+        node.innerHTML = '';
+        return;
+      }
+      const conditionTypes = actionsData.conditionTypes || [];
+      const actionTypes = actionsData.actionTypes || [];
+      const conditionRows = conditionTypes.map(type => {
+        const meta = actionConditionMeta[type] || { icon: 'filter_alt', desc: 'Condition block from the app configuration.' };
+        return `
+          <div class="library-item">
+            <span class="library-icon"><span class="ms">${meta.icon}</span></span>
+            <div><div class="library-title">${type}</div><div class="library-desc">${meta.desc}</div></div>
+            <button type="button" class="library-plus" data-add-condition="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} condition"><span class="ms">add</span></button>
+          </div>
+        `;
+      }).join('');
+      const actionRows = actionTypes.map(type => {
+        const meta = actionTypeMeta[type] || { icon: 'bolt', desc: 'Action block from the app configuration.' };
+        return `
+          <div class="library-item">
+            <span class="library-icon"><span class="ms">${meta.icon}</span></span>
+            <div><div class="library-title">${type}</div><div class="library-desc">${meta.desc}</div></div>
+            <button type="button" class="library-plus" data-add-action="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} action"><span class="ms">add</span></button>
+          </div>
+        `;
+      }).join('');
+      node.innerHTML = `
+        <div class="library-section-label">Conditions</div>
+        ${conditionRows || '<div class="placeholder">No condition types available.</div>'}
+        <hr class="library-divider">
+        <div class="library-section-label">Actions</div>
+        ${actionRows || '<div class="placeholder">No action types available.</div>'}
+      `;
+    }
+
+    function renderActionsView() {
+      bindActionsStaticButtons();
+      renderActionLibrary();
+      const listNode = document.getElementById('actionRuleList');
+      const editorNode = document.getElementById('actionEditor');
+      if (!listNode || !editorNode || !actionsData) return;
+
+      const rules = actionsData.rules || [];
+      listNode.innerHTML = rules.map(rule => `
+        <article class="rule-list-item ${rule.id === selectedActionRuleID ? 'active' : ''}" data-rule-id="${rule.id}">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+            <div class="rule-name">${rule.name || 'Action Rule'}</div>
+            <label class="switch"><input data-toggle-rule="${rule.id}" type="checkbox" ${rule.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          </div>
+          <div class="rule-sub">${rule.triggerSummary || rule.trigger || ''}</div>
+          <div style="margin-top:6px;">
+            <button class="mini-btn" data-delete-rule="${rule.id}" type="button"><span class="ms">delete</span> Delete</button>
+          </div>
+        </article>
+      `).join('') || `<div class="placeholder">No action rules yet.</div>`;
+
+      listNode.querySelectorAll('[data-rule-id]').forEach(node => {
+        node.addEventListener('click', (e) => {
+          if (e.target.closest('button') || e.target.closest('label.switch')) return;
+          selectedActionRuleID = node.dataset.ruleId;
+          renderActionsView();
+        });
+      });
+      listNode.querySelectorAll('[data-toggle-rule]').forEach(node => {
+        node.addEventListener('change', async (e) => {
+          const rule = rules.find(r => r.id === node.dataset.toggleRule);
+          if (!rule) return;
+          const next = structuredClone(rule);
+          next.isEnabled = e.target.checked;
+          scheduleActionRuleSave(next);
+        });
+      });
+      listNode.querySelectorAll('[data-delete-rule]').forEach(node => {
+        node.addEventListener('click', async () => {
+          await deleteActionRule(node.dataset.deleteRule);
+        });
+      });
+
+      const selected = findSelectedRule();
+      if (!selected) {
+        editorNode.innerHTML = `<div class="placeholder">Select an action rule to edit.</div>`;
+        return;
+      }
+
+      const serverID = selected.triggerServerId || actionsData.servers?.[0]?.id || '';
+      const voiceOptions = asOptions(actionsData.voiceChannelsByServer?.[serverID], selected.triggerVoiceChannelId || '');
+      const textOptionsFor = (sid, cid) => asOptions(actionsData.textChannelsByServer?.[sid], cid || '');
+      const triggerOptions = ['User Joins Voice', 'User Leaves Voice', 'User Moves Voice', 'Message Contains', 'Member Joined']
+        .map(t => `<option value="${t}" ${selected.trigger === t ? 'selected' : ''}>${t}</option>`).join('');
+      const conditionTypeOptions = (actionsData.conditionTypes || []).length ? actionsData.conditionTypes : ['Server Is'];
+      const actionTypeOptions = (actionsData.actionTypes || []).length ? actionsData.actionTypes : ['Send Message'];
+
+      editorNode.innerHTML = `
+        <div class="panel-title"><span class="ms">tune</span> Action Builder</div>
+        <section class="editor-section">
+          <div class="editor-grid">
+            <div class="full">
+              <div class="field-label">Rule Name</div>
+              <input id="ruleName" class="field-input" value="${(selected.name || '').replaceAll('"', '&quot;')}">
+            </div>
+            <div>
+              <div class="field-label">Trigger</div>
+              <select id="ruleTrigger" class="field-select">${triggerOptions}</select>
+            </div>
+            <div>
+              <div class="field-label">Trigger Server</div>
+              <select id="ruleTriggerServer" class="field-select">${asOptions(actionsData.servers, serverID)}</select>
+            </div>
+            <div>
+              <div class="field-label">Voice Channel</div>
+              <select id="ruleTriggerVoiceChannel" class="field-select">${voiceOptions}</select>
+            </div>
+            <div>
+              <div class="field-label">Message Contains</div>
+              <input id="ruleTriggerText" class="field-input" value="${(selected.triggerMessageContains || '').replaceAll('"', '&quot;')}">
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <label class="switch"><input id="ruleReplyToDMs" type="checkbox" ${selected.replyToDMs ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+              <span class="field-label" style="margin:0;">Reply to DMs</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <label class="switch"><input id="ruleIncludeStage" type="checkbox" ${selected.includeStageChannels ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+              <span class="field-label" style="margin:0;">Include Stage Channels</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="editor-section">
+          <div class="panel-title"><span class="ms">filter_alt</span> Conditions</div>
+          ${(selected.conditions || []).map((cond, idx) => `
+            <div class="block-row" data-condition-index="${idx}">
+              <div class="editor-grid">
+                <div>
+                  <div class="field-label">Type</div>
+                  <select class="field-select cond-type">${conditionTypeOptions.map(opt => `<option value="${opt}" ${cond.type === opt ? 'selected' : ''}>${opt}</option>`).join('')}</select>
+                </div>
+                <div>
+                  <div class="field-label">Value</div>
+                  <input class="field-input cond-value" value="${(cond.value || '').replaceAll('"', '&quot;')}">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <label class="switch"><input class="cond-enabled" type="checkbox" ${cond.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                  <span class="field-label" style="margin:0;">Enabled</span>
+                </div>
+                <div>
+                  <button type="button" class="mini-btn cond-delete"><span class="ms">delete</span> Remove</button>
+                </div>
+              </div>
+            </div>
+          `).join('') || `<div class="placeholder">No conditions added.</div>`}
+        </section>
+
+        <section class="editor-section">
+          <div class="panel-title"><span class="ms">send</span> Actions</div>
+          ${(selected.actions || []).map((action, idx) => `
+            <div class="block-row" data-action-index="${idx}">
+              <div class="editor-grid">
+                <div>
+                  <div class="field-label">Type</div>
+                  <select class="field-select act-type">${actionTypeOptions.map(opt => `<option value="${opt}" ${action.type === opt ? 'selected' : ''}>${opt}</option>`).join('')}</select>
+                </div>
+                <div>
+                  <div class="field-label">Server</div>
+                  <select class="field-select act-server">${asOptions(actionsData.servers, action.serverId || serverID)}</select>
+                </div>
+                <div>
+                  <div class="field-label">Channel</div>
+                  <select class="field-select act-channel">${textOptionsFor(action.serverId || serverID, action.channelId)}</select>
+                </div>
+                <div class="full">
+                  <div class="field-label">Message</div>
+                  <textarea class="field-textarea act-message">${(action.message || '')}</textarea>
+                </div>
+                <div class="full">
+                  <div class="field-label">Status Text</div>
+                  <input class="field-input act-status" value="${(action.statusText || '').replaceAll('"', '&quot;')}">
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <label class="switch"><input class="act-mention" type="checkbox" ${action.mentionUser ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                  <span class="field-label" style="margin:0;">Mention User</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <label class="switch"><input class="act-reply" type="checkbox" ${action.replyToTriggerMessage ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                  <span class="field-label" style="margin:0;">Reply to Trigger</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <label class="switch"><input class="act-ai" type="checkbox" ${action.replyWithAI ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                  <span class="field-label" style="margin:0;">Reply with AI</span>
+                </div>
+                <div>
+                  <button type="button" class="mini-btn act-delete"><span class="ms">delete</span> Remove</button>
+                </div>
+              </div>
+            </div>
+          `).join('') || `<div class="placeholder">No actions added.</div>`}
+        </section>
+      `;
+
+      const commit = (mutator) => {
+        const next = structuredClone(selected);
+        mutator(next);
+        scheduleActionRuleSave(next);
+      };
+
+      editorNode.querySelector('#ruleName')?.addEventListener('input', (e) => commit(r => { r.name = e.target.value; }));
+      editorNode.querySelector('#ruleTrigger')?.addEventListener('change', (e) => commit(r => { r.trigger = e.target.value; }));
+      editorNode.querySelector('#ruleTriggerServer')?.addEventListener('change', (e) => commit(r => { r.triggerServerId = e.target.value; }));
+      editorNode.querySelector('#ruleTriggerVoiceChannel')?.addEventListener('change', (e) => commit(r => { r.triggerVoiceChannelId = e.target.value; }));
+      editorNode.querySelector('#ruleTriggerText')?.addEventListener('input', (e) => commit(r => { r.triggerMessageContains = e.target.value; }));
+      editorNode.querySelector('#ruleReplyToDMs')?.addEventListener('change', (e) => commit(r => { r.replyToDMs = e.target.checked; }));
+      editorNode.querySelector('#ruleIncludeStage')?.addEventListener('change', (e) => commit(r => { r.includeStageChannels = e.target.checked; }));
+
+      editorNode.querySelectorAll('[data-condition-index]').forEach(block => {
+        const idx = Number(block.dataset.conditionIndex);
+        block.querySelector('.cond-type')?.addEventListener('change', (e) => commit(r => { r.conditions[idx].type = e.target.value; }));
+        block.querySelector('.cond-value')?.addEventListener('input', (e) => commit(r => { r.conditions[idx].value = e.target.value; }));
+        block.querySelector('.cond-enabled')?.addEventListener('change', (e) => commit(r => { r.conditions[idx].enabled = e.target.checked; }));
+        block.querySelector('.cond-delete')?.addEventListener('click', () => commit(r => { r.conditions.splice(idx, 1); }));
+      });
+
+      editorNode.querySelectorAll('[data-action-index]').forEach(block => {
+        const idx = Number(block.dataset.actionIndex);
+        block.querySelector('.act-type')?.addEventListener('change', (e) => commit(r => { r.actions[idx].type = e.target.value; }));
+        block.querySelector('.act-server')?.addEventListener('change', (e) => commit(r => { r.actions[idx].serverId = e.target.value; }));
+        block.querySelector('.act-channel')?.addEventListener('change', (e) => commit(r => { r.actions[idx].channelId = e.target.value; }));
+        block.querySelector('.act-message')?.addEventListener('input', (e) => commit(r => { r.actions[idx].message = e.target.value; }));
+        block.querySelector('.act-status')?.addEventListener('input', (e) => commit(r => { r.actions[idx].statusText = e.target.value; }));
+        block.querySelector('.act-mention')?.addEventListener('change', (e) => commit(r => { r.actions[idx].mentionUser = e.target.checked; }));
+        block.querySelector('.act-reply')?.addEventListener('change', (e) => commit(r => { r.actions[idx].replyToTriggerMessage = e.target.checked; }));
+        block.querySelector('.act-ai')?.addEventListener('change', (e) => commit(r => { r.actions[idx].replyWithAI = e.target.checked; }));
+        block.querySelector('.act-delete')?.addEventListener('click', () => commit(r => { r.actions.splice(idx, 1); }));
+      });
+    }
+
+    function patchySourceMeta(kind) {
+      switch ((kind || '').toLowerCase()) {
+        case 'nvidia': return { icon: 'memory', label: 'NVIDIA' };
+        case 'amd': return { icon: 'developer_board', label: 'AMD' };
+        case 'intel arc': return { icon: 'developer_mode', label: 'Intel Arc' };
+        case 'steam': return { icon: 'sports_esports', label: 'Steam' };
+        default: return { icon: 'update', label: kind || 'Source' };
+      }
+    }
+
+    function formatTime(value) {
+      if (!value) return 'Never';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return 'Never';
+      return date.toLocaleString();
+    }
+
+    function asRoleNames(serverID, roleIDs) {
+      const roles = patchyData?.rolesByServer?.[serverID] || [];
+      const names = (roleIDs || []).map(roleID => roles.find(role => role.id === roleID)?.name || roleID);
+      return names.length ? names.join(', ') : 'None';
+    }
+
+    function textChannelsForServer(serverID) {
+      return patchyData?.textChannelsByServer?.[serverID] || [];
+    }
+
+    function schedulePatchyTargetSave(target) {
+      const key = target.id;
+      if (patchySaveTimers[key]) clearTimeout(patchySaveTimers[key]);
+      patchySaveTimers[key] = setTimeout(async () => {
+        await postJSON('/api/patchy/target/upsert', { target });
+        await loadPatchy();
+        if (currentView === 'patchy') renderPatchyView();
+      }, 220);
+    }
+
+    function renderPatchyView() {
+      if (!patchyData) return;
+      const top = document.getElementById('patchyTop');
+      const targetsNode = document.getElementById('patchyTargets');
+      const addButton = document.getElementById('patchyAddTarget');
+      const runButton = document.getElementById('patchyRunCheck');
+      if (!top || !targetsNode || !addButton || !runButton) return;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Monitoring</span>
+          <span class="value">${patchyData.monitoringEnabled ? 'Enabled' : 'Disabled'}</span>
+          <label class="switch"><input id="patchyMonitoring" type="checkbox" ${patchyData.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Debug</span>
+          <span class="value">${patchyData.showDebug ? 'Visible' : 'Hidden'}</span>
+          <label class="switch"><input id="patchyDebug" type="checkbox" ${patchyData.showDebug ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Cycle</span>
+          <span class="value">${patchyData.isCycleRunning ? 'Running' : 'Idle'}</span>
+          <div class="command-desc">Last cycle: ${formatTime(patchyData.lastCycleAt)}</div>
+        </div>
+      `;
+      top.querySelector('#patchyMonitoring')?.addEventListener('change', async (e) => {
+        await postJSON('/api/patchy/state', { monitoringEnabled: e.target.checked });
+        await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+        renderPatchyView();
+      });
+      top.querySelector('#patchyDebug')?.addEventListener('change', async (e) => {
+        await postJSON('/api/patchy/state', { showDebug: e.target.checked });
+        await loadPatchy();
+        renderPatchyView();
+      });
+
+      addButton.onclick = async () => {
+        await postJSON('/api/patchy/target/new', {});
+        await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+        renderPatchyView();
+      };
+      runButton.onclick = async () => {
+        await postJSON('/api/patchy/check', {});
+        await loadPatchy();
+        renderPatchyView();
+      };
+
+      const rows = (patchyData.targets || []).map(target => {
+        const source = patchySourceMeta(target.source);
+        const channels = textChannelsForServer(target.serverId || (patchyData.servers[0]?.id || ''));
+        const roleSummary = asRoleNames(target.serverId, target.roleIDs);
+        return `
+          <article class="patchy-target-card" data-patchy-id="${target.id}">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+              <div class="command-name"><span class="ms">${source.icon}</span> ${source.label}</div>
+              <label class="switch"><input class="patchy-enabled" type="checkbox" ${target.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+            </div>
+            <div class="patchy-row">
+              <label class="patchy-kv">Source
+                <select class="field-select patchy-source">${(patchyData.sourceKinds || []).map(kind => `<option value="${kind}" ${kind === target.source ? 'selected' : ''}>${kind}</option>`).join('')}</select>
+              </label>
+              <label class="patchy-kv">Steam App ID
+                <input class="field-input patchy-steam" value="${(target.steamAppID || '').replaceAll('"', '&quot;')}">
+              </label>
+              <label class="patchy-kv">Server
+                <select class="field-select patchy-server">${asOptions(patchyData.servers || [], target.serverId)}</select>
+              </label>
+              <label class="patchy-kv">Channel
+                <select class="field-select patchy-channel">${asOptions(channels, target.channelId)}</select>
+              </label>
+              <label class="patchy-kv">Role IDs (comma separated)
+                <input class="field-input patchy-roles" value="${(target.roleIDs || []).join(', ')}">
+              </label>
+              <div class="patchy-kv">Mentions<br><strong>${roleSummary}</strong></div>
+            </div>
+            <div class="patchy-row">
+              <div class="patchy-kv">Last Check<br><strong>${formatTime(target.lastCheckedAt)}</strong></div>
+              <div class="patchy-kv">Last Run<br><strong>${formatTime(target.lastRunAt)}</strong></div>
+              <div class="patchy-kv">Status<br><strong>${target.lastStatus || 'Never checked'}</strong></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="mini-btn patchy-test" type="button"><span class="ms">science</span> Test</button>
+              <button class="mini-btn patchy-delete" type="button"><span class="ms">delete</span> Delete</button>
+            </div>
+          </article>
+        `;
+      }).join('');
+      targetsNode.innerHTML = rows || `<div class="placeholder">No Patchy targets configured.</div>`;
+
+      targetsNode.querySelectorAll('[data-patchy-id]').forEach(card => {
+        const targetID = card.dataset.patchyId;
+        const target = (patchyData.targets || []).find(item => item.id === targetID);
+        if (!target) return;
+        const commit = (mutator) => {
+          const next = structuredClone(target);
+          mutator(next);
+          schedulePatchyTargetSave(next);
+        };
+
+        card.querySelector('.patchy-enabled')?.addEventListener('change', async (e) => {
+          await postJSON('/api/patchy/target/toggle', { targetID, enabled: e.target.checked });
+          await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+          renderPatchyView();
+        });
+        card.querySelector('.patchy-source')?.addEventListener('change', (e) => commit(t => { t.source = e.target.value; }));
+        card.querySelector('.patchy-steam')?.addEventListener('input', (e) => commit(t => { t.steamAppID = e.target.value; }));
+        card.querySelector('.patchy-server')?.addEventListener('change', (e) => commit(t => {
+          t.serverId = e.target.value;
+          const firstChannel = (patchyData.textChannelsByServer?.[t.serverId] || [])[0];
+          if (firstChannel && !(patchyData.textChannelsByServer?.[t.serverId] || []).some(ch => ch.id === t.channelId)) {
+            t.channelId = firstChannel.id;
+          }
+        }));
+        card.querySelector('.patchy-channel')?.addEventListener('change', (e) => commit(t => { t.channelId = e.target.value; }));
+        card.querySelector('.patchy-roles')?.addEventListener('input', (e) => commit(t => {
+          t.roleIDs = String(e.target.value || '')
+            .split(',')
+            .map(raw => raw.trim())
+            .filter(Boolean);
+        }));
+        card.querySelector('.patchy-test')?.addEventListener('click', async () => {
+          await postJSON('/api/patchy/target/test', { targetID });
+          await loadPatchy();
+          renderPatchyView();
+        });
+        card.querySelector('.patchy-delete')?.addEventListener('click', async () => {
+          await postJSON('/api/patchy/target/delete', { targetID });
+          await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+          renderPatchyView();
+        });
+      });
+    }
+
+    function scheduleWikiSourceSave(source) {
+      const key = source.id;
+      if (wikiSaveTimers[key]) clearTimeout(wikiSaveTimers[key]);
+      wikiSaveTimers[key] = setTimeout(async () => {
+        await postJSON('/api/wikibridge/source/upsert', { source });
+        await loadWikiBridge();
+        if (currentView === 'wikibridge') renderWikiBridgeView();
+      }, 220);
+    }
+
+    function renderWikiBridgeView() {
+      if (!wikiBridgeData) return;
+      const top = document.getElementById('wikiTop');
+      const sourcesNode = document.getElementById('wikiSources');
+      const addButton = document.getElementById('wikiAddSource');
+      if (!top || !sourcesNode || !addButton) return;
+
+      const sources = wikiBridgeData.sources || [];
+      const enabledCount = sources.filter(source => source.enabled).length;
+      const primary = sources.find(source => source.isPrimary);
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">WikiBridge</span>
+          <span class="value">${wikiBridgeData.enabled ? 'Enabled' : 'Disabled'}</span>
+          <label class="switch"><input id="wikiEnabled" type="checkbox" ${wikiBridgeData.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Sources</span>
+          <span class="value">${enabledCount}/${sources.length} enabled</span>
+          <div class="command-desc">Primary: ${primary?.name || 'None'}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Command Endpoints</span>
+          <span class="value">${sources.reduce((sum, source) => sum + (source.commands?.length || 0), 0)}</span>
+          <div class="command-desc">Across all configured sources</div>
+        </div>
+      `;
+      top.querySelector('#wikiEnabled')?.addEventListener('change', async (e) => {
+        await postJSON('/api/wikibridge/state', { enabled: e.target.checked });
+        await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
+        renderWikiBridgeView();
+      });
+
+      addButton.onclick = async () => {
+        await postJSON('/api/wikibridge/source/new', {});
+        await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
+        renderWikiBridgeView();
+      };
+
+      sourcesNode.innerHTML = sources.map(source => `
+        <article class="wiki-source-card" data-wiki-id="${source.id}">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <div class="command-name"><span class="ms">${source.isPrimary ? 'star' : 'book_2'}</span> ${source.name || 'Wiki Source'}</div>
+            <label class="switch"><input class="wiki-enabled" type="checkbox" ${source.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          </div>
+          <div class="wiki-row">
+            <label class="wiki-kv">Name
+              <input class="field-input wiki-name" value="${(source.name || '').replaceAll('"', '&quot;')}">
+            </label>
+            <label class="wiki-kv">Base URL
+              <input class="field-input wiki-base" value="${(source.baseURL || '').replaceAll('"', '&quot;')}">
+            </label>
+            <label class="wiki-kv">API Path
+              <input class="field-input wiki-api" value="${(source.apiPath || '').replaceAll('"', '&quot;')}">
+            </label>
+          </div>
+          <div class="wiki-row">
+            <div class="wiki-kv">Commands<br><strong>${(source.commands || []).length}</strong></div>
+            <div class="wiki-kv">Parsing Rules<br><strong>${(source.parsingRules || []).length}</strong></div>
+            <div class="wiki-kv">Last Status<br><strong>${source.lastStatus || 'Never used'}</strong></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+            ${source.isPrimary ? '' : '<button class="mini-btn wiki-primary" type="button"><span class="ms">star</span> Set Primary</button>'}
+            <button class="mini-btn wiki-test" type="button"><span class="ms">science</span> Test</button>
+            <button class="mini-btn wiki-delete" type="button"><span class="ms">delete</span> Delete</button>
+          </div>
+        </article>
+      `).join('') || `<div class="placeholder">No WikiBridge sources configured.</div>`;
+
+      sourcesNode.querySelectorAll('[data-wiki-id]').forEach(card => {
+        const sourceID = card.dataset.wikiId;
+        const source = sources.find(item => item.id === sourceID);
+        if (!source) return;
+        const commit = (mutator) => {
+          const next = structuredClone(source);
+          mutator(next);
+          scheduleWikiSourceSave(next);
+        };
+
+        card.querySelector('.wiki-enabled')?.addEventListener('change', async (e) => {
+          await postJSON('/api/wikibridge/source/toggle', { targetID: sourceID, enabled: e.target.checked });
+          await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
+          renderWikiBridgeView();
+        });
+        card.querySelector('.wiki-name')?.addEventListener('input', (e) => commit(s => { s.name = e.target.value; }));
+        card.querySelector('.wiki-base')?.addEventListener('input', (e) => commit(s => { s.baseURL = e.target.value; }));
+        card.querySelector('.wiki-api')?.addEventListener('input', (e) => commit(s => { s.apiPath = e.target.value; }));
+        card.querySelector('.wiki-primary')?.addEventListener('click', async () => {
+          await postJSON('/api/wikibridge/source/primary', { sourceID });
+          await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
+          renderWikiBridgeView();
+        });
+        card.querySelector('.wiki-test')?.addEventListener('click', async () => {
+          await postJSON('/api/wikibridge/source/test', { sourceID });
+          await loadWikiBridge();
+          renderWikiBridgeView();
+        });
+        card.querySelector('.wiki-delete')?.addEventListener('click', async () => {
+          await postJSON('/api/wikibridge/source/delete', { sourceID });
+          await Promise.all([loadWikiBridge(), loadConfig(), loadOverview()]);
+          renderWikiBridgeView();
+        });
+      });
+    }
+
+    function renderSettingsView() {
+      if (!dashboardConfig || !dashboardStatus) return;
+      const top = document.getElementById('settingsTop');
+      const panels = document.getElementById('settingsPanels');
+      if (!top || !panels) return;
+      const cfg = dashboardConfig;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Auto Start</span>
+          <span class="value">${cfg.general.autoStart ? 'Enabled' : 'Disabled'}</span>
+          <label class="switch"><input id="setAutoStart" type="checkbox" ${cfg.general.autoStart ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">AI Provider</span>
+          <span class="value">${cfg.aiBots.preferredProvider || 'apple'}</span>
+          <div class="command-desc">Primary provider for replies</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Web UI URL</span>
+          <span class="value">${dashboardStatus.webUIBaseURL || '-'}</span>
+          <div class="command-desc">Local admin endpoint</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">terminal</span> Commands</div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Command System</div><div class="desc">Master switch for all command handling.</div></div><label class="switch"><input id="setCmdEnabled" type="checkbox" ${cfg.commands.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Prefix Commands</div><div class="desc">Allow legacy prefix commands.</div></div><label class="switch"><input id="setCmdPrefix" type="checkbox" ${cfg.commands.prefixEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Slash Commands</div><div class="desc">Allow Discord slash command UI.</div></div><label class="switch"><input id="setCmdSlash" type="checkbox" ${cfg.commands.slashEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Bug Tracking</div><div class="desc">Allow mention-based bug capture flow.</div></div><label class="switch"><input id="setCmdBug" type="checkbox" ${cfg.commands.bugTrackingEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+        </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">smart_toy</span> AI Bots</div>
+          <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.aiBots.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable OpenAI</div><div class="desc">Allow OpenAI provider for responses.</div></div><label class="switch"><input id="setAiOpenAI" type="checkbox" ${cfg.aiBots.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable OpenAI Images</div><div class="desc">Allow image generation fallback.</div></div><label class="switch"><input id="setAiImages" type="checkbox" ${cfg.aiBots.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Provider</label><select id="setAiProvider" class="field-select"><option value="apple" ${cfg.aiBots.preferredProvider === 'apple' ? 'selected' : ''}>Apple</option><option value="ollama" ${cfg.aiBots.preferredProvider === 'ollama' ? 'selected' : ''}>Ollama</option><option value="openAI" ${cfg.aiBots.preferredProvider === 'openAI' ? 'selected' : ''}>OpenAI</option></select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Model</label><input id="setAiModel" class="field-input" value="${(cfg.aiBots.openAIModel || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Image Limit / User</label><input id="setAiImageLimit" class="field-input" type="number" min="0" value="${cfg.aiBots.openAIImageMonthlyLimitPerUser}"></div>
+        </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">hub</span> SwiftMesh</div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="setMeshMode" class="field-select"><option value="Standalone" ${cfg.swiftMesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${cfg.swiftMesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${cfg.swiftMesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${cfg.swiftMesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="setMeshNode" class="field-input" value="${(cfg.swiftMesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="setMeshLeader" class="field-input" value="${(cfg.swiftMesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="setMeshPort" class="field-input" type="number" min="1" value="${cfg.swiftMesh.listenPort || 0}"></div>
+          <button id="setMeshSave" class="mini-btn" type="button"><span class="ms">save</span> Save SwiftMesh</button>
+        </section>
+
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">extension</span> Integrations</div>
+          <div class="setting-row"><div class="left"><div class="title">Enable WikiBridge</div><div class="desc">Allow wiki lookups and source routing.</div></div><label class="switch"><input id="setWikiEnabled" type="checkbox" ${cfg.wikiBridge.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Patchy Monitoring</div><div class="desc">Run scheduled Patchy update checks.</div></div><label class="switch"><input id="setPatchyEnabled" type="checkbox" ${cfg.patchy.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="info-row"><span class="label">Wiki Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
+          <div class="info-row"><span class="label">Patchy Targets</span><span class="value">${cfg.patchy.enabledTargets}/${cfg.patchy.totalTargets}</span></div>
+        </section>
+      `;
+
+      top.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
+      panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked }));
+      panels.querySelector('#setCmdPrefix')?.addEventListener('change', e => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
+      panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+      panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
+      panels.querySelector('#setAiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+      panels.querySelector('#setAiOpenAI')?.addEventListener('change', e => saveConfigPatch({ openAIEnabled: e.target.checked }));
+      panels.querySelector('#setAiImages')?.addEventListener('change', e => saveConfigPatch({ openAIImageGenerationEnabled: e.target.checked }));
+      panels.querySelector('#setAiProvider')?.addEventListener('change', e => saveConfigPatch({ preferredAIProvider: e.target.value }));
+      panels.querySelector('#setAiModel')?.addEventListener('blur', e => saveConfigPatch({ openAIModel: e.target.value }));
+      panels.querySelector('#setAiImageLimit')?.addEventListener('change', e => saveConfigPatch({ openAIImageMonthlyLimitPerUser: Number(e.target.value || 0) }));
+      panels.querySelector('#setWikiEnabled')?.addEventListener('change', e => saveConfigPatch({ wikiBridgeEnabled: e.target.checked }));
+      panels.querySelector('#setPatchyEnabled')?.addEventListener('change', e => saveConfigPatch({ patchyMonitoringEnabled: e.target.checked }));
+      panels.querySelector('#setMeshSave')?.addEventListener('click', () => {
+        saveConfigPatch({
+          clusterMode: panels.querySelector('#setMeshMode')?.value || 'Standalone',
+          clusterNodeName: panels.querySelector('#setMeshNode')?.value || '',
+          clusterLeaderAddress: panels.querySelector('#setMeshLeader')?.value || '',
+          clusterListenPort: Number(panels.querySelector('#setMeshPort')?.value || 0)
+        });
+      });
+    }
+
+    function renderDiagnosticsView() {
+      if (!dashboardStatus || !dashboardOverview || !dashboardConfig) return;
+      const top = document.getElementById('diagnosticsTop');
+      const panels = document.getElementById('diagnosticsPanels');
+      if (!top || !panels) return;
+      const status = dashboardStatus;
+      const overview = dashboardOverview;
+      const cfg = dashboardConfig;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Bot State</span>
+          <span class="value">${status.botStatus}</span>
+          <div class="command-desc">Username: ${status.botUsername}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Connectivity</span>
+          <span class="value">${status.connectedServerCount} servers</span>
+          <div class="command-desc">${status.gatewayEventCount} gateway events</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Uptime</span>
+          <span class="value">${status.uptimeText || '--'}</span>
+          <div class="command-desc">Errors: ${overview.botInfo?.errors ?? 0}</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">hub</span> Cluster</div>
+          <div class="info-list" id="diagClusterInfo"></div>
+          <div class="detail-actions"><button id="diagMeshRefresh" class="secondary-action" type="button">Refresh SwiftMesh</button></div>
+        </section>
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">smart_toy</span> Bot Info</div>
+          <div class="info-list" id="diagBotInfo"></div>
+        </section>
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">record_voice_over</span> Recent Voice</div>
+          <div class="event-list" id="diagVoice"></div>
+        </section>
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">terminal</span> Recent Commands</div>
+          <div class="event-list" id="diagCommands"></div>
+        </section>
+      `;
+
+      renderInfoRows('diagClusterInfo', [
+        { label: 'Mode', value: overview.cluster.mode },
+        { label: 'Connected Nodes', value: String(overview.cluster.connectedNodes) },
+        { label: 'Leader', value: overview.cluster.leader || '-' },
+        { label: 'Configured Mode', value: cfg.swiftMesh.mode || '-' }
+      ]);
+      renderInfoRows('diagBotInfo', [
+        { label: 'State', value: overview.botInfo.state },
+        { label: 'Uptime', value: overview.botInfo.uptime },
+        { label: 'Errors', value: String(overview.botInfo.errors) },
+        { label: 'Web UI', value: status.webUIBaseURL || '-' }
+      ]);
+      renderEvents('diagVoice', overview.recentVoice || [], 'No recent voice activity', item => `
+        <div class="event-item ok">
+          <div class="event-title">${item.description}</div>
+          <div class="event-time">${item.timeText}</div>
+        </div>
+      `);
+      renderEvents('diagCommands', overview.recentCommands || [], 'No recent command activity', item => `
+        <div class="event-item ${item.ok ? 'ok' : 'error'}">
+          <div class="event-title">${item.title}</div>
+          <div class="event-time">${item.timeText}</div>
+        </div>
+      `);
+
+      panels.querySelector('#diagMeshRefresh')?.addEventListener('click', async () => {
+        await postJSON('/api/swiftmesh/refresh', {});
+        await Promise.all([loadOverview(), loadStatus(), loadConfig()]);
+        renderDiagnosticsView();
+      });
+    }
+
+    function renderAIBotsView() {
+      if (!dashboardConfig || !dashboardStatus || !dashboardOverview) return;
+      const top = document.getElementById('aibotsTop');
+      const panels = document.getElementById('aibotsPanels');
+      if (!top || !panels) return;
+      const cfg = dashboardConfig.aiBots;
+      const metrics = dashboardOverview.metrics || [];
+      const aiMetric = metrics.find(item => (item.title || '').toLowerCase().includes('ai'));
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Primary Provider</span>
+          <span class="value">${cfg.preferredProvider || 'apple'}</span>
+          <div class="command-desc">Current routing preference</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">OpenAI</span>
+          <span class="value">${cfg.openAIEnabled ? 'Enabled' : 'Disabled'}</span>
+          <div class="command-desc">${cfg.openAIModel || 'No model set'}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Session</span>
+          <span class="value">${aiMetric?.value || 'Live'}</span>
+          <div class="command-desc">${dashboardStatus.botUsername}</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">tune</span> Runtime</div>
+          <div class="setting-row"><div class="left"><div class="title">DM AI Replies</div><div class="desc">Automatically reply in direct messages.</div></div><label class="switch"><input id="aiDm" type="checkbox" ${cfg.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">OpenAI Provider</div><div class="desc">Enable OpenAI fallback and direct use.</div></div><label class="switch"><input id="aiOpenAI" type="checkbox" ${cfg.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">OpenAI Images</div><div class="desc">Allow image generation requests.</div></div><label class="switch"><input id="aiImages" type="checkbox" ${cfg.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+        </section>
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">model_training</span> Model Settings</div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Preferred Provider</label><select id="aiProvider" class="field-select"><option value="apple" ${cfg.preferredProvider === 'apple' ? 'selected' : ''}>Apple</option><option value="ollama" ${cfg.preferredProvider === 'ollama' ? 'selected' : ''}>Ollama</option><option value="openAI" ${cfg.preferredProvider === 'openAI' ? 'selected' : ''}>OpenAI</option></select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">OpenAI Model</label><input id="aiModel" class="field-input" value="${(cfg.openAIModel || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Image Limit / User</label><input id="aiImageLimit" class="field-input" type="number" min="0" value="${cfg.openAIImageMonthlyLimitPerUser}"></div>
+        </section>
+      `;
+
+      panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+      panels.querySelector('#aiOpenAI')?.addEventListener('change', e => saveConfigPatch({ openAIEnabled: e.target.checked }));
+      panels.querySelector('#aiImages')?.addEventListener('change', e => saveConfigPatch({ openAIImageGenerationEnabled: e.target.checked }));
+      panels.querySelector('#aiProvider')?.addEventListener('change', e => saveConfigPatch({ preferredAIProvider: e.target.value }));
+      panels.querySelector('#aiModel')?.addEventListener('blur', e => saveConfigPatch({ openAIModel: e.target.value }));
+      panels.querySelector('#aiImageLimit')?.addEventListener('change', e => saveConfigPatch({ openAIImageMonthlyLimitPerUser: Number(e.target.value || 0) }));
+    }
+
+    function renderLogsView() {
+      if (!dashboardOverview || !dashboardStatus) return;
+      const top = document.getElementById('logsTop');
+      const panels = document.getElementById('logsPanels');
+      if (!top || !panels) return;
+      const recentCommands = dashboardOverview.recentCommands || [];
+      const recentVoice = dashboardOverview.recentVoice || [];
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Recent Commands</span>
+          <span class="value">${recentCommands.length}</span>
+          <div class="command-desc">Current snapshot window</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Recent Voice Events</span>
+          <span class="value">${recentVoice.length}</span>
+          <div class="command-desc">Current snapshot window</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Gateway Events</span>
+          <span class="value">${dashboardStatus.gatewayEventCount}</span>
+          <div class="command-desc">Since current runtime start</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">terminal</span> Command Log</div>
+          <div class="event-list" id="logsCommands"></div>
+        </section>
+        <section class="diagnostics-panel glass">
+          <div class="panel-title"><span class="ms">record_voice_over</span> Voice Log</div>
+          <div class="event-list" id="logsVoice"></div>
+        </section>
+      `;
+
+      renderEvents('logsCommands', recentCommands, 'No recent command activity', item => `
+        <div class="event-item ${item.ok ? 'ok' : 'error'}">
+          <div class="event-title">${item.title}</div>
+          <div class="event-time">${item.timeText}</div>
+        </div>
+      `);
+      renderEvents('logsVoice', recentVoice, 'No recent voice activity', item => `
+        <div class="event-item ok">
+          <div class="event-title">${item.description}</div>
+          <div class="event-time">${item.timeText}</div>
+        </div>
+      `);
+    }
+
+    function renderSwiftMeshView() {
+      if (!dashboardOverview || !dashboardConfig || !dashboardStatus) return;
+      const top = document.getElementById('swiftmeshTop');
+      const panels = document.getElementById('swiftmeshPanels');
+      if (!top || !panels) return;
+      const mesh = dashboardConfig.swiftMesh;
+      const cluster = dashboardOverview.cluster;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Cluster Mode</span>
+          <span class="value">${mesh.mode || 'Standalone'}</span>
+          <div class="command-desc">Configured local role</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Connected Nodes</span>
+          <span class="value">${cluster.connectedNodes || 0}</span>
+          <div class="command-desc">Leader: ${cluster.leader || '-'}</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Gateway Health</span>
+          <span class="value">${dashboardStatus.gatewayEventCount} events</span>
+          <div class="command-desc">${dashboardStatus.botStatus}</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">hub</span> Node Configuration</div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${mesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${(mesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="meshLeader" class="field-input" value="${(mesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="meshPort" class="field-input" type="number" min="1" value="${mesh.listenPort || 0}"></div>
+          <div style="display:flex;gap:8px;">
+            <button id="meshSave" class="mini-btn" type="button"><span class="ms">save</span> Save</button>
+            <button id="meshRefresh" class="mini-btn" type="button"><span class="ms">refresh</span> Refresh</button>
+          </div>
+        </section>
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">monitoring</span> Runtime</div>
+          <div class="info-row"><span class="label">Leader</span><span class="value">${cluster.leader || '-'}</span></div>
+          <div class="info-row"><span class="label">Connected Nodes</span><span class="value">${cluster.connectedNodes || 0}</span></div>
+          <div class="info-row"><span class="label">Mode</span><span class="value">${cluster.mode || '-'}</span></div>
+        </section>
+      `;
+
+      panels.querySelector('#meshSave')?.addEventListener('click', () => {
+        saveConfigPatch({
+          clusterMode: panels.querySelector('#meshMode')?.value || 'Standalone',
+          clusterNodeName: panels.querySelector('#meshNode')?.value || '',
+          clusterLeaderAddress: panels.querySelector('#meshLeader')?.value || '',
+          clusterListenPort: Number(panels.querySelector('#meshPort')?.value || 0)
+        });
+      });
+      panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
+        await postJSON('/api/swiftmesh/refresh', {});
+        await Promise.all([loadOverview(), loadConfig(), loadStatus()]);
+        renderSwiftMeshView();
+      });
+    }
+
+    function renderUserPrefsView() {
+      if (!currentUser) return;
+      const top = document.getElementById('userPrefsTop');
+      const panels = document.getElementById('userPrefsPanels');
+      if (!top || !panels) return;
+      const display = currentUser.globalName || currentUser.username || 'Discord User';
+      const handle = currentUser.discriminator && currentUser.discriminator !== '0'
+        ? `${currentUser.username || 'user'}#${currentUser.discriminator}`
+        : `@${currentUser.username || 'user'}`;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Display Name</span>
+          <span class="value">${display}</span>
+          <div class="command-desc">WebUI profile</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Username</span>
+          <span class="value">${handle}</span>
+          <div class="command-desc">Discord account handle</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Theme</span>
+          <span class="value">${userPrefs.theme === 'auto' ? 'System' : userPrefs.theme[0].toUpperCase() + userPrefs.theme.slice(1)}</span>
+          <div class="command-desc">Per-user preference</div>
+        </div>
+      `;
+
+      panels.innerHTML = `
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">palette</span> Appearance</div>
+          <div class="setting-inline">
+            <label class="field-label" style="margin:0;">Theme</label>
+            <select id="prefsTheme" class="field-select">
+              <option value="auto" ${userPrefs.theme === 'auto' ? 'selected' : ''}>System</option>
+              <option value="light" ${userPrefs.theme === 'light' ? 'selected' : ''}>Light</option>
+              <option value="dark" ${userPrefs.theme === 'dark' ? 'selected' : ''}>Dark</option>
+            </select>
+          </div>
+          <div class="setting-row"><div class="left"><div class="title">Background Animation</div><div class="desc">Show animated symbols behind content.</div></div><label class="switch"><input id="prefsBgAnimation" type="checkbox" ${userPrefs.backgroundAnimation ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-inline">
+            <label class="field-label" style="margin:0;">Background Opacity</label>
+            <input id="prefsBgOpacity" class="field-input" type="range" min="0" max="100" step="1" value="${Math.round((userPrefs.backgroundOpacity ?? 0.72) * 100)}">
+          </div>
+          <div class="setting-row"><div class="left"><div class="title">Compact Density</div><div class="desc">Use denser spacing for cards and rows.</div></div><label class="switch"><input id="prefsCompact" type="checkbox" ${userPrefs.compactMode ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+        </section>
+        <section class="settings-panel glass">
+          <div class="panel-title"><span class="ms">settings_backup_restore</span> Behavior</div>
+          <div class="setting-row"><div class="left"><div class="title">Remember Last Tab</div><div class="desc">Re-open the last selected page on next sign-in.</div></div><label class="switch"><input id="prefsRememberTab" type="checkbox" ${userPrefs.rememberLastTab ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Reset Preferences</div><div class="desc">Restore WebUI preferences for this user.</div></div><button id="prefsReset" class="mini-btn" type="button"><span class="ms">restart_alt</span> Reset</button></div>
+          <div class="setting-row"><div class="left"><div class="title">Session</div><div class="desc">Sign out of this WebUI session.</div></div><button id="prefsLogout" class="mini-btn" type="button"><span class="ms">logout</span> Log out</button></div>
+        </section>
+      `;
+
+      panels.querySelector('#prefsTheme')?.addEventListener('change', e => {
+        userPrefs.theme = e.target.value;
+        saveUserPrefs();
+        applyUserPrefs();
+        renderUserPrefsView();
+      });
+      panels.querySelector('#prefsBgAnimation')?.addEventListener('change', e => {
+        userPrefs.backgroundAnimation = e.target.checked;
+        saveUserPrefs();
+        applyUserPrefs();
+      });
+      panels.querySelector('#prefsBgOpacity')?.addEventListener('input', e => {
+        userPrefs.backgroundOpacity = Math.max(0, Math.min(1, Number(e.target.value || 72) / 100));
+        saveUserPrefs();
+        applyUserPrefs();
+      });
+      panels.querySelector('#prefsCompact')?.addEventListener('change', e => {
+        userPrefs.compactMode = e.target.checked;
+        saveUserPrefs();
+        applyUserPrefs();
+      });
+      panels.querySelector('#prefsRememberTab')?.addEventListener('change', e => {
+        userPrefs.rememberLastTab = e.target.checked;
+        saveUserPrefs();
+      });
+      panels.querySelector('#prefsReset')?.addEventListener('click', () => {
+        userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+        saveUserPrefs();
+        applyUserPrefs();
+        renderUserPrefsView();
+      });
+      panels.querySelector('#prefsLogout')?.addEventListener('click', logout);
+    }
+
+    const viewCopy = {
+      commands: {
+        title: 'Commands',
+        icon: 'terminal',
+        copy: 'Manage command system toggles and prefix behavior.',
+        primaryTitle: 'Command Status',
+        secondaryTitle: 'Configuration',
+        eventsTitle: 'Recent Commands'
+      },
+      actions: {
+        title: 'Actions',
+        icon: 'rule',
+        copy: 'Actions configuration is currently read-only on WebUI.',
+        primaryTitle: 'Action Engine',
+        secondaryTitle: 'Runtime',
+        eventsTitle: 'Recent Commands'
+      },
+      patchy: {
+        title: 'Patchy',
+        icon: 'construction',
+        copy: 'Patch monitoring status with runtime enable/disable.',
+        primaryTitle: 'Patchy Status',
+        secondaryTitle: 'Monitoring',
+        eventsTitle: 'Recent Commands'
+      },
+      wikibridge: {
+        title: 'WikiBridge',
+        icon: 'menu_book',
+        copy: 'WikiBridge status and source controls.',
+        primaryTitle: 'WikiBridge',
+        secondaryTitle: 'Source Status',
+        eventsTitle: 'Recent Commands'
+      },
+      aibots: {
+        title: 'AI Bots',
+        icon: 'smart_toy',
+        copy: 'Provider runtime and key AI settings.',
+        primaryTitle: 'AI Runtime',
+        secondaryTitle: 'Provider',
+        eventsTitle: 'Recent Commands'
+      },
+      settings: {
+        title: 'Settings',
+        icon: 'settings',
+        copy: 'General app and startup configuration.',
+        primaryTitle: 'General Settings',
+        secondaryTitle: 'Web UI',
+        eventsTitle: 'Recent Commands'
+      },
+      diagnostics: {
+        title: 'Diagnostics',
+        icon: 'monitoring',
+        copy: 'Live diagnostics snapshot for connectivity and uptime.',
+        primaryTitle: 'Connection Health',
+        secondaryTitle: 'Bot Health',
+        eventsTitle: 'Recent Voice'
+      },
+      logs: {
+        title: 'Logs',
+        icon: 'history',
+        copy: 'Recent runtime activity from commands and voice.',
+        primaryTitle: 'Commands',
+        secondaryTitle: 'Voice',
+        eventsTitle: 'Recent Commands'
+      },
+      swiftmesh: {
+        title: 'SwiftMesh',
+        icon: 'hub',
+        copy: 'Cluster node and routing status with live refresh.',
+        primaryTitle: 'Mesh Status',
+        secondaryTitle: 'Routing',
+        eventsTitle: 'Recent Voice'
+      }
+    };
+
+    function metricLookup(label, fallback = '-') {
+      const metrics = dashboardOverview?.metrics || [];
+      const needle = (label || '').toLowerCase();
+      const hit = metrics.find(item => (item.title || '').toLowerCase().includes(needle));
+      return hit?.value || fallback;
+    }
+
+    function renderSectionView(view) {
+      const selected = viewCopy[view];
+      if (!selected || !dashboardStatus || !dashboardOverview || !dashboardConfig) return;
+
+      const status = dashboardStatus;
+      const overview = dashboardOverview;
+      const settings = dashboardSettings || { prefix: '/' };
+      const config = dashboardConfig;
+      const recentCommands = overview.recentCommands || [];
+      const recentVoice = overview.recentVoice || [];
+
+      let primaryRows = [];
+      let secondaryRows = [];
+      let events = recentCommands;
+      let emptyText = 'No recent activity';
+      let formatter = item => `
+        <div class="event-item ${item.ok ? 'ok' : 'error'}">
+          <div class="event-title">${item.title}</div>
+          <div class="event-time">${item.timeText}</div>
+        </div>
+      `;
+
+      switch (view) {
+        case 'commands':
+          primaryRows = [
+            { label: 'System Enabled', value: config.commands.enabled ? 'On' : 'Off' },
+            { label: 'Prefix Commands', value: config.commands.prefixEnabled ? 'On' : 'Off' },
+            { label: 'Slash Commands', value: config.commands.slashEnabled ? 'On' : 'Off' },
+            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' }
+          ];
+          secondaryRows = [
+            { label: 'Prefix', value: settings.prefix || '/' },
+            { label: 'Commands Run', value: metricLookup('Commands Run') }
+          ];
+          break;
+        case 'actions':
+          primaryRows = [
+            { label: 'Active Rules', value: metricLookup('Active Actions') },
+            { label: 'Bot State', value: status.botStatus }
+          ];
+          secondaryRows = [
+            { label: 'Commands (session)', value: metricLookup('Commands Run') },
+            { label: 'Errors', value: String(overview.botInfo?.errors ?? 0) }
+          ];
+          break;
+        case 'patchy':
+          primaryRows = [
+            { label: 'Monitoring', value: config.patchy.monitoringEnabled ? 'On' : 'Off' },
+            { label: 'Targets', value: `${config.patchy.enabledTargets}/${config.patchy.totalTargets}` }
+          ];
+          secondaryRows = [
+            { label: 'Servers Connected', value: String(status.connectedServerCount) },
+            { label: 'Gateway Events', value: String(status.gatewayEventCount) }
+          ];
+          break;
+        case 'wikibridge':
+          primaryRows = [
+            { label: 'WikiBridge', value: config.wikiBridge.enabled ? 'Enabled' : 'Disabled' },
+            { label: 'Sources', value: `${config.wikiBridge.enabledSources}/${config.wikiBridge.totalSources}` }
+          ];
+          secondaryRows = [
+            { label: 'Commands Run', value: metricLookup('Commands Run') },
+            { label: 'Servers Connected', value: String(status.connectedServerCount) }
+          ];
+          break;
+        case 'aibots':
+          primaryRows = [
+            { label: 'Primary', value: config.aiBots.preferredProvider },
+            { label: 'DM Replies', value: config.aiBots.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' },
+            { label: 'OpenAI', value: config.aiBots.openAIEnabled ? 'Enabled' : 'Disabled' }
+          ];
+          secondaryRows = [
+            { label: 'OpenAI Model', value: config.aiBots.openAIModel || '-' },
+            { label: 'Image Limit / User', value: String(config.aiBots.openAIImageMonthlyLimitPerUser) }
+          ];
+          break;
+        case 'settings':
+          primaryRows = [
+            { label: 'Auto Start', value: config.general.autoStart ? 'On' : 'Off' },
+            { label: 'Command Prefix', value: settings.prefix || '/' },
+            { label: 'Web UI URL', value: status.webUIBaseURL || '-' }
+          ];
+          secondaryRows = [
+            { label: 'Bot Username', value: status.botUsername },
+            { label: 'Uptime', value: status.uptimeText || '--' }
+          ];
+          break;
+        case 'diagnostics':
+          primaryRows = [
+            { label: 'Bot State', value: status.botStatus },
+            { label: 'Gateway Events', value: String(status.gatewayEventCount) },
+            { label: 'Servers Connected', value: String(status.connectedServerCount) }
+          ];
+          secondaryRows = [
+            { label: 'Uptime', value: status.uptimeText || '--' },
+            { label: 'Errors', value: String(overview.botInfo?.errors ?? 0) },
+            { label: 'Cluster Mode', value: overview.cluster?.mode || 'standalone' }
+          ];
+          events = recentVoice;
+          emptyText = 'No recent voice activity';
+          formatter = item => `
+            <div class="event-item ok">
+              <div class="event-title">${item.description}</div>
+              <div class="event-time">${item.timeText}</div>
+            </div>
+          `;
+          break;
+        case 'logs':
+          primaryRows = [
+            { label: 'Recent Commands', value: String(recentCommands.length) },
+            { label: 'Recent Voice Events', value: String(recentVoice.length) }
+          ];
+          secondaryRows = [
+            { label: 'Gateway Events', value: String(status.gatewayEventCount) },
+            { label: 'Errors', value: String(overview.botInfo?.errors ?? 0) }
+          ];
+          break;
+        case 'swiftmesh':
+          primaryRows = [
+            { label: 'Cluster Mode', value: config.swiftMesh.mode || 'Standalone' },
+            { label: 'Connected Nodes', value: String(overview.cluster?.connectedNodes || 0) },
+            { label: 'Leader', value: overview.cluster?.leader || '-' }
+          ];
+          secondaryRows = [
+            { label: 'Node Name', value: config.swiftMesh.nodeName || '-' },
+            { label: 'Listen Port', value: String(config.swiftMesh.listenPort || 0) },
+            { label: 'Leader Address', value: config.swiftMesh.leaderAddress || '-' }
+          ];
+          events = recentVoice;
+          emptyText = 'No recent voice activity';
+          formatter = item => `
+            <div class="event-item ok">
+              <div class="event-title">${item.description}</div>
+              <div class="event-time">${item.timeText}</div>
+            </div>
+          `;
+          break;
+        default:
+          primaryRows = [{ label: 'Status', value: status.botStatus }];
+          secondaryRows = [{ label: 'Servers', value: String(status.connectedServerCount) }];
+      }
+
+      document.getElementById('sectionLabel').innerHTML = `<span class="ms" style="font-size:14px;">${selected.icon}</span>${selected.title}`;
+      document.getElementById('sectionTitle').textContent = selected.title;
+      document.getElementById('sectionCopy').textContent = selected.copy;
+      document.getElementById('sectionPrimaryTitle').textContent = selected.primaryTitle;
+      document.getElementById('sectionSecondaryTitle').textContent = selected.secondaryTitle;
+      document.getElementById('sectionEventsTitle').textContent = selected.eventsTitle;
+      renderInfoRows('sectionPrimaryInfo', primaryRows);
+      renderInfoRows('sectionSecondaryInfo', secondaryRows);
+      renderEvents('sectionEvents', events, emptyText, formatter);
+      renderSectionControls(view, config);
+    }
+
+    function renderSectionControls(view, config) {
+      const eventsNode = document.getElementById('sectionEvents');
+      if (!eventsNode) return;
+      const controls = document.createElement('div');
+      controls.className = 'control-group';
+
+      if (view === 'commands') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Enable Command System</span><input id="cfgCommandsEnabled" type="checkbox" ${config.commands.enabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable Prefix Commands</span><input id="cfgPrefixEnabled" type="checkbox" ${config.commands.prefixEnabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable Slash Commands</span><input id="cfgSlashEnabled" type="checkbox" ${config.commands.slashEnabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable Bug Tracking</span><input id="cfgBugEnabled" type="checkbox" ${config.commands.bugTrackingEnabled ? 'checked' : ''}></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#cfgCommandsEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
+        controls.querySelector('#cfgPrefixEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
+        controls.querySelector('#cfgSlashEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
+        controls.querySelector('#cfgBugEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
+      } else if (view === 'patchy') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Enable Patchy Monitoring</span><input id="cfgPatchyEnabled" type="checkbox" ${config.patchy.monitoringEnabled ? 'checked' : ''}></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#cfgPatchyEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ patchyMonitoringEnabled: e.target.checked }));
+      } else if (view === 'wikibridge') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Enable WikiBridge</span><input id="cfgWikiEnabled" type="checkbox" ${config.wikiBridge.enabled ? 'checked' : ''}></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#cfgWikiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ wikiBridgeEnabled: e.target.checked }));
+      } else if (view === 'settings') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Auto Start Bot</span><input id="cfgAutoStart" type="checkbox" ${config.general.autoStart ? 'checked' : ''}></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#cfgAutoStart')?.addEventListener('change', async (e) => saveConfigPatch({ autoStart: e.target.checked }));
+      } else if (view === 'swiftmesh') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Refresh SwiftMesh Status</span><button id="meshRefresh" class="secondary-action" type="button">Refresh</button></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#meshRefresh')?.addEventListener('click', async () => {
+          await postJSON('/api/swiftmesh/refresh', {});
+          await Promise.all([loadConfig(), loadOverview(), loadStatus()]);
+          renderSectionView('swiftmesh');
+        });
+      } else if (view === 'aibots') {
+        controls.innerHTML = `
+          <div class="control-row"><span class="control-label">Enable DM AI Replies</span><input id="cfgDmAiEnabled" type="checkbox" ${config.aiBots.localAIDMReplyEnabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable OpenAI</span><input id="cfgOpenAIEnabled" type="checkbox" ${config.aiBots.openAIEnabled ? 'checked' : ''}></div>
+        `;
+        eventsNode.prepend(controls);
+        controls.querySelector('#cfgDmAiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
+        controls.querySelector('#cfgOpenAIEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ openAIEnabled: e.target.checked }));
+      } else if (view === 'actions') {
+        controls.innerHTML = `<div class="placeholder">Actions editing is currently available in the native app. Web parity will follow with rule CRUD and block editing.</div>`;
+        eventsNode.prepend(controls);
+      } else if (view === 'diagnostics' || view === 'logs') {
+        controls.innerHTML = `<div class="placeholder">Read-only runtime feed mirrors native diagnostics/log surfaces.</div>`;
+        eventsNode.prepend(controls);
+      }
+    }
+
     function selectView(view) {
       currentView = view;
       document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.toggle('active', link.dataset.view === view);
       });
+      const overview = document.getElementById('overviewView');
+      const commands = document.getElementById('commandsView');
+      const patchy = document.getElementById('patchyView');
+      const wikibridge = document.getElementById('wikibridgeView');
+      const settings = document.getElementById('settingsView');
+      const diagnostics = document.getElementById('diagnosticsView');
+      const aibots = document.getElementById('aibotsView');
+      const logs = document.getElementById('logsView');
+      const swiftmesh = document.getElementById('swiftmeshView');
+      const userprefs = document.getElementById('userPrefsView');
+      const actions = document.getElementById('actionsView');
+      const section = document.getElementById('sectionView');
+      const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
+      const selected = viewCopy[view];
 
-      if (view !== 'overview') {
-        setMessage(`${view.charAt(0).toUpperCase() + view.slice(1)} mirrors the native nav structure and is not implemented yet in the web UI.`, '');
-      } else {
+      if (view === 'overview') {
+        overview.classList.remove('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Overview';
         setMessage('', '');
+      } else if (view === 'commands') {
+        overview.classList.add('hidden');
+        commands.classList.remove('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderCommandsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Commands';
+        setMessage('', '');
+      } else if (view === 'patchy') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.remove('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderPatchyView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Patchy';
+        setMessage('', '');
+      } else if (view === 'wikibridge') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.remove('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderWikiBridgeView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'WikiBridge';
+        setMessage('', '');
+      } else if (view === 'settings') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.remove('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderSettingsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Settings';
+        setMessage('', '');
+      } else if (view === 'diagnostics') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.remove('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderDiagnosticsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Diagnostics';
+        setMessage('', '');
+      } else if (view === 'aibots') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.remove('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderAIBotsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
+        setMessage('', '');
+      } else if (view === 'logs') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.remove('hidden');
+        swiftmesh.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderLogsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Logs';
+        setMessage('', '');
+      } else if (view === 'swiftmesh') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.remove('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderSwiftMeshView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'SwiftMesh';
+        setMessage('', '');
+      } else if (view === 'userprefs') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.remove('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderUserPrefsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'User Settings';
+        setMessage('', '');
+      } else if (view === 'actions') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.remove('hidden');
+        section.classList.add('hidden');
+        renderActionsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Actions';
+        setMessage('', '');
+      } else {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.remove('hidden');
+        renderSectionView(view);
+        if (mobileSubtitle) mobileSubtitle.textContent = selected?.title ?? view;
+        setMessage('', '');
+      }
+
+      const lastKey = lastViewStorageKey();
+      if (lastKey && userPrefs.rememberLastTab && view !== 'userprefs') {
+        localStorage.setItem(lastKey, view);
       }
 
       const sidebar = document.getElementById('sidebar');
@@ -899,15 +4066,19 @@
     }
 
     async function bootstrap() {
+      buildAnimatedBackground();
       const me = await loadMe();
       if (!me) {
         showAuthScreen();
         return;
       }
+      loadOverviewLayout();
 
       showDashboard();
-      await Promise.all([loadStatus(), loadOverview(), loadSettings()]);
-      selectView('overview');
+      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
+      const allowed = new Set(['overview', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
+      selectView(allowed.has(remembered) ? remembered : 'overview');
     }
 
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -918,35 +4089,58 @@
       document.getElementById('sidebar').classList.toggle('open');
     });
 
+    document.getElementById('sidebarUserSettings')?.addEventListener('click', () => {
+      selectView('userprefs');
+    });
+
     document.getElementById('swiftMeshButton').addEventListener('click', () => {
       selectView('swiftmesh');
     });
 
-    document.getElementById('savePrefix').addEventListener('click', async () => {
-      try {
-        await postJSON('/api/settings/prefix', { prefix: document.getElementById('prefixInput').value });
-        await loadSettings();
-        setMessage('Prefix updated.', 'success');
-      } catch (error) {
-        setMessage(error.message, 'error');
+    document.getElementById('overviewEditToggle')?.addEventListener('click', () => {
+      isOverviewEditing = !isOverviewEditing;
+      const btn = document.getElementById('overviewEditToggle');
+      if (btn) btn.textContent = isOverviewEditing ? 'Done' : 'Edit';
+      if (dashboardOverview) {
+        renderStats(dashboardOverview.metrics || []);
       }
+      renderOverviewPanels();
+      renderOverviewAddList();
     });
 
-    document.getElementById('startBot').addEventListener('click', async () => {
-      try {
-        await postJSON('/api/bot/start', {});
-        await Promise.all([loadStatus(), loadOverview()]);
-        setMessage('Bot start requested.', 'success');
-      } catch (error) {
-        setMessage(error.message, 'error');
-      }
+    document.getElementById('overviewReset')?.addEventListener('click', () => {
+      if (!dashboardOverview) return;
+      overviewLayout = defaultOverviewLayout();
+      normalizeOverviewLayout(dashboardOverview.metrics || []);
+      saveOverviewLayout();
+      renderStats(dashboardOverview.metrics || []);
+      renderOverviewPanels();
+      renderOverviewAddList();
     });
 
-    document.getElementById('stopBot').addEventListener('click', async () => {
+    document.getElementById('overviewAddApply')?.addEventListener('click', () => {
+      const select = document.getElementById('overviewAddSelect');
+      if (!select || !select.value) return;
+      const [kind, rawID] = select.value.split(':');
+      if (kind === 'card') {
+        overviewLayout.cardsHidden = (overviewLayout.cardsHidden || []).filter(id => id !== rawID);
+      } else if (kind === 'panel') {
+        overviewLayout.panelsHidden = (overviewLayout.panelsHidden || []).filter(id => id !== rawID);
+      }
+      saveOverviewLayout();
+      if (dashboardOverview) renderStats(dashboardOverview.metrics || []);
+      renderOverviewPanels();
+      renderOverviewAddList();
+    });
+
+    document.getElementById('toggleBot')?.addEventListener('click', async () => {
       try {
-        await postJSON('/api/bot/stop', {});
-        await Promise.all([loadStatus(), loadOverview()]);
-        setMessage('Bot stop requested.', 'success');
+        const runningStates = ['running', 'connecting', 'reconnecting'];
+        const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
+        await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
+        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+        refreshCurrentView();
+        setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
       } catch (error) {
         setMessage(error.message, 'error');
       }
@@ -955,15 +4149,55 @@
     async function logout() {
       await fetch('/auth/logout', { method: 'POST' });
       csrfToken = null;
+      currentUser = null;
       showAuthScreen();
     }
 
-    document.getElementById('logout').addEventListener('click', logout);
-    document.getElementById('mobileLogout').addEventListener('click', logout);
+    document.getElementById('logout')?.addEventListener('click', logout);
+    document.getElementById('sidebarLogout')?.addEventListener('click', logout);
+    document.getElementById('mobileLogout')?.addEventListener('click', logout);
+
+    function buildAnimatedBackground() {
+      const stream = document.getElementById('bgStream');
+      if (!stream) return;
+      const icons = [
+        'menu_book', 'construction', 'terminal', 'monitoring', 'auto_awesome', 'hub',
+        'dns', 'groups', 'settings_suggest', 'memory', 'handyman', 'bolt',
+        'smart_toy', 'merge', 'update', 'shield'
+      ];
+      const rowStep = 96;
+      const verticalBuffer = 1200;
+      const rows = Math.max(18, Math.ceil((window.innerHeight + verticalBuffer) / rowStep));
+      stream.innerHTML = '';
+
+      for (let row = 0; row < rows; row++) {
+        const line = document.createElement('div');
+        line.className = `bg-row${row % 2 ? ' alt' : ''}`;
+        line.style.top = `${-(verticalBuffer / 2) + row * rowStep}px`;
+        line.style.animationName = row % 2 ? 'driftDiagReverse' : 'driftDiagForward';
+        line.style.animationDuration = `${54 + (row % 6) * 8}s`;
+
+        const stride = [3, 5, 7][row % 3];
+        const offset = (row * 5) % icons.length;
+        for (let i = 0; i < 40; i++) {
+          const iconID = icons[(i * stride + offset) % icons.length];
+          const icon = document.createElement('span');
+          icon.className = 'bg-icon ms';
+          icon.textContent = iconID;
+          line.appendChild(icon);
+        }
+
+        stream.appendChild(line);
+      }
+    }
 
     bootstrap().catch(error => {
       setMessage(error.message, 'error');
       showAuthScreen();
+    });
+
+    window.addEventListener('resize', () => {
+      buildAnimatedBackground();
     });
   </script>
 </body>

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var updater: AppUpdater
     @Binding var showToken: Bool
     @State private var settingsSnapshot = GeneralSettingsSnapshot()
     @State private var showSettingsUpdatedToast = false
@@ -32,13 +33,13 @@ struct GeneralSettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                ViewSectionHeader(title: "Settings", symbol: "gearshape.2.fill")
+        VStack(alignment: .leading, spacing: 12) {
+            ViewSectionHeader(title: "Settings", symbol: "gearshape.2.fill")
 
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Discord Authentication")
-                        .font(.headline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 16) {
+                    sectionTitle("Discord Authentication", symbol: "person.badge.key.fill")
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Bot Token")
@@ -66,11 +67,10 @@ struct GeneralSettingsView: View {
                         .toggleStyle(.switch)
                 }
                 .padding(16)
-                .glassCard(cornerRadius: 22, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
+                .commandCatalogSurface(cornerRadius: 22)
 
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Deployment")
-                        .font(.headline)
+                    sectionTitle("Deployment", symbol: "wrench.and.screwdriver.fill")
 
                     Button {
                         showRunSetupPrompt = true
@@ -90,12 +90,110 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .padding(16)
-                .glassCard(cornerRadius: 22, tint: .white.opacity(0.08), stroke: .white.opacity(0.18))
+                .commandCatalogSurface(cornerRadius: 22)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    sectionTitle("Web UI", symbol: "safari.fill")
+
+                    Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
+                        .toggleStyle(.switch)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Bind Host")
+                            .font(.subheadline.weight(.medium))
+                        TextField("127.0.0.1", text: $app.settings.adminWebUI.bindHost)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Port")
+                            .font(.subheadline.weight(.medium))
+                        Stepper(value: $app.settings.adminWebUI.port, in: 1...65535) {
+                            Text("\(app.settings.adminWebUI.port)")
+                                .font(.body.monospacedDigit())
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Public Base URL (optional)")
+                            .font(.subheadline.weight(.medium))
+                        TextField("https://admin.example.com", text: $app.settings.adminWebUI.publicBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Leave empty to use http://\(app.settings.adminWebUI.bindHost):\(app.settings.adminWebUI.port)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Discord OAuth Client ID")
+                            .font(.subheadline.weight(.medium))
+                        TextField("123456789012345678", text: $app.settings.adminWebUI.discordClientID)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Discord OAuth Client Secret")
+                            .font(.subheadline.weight(.medium))
+                        SecureField("Client Secret", text: $app.settings.adminWebUI.discordClientSecret)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Allowed User IDs")
+                            .font(.subheadline.weight(.medium))
+                        TextField("Comma-separated Discord user IDs", text: Binding(
+                            get: { app.settings.adminWebUI.allowedUserIDs.joined(separator: ", ") },
+                            set: { newValue in
+                                app.settings.adminWebUI.allowedUserIDs = newValue
+                                    .split(separator: ",")
+                                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                    .filter { !$0.isEmpty }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        Text("If empty, only users who are in connected guilds and have Manage Server can log in.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(16)
+                .commandCatalogSurface(cornerRadius: 22)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    sectionTitle("Software Updates", symbol: "arrow.triangle.2.circlepath")
+
+                    HStack(spacing: 8) {
+                        updateChannelOption(.stable)
+                        updateChannelOption(.beta)
+                    }
+
+                    if updater.selectedChannel == .beta {
+                        Label("Beta channel enabled. Updates will come from the beta appcast feed.", systemImage: "flask.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
+                    Button("Check for Updates...") {
+                        updater.checkForUpdates()
+                    }
+                    .buttonStyle(GlassActionButtonStyle())
+                    .disabled(!updater.canCheckForUpdates)
+
+                    if !updater.isConfigured {
+                        Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(16)
+                .commandCatalogSurface(cornerRadius: 22)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
+            }
             .padding(.bottom, 16)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
         .overlay(alignment: .bottomTrailing) {
             if hasUnsavedChanges {
                 StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
@@ -109,6 +207,41 @@ struct GeneralSettingsView: View {
         .onAppear {
             settingsSnapshot = currentSettingsSnapshot
         }
+    }
+
+    @ViewBuilder
+    private func sectionTitle(_ title: String, symbol: String) -> some View {
+        Label {
+            Text(title)
+                .font(.headline)
+        } icon: {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func updateChannelOption(_ channel: AppUpdater.UpdateChannel) -> some View {
+        let isSelected = updater.selectedChannel == channel
+        Button {
+            updater.setUpdateChannel(channel)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: channel.symbolName)
+                Text(channel.label)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isSelected ? .white.opacity(0.42) : .white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
+        )
     }
 }
 
