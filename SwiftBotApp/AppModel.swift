@@ -181,8 +181,12 @@ final class AppModel: ObservableObject {
             await startRateLimitCleanupTask()
 
             var loadedSettings = await store.load()
-            if let loadedMeshSettings = await swiftMeshConfigStore.load() {
+            let loadedMeshSettings = await swiftMeshConfigStore.load()
+            if let loadedMeshSettings {
                 loadedSettings.swiftMeshSettings = loadedMeshSettings
+            } else {
+                // Seed dedicated mesh config once so later synced settings imports can't drift mesh identity.
+                try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
             }
             var migrated = false
 
@@ -2094,9 +2098,15 @@ final class AppModel: ObservableObject {
     }
 
     func reloadSyncedConfigFromDisk() async {
+        // Keep local mesh identity authoritative on this node.
+        let currentLocalMesh = settings.swiftMeshSettings
         var reloaded = await store.load()
-        if let mesh = await swiftMeshConfigStore.load() {
-            reloaded.swiftMeshSettings = mesh
+        let meshFromFile = await swiftMeshConfigStore.load()
+        let effectiveLocalMesh = meshFromFile ?? currentLocalMesh
+        reloaded.swiftMeshSettings = effectiveLocalMesh
+        if meshFromFile == nil {
+            // Self-heal missing mesh file so future reloads remain stable.
+            try? await swiftMeshConfigStore.save(effectiveLocalMesh)
         }
         reloaded.wikiBot.normalizeSources()
         settings = reloaded
@@ -2141,24 +2151,96 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let authHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: Data())
-        guard let localURL = URL(string: "http://127.0.0.1:\(settings.clusterListenPort)/cluster/status"),
-              let response = await clusterStatusService.fetchStatus(from: localURL, headers: authHeaders) else {
-            let graceWindow: TimeInterval = 12
-            if let lastSuccess = lastClusterStatusSuccessAt,
-               Date().timeIntervalSince(lastSuccess) <= graceWindow,
-               !lastGoodClusterNodes.isEmpty {
-                clusterNodes = lastGoodClusterNodes
-            } else {
-                clusterNodes = fallbackClusterNodes()
-            }
+        let emptyBody = Data()
+        let localStatusHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: emptyBody)
+        let localURL = URL(string: "http://127.0.0.1:\(settings.clusterListenPort)/cluster/status")
+
+        if settings.clusterMode == .standby,
+           let remoteNodes = await fetchRemoteLeaderNodesIfAvailable() {
+            clusterNodes = remoteNodes
+            lastGoodClusterNodes = remoteNodes
+            lastClusterStatusSuccessAt = Date()
             return
         }
 
-        let resolvedNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
-        clusterNodes = resolvedNodes
-        lastGoodClusterNodes = resolvedNodes
-        lastClusterStatusSuccessAt = Date()
+        if let localURL,
+           let response = await clusterStatusService.fetchStatus(from: localURL, headers: localStatusHeaders) {
+            let resolvedNodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+            clusterNodes = resolvedNodes
+            lastGoodClusterNodes = resolvedNodes
+            lastClusterStatusSuccessAt = Date()
+            return
+        }
+
+        if (settings.clusterMode == .worker || settings.clusterMode == .standby),
+           let remoteNodes = await fetchRemoteLeaderNodesIfAvailable() {
+            clusterNodes = remoteNodes
+            lastGoodClusterNodes = remoteNodes
+            lastClusterStatusSuccessAt = Date()
+            return
+        }
+
+        let graceWindow: TimeInterval = 12
+        if let lastSuccess = lastClusterStatusSuccessAt,
+           Date().timeIntervalSince(lastSuccess) <= graceWindow,
+           !lastGoodClusterNodes.isEmpty {
+            clusterNodes = lastGoodClusterNodes
+        } else {
+            clusterNodes = fallbackClusterNodes()
+        }
+    }
+
+    private func fetchRemoteLeaderNodesIfAvailable() async -> [ClusterNodeStatus]? {
+        guard let baseURL = normalizedSwiftMeshBaseURL(from: settings.clusterLeaderAddress),
+              let statusURL = URL(string: baseURL.absoluteString + "/cluster/status"),
+              let host = baseURL.host else {
+            return nil
+        }
+
+        let emptyBody = Data()
+        let statusHeaders = await meshStatusAuthHeaders(path: "/cluster/status", method: "GET", body: emptyBody)
+        if let response = await clusterStatusService.fetchStatus(from: statusURL, headers: statusHeaders) {
+            let nodes = response.nodes.isEmpty ? fallbackClusterNodes() : response.nodes
+            return nodes
+        }
+
+        guard let pingURL = URL(string: baseURL.absoluteString + "/cluster/ping") else {
+            return nil
+        }
+        let pingHeaders = await meshStatusAuthHeaders(path: "/cluster/ping", method: "GET", body: emptyBody)
+        guard let ping = await clusterStatusService.fetchPing(from: pingURL, headers: pingHeaders),
+              ping.response.status.caseInsensitiveCompare("ok") == .orderedSame,
+              ping.response.role.caseInsensitiveCompare("leader") == .orderedSame else {
+            return nil
+        }
+
+        var nodes = fallbackClusterNodes()
+        if let leaderIndex = nodes.firstIndex(where: { $0.role == .leader }) {
+            nodes[leaderIndex].status = .healthy
+            nodes[leaderIndex].latencyMs = ping.latencyMs
+            nodes[leaderIndex].displayName = ping.response.node
+            nodes[leaderIndex].hostname = host
+            return nodes
+        }
+
+        nodes.append(
+            ClusterNodeStatus(
+                id: "leader-\(host.lowercased())",
+                hostname: host,
+                displayName: ping.response.node,
+                role: .leader,
+                hardwareModel: "Unknown",
+                cpu: 0,
+                mem: 0,
+                cpuName: "Unknown CPU",
+                physicalMemoryBytes: 0,
+                uptime: 0,
+                latencyMs: ping.latencyMs,
+                status: .healthy,
+                jobsActive: 0
+            )
+        )
+        return nodes
     }
 
     private func meshStatusAuthHeaders(path: String, method: String, body: Data) async -> [String: String] {
@@ -2796,6 +2878,30 @@ actor ClusterStatusPollingService {
                 return nil
             }
             return try decoder.decode(ClusterStatusResponse.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchPing(from endpoint: URL, headers: [String: String] = [:]) async -> (response: SwiftMeshPingResponse, latencyMs: Double)? {
+        do {
+            let startedAt = Date()
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 3
+            for (header, value) in headers {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+
+            let payload = try decoder.decode(SwiftMeshPingResponse.self, from: data)
+            let latencyMs = max(0, Date().timeIntervalSince(startedAt) * 1000)
+            return (payload, latencyMs)
         } catch {
             return nil
         }

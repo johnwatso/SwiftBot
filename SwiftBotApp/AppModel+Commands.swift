@@ -140,6 +140,9 @@ extension AppModel {
             guard await canRunDebugCommand(raw: raw) else {
                 return await send(channelId, "⛔ `\(effectivePrefix())debug` is restricted to server owners or admins.")
             }
+            // Force a fresh mesh snapshot so /debug reflects current reachability,
+            // even if periodic polling is behind.
+            await pollClusterStatus()
             return await sendEmbed(channelId, embed: debugSummaryEmbed())
         case "bugreport":
             return await send(channelId, bugReportText(for: raw))

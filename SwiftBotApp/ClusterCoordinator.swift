@@ -1528,9 +1528,36 @@ actor ClusterCoordinator {
                 snapshot.workerStatusText = "Primary reachable"
                 snapshot.diagnostics = "Fail Over monitoring \(leaderBaseURL) (latency \(Int(remoteStatus.latencyMs)) ms)"
             } else {
-                snapshot.workerState = .degraded
-                snapshot.workerStatusText = "Primary unreachable"
-                snapshot.diagnostics = "Fail Over could not fetch \(leaderBaseURL)/cluster/status"
+                // Fallback: if /cluster/status is unavailable (or incompatible), use /cluster/ping.
+                if let pingLatencyMs = await fetchRemoteLeaderPing(baseURL: leaderBaseURL) {
+                    let host = URL(string: leaderBaseURL)?.host ?? "Primary"
+                    if !nodes.contains(where: { $0.role == .leader }) {
+                        nodes.append(
+                            ClusterNodeStatus(
+                                id: "leader-\(host.lowercased())",
+                                hostname: host,
+                                displayName: host,
+                                role: .leader,
+                                hardwareModel: "Unknown",
+                                cpu: 0,
+                                mem: 0,
+                                cpuName: "Unknown CPU",
+                                physicalMemoryBytes: 0,
+                                uptime: 0,
+                                latencyMs: pingLatencyMs,
+                                status: .healthy,
+                                jobsActive: 0
+                            )
+                        )
+                    }
+                    snapshot.workerState = .connected
+                    snapshot.workerStatusText = "Primary reachable (ping)"
+                    snapshot.diagnostics = "Fail Over /cluster/status unavailable; /cluster/ping OK (\(Int(pingLatencyMs)) ms)"
+                } else {
+                    snapshot.workerState = .degraded
+                    snapshot.workerStatusText = "Primary unreachable"
+                    snapshot.diagnostics = "Fail Over could not fetch \(leaderBaseURL)/cluster/status"
+                }
             }
         }
 
@@ -1647,6 +1674,33 @@ actor ClusterCoordinator {
             let decoded = try decoder.decode(ClusterStatusResponse.self, from: data)
             let latencyMs = max(0, Date().timeIntervalSince(started) * 1000)
             return (decoded, latencyMs)
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchRemoteLeaderPing(baseURL: String) async -> Double? {
+        guard let url = URL(string: baseURL + "/cluster/ping") else {
+            return nil
+        }
+
+        do {
+            let started = Date()
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMeshAuth(to: &request, path: "/cluster/ping")
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            if let payload = try? decoder.decode(ClusterPingResponse.self, from: data) {
+                guard payload.status.caseInsensitiveCompare("ok") == .orderedSame,
+                      payload.role.caseInsensitiveCompare("leader") == .orderedSame else {
+                    return nil
+                }
+            }
+            return max(0, Date().timeIntervalSince(started) * 1000)
         } catch {
             return nil
         }

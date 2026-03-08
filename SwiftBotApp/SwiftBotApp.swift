@@ -28,13 +28,19 @@ struct SwiftBotApp: App {
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = true
+            window.titlebarSeparatorStyle = .none
+            window.setContentBorderThickness(0, for: .minY)
+            window.setContentBorderThickness(0, for: .maxY)
+            window.collectionBehavior.remove([.fullScreenPrimary, .fullScreenAuxiliary])
 
-            let cornerRadius: CGFloat = 24
+            let cornerRadius: CGFloat = 12
 
             if let contentView = window.contentView {
                 contentView.wantsLayer = true
                 contentView.layer?.cornerRadius = 0
                 contentView.layer?.masksToBounds = false
+                contentView.layer?.borderWidth = 0
+                contentView.layer?.backgroundColor = NSColor.clear.cgColor
             }
 
             if let frameView = window.contentView?.superview {
@@ -42,6 +48,32 @@ struct SwiftBotApp: App {
                 frameView.layer?.cornerRadius = cornerRadius
                 frameView.layer?.cornerCurve = .continuous
                 frameView.layer?.masksToBounds = true
+                frameView.layer?.borderWidth = 0
+                frameView.layer?.borderColor = NSColor.clear.cgColor
+                frameView.layer?.backgroundColor = NSColor.clear.cgColor
+            }
+
+            if let chromeView = window.contentView?.superview?.superview {
+                chromeView.wantsLayer = true
+                chromeView.layer?.cornerRadius = cornerRadius
+                chromeView.layer?.cornerCurve = .continuous
+                chromeView.layer?.borderWidth = 0
+                chromeView.layer?.borderColor = NSColor.clear.cgColor
+                chromeView.layer?.backgroundColor = NSColor.clear.cgColor
+            }
+
+            let trafficLightButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+            for type in trafficLightButtons {
+                guard let button = window.standardWindowButton(type) else { continue }
+                var origin = button.frame.origin
+                origin.x += 14
+                origin.y -= 10
+                button.setFrameOrigin(origin)
+            }
+
+            if let zoomButton = window.standardWindowButton(.zoomButton) {
+                zoomButton.action = #selector(NSWindow.performZoom(_:))
+                zoomButton.target = window
             }
 
             window.invalidateShadow()
