@@ -7,6 +7,7 @@ enum SwiftBotStorage {
     static let discordCacheFileName = "discord-cache.json"
     static let meshCursorsFileName = "mesh-cursors.json"
     static let swiftMeshConfigFileName = "swiftmesh-config.json"
+    static let clusterStateFileName = "cluster_state.json"
 
     static func folderURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

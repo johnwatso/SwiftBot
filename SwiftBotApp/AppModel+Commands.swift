@@ -143,6 +143,7 @@ extension AppModel {
             // Force a fresh mesh snapshot so /debug reflects current reachability,
             // even if periodic polling is behind.
             await pollClusterStatus()
+            clusterSnapshot = await cluster.currentSnapshot()
             return await sendEmbed(channelId, embed: debugSummaryEmbed())
         case "bugreport":
             return await send(channelId, bugReportText(for: raw))
@@ -1949,6 +1950,8 @@ extension AppModel {
             "Patchy Monitoring: \(patchyEnabled)",
             "Action Rules: \(activeRules)/\(ruleStore.rules.count)",
             "SwiftMesh Connected Nodes: \(connectedNodes.count)/\(clusterNodes.count)",
+            "SwiftMesh Registered Workers: \(registeredWorkersDebugCount)",
+            "SwiftMesh Worker Heartbeats: \(registeredWorkersDebugSummary)",
             "SwiftMesh Node Summary: \(connectedNodeSummary.isEmpty ? "none" : connectedNodeSummary)",
             "SwiftMesh Last Job: \(clusterSnapshot.lastJobSummary) [\(clusterSnapshot.lastJobRoute.rawValue)]",
             "SwiftMesh Last Job Node: \(clusterSnapshot.lastJobNode)",
@@ -2021,7 +2024,7 @@ extension AppModel {
             ],
             [
                 "name": "SwiftMesh",
-                "value": "Connected: `\(connectedNodes.count)/\(clusterNodes.count)`\nLast Job: `\(clusterSnapshot.lastJobSummary)`\nRoute: `\(clusterSnapshot.lastJobRoute.rawValue)`\nNode: `\(clusterSnapshot.lastJobNode)`",
+                "value": "Connected: `\(connectedNodes.count)/\(clusterNodes.count)`\nRegistered Workers: `\(registeredWorkersDebugCount)`\nLast Job: `\(clusterSnapshot.lastJobSummary)`\nRoute: `\(clusterSnapshot.lastJobRoute.rawValue)`\nNode: `\(clusterSnapshot.lastJobNode)`",
                 "inline": false
             ],
             [
@@ -2032,6 +2035,11 @@ extension AppModel {
             [
                 "name": "Connected Nodes",
                 "value": connectedNodeSummary.isEmpty ? "None" : connectedNodeSummary,
+                "inline": false
+            ],
+            [
+                "name": "Worker Heartbeats",
+                "value": registeredWorkersDebugSummary,
                 "inline": false
             ]
         ]

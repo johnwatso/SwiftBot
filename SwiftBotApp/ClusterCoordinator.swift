@@ -49,7 +49,7 @@ actor ClusterCoordinator {
     private let startedAt = Date()
     private let hardwareInfo = HardwareInfo.current()
     private let workerRegistrationIntervalNanoseconds: UInt64 = 4_000_000_000
-    private let registrationStaleAfter: TimeInterval = 20
+    private let registrationStaleAfter: TimeInterval = 45
     static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
     static let maxSyncBatchSize: Int = 500
@@ -133,6 +133,18 @@ actor ClusterCoordinator {
     /// Returns (nodeName, baseURL) pairs for all currently registered workers/nodes.
     func registeredNodeInfo() -> [(nodeName: String, baseURL: String)] {
         registeredWorkers.values.map { ($0.nodeName, $0.baseURL) }
+    }
+
+    func registeredWorkersDebugInfo() -> (count: Int, summary: String) {
+        pruneStaleRegistrations()
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else { return (0, "none") }
+        let now = Date()
+        let summary = workers.map { worker in
+            let age = max(0, Int(now.timeIntervalSince(worker.lastSeen).rounded()))
+            return "\(worker.nodeName) (\(age)s, \(worker.baseURL))"
+        }.joined(separator: "; ")
+        return (workers.count, summary)
     }
 
     func currentReplicationCursor(for nodeName: String) -> ReplicationCursor? {
@@ -1274,6 +1286,13 @@ actor ClusterCoordinator {
         registeredWorkers = registeredWorkers.filter { $0.value.lastSeen >= cutoff }
     }
 
+    private func touchRegisteredWorker(baseURL: String) {
+        let key = baseURL.lowercased()
+        guard var worker = registeredWorkers[key] else { return }
+        worker.lastSeen = Date()
+        registeredWorkers[key] = worker
+    }
+
     private func localWorkerAdvertisedBaseURL() -> String {
         let host = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedHost = host.isEmpty ? "127.0.0.1" : host
@@ -1455,6 +1474,7 @@ actor ClusterCoordinator {
 
             for worker in workers {
                 if let remoteStatus = await fetchRemoteClusterStatus(baseURL: worker.baseURL) {
+                    touchRegisteredWorker(baseURL: worker.baseURL)
                     reachable += 1
                     for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
                         if node.role == .worker, node.latencyMs == nil {
