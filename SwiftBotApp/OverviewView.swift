@@ -453,13 +453,7 @@ struct OverviewView: View {
             syncDashboardPreferences()
         }
         .onChange(of: isEditingDashboard) { _, isEditing in
-            NSApp.windows.first?.isMovableByWindowBackground = !isEditing
-            if !isEditing {
-                draggingMetricID = nil
-            }
-        }
-        .onDisappear {
-            NSApp.windows.first?.isMovableByWindowBackground = true
+            if !isEditing { draggingMetricID = nil }
         }
     }
 

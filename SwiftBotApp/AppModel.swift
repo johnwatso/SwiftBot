@@ -3,6 +3,31 @@ import SwiftUI
 import UpdateEngine
 import Darwin
 
+struct BugAutoFixPendingApproval {
+    let bugMessageID: String
+    let channelID: String
+    let guildID: String
+    let sourceRepoPath: String
+    let isolatedRepoPath: String
+    let branch: String
+    let updateChannelID: String
+    let version: String
+    let build: String
+}
+
+struct BugAutoFixPendingStart {
+    let bugMessageID: String
+    let channelID: String
+    let guildID: String
+    let sourceRepoPath: String
+    let isolatedRepoPath: String
+    let branch: String
+    let updateChannelID: String
+    let version: String
+    let build: String
+    let requestedByUserID: String
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var settings = BotSettings()
@@ -37,6 +62,8 @@ final class AppModel: ObservableObject {
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
+    @Published var bugAutoFixStatusText: String = "Idle"
+    @Published var bugAutoFixConsoleText: String = ""
     @Published var workerModeMigrated = false
     // MARK: - P0.4 Diagnostics state
 
@@ -108,6 +135,9 @@ final class AppModel: ObservableObject {
     var clearedGlobalSlashCommands = false
     var lastSlashCommandsEnabledState: Bool?
     var bugEntriesByMessageID: [String: BugEntry] = [:]
+    var activeBugAutoFixMessageIDs: Set<String> = []
+    var pendingBugAutoFixStarts: [String: BugAutoFixPendingStart] = [:]
+    var pendingBugAutoFixApprovals: [String: BugAutoFixPendingApproval] = [:]
 
     var botAvatarURL: URL? {
         guard let userId = botUserId, let hash = botAvatarHash else { return nil }

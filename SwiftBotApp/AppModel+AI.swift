@@ -148,6 +148,14 @@ extension AppModel {
         }
     }
 
+    func fetchRecentMessages(channelId: String, limit: Int = 30) async -> [[String: DiscordJSON]] {
+        do {
+            return try await service.fetchRecentMessages(channelId: channelId, limit: limit, token: settings.token)
+        } catch {
+            return []
+        }
+    }
+
     func addReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
         do {
             try await service.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)

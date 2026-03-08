@@ -2,9 +2,6 @@ import SwiftUI
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
-    @State private var showAppleSettings = false
-    @State private var showOllamaSettings = false
-    @State private var showOpenAISettings = false
     @State private var baselineSettings = AIBotsSettingsSnapshot()
 
     private var hasUnsavedChanges: Bool {
@@ -106,25 +103,26 @@ struct AIBotsView: View {
 
                 Divider()
 
-                DisclosureGroup("Apple Intelligence Settings", isExpanded: $showAppleSettings) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        providerToggleRow(
-                            "Enable Apple Intelligence",
-                            isOn: Binding(
-                                get: { true },
-                                set: { _ in }
-                            )
-                        )
-                        .disabled(true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Apple Intelligence Settings")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
 
-                        Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 6)
-                    .padding(.leading, 12)
+                    providerToggleRow(
+                        "Enable Apple Intelligence",
+                        isOn: Binding(
+                            get: { true },
+                            set: { _ in }
+                        )
+                    )
+                    .disabled(true)
+
+                    Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.leading, 52)
+                .padding(.top, 6)
+                .padding(.leading, 64)
             }
 
             Divider()
@@ -143,39 +141,41 @@ struct AIBotsView: View {
                     statusStack(status: ollamaStatus, isPrimary: app.settings.preferredAIProvider == .ollama)
                 }
 
-                DisclosureGroup("Ollama Settings", isExpanded: $showOllamaSettings) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Ollama Settings")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    providerToggleRow("Enable Ollama", isOn: $app.settings.ollamaEnabled)
+
                     VStack(alignment: .leading, spacing: 10) {
-                        providerToggleRow("Enable Ollama", isOn: $app.settings.ollamaEnabled)
+                        TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
+                        TextField("Model", text: $app.settings.localAIModel)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
-                            TextField("Model", text: $app.settings.localAIModel)
-
-                            HStack {
-                                Spacer()
-                                Button {
-                                    app.detectOllamaModel()
-                                } label: {
-                                    Label("Auto Detect Model", systemImage: "wand.and.stars")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 7)
-                                        .background(.ultraThinMaterial, in: Capsule())
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                                        )
-                                }
-                                .buttonStyle(.plain)
+                        HStack {
+                            Spacer()
+                            Button {
+                                app.detectOllamaModel()
+                            } label: {
+                                Label("Auto Detect Model", systemImage: "wand.and.stars")
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                                    )
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.leading, 12)
-                        .opacity(app.settings.ollamaEnabled ? 1.0 : 0.5)
-                        .disabled(!app.settings.ollamaEnabled)
                     }
-                    .padding(.top, 6)
+                    .padding(.leading, 12)
+                    .opacity(app.settings.ollamaEnabled ? 1.0 : 0.5)
+                    .disabled(!app.settings.ollamaEnabled)
                 }
-                .padding(.leading, 52)
+                .padding(.top, 6)
+                .padding(.leading, 64)
             }
 
             Divider()
@@ -194,37 +194,39 @@ struct AIBotsView: View {
                     statusStack(status: openAIStatus, isPrimary: app.settings.preferredAIProvider == .openAI)
                 }
 
-                DisclosureGroup("OpenAI Settings", isExpanded: $showOpenAISettings) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        providerToggleRow("Enable OpenAI", isOn: $app.settings.openAIEnabled)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("OpenAI Settings")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
-                            TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
-                            Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
-                            TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
-                                .disabled(!app.settings.openAIImageGenerationEnabled)
-                            TextField(
-                                "Monthly Image Limit Per User",
-                                text: Binding(
-                                    get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
-                                    set: { raw in
-                                        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        if let parsed = Int(trimmed) {
-                                            app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
-                                        }
-                                    }
-                                )
-                            )
+                    providerToggleRow("Enable OpenAI", isOn: $app.settings.openAIEnabled)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
+                        TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
+                        Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
+                        TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
                             .disabled(!app.settings.openAIImageGenerationEnabled)
-                        }
-                        .padding(.leading, 12)
-                        .opacity(app.settings.openAIEnabled ? 1.0 : 0.5)
-                        .disabled(!app.settings.openAIEnabled)
+                        TextField(
+                            "Monthly Image Limit Per User",
+                            text: Binding(
+                                get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
+                                set: { raw in
+                                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if let parsed = Int(trimmed) {
+                                        app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
+                                    }
+                                }
+                            )
+                        )
+                        .disabled(!app.settings.openAIImageGenerationEnabled)
                     }
-                    .padding(.top, 6)
+                    .padding(.leading, 12)
+                    .opacity(app.settings.openAIEnabled ? 1.0 : 0.5)
+                    .disabled(!app.settings.openAIEnabled)
                 }
-                .padding(.leading, 52)
+                .padding(.top, 6)
+                .padding(.leading, 64)
             }
         }
         .padding(12)

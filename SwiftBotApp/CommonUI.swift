@@ -99,10 +99,12 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
             .overlay(
                 shape
                     .fill(tint.opacity(colorScheme == .dark ? 1.0 : 0.50))
+                    .allowsHitTesting(false)
             )
             .overlay(
                 shape
                     .strokeBorder(stroke.opacity(colorScheme == .dark ? 1.0 : 0.90), lineWidth: 1)
+                    .allowsHitTesting(false)
             )
     }
 }

@@ -202,6 +202,17 @@ struct BotSettings: Codable, Hashable {
     var openAIImageMonthlyLimitPerUser: Int = 5
     var openAIImageMonthlyHardCap: Int = 100
     var openAIImageUsageByUserMonth: [String: Int] = [:]
+    var bugAutoFixEnabled: Bool = false
+    var bugAutoFixTriggerEmoji: String = "🤖"
+    var bugAutoFixCommandTemplate: String = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
+    var bugAutoFixRepoPath: String = ""
+    var bugAutoFixGitBranch: String = "main"
+    var bugAutoFixVersionBumpEnabled: Bool = true
+    var bugAutoFixPushEnabled: Bool = true
+    var bugAutoFixRequireApproval: Bool = true
+    var bugAutoFixApproveEmoji: String = "🚀"
+    var bugAutoFixRejectEmoji: String = "🛑"
+    var bugAutoFixAllowedUsernames: [String] = []
     var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
     var behavior = BotBehaviorSettings()
@@ -242,6 +253,17 @@ struct BotSettings: Codable, Hashable {
         case openAIImageMonthlyLimitPerUser
         case openAIImageMonthlyHardCap
         case openAIImageUsageByUserMonth
+        case bugAutoFixEnabled
+        case bugAutoFixTriggerEmoji
+        case bugAutoFixCommandTemplate
+        case bugAutoFixRepoPath
+        case bugAutoFixGitBranch
+        case bugAutoFixVersionBumpEnabled
+        case bugAutoFixPushEnabled
+        case bugAutoFixRequireApproval
+        case bugAutoFixApproveEmoji
+        case bugAutoFixRejectEmoji
+        case bugAutoFixAllowedUsernames
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
@@ -284,7 +306,19 @@ struct BotSettings: Codable, Hashable {
         openAIImageGenerationEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIImageGenerationEnabled) ?? true
         openAIImageModel = try container.decodeIfPresent(String.self, forKey: .openAIImageModel) ?? "gpt-image-1"
         openAIImageMonthlyLimitPerUser = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyLimitPerUser) ?? 5
+        openAIImageMonthlyHardCap = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyHardCap) ?? 100
         openAIImageUsageByUserMonth = try container.decodeIfPresent([String: Int].self, forKey: .openAIImageUsageByUserMonth) ?? [:]
+        bugAutoFixEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixEnabled) ?? false
+        bugAutoFixTriggerEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixTriggerEmoji) ?? "🤖"
+        bugAutoFixCommandTemplate = try container.decodeIfPresent(String.self, forKey: .bugAutoFixCommandTemplate) ?? "codex exec \"$SWIFTBOT_BUG_PROMPT\""
+        bugAutoFixRepoPath = try container.decodeIfPresent(String.self, forKey: .bugAutoFixRepoPath) ?? ""
+        bugAutoFixGitBranch = try container.decodeIfPresent(String.self, forKey: .bugAutoFixGitBranch) ?? "main"
+        bugAutoFixVersionBumpEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixVersionBumpEnabled) ?? true
+        bugAutoFixPushEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixPushEnabled) ?? true
+        bugAutoFixRequireApproval = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixRequireApproval) ?? true
+        bugAutoFixApproveEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixApproveEmoji) ?? "🚀"
+        bugAutoFixRejectEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixRejectEmoji) ?? "🛑"
+        bugAutoFixAllowedUsernames = try container.decodeIfPresent([String].self, forKey: .bugAutoFixAllowedUsernames) ?? []
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
@@ -325,7 +359,19 @@ struct BotSettings: Codable, Hashable {
         try container.encode(openAIImageGenerationEnabled, forKey: .openAIImageGenerationEnabled)
         try container.encode(openAIImageModel, forKey: .openAIImageModel)
         try container.encode(openAIImageMonthlyLimitPerUser, forKey: .openAIImageMonthlyLimitPerUser)
+        try container.encode(openAIImageMonthlyHardCap, forKey: .openAIImageMonthlyHardCap)
         try container.encode(openAIImageUsageByUserMonth, forKey: .openAIImageUsageByUserMonth)
+        try container.encode(bugAutoFixEnabled, forKey: .bugAutoFixEnabled)
+        try container.encode(bugAutoFixTriggerEmoji, forKey: .bugAutoFixTriggerEmoji)
+        try container.encode(bugAutoFixCommandTemplate, forKey: .bugAutoFixCommandTemplate)
+        try container.encode(bugAutoFixRepoPath, forKey: .bugAutoFixRepoPath)
+        try container.encode(bugAutoFixGitBranch, forKey: .bugAutoFixGitBranch)
+        try container.encode(bugAutoFixVersionBumpEnabled, forKey: .bugAutoFixVersionBumpEnabled)
+        try container.encode(bugAutoFixPushEnabled, forKey: .bugAutoFixPushEnabled)
+        try container.encode(bugAutoFixRequireApproval, forKey: .bugAutoFixRequireApproval)
+        try container.encode(bugAutoFixApproveEmoji, forKey: .bugAutoFixApproveEmoji)
+        try container.encode(bugAutoFixRejectEmoji, forKey: .bugAutoFixRejectEmoji)
+        try container.encode(bugAutoFixAllowedUsernames, forKey: .bugAutoFixAllowedUsernames)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)
@@ -1729,6 +1775,7 @@ struct GuildTextChannel: Identifiable, Hashable, Codable {
 struct GuildRole: Identifiable, Hashable, Codable {
     let id: String
     let name: String
+    let permissions: String?
 }
 
 struct DiscordCacheSnapshot: Codable, Hashable {

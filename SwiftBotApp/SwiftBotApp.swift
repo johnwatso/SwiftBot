@@ -23,7 +23,7 @@ struct SwiftBotApp: App {
             guard let window = NSApp.windows.first else { return }
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = true
+            window.isMovableByWindowBackground = false
             window.styleMask.insert(.fullSizeContentView)
             window.isOpaque = false
             window.backgroundColor = .clear
@@ -57,6 +57,7 @@ struct SwiftBotApp: App {
                 .onAppear {
                     applyAppIconIfAvailable()
                     applyWindowChromeIfAvailable()
+                    updater.checkForUpdatesInBackground()
                 }
         }
         .windowStyle(.hiddenTitleBar)

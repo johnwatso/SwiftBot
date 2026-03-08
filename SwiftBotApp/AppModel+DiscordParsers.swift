@@ -50,7 +50,12 @@ extension AppModel {
             else { continue }
 
             if roleName == "@everyone" { continue }
-            result.append(GuildRole(id: roleId, name: roleName))
+            let permissions: String? = {
+                if case let .string(value)? = roleMap["permissions"] { return value }
+                if case let .int(value)? = roleMap["permissions"] { return String(value) }
+                return nil
+            }()
+            result.append(GuildRole(id: roleId, name: roleName, permissions: permissions))
         }
 
         return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

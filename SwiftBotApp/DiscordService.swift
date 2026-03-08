@@ -1238,6 +1238,37 @@ actor DiscordService {
         }
     }
 
+    /// Returns role IDs for a guild member using GET /guilds/{guild.id}/members/{user.id}.
+    /// This is used as a fallback for permission checks when gateway payloads do not include `member`.
+    func guildMemberRoleIDs(guildID: String, userID: String) async -> [String]? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !trimmedUserID.isEmpty else { return nil }
+
+        guard let token = botToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+            return nil
+        }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)/members/\(trimmedUserID)"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 10
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let roles = json["roles"] as? [String] else {
+                return nil
+            }
+            return roles
+        } catch {
+            return nil
+        }
+    }
+
     private func startHeartbeat() {
         heartbeatTask?.cancel()
         heartbeatTask = Task {
@@ -1640,6 +1671,27 @@ actor DiscordService {
             )
         }
         return try JSONDecoder().decode([String: DiscordJSON].self, from: data)
+    }
+
+    func fetchRecentMessages(channelId: String, limit: Int, token: String) async throws -> [[String: DiscordJSON]] {
+        var components = URLComponents(url: restBase.appendingPathComponent("channels/\(channelId)/messages"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "limit", value: String(max(1, min(100, limit))))]
+        guard let url = components?.url else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid messages URL"])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch recent messages", "responseBody": responseBody]
+            )
+        }
+        return try JSONDecoder().decode([[String: DiscordJSON]].self, from: data)
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
