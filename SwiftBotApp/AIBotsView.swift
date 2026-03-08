@@ -2,6 +2,9 @@ import SwiftUI
 
 struct AIBotsView: View {
     @EnvironmentObject var app: AppModel
+    @State private var showAppleSettings = false
+    @State private var showOllamaSettings = false
+    @State private var showOpenAISettings = false
     @State private var baselineSettings = AIBotsSettingsSnapshot()
 
     private var hasUnsavedChanges: Bool {
@@ -99,28 +102,19 @@ struct AIBotsView: View {
         VStack(alignment: .leading, spacing: 14) {
             diagnosticsStyleSectionHeader(title: "AI Engines", symbol: "sparkles")
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Apple Intelligence")
-                            .font(.headline.weight(.semibold))
-                        Text("System-native engine")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    statusStack(status: app.appleIntelligenceOnline ? .online : .offline, isPrimary: app.settings.preferredAIProvider == .apple)
-                }
-
-                Divider()
-
+            EngineSectionView(
+                title: "Apple Intelligence",
+                subtitle: "System-native engine",
+                disclosureTitle: "Apple Intelligence Settings",
+                status: app.appleIntelligenceOnline ? .online : .offline,
+                isPrimary: app.settings.preferredAIProvider == .apple,
+                isExpanded: $showAppleSettings,
+                showsHeaderDivider: true
+            ) {
+                providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
+            } settings: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Apple Intelligence Settings")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-
-                    providerToggleRow(
+                    settingsToggleRow(
                         "Enable Apple Intelligence",
                         isOn: Binding(
                             get: { true },
@@ -134,31 +128,23 @@ struct AIBotsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 6)
-                .padding(.leading, 64)
+                .padding(.leading, 12)
             }
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Ollama")
-                            .font(.headline)
-                        Text("Local AI engine")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    statusStack(status: ollamaStatus, isPrimary: app.settings.preferredAIProvider == .ollama)
-                }
-
+            EngineSectionView(
+                title: "Ollama",
+                subtitle: "Local AI engine",
+                disclosureTitle: "Ollama Settings",
+                status: ollamaStatus,
+                isPrimary: app.settings.preferredAIProvider == .ollama,
+                isExpanded: $showOllamaSettings
+            ) {
+                providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
+            } settings: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Ollama Settings")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-
-                    providerToggleRow("Enable Ollama", isOn: $app.settings.ollamaEnabled)
+                    settingsToggleRow("Enable Ollama", isOn: ollamaEnabledBinding)
 
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
@@ -187,36 +173,27 @@ struct AIBotsView: View {
                     .disabled(!app.settings.ollamaEnabled)
                 }
                 .padding(.top, 6)
-                .padding(.leading, 64)
             }
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("OpenAI (ChatGPT)")
-                            .font(.headline)
-                        Text("Cloud AI engine")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    statusStack(status: openAIStatus, isPrimary: app.settings.preferredAIProvider == .openAI)
-                }
-
+            EngineSectionView(
+                title: "OpenAI (ChatGPT)",
+                subtitle: "Cloud AI engine",
+                disclosureTitle: "OpenAI Settings",
+                status: openAIStatus,
+                isPrimary: app.settings.preferredAIProvider == .openAI,
+                isExpanded: $showOpenAISettings
+            ) {
+                providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
+            } settings: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("OpenAI Settings")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-
-                    providerToggleRow("Enable OpenAI", isOn: $app.settings.openAIEnabled)
+                    settingsToggleRow("Enable OpenAI", isOn: openAIEnabledBinding)
 
                     VStack(alignment: .leading, spacing: 10) {
                         SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
                         TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
-                        Toggle("Enable OpenAI Image Generation", isOn: $app.settings.openAIImageGenerationEnabled)
+                        settingsToggleRow("Enable OpenAI Image Generation", isOn: openAIImageGenerationBinding)
                         TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
                             .disabled(!app.settings.openAIImageGenerationEnabled)
                         TextField(
@@ -238,11 +215,11 @@ struct AIBotsView: View {
                     .disabled(!app.settings.openAIEnabled)
                 }
                 .padding(.top, 6)
-                .padding(.leading, 64)
             }
         }
         .padding(12)
         .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var configurationCard: some View {
@@ -319,28 +296,40 @@ struct AIBotsView: View {
         )
     }
 
-    private func statusRow(status: AIEngineStatus) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(status.color)
-                .frame(width: 8, height: 8)
-            Text(status.label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
+    private var ollamaEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { app.settings.ollamaEnabled },
+            set: { newValue in
+                guard newValue != app.settings.ollamaEnabled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    app.settings.ollamaEnabled = newValue
+                }
+            }
+        )
     }
 
-    @ViewBuilder
-    private func statusStack(status: AIEngineStatus, isPrimary: Bool) -> some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            statusRow(status: status)
-            Text(isPrimary ? "Primary" : "Fallback")
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background((isPrimary ? Color.accentColor : Color.white).opacity(0.14), in: Capsule())
-                .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
-        }
+    private var openAIEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { app.settings.openAIEnabled },
+            set: { newValue in
+                guard newValue != app.settings.openAIEnabled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    app.settings.openAIEnabled = newValue
+                }
+            }
+        )
+    }
+
+    private var openAIImageGenerationBinding: Binding<Bool> {
+        Binding(
+            get: { app.settings.openAIImageGenerationEnabled },
+            set: { newValue in
+                guard newValue != app.settings.openAIImageGenerationEnabled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    app.settings.openAIImageGenerationEnabled = newValue
+                }
+            }
+        )
     }
 
     private func statusForEngine(isEnabled: Bool, isOnline: Bool) -> AIEngineStatus {
@@ -389,16 +378,6 @@ struct AIBotsView: View {
         }
     }
 
-    private func providerToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
-        HStack(alignment: .center) {
-            Text(title)
-                .font(.subheadline)
-            Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-        }
-    }
-
     private func syncProviderSelectionFromPreference() {
         let mapped: AIProvider
         switch app.settings.preferredAIProvider {
@@ -422,6 +401,94 @@ struct AIBotsView: View {
                 .foregroundStyle(.secondary)
             Text(title)
                 .font(.headline.weight(.semibold))
+        }
+    }
+}
+
+private struct EngineSectionView<Icon: View, Content: View>: View {
+    let title: String
+    let subtitle: String
+    let disclosureTitle: String
+    let status: AIEngineStatus
+    let isPrimary: Bool
+    @Binding var isExpanded: Bool
+    var showsHeaderDivider = false
+    let icon: Icon
+    let settingsContent: Content
+
+    init(
+        title: String,
+        subtitle: String,
+        disclosureTitle: String,
+        status: AIEngineStatus,
+        isPrimary: Bool,
+        isExpanded: Binding<Bool>,
+        showsHeaderDivider: Bool = false,
+        @ViewBuilder icon: () -> Icon,
+        @ViewBuilder settings: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.disclosureTitle = disclosureTitle
+        self.status = status
+        self.isPrimary = isPrimary
+        self._isExpanded = isExpanded
+        self.showsHeaderDivider = showsHeaderDivider
+        self.icon = icon()
+        self.settingsContent = settings()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                icon
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                EngineStatusStackView(status: status, isPrimary: isPrimary)
+            }
+
+            if showsHeaderDivider {
+                Divider()
+            }
+
+            DisclosureGroup(disclosureTitle, isExpanded: $isExpanded) {
+                settingsContent
+            }
+            .padding(.leading, 52)
+        }
+    }
+}
+
+private struct EngineStatusStackView: View {
+    let status: AIEngineStatus
+    let isPrimary: Bool
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(status.color)
+                    .frame(width: 8, height: 8)
+                Text(status.label)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(isPrimary ? "Primary" : "Fallback")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background((isPrimary ? Color.accentColor : Color.white).opacity(0.14), in: Capsule())
+                .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
         }
     }
 }
