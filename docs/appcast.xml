@@ -4,11 +4,11 @@
         <title>SwiftBot</title>
         <item>
             <title>1.8.25</title>
-            <pubDate>Sun, 08 Mar 2026 23:01:37 +1300</pubDate>
-            <sparkle:version>1825000</sparkle:version>
+            <pubDate>Mon, 09 Mar 2026 08:50:10 +1300</pubDate>
+            <sparkle:version>1826000</sparkle:version>
             <sparkle:shortVersionString>1.8.25</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.8.25/SwiftBot-1.8.25.zip" length="12183585" type="application/octet-stream" sparkle:edSignature="jhCVLMMU8JeVLGgWG/3T/HwnvlOfiKNT3E4EJyOQyBNkrZkIPLeOPHvoMkiHJenNdKFso0X8Bbvi8s/jdRiFDA=="/>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.8.25/SwiftBot-1.8.25.zip" length="12232006" type="application/octet-stream" sparkle:edSignature="yQFWvmohXVyRcQGnp6DtmKCy4PXflhGBRl2oYXGZ0M9HPezzP3lntgOXfQmLnLsrD0fxJPjUkBPY/8uYOx7/Dw=="/>
         </item>
     </channel>
 </rss>
