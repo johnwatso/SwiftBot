@@ -28,6 +28,12 @@ struct BugAutoFixPendingStart {
     let requestedByUserID: String
 }
 
+private struct AdminWebCertificateRenewalConfiguration: Equatable {
+    let enabled: Bool
+    let domain: String
+    let cloudflareToken: String
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var settings = BotSettings()
@@ -64,6 +70,7 @@ final class AppModel: ObservableObject {
     @Published var patchyLastCycleAt: Date?
     @Published var bugAutoFixStatusText: String = "Idle"
     @Published var bugAutoFixConsoleText: String = ""
+    @Published private(set) var adminWebResolvedBaseURL: String = ""
     @Published var workerModeMigrated = false
     // MARK: - P0.4 Diagnostics state
 
@@ -90,6 +97,7 @@ final class AppModel: ObservableObject {
     let service = DiscordService()
     let cluster = ClusterCoordinator()
     let adminWebServer = AdminWebServer()
+    let certificateManager = CertificateManager()
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
@@ -121,6 +129,8 @@ final class AppModel: ObservableObject {
     var weeklyPlugin: WeeklySummaryPlugin?
     let patchyChecker: UpdateChecker?
     var patchyMonitorTask: Task<Void, Never>?
+    var adminWebCertificateRenewalTask: Task<Void, Never>?
+    private var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
     var botUserId: String?
     let launchedAt = Date()
     var clusterNodesRefreshTask: Task<Void, Never>?
@@ -369,6 +379,8 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
         settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.httpsDomain = settings.adminWebUI.normalizedHTTPSDomain
+        settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
 
@@ -1303,11 +1315,26 @@ final class AppModel: ObservableObject {
     }
 
     func adminWebBaseURL() -> String {
+        if !adminWebResolvedBaseURL.isEmpty {
+            return adminWebResolvedBaseURL
+        }
+        return desiredAdminWebBaseURL(preferHTTPS: settings.adminWebUI.httpsEnabled)
+    }
+
+    private func desiredAdminWebBaseURL(preferHTTPS: Bool) -> String {
         let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !explicit.isEmpty {
             return explicit
         }
-        return "http://\(settings.adminWebUI.bindHost):\(settings.adminWebUI.port)"
+
+        let usesHTTPS = preferHTTPS && !settings.adminWebUI.normalizedHTTPSDomain.isEmpty
+        let host = usesHTTPS ? settings.adminWebUI.normalizedHTTPSDomain : settings.adminWebUI.bindHost
+        let scheme = usesHTTPS ? "https" : "http"
+        let isDefaultPort = (usesHTTPS && settings.adminWebUI.port == 443) || (!usesHTTPS && settings.adminWebUI.port == 80)
+        if isDefaultPort {
+            return "\(scheme)://\(host)"
+        }
+        return "\(scheme)://\(host):\(settings.adminWebUI.port)"
     }
 
     func adminWebConfigSnapshot() -> AdminWebConfigPayload {
@@ -1708,18 +1735,20 @@ final class AppModel: ObservableObject {
     }
 
     func configureAdminWebServer() async {
+        let httpsConfiguration = await resolveAdminWebHTTPSConfiguration()
         let config = AdminWebServer.Configuration(
             enabled: settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
-            publicBaseURL: adminWebBaseURL(),
+            publicBaseURL: settings.adminWebUI.publicBaseURL,
+            https: httpsConfiguration,
             discordClientID: settings.adminWebUI.discordClientID,
             discordClientSecret: settings.adminWebUI.discordClientSecret,
             redirectPath: settings.adminWebUI.redirectPath,
             allowedUserIDs: settings.adminWebUI.normalizedAllowedUserIDs
         )
 
-        await adminWebServer.configure(
+        let runtimeState = await adminWebServer.configure(
             config: config,
             statusProvider: { [weak self] in
                 guard let model = self else {
@@ -1918,6 +1947,96 @@ final class AppModel: ObservableObject {
                 await MainActor.run { model.logs.append(message) }
             }
         )
+        adminWebResolvedBaseURL = runtimeState.publicBaseURL
+        updateAdminWebCertificateRenewalTask()
+    }
+
+    private func resolveAdminWebHTTPSConfiguration() async -> AdminWebServer.Configuration.HTTPSConfiguration? {
+        guard settings.adminWebUI.enabled, settings.adminWebUI.httpsEnabled else {
+            return nil
+        }
+
+        let domain = settings.adminWebUI.normalizedHTTPSDomain
+        guard !domain.isEmpty else {
+            logs.append("⚠️ Admin Web UI HTTPS is enabled, but no domain is configured. Falling back to HTTP.")
+            return nil
+        }
+
+        do {
+            let logStore = logs
+            let certificate = try await certificateManager.ensureCertificate(
+                for: domain,
+                cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken
+            ) { message in
+                logStore.append(message)
+            }
+
+            return AdminWebServer.Configuration.HTTPSConfiguration(
+                domain: domain,
+                certificatePath: certificate.certificateURL.path,
+                privateKeyPath: certificate.privateKeyURL.path
+            )
+        } catch {
+            logs.append("⚠️ Admin Web UI HTTPS unavailable: \(error.localizedDescription). Falling back to HTTP.")
+            return nil
+        }
+    }
+
+    private func updateAdminWebCertificateRenewalTask() {
+        let configuration = AdminWebCertificateRenewalConfiguration(
+            enabled: settings.adminWebUI.enabled && settings.adminWebUI.httpsEnabled,
+            domain: settings.adminWebUI.normalizedHTTPSDomain,
+            cloudflareToken: settings.adminWebUI.cloudflareAPIToken
+        )
+
+        if adminWebCertificateRenewalConfiguration == configuration, adminWebCertificateRenewalTask != nil {
+            return
+        }
+
+        adminWebCertificateRenewalTask?.cancel()
+        adminWebCertificateRenewalTask = nil
+        adminWebCertificateRenewalConfiguration = configuration
+
+        guard configuration.enabled, !configuration.domain.isEmpty else {
+            return
+        }
+
+        adminWebCertificateRenewalTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runAdminWebCertificateRenewalLoop(configuration)
+        }
+    }
+
+    private func runAdminWebCertificateRenewalLoop(_ configuration: AdminWebCertificateRenewalConfiguration) async {
+        while !Task.isCancelled {
+            do {
+                let logStore = logs
+                let certificate = try await certificateManager.ensureCertificate(
+                    for: configuration.domain,
+                    cloudflareAPIToken: configuration.cloudflareToken
+                ) { message in
+                    logStore.append(message)
+                }
+
+                if certificate.wasRenewed {
+                    let runtimeState = await adminWebServer.restartListener()
+                    await MainActor.run {
+                        self.adminWebResolvedBaseURL = runtimeState.publicBaseURL
+                        self.logs.append("♻️ Reloaded Admin Web UI TLS listener with the renewed certificate.")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.logs.append("⚠️ Admin Web UI certificate renewal check failed: \(error.localizedDescription)")
+                }
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: 12 * 60 * 60 * 1_000_000_000)
+            } catch {
+                break
+            }
+        }
     }
 
     func stopBot() async {

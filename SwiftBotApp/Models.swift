@@ -157,6 +157,9 @@ struct AdminWebUISettings: Codable, Hashable {
     var bindHost: String = "127.0.0.1"
     var port: Int = 38888
     var publicBaseURL: String = ""
+    var httpsEnabled: Bool = false
+    var httpsDomain: String = ""
+    var cloudflareAPIToken: String = ""
     var discordClientID: String = ""
     var discordClientSecret: String = ""
     var redirectPath: String = "/auth/discord/callback"
@@ -166,6 +169,26 @@ struct AdminWebUISettings: Codable, Hashable {
         allowedUserIDs
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    var normalizedHTTPSDomain: String {
+        let trimmed = httpsDomain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        if let url = URL(string: trimmed), let host = url.host {
+            return host.lowercased()
+        }
+
+        let normalized = trimmed
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .replacingOccurrences(of: " ", with: "")
+            .lowercased()
+
+        if let slashIndex = normalized.firstIndex(of: "/") {
+            return String(normalized[..<slashIndex])
+        }
+
+        return normalized
     }
 }
 

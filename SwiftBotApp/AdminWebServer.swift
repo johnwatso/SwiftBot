@@ -1,5 +1,9 @@
 import Foundation
 import Network
+import Darwin
+import NIOCore
+import NIOPosix
+@preconcurrency import NIOSSL
 
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
@@ -243,6 +247,13 @@ struct AdminWebWikiSourceIDPatch: Codable {
 }
 
 actor AdminWebServer {
+    struct RuntimeState: Equatable {
+        var isEnabled: Bool
+        var isListening: Bool
+        var usesTLS: Bool
+        var publicBaseURL: String
+    }
+
     private enum OAuthError: LocalizedError {
         case invalidURL
         case tokenExchangeFailed(Int, String)
@@ -264,10 +275,17 @@ actor AdminWebServer {
     }
 
     struct Configuration: Equatable {
+        struct HTTPSConfiguration: Equatable {
+            var domain: String
+            var certificatePath: String
+            var privateKeyPath: String
+        }
+
         var enabled: Bool
         var bindHost: String
         var port: Int
         var publicBaseURL: String
+        var https: HTTPSConfiguration?
         var discordClientID: String
         var discordClientSecret: String
         var redirectPath: String
@@ -318,13 +336,18 @@ actor AdminWebServer {
         enabled: false,
         bindHost: "127.0.0.1",
         port: 38888,
-        publicBaseURL: "http://127.0.0.1:38888",
+        publicBaseURL: "",
+        https: nil,
         discordClientID: "",
         discordClientSecret: "",
         redirectPath: "/auth/discord/callback",
         allowedUserIDs: []
     )
     private var listener: NWListener?
+    private var nioChannel: Channel?
+    private var nioGroup: MultiThreadedEventLoopGroup?
+    private var activePublicBaseURL = ""
+    private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
     private var connectedGuildIDsProvider: (@Sendable () async -> Set<String>)?
@@ -400,7 +423,7 @@ actor AdminWebServer {
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         log: @escaping @Sendable (String) async -> Void
-    ) async {
+    ) async -> RuntimeState {
         self.statusProvider = statusProvider
         self.overviewProvider = overviewProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
@@ -441,28 +464,64 @@ actor AdminWebServer {
 
         if !config.enabled {
             await stop()
-            return
+            return runtimeState()
         }
 
-        if listener == nil || previous.bindHost != config.bindHost || previous.port != config.port {
+        let hasActiveListener = listener != nil || nioChannel != nil
+        let needsRestart = !hasActiveListener
+            || previous.bindHost != config.bindHost
+            || previous.port != config.port
+            || previous.https != config.https
+
+        if needsRestart {
             await restart()
+        } else {
+            activePublicBaseURL = resolvedPublicBaseURL(usingTLS: activeTransportUsesTLS)
         }
+        return runtimeState()
     }
 
     func stop() async {
         listener?.cancel()
         listener = nil
+        await stopNIOServer()
+        activeTransportUsesTLS = false
+        activePublicBaseURL = resolvedPublicBaseURL(usingTLS: false)
         pendingStates.removeAll()
         await logger?("Admin Web UI stopped")
+    }
+
+    func restartListener() async -> RuntimeState {
+        guard config.enabled else {
+            await stop()
+            return runtimeState()
+        }
+        await restart()
+        return runtimeState()
     }
 
     private func restart() async {
         listener?.cancel()
         listener = nil
+        await stopNIOServer()
 
+        if let httpsConfiguration = config.https {
+            do {
+                try await startTLSServer(httpsConfiguration)
+                return
+            } catch {
+                await logger?("Admin Web UI TLS failed: \(error.localizedDescription). Falling back to HTTP.")
+            }
+        }
+
+        await startPlainHTTPServer()
+    }
+
+    private func startPlainHTTPServer() async {
         do {
             let port = NWEndpoint.Port(rawValue: UInt16(config.port)) ?? NWEndpoint.Port(integerLiteral: 38888)
             let listener = try NWListener(using: .tcp, on: port)
+            markListenerReady(usingTLS: false)
             listener.newConnectionHandler = { [weak self] connection in
                 guard let self else { return }
                 connection.start(queue: DispatchQueue.global(qos: .utility))
@@ -475,6 +534,7 @@ actor AdminWebServer {
                 Task {
                     switch state {
                     case .ready:
+                        await self.markListenerReady(usingTLS: false)
                         await self.logger?("Admin Web UI listening on http://\(self.config.bindHost):\(self.config.port)")
                     case .failed(let error):
                         await self.logger?("Admin Web UI failed: \(error.localizedDescription)")
@@ -488,6 +548,108 @@ actor AdminWebServer {
         } catch {
             await logger?("Admin Web UI failed to start: \(error.localizedDescription)")
         }
+    }
+
+    private func startTLSServer(_ httpsConfiguration: Configuration.HTTPSConfiguration) async throws {
+        let certificateChain = try NIOSSLCertificate
+            .fromPEMFile(httpsConfiguration.certificatePath)
+            .map { NIOSSLCertificateSource.certificate($0) }
+        let privateKey = try NIOSSLPrivateKey(file: httpsConfiguration.privateKeyPath, format: .pem)
+        let tlsConfiguration = TLSConfiguration.makeServerConfiguration(
+            certificateChain: certificateChain,
+            privateKey: .privateKey(privateKey)
+        )
+        let sslContext = try NIOSSLContext(configuration: tlsConfiguration)
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            let bootstrap = ServerBootstrap(group: group)
+                .serverChannelOption(ChannelOptions.backlog, value: 256)
+                .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+                .childChannelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
+                .childChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+                .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 16)
+                .childChannelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
+                .childChannelInitializer { channel in
+                    do {
+                        let tlsHandler = NIOSSLServerHandler(context: sslContext)
+                        let httpHandler = AdminWebNIOHTTPHandler(
+                            maxHTTPRequestSize: self.maxHTTPRequestSize,
+                            processor: { requestData in
+                                return await self.process(requestData)
+                            }
+                        )
+                        try channel.pipeline.syncOperations.addHandlers(tlsHandler, httpHandler)
+                        return channel.eventLoop.makeSucceededFuture(())
+                    } catch {
+                        return channel.eventLoop.makeFailedFuture(error)
+                    }
+                }
+
+            let channel = try await bootstrap.bind(host: config.bindHost, port: config.port).get()
+            self.nioGroup = group
+            self.nioChannel = channel
+            markListenerReady(usingTLS: true)
+            await logger?("Admin Web UI listening on https://\(config.bindHost):\(config.port)")
+        } catch {
+            try? await shutdownEventLoopGroup(group)
+            throw error
+        }
+    }
+
+    private func stopNIOServer() async {
+        if let channel = nioChannel {
+            nioChannel = nil
+            try? await channel.close().get()
+        }
+
+        if let group = nioGroup {
+            nioGroup = nil
+            try? await shutdownEventLoopGroup(group)
+        }
+    }
+
+    private func shutdownEventLoopGroup(_ group: EventLoopGroup) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            group.shutdownGracefully { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    private func markListenerReady(usingTLS: Bool) {
+        activeTransportUsesTLS = usingTLS
+        activePublicBaseURL = resolvedPublicBaseURL(usingTLS: usingTLS)
+    }
+
+    private func runtimeState() -> RuntimeState {
+        RuntimeState(
+            isEnabled: config.enabled,
+            isListening: listener != nil || nioChannel != nil,
+            usesTLS: activeTransportUsesTLS && (listener != nil || nioChannel != nil),
+            publicBaseURL: activePublicBaseURL.isEmpty
+                ? resolvedPublicBaseURL(usingTLS: config.https != nil)
+                : activePublicBaseURL
+        )
+    }
+
+    private func resolvedPublicBaseURL(usingTLS: Bool) -> String {
+        let explicit = config.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty {
+            return explicit
+        }
+
+        let scheme = usingTLS ? "https" : "http"
+        let host = usingTLS ? (config.https?.domain ?? config.bindHost) : config.bindHost
+        let isDefaultPort = (usingTLS && config.port == 443) || (!usingTLS && config.port == 80)
+        if isDefaultPort {
+            return "\(scheme)://\(host)"
+        }
+        return "\(scheme)://\(host):\(config.port)"
     }
 
     private func handleConnection(_ connection: NWConnection) async {
@@ -1300,7 +1462,10 @@ actor AdminWebServer {
     }
 
     private func redirectURI() -> String {
-        let base = config.publicBaseURL.hasSuffix("/") ? String(config.publicBaseURL.dropLast()) : config.publicBaseURL
+        let resolvedBase = activePublicBaseURL.isEmpty
+            ? resolvedPublicBaseURL(usingTLS: config.https != nil)
+            : activePublicBaseURL
+        let base = resolvedBase.hasSuffix("/") ? String(resolvedBase.dropLast()) : resolvedBase
         return base + config.redirectPath
     }
 
@@ -1391,5 +1556,99 @@ actor AdminWebServer {
         var data = Data(response.utf8)
         data.append(body)
         return data
+    }
+}
+
+private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+    typealias OutboundOut = ByteBuffer
+
+    static let badRequestResponse = Data(
+        "HTTP/1.1 400 Bad Request\r\nContent-Length: 11\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nBad Request".utf8
+    )
+
+    private let maxHTTPRequestSize: Int
+    private let processor: @Sendable (Data) async -> Data
+    private var buffer = Data()
+    private var isProcessing = false
+    private var hasWrittenResponse = false
+
+    init(maxHTTPRequestSize: Int, processor: @escaping @Sendable (Data) async -> Data) {
+        self.maxHTTPRequestSize = maxHTTPRequestSize
+        self.processor = processor
+    }
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard !hasWrittenResponse else { return }
+
+        var chunk = unwrapInboundIn(data)
+        if let bytes = chunk.readBytes(length: chunk.readableBytes) {
+            buffer.append(contentsOf: bytes)
+        }
+
+        guard buffer.count <= maxHTTPRequestSize else {
+            writeResponse(Self.badRequestResponse, context: context)
+            return
+        }
+
+        guard !isProcessing, Self.isCompleteHTTPRequest(buffer) else {
+            return
+        }
+
+        isProcessing = true
+        let requestData = buffer
+        buffer.removeAll(keepingCapacity: false)
+
+        Task { [weak self] in
+            guard let self else { return }
+            let response = await self.processor(requestData)
+            self.writeResponse(response, context: context)
+        }
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        guard !hasWrittenResponse else {
+            context.close(promise: nil)
+            return
+        }
+
+        writeResponse(Self.badRequestResponse, context: context)
+    }
+
+    private func writeResponse(_ response: Data, context: ChannelHandlerContext) {
+        guard !hasWrittenResponse else { return }
+        hasWrittenResponse = true
+
+        context.eventLoop.execute {
+            var buffer = context.channel.allocator.buffer(capacity: response.count)
+            buffer.writeBytes(response)
+            context.writeAndFlush(self.wrapOutboundOut(buffer)).whenComplete { _ in
+                context.close(promise: nil)
+            }
+        }
+    }
+
+    private static func isCompleteHTTPRequest(_ buffer: Data) -> Bool {
+        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
+            return false
+        }
+
+        let headerData = buffer[..<headerRange.upperBound]
+        let contentLength = parseContentLength(headerData)
+        let bodyLength = buffer.count - headerRange.upperBound
+        return bodyLength >= contentLength
+    }
+
+    private static func parseContentLength(_ headerData: Data.SubSequence) -> Int {
+        guard let text = String(data: Data(headerData), encoding: .utf8) else { return 0 }
+        for line in text.split(separator: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("content-length:"),
+               let value = lower.split(separator: ":").last,
+               let count = Int(value.trimmingCharacters(in: .whitespaces)) {
+                return count
+            }
+        }
+        return 0
     }
 }

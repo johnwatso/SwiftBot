@@ -25,6 +25,9 @@ struct PreferencesView: View {
             adminWebHost: app.settings.adminWebUI.bindHost,
             adminWebPort: app.settings.adminWebUI.port,
             adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
+            adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
+            adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
+            adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
             adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
@@ -106,6 +109,9 @@ private struct PreferencesSnapshot: Equatable {
     var adminWebHost = ""
     var adminWebPort = 38888
     var adminWebBaseURL = ""
+    var adminWebHTTPSEnabled = false
+    var adminWebHTTPSDomain = ""
+    var adminWebCloudflareToken = ""
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""
     var adminAllowedUserIDs = ""
