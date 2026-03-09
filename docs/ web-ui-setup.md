@@ -84,7 +84,7 @@ Certificate Mode: Automatic (Let's Encrypt)
 
 # 4. Creating a Cloudflare API Token
 
-SwiftBot uses the Cloudflare API to complete DNS validation.
+SwiftBot uses the Cloudflare API for DNS validation and (optionally) Cloudflare Tunnel. The **same token** is used for both HTTPS and Public Access.
 
 1. Log into Cloudflare
 
@@ -94,22 +94,26 @@ My Profile → API Tokens
 
 3. Click **Create Token**
 
-Use the template:
+4. Use **Custom Token** with these permissions:
 
-Edit DNS
+| Permission | Level | Purpose |
+|------------|-------|---------|
+| Zone → DNS → Edit | Zone | Create DNS records for validation |
+| Zone → Zone → Read | Zone | Look up zone information |
+| Account → Cloudflare Tunnel → Edit | Account | Create/manage tunnels (Public Access) |
+| Account → Account Settings → Read | Account | Read account ID |
 
-Permissions required:
+5. Under **Zone Resources**, select:
 
-Zone → DNS → Edit  
-Zone → Zone → Read
+Include → Specific Zone → (your domain)
 
-Zone Resources:
+6. Click **Continue to summary** then **Create Token**
 
-Include → Specific Zone
+7. Copy the token and paste it into:
 
-Copy the token and paste it into:
+SwiftBot → Settings → HTTPS → Cloudflare API Token
 
-SwiftBot → HTTPS → Cloudflare API Token
+The token is automatically shared between HTTPS and Public Access sections.
 
 ---
 
@@ -183,7 +187,41 @@ Only **server administrators** are allowed to access the dashboard by default.
 
 ---
 
-# 9. Troubleshooting
+# 9. Public Access (Cloudflare Tunnel)
+
+SwiftBot can expose the Web UI to the internet without router port forwarding using **Cloudflare Tunnel**.
+
+## Requirements
+
+- HTTPS configured (above)
+- Cloudflare API token with Tunnel permissions (see step 4)
+
+## Setup
+
+1. Go to **SwiftBot → Settings → Public Access**
+
+2. Enable **Public Access**
+
+3. Enter the same hostname used for HTTPS (e.g., `admin.example.com`)
+
+4. Click **Enable Public Access**
+
+SwiftBot will:
+- Create a Cloudflare tunnel (or reuse an existing one)
+- Configure DNS routing
+- Start the tunnel automatically
+
+## Using Existing Tunnels
+
+If you previously created a tunnel with the same name, SwiftBot will automatically detect and reuse it. No manual cleanup needed.
+
+Status indicators:
+- **✓ Cloudflare tunnel detected** — Reusing existing tunnel
+- **✓ Created tunnel** — New tunnel created
+
+---
+
+# 10. Troubleshooting
 
 ## Domain does not resolve
 
@@ -195,10 +233,15 @@ admin.example.com → SERVER IP
 
 ## Cloudflare token invalid
 
-Ensure the token has:
+Ensure the token has all required permissions:
 
-Zone → DNS → Edit  
-Zone → Zone → Read
+**For HTTPS:**
+- Zone → DNS → Edit
+- Zone → Zone → Read
+
+**For Public Access (additionally):**
+- Account → Cloudflare Tunnel → Edit
+- Account → Account Settings → Read
 
 ---
 
@@ -212,7 +255,17 @@ Verify:
 
 ---
 
-# 10. Security Notes
+## "Cloudflare authentication required" error
+
+The API token field is empty. Re-enter your token in:
+
+SwiftBot → Settings → HTTPS → Cloudflare API Token
+
+The token is shared between HTTPS and Public Access sections.
+
+---
+
+# 11. Security Notes
 
 - SwiftBot stores Cloudflare tokens securely in the system keychain.
 - Discord authentication ensures only administrators can access the dashboard.
@@ -220,7 +273,7 @@ Verify:
 
 ---
 
-# Example Architecture
+# 12. Example Architecture
 
 Browser  
 ↓  
@@ -234,7 +287,7 @@ Bot Administration
 
 ---
 
-# Next Steps
+# 13. Next Steps
 
 You can also configure:
 

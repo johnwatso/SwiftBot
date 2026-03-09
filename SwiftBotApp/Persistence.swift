@@ -315,10 +315,6 @@ final class LogStore: ObservableObject {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.contains("ViewBridge to RemoteViewService Terminated") || 
            trimmed.contains("NSViewBridgeErrorCanceled") {
-            #if DEBUG
-            let stamp = Self.dateFormatter.string(from: Date())
-            lines.append("[\(stamp)] [DEBUG-ONLY] \(line)")
-            #endif
             return
         }
 
