@@ -138,9 +138,73 @@ actor CertificateManager {
         var zoneFound = false
         var dnsRecordFound = false
         var domainResolves = false
+        var matchedZoneID: String?
         var matchedZoneName: String?
+        var cloudflareItem = ValidationItem(
+            id: "cloudflare-access",
+            title: "Cloudflare API access verified",
+            status: .warning,
+            detail: nil
+        )
+        var resolutionItem = ValidationItem(
+            id: "domain-resolves",
+            title: "Domain resolves",
+            status: .warning,
+            detail: nil
+        )
+        var dnsRecordItem = ValidationItem(
+            id: "dns-record-present",
+            title: "DNS record present",
+            status: .warning,
+            detail: nil
+        )
 
-        let resolutionItem: ValidationItem
+        if trimmedToken.isEmpty {
+            cloudflareItem = ValidationItem(
+                id: "cloudflare-access",
+                title: "Cloudflare API access verified",
+                status: .error,
+                detail: "Cloudflare verification failed. Check your API token."
+            )
+        } else {
+            let provider = CloudflareDNSProvider(apiToken: trimmedToken)
+            do {
+                tokenIsValid = try await provider.verifyAPIToken()
+                if tokenIsValid, let zone = try await provider.findZone(for: normalizedDomain) {
+                    zoneFound = true
+                    matchedZoneID = zone.id
+                    matchedZoneName = zone.name
+                    cloudflareItem = ValidationItem(
+                        id: "cloudflare-access",
+                        title: "Cloudflare API access verified",
+                        status: .success,
+                        detail: "Cloudflare token is active and zone \(zone.name) is available."
+                    )
+                } else if tokenIsValid {
+                    cloudflareItem = ValidationItem(
+                        id: "cloudflare-access",
+                        title: "Cloudflare API access verified",
+                        status: .error,
+                        detail: "Cloudflare zone lookup failed. Check that the domain is in your Cloudflare account."
+                    )
+                } else {
+                    cloudflareItem = ValidationItem(
+                        id: "cloudflare-access",
+                        title: "Cloudflare API access verified",
+                        status: .error,
+                        detail: "Cloudflare verification failed. Check your API token."
+                    )
+                }
+            } catch {
+                cloudflareItem = ValidationItem(
+                    id: "cloudflare-access",
+                    title: "Cloudflare API access verified",
+                    status: .error,
+                    detail: "Cloudflare verification failed. Check your API token."
+                )
+            }
+        }
+
         if normalizedDomain.isEmpty {
             resolutionItem = ValidationItem(
                 id: "domain-resolves",
@@ -161,162 +225,54 @@ actor CertificateManager {
             )
         }
 
-        var cloudflareItem = ValidationItem(
-            id: "cloudflare-access",
-            title: "Cloudflare access verified",
-            status: .warning,
-            detail: nil
-        )
-        var dnsRecordItem = ValidationItem(
-            id: "dns-record-present",
-            title: "DNS record present",
-            status: .warning,
-            detail: nil
-        )
-
-        if trimmedToken.isEmpty {
-            cloudflareItem = ValidationItem(
-                id: "cloudflare-access",
-                title: "Cloudflare access verified",
-                status: .error,
-                detail: "Enter a Cloudflare API token to verify account access."
-            )
-            dnsRecordItem = ValidationItem(
-                id: "dns-record-present",
-                title: "DNS record present",
-                status: normalizedDomain.isEmpty ? .warning : .warning,
-                detail: "Skipped until Cloudflare access is verified."
-            )
-        } else if normalizedDomain.isEmpty {
+        if tokenIsValid, zoneFound, !normalizedDomain.isEmpty {
             let provider = CloudflareDNSProvider(apiToken: trimmedToken)
             do {
-                tokenIsValid = try await provider.verifyAPIToken()
-                cloudflareItem = ValidationItem(
-                    id: "cloudflare-access",
-                    title: "Cloudflare access verified",
-                    status: tokenIsValid ? .warning : .error,
-                    detail: tokenIsValid
-                        ? "Cloudflare token is active. Enter an HTTPS domain to continue the setup check."
-                        : "Cloudflare reports that this token is not active."
-                )
-            } catch {
-                cloudflareItem = ValidationItem(
-                    id: "cloudflare-access",
-                    title: "Cloudflare access verified",
-                    status: .error,
-                    detail: error.localizedDescription
-                )
-            }
-
-            dnsRecordItem = ValidationItem(
-                id: "dns-record-present",
-                title: "DNS record present",
-                status: .warning,
-                detail: "Enter an HTTPS domain before checking Cloudflare DNS records."
-            )
-        } else {
-            let provider = CloudflareDNSProvider(apiToken: trimmedToken)
-            do {
-                tokenIsValid = try await provider.verifyAPIToken()
-                guard tokenIsValid else {
-                    cloudflareItem = ValidationItem(
-                        id: "cloudflare-access",
-                        title: "Cloudflare access verified",
-                        status: .error,
-                        detail: "Cloudflare reports that this token is not active."
-                    )
-                    dnsRecordItem = ValidationItem(
-                        id: "dns-record-present",
-                        title: "DNS record present",
-                        status: .warning,
-                        detail: "Skipped until Cloudflare access is verified."
-                    )
-
-                    let readyStatus = Self.validationSummaryState(
-                        tokenIsValid: tokenIsValid,
-                        zoneFound: zoneFound,
-                        dnsRecordFound: dnsRecordFound,
-                        hostnameResolves: domainResolves
-                    )
-                    return AutomaticHTTPSValidation(
-                        items: [
-                            resolutionItem,
-                            cloudflareItem,
-                            dnsRecordItem,
-                            ValidationItem(
-                                id: "ready",
-                                title: "Ready for certificate request",
-                                status: readyStatus,
-                                detail: validationSummaryDetail(
-                                    domain: normalizedDomain,
-                                    matchedZoneName: matchedZoneName,
-                                    tokenIsValid: tokenIsValid,
-                                    zoneFound: zoneFound,
-                                    dnsRecordFound: dnsRecordFound,
-                                    hostnameResolves: domainResolves
-                                )
-                            )
-                        ],
-                        canCreateDNSRecord: false,
-                        isReadyForCertificateRequest: readyStatus == .success,
-                        isAwaitingDNSPropagation: false
-                    )
-                }
-
-                if let zone = try await provider.findZone(for: normalizedDomain) {
-                    zoneFound = true
-                    matchedZoneName = zone.name
-                    cloudflareItem = ValidationItem(
-                        id: "cloudflare-access",
-                        title: "Cloudflare access verified",
-                        status: .success,
-                        detail: "Cloudflare token is active and zone \(zone.name) is available."
-                    )
-
-                    if let record = try await provider.findDNSRecord(zoneID: zone.id, hostname: normalizedDomain) {
+                if let matchedZoneID, let matchedZoneName {
+                    if let record = try await provider.findDNSRecord(
+                        zoneID: matchedZoneID,
+                        hostname: normalizedDomain,
+                        allowedTypes: Self.hostnameRecordTypes
+                    ) {
                         dnsRecordFound = true
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
                             title: "DNS record present",
                             status: .success,
-                            detail: "Found \(record.type) \(record.content) for \(normalizedDomain) in \(zone.name)."
+                            detail: "Found \(record.type) \(record.content) for \(normalizedDomain) in \(matchedZoneName)."
                         )
                     } else {
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
                             title: "DNS record present",
-                            status: .error,
-                            detail: "No Cloudflare DNS record named \(normalizedDomain) exists yet."
+                            status: .warning,
+                            detail: "DNS record missing."
                         )
                     }
-                } else {
-                    cloudflareItem = ValidationItem(
-                        id: "cloudflare-access",
-                        title: "Cloudflare access verified",
-                        status: .error,
-                        detail: "No matching Cloudflare zone was found for \(normalizedDomain)."
-                    )
-                    dnsRecordItem = ValidationItem(
-                        id: "dns-record-present",
-                        title: "DNS record present",
-                        status: .warning,
-                        detail: "Skipped because SwiftBot could not match a Cloudflare zone for \(normalizedDomain)."
-                    )
                 }
             } catch {
                 cloudflareItem = ValidationItem(
                     id: "cloudflare-access",
-                    title: "Cloudflare access verified",
+                    title: "Cloudflare API access verified",
                     status: .error,
-                    detail: error.localizedDescription
+                    detail: "Cloudflare DNS lookup failed. Check that the zone is accessible."
                 )
                 dnsRecordItem = ValidationItem(
                     id: "dns-record-present",
                     title: "DNS record present",
                     status: .warning,
-                    detail: "Skipped because the Cloudflare validation request failed."
+                    detail: "Skipped until Cloudflare access is verified."
                 )
+                zoneFound = false
+                dnsRecordFound = false
             }
+        } else {
+            dnsRecordItem = ValidationItem(
+                id: "dns-record-present",
+                title: "DNS record present",
+                status: .warning,
+                detail: "Skipped until Cloudflare access is verified."
+            )
         }
 
         let readyStatus = Self.validationSummaryState(
@@ -328,8 +284,8 @@ actor CertificateManager {
 
         return AutomaticHTTPSValidation(
             items: [
-                resolutionItem,
                 cloudflareItem,
+                resolutionItem,
                 dnsRecordItem,
                 ValidationItem(
                     id: "ready",
@@ -353,9 +309,9 @@ actor CertificateManager {
 
     func createAutomaticHTTPSDNSRecord(
         for domain: String,
-        cloudflareAPIToken: String,
-        publicBaseURL: String,
-        bindHost: String
+            cloudflareAPIToken: String,
+            publicBaseURL: String,
+            bindHost: String
     ) async throws -> DNSRecordCreation {
         let normalizedDomain = normalizeDomain(domain)
         guard !normalizedDomain.isEmpty else {
@@ -373,11 +329,35 @@ actor CertificateManager {
             throw Error.inactiveCloudflareToken
         }
 
-        guard let zone = try await provider.findZone(for: normalizedDomain) else {
+        let zone: CloudflareDNSProvider.ZoneSummary
+        do {
+            guard let matchedZone = try await provider.findZone(for: normalizedDomain) else {
+                throw CloudflareDNSProvider.Error.zoneNotFound(normalizedDomain)
+            }
+            zone = matchedZone
+        } catch let error as CloudflareDNSProvider.Error {
+            switch error {
+            case .zoneNotFound:
+                throw error
+            case .invalidDomain, .apiFailed:
+                throw CloudflareDNSProvider.Error.apiFailed("Cloudflare zone lookup failed. Check that the domain is in your Cloudflare account.")
+            }
+        } catch {
             throw CloudflareDNSProvider.Error.zoneNotFound(normalizedDomain)
         }
 
-        if let existing = try await provider.findDNSRecord(zoneID: zone.id, hostname: normalizedDomain) {
+        let existingRecord: CloudflareDNSProvider.DNSRecordSummary?
+        do {
+            existingRecord = try await provider.findDNSRecord(
+                zoneID: zone.id,
+                hostname: normalizedDomain,
+                allowedTypes: Self.hostnameRecordTypes
+            )
+        } catch {
+            throw CloudflareDNSProvider.Error.apiFailed("Cloudflare DNS lookup failed. Check that the token has DNS read access.")
+        }
+
+        if let existing = existingRecord {
             return DNSRecordCreation(
                 type: existing.type,
                 name: existing.name,
@@ -391,14 +371,19 @@ actor CertificateManager {
             publicBaseURL: publicBaseURL,
             bindHost: bindHost
         )
-        let record = try await provider.createDNSRecord(
-            zoneID: zone.id,
-            type: target.type,
-            name: normalizedDomain,
-            content: target.content,
-            ttl: 120,
-            proxied: false
-        )
+        let record: CloudflareDNSProvider.DNSRecordSummary
+        do {
+            record = try await provider.createDNSRecord(
+                zoneID: zone.id,
+                type: target.type,
+                name: normalizedDomain,
+                content: target.content,
+                ttl: 120,
+                proxied: false
+            )
+        } catch {
+            throw CloudflareDNSProvider.Error.apiFailed("Cloudflare DNS record creation failed. Check that the token has DNS edit access.")
+        }
 
         return DNSRecordCreation(
             type: record.type,
@@ -510,6 +495,8 @@ actor CertificateManager {
     static func shouldRenew(expiresAt: Date, referenceDate: Date = Date()) -> Bool {
         expiresAt.timeIntervalSince(referenceDate) < 30 * 24 * 60 * 60
     }
+
+    private static let hostnameRecordTypes: Set<String> = ["A", "AAAA", "CNAME"]
 
     static func validationSummaryState(
         tokenIsValid: Bool,
@@ -664,9 +651,23 @@ actor CertificateManager {
     }
 
     private func normalizeDomain(_ domain: String) -> String {
-        domain
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        if let url = URL(string: trimmed), let host = url.host {
+            return host.lowercased()
+        }
+
+        let normalized = trimmed
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .replacingOccurrences(of: " ", with: "")
             .lowercased()
+
+        if let slashIndex = normalized.firstIndex(of: "/") {
+            return String(normalized[..<slashIndex])
+        }
+
+        return normalized
     }
 
     private func preferredAutomaticHTTPSRecordTarget(
@@ -718,9 +719,9 @@ actor CertificateManager {
             }
             return "\(domain) is ready for certificate provisioning."
         case .warning:
-            return "\(domain) is configured in Cloudflare, but DNS has not propagated yet. SwiftBot will keep checking until the hostname resolves."
+            return "Certificate request not ready. DNS propagation is still in progress."
         case .error:
-            return "Resolve the failing checks above before requesting a certificate."
+            return "Certificate request not ready."
         }
     }
 
@@ -842,9 +843,9 @@ actor CertificateManager {
 
     nonisolated private static func resolveHostname(_ hostname: String) -> (success: Bool, detail: String) {
         var hints = addrinfo(
-            ai_flags: AI_ADDRCONFIG,
+            ai_flags: 0,
             ai_family: AF_UNSPEC,
-            ai_socktype: SOCK_STREAM,
+            ai_socktype: 0,
             ai_protocol: 0,
             ai_addrlen: 0,
             ai_canonname: nil,
@@ -858,8 +859,7 @@ actor CertificateManager {
         }
 
         guard status == 0, let firstResult = resultsPointer else {
-            let message = String(cString: gai_strerror(status))
-            return (false, "System DNS could not resolve \(hostname): \(message).")
+            return (false, "Domain could not be resolved by system DNS.")
         }
         defer { freeaddrinfo(firstResult) }
 
@@ -887,7 +887,7 @@ actor CertificateManager {
 
         let uniqueAddresses = Array(Set(addresses)).sorted()
         guard !uniqueAddresses.isEmpty else {
-            return (false, "System DNS did not return any IP addresses for \(hostname).")
+            return (false, "Domain could not be resolved by system DNS.")
         }
 
         return (true, "Resolved \(hostname) to \(uniqueAddresses.joined(separator: ", ")).")

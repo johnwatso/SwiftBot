@@ -54,10 +54,6 @@ struct CloudflareDNSProvider: Sendable {
         let name: String
     }
 
-    private struct TokenVerificationResult: Decodable {
-        let status: String?
-    }
-
     private struct DNSRecord: Decodable {
         let id: String
         let zoneID: String
@@ -170,12 +166,27 @@ struct CloudflareDNSProvider: Sendable {
             .appendingPathComponent("verify")
 
         let request = makeRequest(url: requestURL, method: "GET")
-        let envelope: APIEnvelope<TokenVerificationResult> = try await send(request)
-        guard envelope.success else {
-            throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw Error.apiFailed("Cloudflare verification failed. Check your API token.")
         }
 
-        return envelope.result?.status?.lowercased() == "active"
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let success = json["success"] as? Bool,
+              success,
+              let result = json["result"] as? [String: Any],
+              let status = result["status"] as? String
+        else {
+            throw Error.apiFailed("Cloudflare verification failed. Check your API token.")
+        }
+
+        return status.lowercased() == "active"
     }
 
     func findZone(for fqdn: String) async throws -> ZoneSummary? {
@@ -198,7 +209,7 @@ struct CloudflareDNSProvider: Sendable {
         return nil
     }
 
-    func findDNSRecord(zoneID: String, hostname: String) async throws -> DNSRecordSummary? {
+    func findDNSRecord(zoneID: String, hostname: String, allowedTypes: Set<String>? = nil) async throws -> DNSRecordSummary? {
         var components = URLComponents(
             url: baseURL
                 .appendingPathComponent("zones")
@@ -221,7 +232,19 @@ struct CloudflareDNSProvider: Sendable {
             throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
         }
 
-        guard let record = envelope.result?.first(where: { $0.name.caseInsensitiveCompare(hostname) == .orderedSame }) else {
+        let record = envelope.result?.first { record in
+            guard record.name.caseInsensitiveCompare(hostname) == .orderedSame else {
+                return false
+            }
+
+            if let allowedTypes {
+                return allowedTypes.contains(record.type.uppercased())
+            }
+
+            return true
+        }
+
+        guard let record else {
             return nil
         }
 
