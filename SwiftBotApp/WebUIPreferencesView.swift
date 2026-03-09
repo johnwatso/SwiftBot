@@ -2,10 +2,12 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
 private func sharedAdminWebHostname(in settings: AdminWebUISettings) -> String {
     settings.normalizedHostname
 }
 
+@MainActor
 private func sharedAdminWebHostnameBinding(for app: AppModel) -> Binding<String> {
     Binding(
         get: {
@@ -81,9 +83,28 @@ struct InternetAccessConfigurationSection: View {
     @State private var setupFeedback: InternetAccessFeedback?
     @State private var setupProgress: InternetAccessSetupProgress?
     @State private var lastError: Error? = nil
+    
+    // Progressive Setup State
+    @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
+    @State private var selectedZoneID: String = ""
+    @State private var subdomain: String = ""
+    @State private var isVerifyingToken = false
+    @State private var hasVerifiedToken = false
+    @State private var tokenVerificationTask: Task<Void, Never>? = nil
+
+    private var selectedZone: CloudflareDNSProvider.ZoneSummary? {
+        availableZones.first(where: { $0.id == selectedZoneID })
+    }
 
     private var publicURLString: String {
-        app.adminWebPublicAccessURL()?.absoluteString ?? ""
+        if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled {
+            return app.adminWebPublicAccessURL()?.absoluteString ?? ""
+        }
+        
+        guard let zone = selectedZone, !subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return "https://\(subdomain.lowercased()).\(zone.name)"
     }
 
     private var sharedHostname: String {
@@ -98,8 +119,9 @@ struct InternetAccessConfigurationSection: View {
         !app.settings.adminWebUI.internetAccessEnabled
             && !isEnabling
             && !isDisabling
-            && hasCloudflareAuthentication
-            && !sharedHostname.isEmpty
+            && hasVerifiedToken
+            && !selectedZoneID.isEmpty
+            && !subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var checklistItems: [CertificateManager.ValidationItem] {
@@ -180,41 +202,115 @@ struct InternetAccessConfigurationSection: View {
             .disabled(isEnabling || isDisabling)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Hostname")
-                    .font(.subheadline.weight(.medium))
-                TextField("admin.example.com", text: sharedAdminWebHostnameBinding(for: app))
-                    .textFieldStyle(.roundedBorder)
-                Text("The public domain name for your SwiftBot dashboard.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
                 Text("Cloudflare API Token")
                     .font(.subheadline.weight(.medium))
-                SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
-                    .textFieldStyle(.roundedBorder)
+                
+                HStack(spacing: 8) {
+                    SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
+                            hasVerifiedToken = false
+                            availableZones = []
+                            selectedZoneID = ""
+                        }
+                    
+                    if !hasVerifiedToken {
+                        Button {
+                            verifyToken()
+                        } label: {
+                            if isVerifyingToken {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("Verify")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+                
                 Text("Stored securely in your macOS Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            if hasVerifiedToken && !availableZones.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cloudflare Zone")
+                        .font(.subheadline.weight(.medium))
+                    
+                    Picker("", selection: $selectedZoneID) {
+                        Text("Select a zone").tag("")
+                        ForEach(availableZones, id: \.id) { zone in
+                            Text(zone.name).tag(zone.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    
+                    Text("Choose the domain where you want to host your SwiftBot dashboard.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if hasVerifiedToken && !selectedZoneID.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Subdomain")
+                        .font(.subheadline.weight(.medium))
+                    
+                    TextField("e.g. devbot", text: $subdomain)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: subdomain) { _, newValue in
+                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+                            if filtered != newValue {
+                                subdomain = filtered
+                            }
+                        }
+                    
+                    if !subdomain.isEmpty {
+                        Text("SwiftBot will be available at:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(publicURLString)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
                 if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled && !publicURLString.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .font(.title3)
+                            Text("Internet Access Active")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        
                         Text("SwiftBot is available at: \(publicURLString)")
                             .font(.subheadline.weight(.medium))
                             .textSelection(.enabled)
                         
                         HStack(spacing: 10) {
-                            Button("Open in Browser") {
+                            Button {
                                 openURL()
+                            } label: {
+                                Label("Open in Browser", systemImage: "arrow.up.forward.square")
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.regular)
 
-                            Button("Copy URL") {
+                            Button {
                                 copyURL()
+                            } label: {
+                                Label("Copy URL", systemImage: "doc.on.doc")
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
@@ -229,19 +325,20 @@ struct InternetAccessConfigurationSection: View {
                             .controlSize(.small)
                         }
                     }
-                    .padding(14)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(16)
+                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 } else {
                     HStack(spacing: 8) {
-                        Text("Status")
+                        Text("Status:")
                             .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
                         Text(statusText)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(statusColor)
                     }
 
                     if let feedback = setupFeedback {
-                        Text(feedback.message)
+                        Label(feedback.message, systemImage: feedback.status == .error ? "exclamationmark.octagon.fill" : "info.circle.fill")
                             .font(.caption)
                             .foregroundStyle(feedback.status == .error ? .red : .secondary)
                     }
@@ -266,6 +363,10 @@ struct InternetAccessConfigurationSection: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(.white.opacity(0.05), lineWidth: 1)
+                    )
                 }
             }
 
@@ -278,8 +379,10 @@ struct InternetAccessConfigurationSection: View {
                             }
                             .buttonStyle(.borderedProminent)
                         } else {
-                            Button("Enable Internet Access") {
+                            Button {
                                 enable()
+                            } label: {
+                                Label("Enable Internet Access", systemImage: "network")
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -300,13 +403,60 @@ struct InternetAccessConfigurationSection: View {
         }
     }
 
+    private func verifyToken() {
+        guard !isVerifyingToken else { return }
+        
+        isVerifyingToken = true
+        setupFeedback = nil
+        tokenVerificationTask?.cancel()
+        
+        tokenVerificationTask = Task { @MainActor in
+            do {
+                let zones = try await app.verifyCloudflareTokenAndListZones(token: app.settings.adminWebUI.cloudflareAPIToken)
+                guard !Task.isCancelled else { return }
+                
+                self.availableZones = zones
+                self.hasVerifiedToken = true
+                self.isVerifyingToken = false
+                
+                // Auto-select if only one zone
+                if zones.count == 1, let firstZone = zones.first {
+                    self.selectedZoneID = firstZone.id
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.hasVerifiedToken = false
+                self.isVerifyingToken = false
+                self.setupFeedback = InternetAccessFeedback(
+                    status: .error,
+                    message: app.userFacingAdminWebPublicAccessMessage(for: error)
+                )
+            }
+        }
+    }
+
     private func enable(forceReplaceDNS: Bool = false) {
         guard !isEnabling else { return }
+        
+        let fullHostname: String
+        if !selectedZoneID.isEmpty, !subdomain.isEmpty, let zone = selectedZone {
+            fullHostname = "\(subdomain.lowercased()).\(zone.name)"
+        } else {
+            fullHostname = app.settings.adminWebUI.normalizedHostname
+        }
+        
+        guard !fullHostname.isEmpty else {
+            setupFeedback = InternetAccessFeedback(status: .warning, message: "Configure a hostname first.")
+            return
+        }
 
         isEnabling = true
         setupFeedback = nil
         lastError = nil
-        setupProgress = InternetAccessSetupProgress(hostname: app.settings.adminWebUI.normalizedHostname)
+        setupProgress = InternetAccessSetupProgress(hostname: fullHostname)
+
+        // Ensure settings are updated with the chosen hostname before starting
+        app.settings.adminWebUI.hostname = fullHostname
 
         Task { @MainActor in
             do {
@@ -418,7 +568,8 @@ private struct InternetAccessSetupProgress {
         "cloudflare-zone",
         "create-tunnel",
         "create-dns",
-        "start-tunnel"
+        "issue-certificate",
+        "enable-access"
     ]
 
     private var itemsByID: [String: CertificateManager.ValidationItem]
@@ -430,7 +581,8 @@ private struct InternetAccessSetupProgress {
             "cloudflare-zone": .init(id: "cloudflare-zone", title: "Detect zone", status: .pending, detail: normalizedHostname.isEmpty ? nil : "Preparing setup for \(normalizedHostname)."),
             "create-tunnel": .init(id: "create-tunnel", title: "Detect or create tunnel", status: .pending, detail: nil),
             "create-dns": .init(id: "create-dns", title: "Configure DNS route", status: .pending, detail: nil),
-            "start-tunnel": .init(id: "start-tunnel", title: "Start Cloudflare tunnel", status: .pending, detail: nil)
+            "issue-certificate": .init(id: "issue-certificate", title: "Issue HTTPS certificate", status: .pending, detail: nil),
+            "enable-access": .init(id: "enable-access", title: "Enable Internet Access", status: .pending, detail: nil)
         ]
     }
 
@@ -456,10 +608,14 @@ private struct InternetAccessSetupProgress {
             setItem(id: "create-dns", status: .warning, detail: "Configuring DNS route for \(hostname)…")
         case .tunnelDNSRecordCreated(let hostname):
             setItem(id: "create-dns", status: .success, detail: "DNS route configured for \(hostname).")
+        case .issuingHTTPSCertificate(let hostname):
+            setItem(id: "issue-certificate", status: .warning, detail: "Issuing certificate for \(hostname)…")
+        case .httpsCertificateIssued(let hostname):
+            setItem(id: "issue-certificate", status: .success, detail: "HTTPS certificate active for \(hostname).")
         case .startingCloudflareTunnel:
-            setItem(id: "start-tunnel", status: .warning, detail: "Starting Cloudflare tunnel…")
+            setItem(id: "enable-access", status: .warning, detail: "Starting Cloudflare tunnel…")
         case .cloudflareTunnelStarted:
-            setItem(id: "start-tunnel", status: .success, detail: "Cloudflare tunnel active.")
+            setItem(id: "enable-access", status: .success, detail: "Internet Access enabled.")
         case .internetAccessEnabled(_):
             break
         }
