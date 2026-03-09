@@ -2348,24 +2348,41 @@ final class AppModel: ObservableObject {
         return "Public access enabled"
     }
 
-    func disableAdminWebPublicAccess() async {
+    /// Stops the Cloudflare tunnel and disables Internet Access at runtime,
+    /// but keeps all configuration (token, zone, hostname, tunnel credentials)
+    /// so the user can re-enable without re-running setup.
+    func stopInternetAccess() async {
+        settings.adminWebUI.internetAccessEnabled = false
+        await configureAdminWebServer()
+        do {
+            try await store.save(settings)
+            try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+        } catch {
+            logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+        }
+    }
+
+    /// Performs a destructive reset of Internet Access:
+    /// deletes the DNS record and Cloudflare Tunnel, then clears all stored
+    /// configuration (token, zone, hostname, tunnel credentials).
+    func resetInternetAccess() async {
         let hostname = effectiveAdminWebHostname()
         let tunnelID = settings.adminWebUI.publicAccessTunnelID
         let accountID = settings.adminWebUI.publicAccessTunnelAccountID
         let apiToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Stop the tunnel first
         settings.adminWebUI.internetAccessEnabled = false
         settings.adminWebUI.publicAccessTunnelID = ""
         settings.adminWebUI.publicAccessTunnelName = ""
         settings.adminWebUI.publicAccessTunnelAccountID = ""
         settings.adminWebUI.publicAccessTunnelToken = ""
-
         await configureAdminWebServer()
 
+        // Clean up the Cloudflare-side resources
         if !apiToken.isEmpty, !tunnelID.isEmpty, !accountID.isEmpty, !hostname.isEmpty {
             let dnsProvider = CloudflareDNSProvider(apiToken: apiToken)
             let tunnelClient = CloudflareTunnelClient(apiToken: apiToken)
-
             do {
                 if let zone = try await dnsProvider.findZone(for: hostname),
                    let record = try await dnsProvider.findDNSRecord(
@@ -2378,17 +2395,29 @@ final class AppModel: ObservableObject {
                 }
                 try? await tunnelClient.deleteTunnel(accountID: accountID, tunnelID: tunnelID)
             } catch {
-                logs.append("⚠️ Public Access cleanup warning: \(error.localizedDescription)")
+                logs.append("⚠️ Internet Access reset cleanup warning: \(error.localizedDescription)")
             }
         }
+
+        // Clear all configuration to return to initial state
+        settings.adminWebUI.cloudflareAPIToken = ""
+        settings.adminWebUI.selectedZoneID = ""
+        settings.adminWebUI.selectedZoneName = ""
+        settings.adminWebUI.subdomain = ""
+        settings.adminWebUI.hostname = ""
 
         do {
             try await store.save(settings)
             try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
-            logs.append("✅ Settings saved")
+            logs.append("✅ Internet Access reset complete")
         } catch {
             logs.append("❌ Failed saving settings: \(error.localizedDescription)")
         }
+    }
+
+    @available(*, deprecated, renamed: "resetInternetAccess")
+    func disableAdminWebPublicAccess() async {
+        await resetInternetAccess()
     }
 
     // MARK: - Unified Internet Access Setup
