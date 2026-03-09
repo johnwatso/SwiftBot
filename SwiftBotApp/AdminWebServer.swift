@@ -287,8 +287,7 @@ actor AdminWebServer {
         var port: Int
         var publicBaseURL: String
         var https: HTTPSConfiguration?
-        var discordClientID: String
-        var discordClientSecret: String
+        var discordOAuth: OAuthProviderSettings
         var redirectPath: String
         var allowedUserIDs: [String]
     }
@@ -339,8 +338,7 @@ actor AdminWebServer {
         port: 38888,
         publicBaseURL: "",
         https: nil,
-        discordClientID: "",
-        discordClientSecret: "",
+        discordOAuth: OAuthProviderSettings(),
         redirectPath: "/auth/discord/callback",
         allowedUserIDs: []
     )
@@ -1228,8 +1226,8 @@ actor AdminWebServer {
     }
 
     private func handleDiscordLogin() async -> Data {
-        let clientID = config.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let clientSecret = config.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientID = config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientSecret = config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty, !clientSecret.isEmpty else {
             return httpResponse(status: "503 Service Unavailable", body: Data("Discord OAuth is not configured.".utf8))
         }
@@ -1360,8 +1358,8 @@ actor AdminWebServer {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let form = [
-            "client_id": config.discordClientID,
-            "client_secret": config.discordClientSecret,
+            "client_id": config.discordOAuth.clientID,
+            "client_secret": config.discordOAuth.clientSecret,
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirectURI()

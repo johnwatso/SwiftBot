@@ -533,49 +533,174 @@ private struct AdminWebStatusRow: View {
 struct AdminWebAuthenticationSection: View {
     @EnvironmentObject var app: AppModel
 
+    private var hostname: String {
+        app.settings.adminWebUI.normalizedHostname
+    }
+
+    private func redirectURL(for provider: String) -> String {
+        guard !hostname.isEmpty else { return "" }
+        return "https://\(hostname)/auth/\(provider)/callback"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Discord OAuth Client ID")
-                    .font(.subheadline.weight(.medium))
-                TextField("123456789012345678", text: $app.settings.adminWebUI.discordClientID)
-                    .textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Sign-in")
+                .font(.headline.weight(.semibold))
+
+            if app.settings.adminWebUI.discordOAuth.enabled {
+                OAuthProviderCard(
+                    name: "Discord",
+                    icon: "message.fill",
+                    color: .indigo,
+                    settings: $app.settings.adminWebUI.discordOAuth,
+                    redirectURL: redirectURL(for: "discord")
+                )
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Discord OAuth Client Secret")
-                    .font(.subheadline.weight(.medium))
-                SecureField("Client Secret", text: $app.settings.adminWebUI.discordClientSecret)
-                    .textFieldStyle(.roundedBorder)
+            if app.settings.adminWebUI.appleOAuth.enabled {
+                OAuthProviderCard(
+                    name: "Apple",
+                    icon: "apple.logo",
+                    color: .primary,
+                    settings: $app.settings.adminWebUI.appleOAuth,
+                    redirectURL: redirectURL(for: "apple")
+                )
             }
 
-            Toggle("Restrict access to specific users", isOn: $app.settings.adminWebUI.restrictAccessToSpecificUsers)
-                .toggleStyle(.switch)
+            if app.settings.adminWebUI.steamOAuth.enabled {
+                OAuthProviderCard(
+                    name: "Steam",
+                    icon: "gamecontroller.fill",
+                    color: .blue,
+                    settings: $app.settings.adminWebUI.steamOAuth,
+                    redirectURL: redirectURL(for: "steam")
+                )
+            }
 
-            Text("Access is automatically limited to Discord server administrators.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if app.settings.adminWebUI.githubOAuth.enabled {
+                OAuthProviderCard(
+                    name: "GitHub",
+                    icon: "cat.fill",
+                    color: .primary,
+                    settings: $app.settings.adminWebUI.githubOAuth,
+                    redirectURL: redirectURL(for: "github")
+                )
+            }
 
-            if app.settings.adminWebUI.restrictAccessToSpecificUsers {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Discord User IDs")
-                        .font(.subheadline.weight(.medium))
-                    TextField("Comma-separated Discord IDs", text: Binding(
-                        get: { app.settings.adminWebUI.allowedUserIDs.joined(separator: ", ") },
-                        set: { newValue in
-                            app.settings.adminWebUI.allowedUserIDs = newValue
-                                .split(separator: ",")
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty }
-                        }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    Text("Leave empty to allow any server administrator.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            Divider()
+                .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Restrict access to specific users", isOn: $app.settings.adminWebUI.restrictAccessToSpecificUsers)
+                    .toggleStyle(.switch)
+
+                Text("Access is automatically limited to Discord server administrators. Enable this to further restrict access to specific User IDs.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if app.settings.adminWebUI.restrictAccessToSpecificUsers {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Allowed User IDs")
+                            .font(.subheadline.weight(.medium))
+                        TextField("Comma-separated Discord IDs", text: Binding(
+                            get: { app.settings.adminWebUI.allowedUserIDs.joined(separator: ", ") },
+                            set: { newValue in
+                                app.settings.adminWebUI.allowedUserIDs = newValue
+                                    .split(separator: ",")
+                                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                    .filter { !$0.isEmpty }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                    }
                 }
             }
         }
+    }
+}
+
+struct OAuthProviderCard: View {
+    let name: String
+    let icon: String
+    let color: Color
+    @Binding var settings: OAuthProviderSettings
+    let redirectURL: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $settings.enabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            .padding(14)
+
+            if settings.enabled {
+                VStack(alignment: .leading, spacing: 14) {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Client ID")
+                            .font(.caption.weight(.medium))
+                        TextField("Enter Client ID", text: $settings.clientID)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Client Secret")
+                            .font(.caption.weight(.medium))
+                        SecureField("Enter Client Secret", text: $settings.clientSecret)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Redirect URL")
+                            .font(.caption.weight(.medium))
+                        
+                        HStack(spacing: 8) {
+                            TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(true)
+                            
+                            Button {
+                                copyToClipboard(redirectURL)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(redirectURL.isEmpty)
+                            .help("Copy Redirect URL")
+                        }
+                        
+                        Text("Use this URL in your \(name) developer portal.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding([.horizontal, .bottom], 14)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .animation(.spring(duration: 0.3), value: settings.enabled)
+    }
+
+    private func copyToClipboard(_ value: String) {
+        guard !value.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }
 
