@@ -20,6 +20,10 @@ struct WebUIPreferencesView: View {
                     AdminWebHTTPSConfigurationSection()
                 }
 
+                PreferencesCard("Public Access", systemImage: "network") {
+                    AdminWebPublicAccessSection()
+                }
+
                 PreferencesCard("Authentication", systemImage: "person.badge.key") {
                     AdminWebAuthenticationSection()
                 }
@@ -838,6 +842,360 @@ private extension CertificateManager.ValidationStatus {
         case .error:
             return .red
         }
+    }
+}
+
+private struct AdminWebPublicAccessFeedback {
+    let status: CertificateManager.ValidationStatus
+    let message: String
+}
+
+struct AdminWebPublicAccessSection: View {
+    @EnvironmentObject var app: AppModel
+    @State private var isEnablingPublicAccess = false
+    @State private var isDisablingPublicAccess = false
+    @State private var setupFeedback: AdminWebPublicAccessFeedback?
+    @State private var setupProgress: AdminWebPublicAccessSetupProgress?
+
+    private var publicURLString: String {
+        app.adminWebPublicAccessURL()?.absoluteString ?? ""
+    }
+
+    private var statusColor: Color {
+        switch app.adminWebPublicAccessStatus.state {
+        case .enabled:
+            return .green
+        case .enabling:
+            return .orange
+        case .disabled:
+            return .secondary
+        case .error:
+            return .red
+        }
+    }
+
+    private var statusText: String {
+        switch app.adminWebPublicAccessStatus.state {
+        case .enabled:
+            return "Enabled"
+        case .enabling:
+            return "Enabling"
+        case .disabled:
+            return "Disabled"
+        case .error:
+            return "Error"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hostname")
+                    .font(.subheadline.weight(.medium))
+                TextField("swiftbot.example.com", text: $app.settings.adminWebUI.publicAccessHostname)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(app.settings.adminWebUI.publicAccessEnabled || isEnablingPublicAccess || isDisablingPublicAccess)
+                Text("Cloudflare Tunnel will publish this hostname over HTTPS without requiring port forwarding.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Cloudflare API Token")
+                    .font(.subheadline.weight(.medium))
+                SecureField("Token with Tunnel and DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(app.settings.adminWebUI.publicAccessEnabled || isEnablingPublicAccess || isDisablingPublicAccess)
+                Text("This reuses the same Cloudflare token setting as automatic HTTPS.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Status")
+                        .font(.subheadline.weight(.medium))
+                    Text(statusText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                }
+
+                if app.adminWebPublicAccessStatus.isEnabled, !publicURLString.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Public access enabled")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                        Text("SwiftBot is available at \(publicURLString)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else if !app.adminWebPublicAccessStatus.detail.isEmpty {
+                    Text(app.adminWebPublicAccessStatus.detail)
+                        .font(.caption)
+                        .foregroundStyle(app.adminWebPublicAccessStatus.state == .error ? .red : .secondary)
+                }
+            }
+
+            if let setupProgress {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(setupProgress.items.enumerated()), id: \.element.id) { index, item in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(item.status.symbol)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(item.status.color)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(index + 1). \(item.title)")
+                                    .font(.subheadline.weight(.medium))
+
+                                if let detail = item.detail, !detail.isEmpty {
+                                    Text(detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            HStack(spacing: 10) {
+                if app.settings.adminWebUI.publicAccessEnabled {
+                    Button("Open in Browser") {
+                        openPublicAccessURL()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isDisablingPublicAccess || publicURLString.isEmpty || !app.adminWebPublicAccessStatus.isEnabled)
+
+                    Button("Copy Public URL") {
+                        copyPublicAccessURL()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isDisablingPublicAccess || publicURLString.isEmpty || !app.adminWebPublicAccessStatus.isEnabled)
+
+                    Button("Disable Public Access") {
+                        disablePublicAccess()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isDisablingPublicAccess || isEnablingPublicAccess)
+                } else {
+                    Button("Enable Public Access") {
+                        enablePublicAccess()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isEnablingPublicAccess || isDisablingPublicAccess)
+                }
+
+                if isEnablingPublicAccess || isDisablingPublicAccess {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if let setupFeedback {
+                Text(setupFeedback.message)
+                    .font(.caption)
+                    .foregroundStyle(setupFeedback.status.color)
+            }
+        }
+    }
+
+    private func enablePublicAccess() {
+        guard !isEnablingPublicAccess else { return }
+
+        isEnablingPublicAccess = true
+        setupFeedback = nil
+        setupProgress = AdminWebPublicAccessSetupProgress(hostname: app.settings.adminWebUI.normalizedPublicAccessHostname)
+
+        Task { @MainActor in
+            do {
+                let resultMessage = try await app.startAdminWebPublicAccessSetup { event in
+                    guard var progress = setupProgress else {
+                        return
+                    }
+
+                    progress.apply(event)
+                    setupProgress = progress
+                }
+                guard !Task.isCancelled else { return }
+
+                setupProgress = nil
+                setupFeedback = AdminWebPublicAccessFeedback(status: .success, message: resultMessage)
+                isEnablingPublicAccess = false
+            } catch {
+                guard !Task.isCancelled else { return }
+
+                if var progress = setupProgress {
+                    progress.markFailed(message: app.userFacingAdminWebPublicAccessMessage(for: error))
+                    setupProgress = progress
+                }
+                setupFeedback = AdminWebPublicAccessFeedback(
+                    status: .error,
+                    message: app.userFacingAdminWebPublicAccessMessage(for: error)
+                )
+                isEnablingPublicAccess = false
+            }
+        }
+    }
+
+    private func disablePublicAccess() {
+        guard !isDisablingPublicAccess else { return }
+
+        isDisablingPublicAccess = true
+        setupFeedback = nil
+
+        Task { @MainActor in
+            await app.disableAdminWebPublicAccess()
+            guard !Task.isCancelled else { return }
+
+            setupProgress = nil
+            setupFeedback = AdminWebPublicAccessFeedback(
+                status: .success,
+                message: "Public access disabled"
+            )
+            isDisablingPublicAccess = false
+        }
+    }
+
+    private func openPublicAccessURL() {
+        guard let url = app.adminWebPublicAccessURL() else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
+    }
+
+    private func copyPublicAccessURL() {
+        guard !publicURLString.isEmpty else {
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(publicURLString, forType: .string)
+        setupFeedback = AdminWebPublicAccessFeedback(
+            status: .success,
+            message: "Public URL copied"
+        )
+    }
+}
+
+private struct AdminWebPublicAccessSetupProgress {
+    private static let orderedStepIDs = [
+        "cloudflare-access",
+        "cloudflare-zone",
+        "create-tunnel",
+        "create-dns",
+        "store-credentials",
+        "start-public-access"
+    ]
+
+    private var itemsByID: [String: CertificateManager.ValidationItem]
+
+    init(hostname: String) {
+        let normalizedHostname = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.itemsByID = [
+            "cloudflare-access": .init(
+                id: "cloudflare-access",
+                title: "Cloudflare API access verified",
+                status: .pending,
+                detail: nil
+            ),
+            "cloudflare-zone": .init(
+                id: "cloudflare-zone",
+                title: "Cloudflare zone detected",
+                status: .pending,
+                detail: normalizedHostname.isEmpty ? nil : "Preparing Public Access for \(normalizedHostname)."
+            ),
+            "create-tunnel": .init(
+                id: "create-tunnel",
+                title: "Cloudflare Tunnel created",
+                status: .pending,
+                detail: nil
+            ),
+            "create-dns": .init(
+                id: "create-dns",
+                title: "Public DNS route created",
+                status: .pending,
+                detail: nil
+            ),
+            "store-credentials": .init(
+                id: "store-credentials",
+                title: "Tunnel credentials stored securely",
+                status: .pending,
+                detail: nil
+            ),
+            "start-public-access": .init(
+                id: "start-public-access",
+                title: "Public access enabled",
+                status: .pending,
+                detail: nil
+            )
+        ]
+    }
+
+    var items: [CertificateManager.ValidationItem] {
+        Self.orderedStepIDs.compactMap { itemsByID[$0] }
+    }
+
+    mutating func apply(_ event: AdminWebPublicAccessSetupEvent) {
+        switch event {
+        case .verifyingCloudflareAccess:
+            setItem(id: "cloudflare-access", status: .warning, detail: "Checking the configured Cloudflare API token.")
+        case .cloudflareAccessVerified:
+            setItem(id: "cloudflare-access", status: .success, detail: "Cloudflare API access verified.")
+        case .detectingCloudflareZone(let domain):
+            setItem(id: "cloudflare-zone", status: .warning, detail: "Detecting the Cloudflare zone for \(domain).")
+        case .cloudflareZoneDetected(let zone):
+            setItem(id: "cloudflare-zone", status: .success, detail: "Using Cloudflare zone \(zone).")
+        case .creatingTunnel(let hostname):
+            setItem(id: "create-tunnel", status: .warning, detail: "Creating a Cloudflare Tunnel for \(hostname).")
+        case .tunnelCreated(let name):
+            setItem(id: "create-tunnel", status: .success, detail: "Created tunnel \(name).")
+        case .creatingTunnelDNSRecord(let hostname):
+            setItem(id: "create-dns", status: .warning, detail: "Creating the public DNS record for \(hostname).")
+        case .tunnelDNSRecordCreated(let hostname):
+            setItem(id: "create-dns", status: .success, detail: "Public DNS route created for \(hostname).")
+        case .storingTunnelCredentials:
+            setItem(id: "store-credentials", status: .warning, detail: "Saving the tunnel token to the macOS Keychain.")
+        case .startingTunnelProcess:
+            setItem(id: "store-credentials", status: .success, detail: "Tunnel credentials stored securely.")
+            setItem(id: "start-public-access", status: .warning, detail: "Starting cloudflared in the background.")
+        case .publicAccessEnabled(let url):
+            setItem(id: "start-public-access", status: .success, detail: "SwiftBot is available at \(url).")
+        }
+    }
+
+    mutating func markFailed(message: String) {
+        guard let failingStepID = currentStepID else {
+            return
+        }
+
+        setItem(id: failingStepID, status: .error, detail: message)
+    }
+
+    private var currentStepID: String? {
+        if let warningID = Self.orderedStepIDs.first(where: { itemsByID[$0]?.status == .warning }) {
+            return warningID
+        }
+
+        return Self.orderedStepIDs.first(where: { itemsByID[$0]?.status == .pending })
+    }
+
+    private mutating func setItem(id: String, status: CertificateManager.ValidationStatus, detail: String?) {
+        guard let existing = itemsByID[id] else {
+            return
+        }
+
+        itemsByID[id] = .init(
+            id: existing.id,
+            title: existing.title,
+            status: status,
+            detail: detail
+        )
     }
 }
 

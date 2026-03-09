@@ -56,6 +56,8 @@ struct GeneralSettingsView: View {
             adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
             adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
             adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
+            adminWebPublicAccessEnabled: app.settings.adminWebUI.publicAccessEnabled,
+            adminWebPublicAccessHostname: app.settings.adminWebUI.publicAccessHostname,
             adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
             adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
             adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
@@ -97,6 +99,10 @@ struct GeneralSettingsView: View {
                 let certificatePath = app.settings.adminWebUI.normalizedImportedCertificateFile
                 lines.append(certificatePath.isEmpty ? "HTTPS imported certificate pending" : "HTTPS via imported PEM")
             }
+        }
+        if app.settings.adminWebUI.publicAccessEnabled {
+            let hostname = app.settings.adminWebUI.normalizedPublicAccessHostname
+            lines.append(hostname.isEmpty ? "Public Access setup pending" : "Public Access via Cloudflare Tunnel for \(hostname)")
         }
         return lines
     }
@@ -599,6 +605,10 @@ struct GeneralSettingsView: View {
                 AdminWebHTTPSConfigurationSection()
             }
 
+            adminWebSettingsCard(title: "Public Access", symbol: "network") {
+                AdminWebPublicAccessSection()
+            }
+
             adminWebSettingsCard(title: "Authentication", symbol: "person.badge.key") {
                 AdminWebAuthenticationSection()
             }
@@ -704,6 +714,8 @@ private struct GeneralSettingsSnapshot: Equatable {
     var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
     var adminWebHTTPSDomain = ""
     var adminWebCloudflareToken = ""
+    var adminWebPublicAccessEnabled = false
+    var adminWebPublicAccessHostname = ""
     var adminWebImportedCertificateFile = ""
     var adminWebImportedPrivateKeyFile = ""
     var adminWebImportedCertificateChainFile = ""

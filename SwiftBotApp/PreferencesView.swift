@@ -29,6 +29,8 @@ struct PreferencesView: View {
             adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
             adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
             adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
+            adminWebPublicAccessEnabled: app.settings.adminWebUI.publicAccessEnabled,
+            adminWebPublicAccessHostname: app.settings.adminWebUI.publicAccessHostname,
             adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
             adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
             adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
@@ -118,6 +120,8 @@ private struct PreferencesSnapshot: Equatable {
     var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
     var adminWebHTTPSDomain = ""
     var adminWebCloudflareToken = ""
+    var adminWebPublicAccessEnabled = false
+    var adminWebPublicAccessHostname = ""
     var adminWebImportedCertificateFile = ""
     var adminWebImportedPrivateKeyFile = ""
     var adminWebImportedCertificateChainFile = ""

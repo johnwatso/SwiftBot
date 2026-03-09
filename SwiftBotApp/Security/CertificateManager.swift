@@ -150,12 +150,47 @@ actor CertificateManager {
         self.acmeClient = ACMEClient(storageDirectoryURL: directory)
     }
 
-    nonisolated static func detectCloudflaredInstallation(fileManager: FileManager = .default) -> CloudflaredInstallation {
-        let detectedPath = cloudflaredCandidatePaths.first { path in
+    nonisolated static func detectCloudflaredInstallation(
+        bundle: Bundle = .main,
+        fileManager: FileManager = .default
+    ) -> CloudflaredInstallation {
+        let candidates = bundledCloudflaredCandidatePaths(bundle: bundle) + cloudflaredCandidatePaths
+        let detectedPath = candidates
+            .first { path in
             fileManager.isExecutableFile(atPath: path)
         }
 
         return CloudflaredInstallation(detectedPath: detectedPath)
+    }
+
+    nonisolated private static func bundledCloudflaredCandidatePaths(bundle: Bundle) -> [String] {
+        var candidates: [String] = []
+
+        if let resourceURL = bundle.resourceURL?.appendingPathComponent("cloudflared").path {
+            candidates.append(resourceURL)
+        }
+
+        // This project copies the entire Resources folder into the app bundle as
+        // Contents/Resources/Resources, so bundled helper binaries live there.
+        if let nestedResourceURL = bundle.resourceURL?
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("cloudflared")
+            .path {
+            candidates.append(nestedResourceURL)
+        }
+
+        if let sharedSupportURL = bundle.sharedSupportURL?.appendingPathComponent("cloudflared").path {
+            candidates.append(sharedSupportURL)
+        }
+
+        if let nestedSharedSupportURL = bundle.sharedSupportURL?
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("cloudflared")
+            .path {
+            candidates.append(nestedSharedSupportURL)
+        }
+
+        return candidates
     }
 
     func validateAutomaticHTTPSConfiguration(

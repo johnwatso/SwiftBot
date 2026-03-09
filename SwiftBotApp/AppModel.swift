@@ -53,6 +53,20 @@ enum AdminWebAutomaticHTTPSSetupEvent: Sendable, Equatable {
     case httpsListenerEnabled(url: String)
 }
 
+enum AdminWebPublicAccessSetupEvent: Sendable, Equatable {
+    case verifyingCloudflareAccess
+    case cloudflareAccessVerified
+    case detectingCloudflareZone(domain: String)
+    case cloudflareZoneDetected(zone: String)
+    case creatingTunnel(hostname: String)
+    case tunnelCreated(name: String)
+    case creatingTunnelDNSRecord(hostname: String)
+    case tunnelDNSRecordCreated(hostname: String)
+    case storingTunnelCredentials
+    case startingTunnelProcess
+    case publicAccessEnabled(url: String)
+}
+
 private enum AdminWebHTTPSProvisioningError: LocalizedError {
     case tlsActivationFailed
 
@@ -64,7 +78,25 @@ private enum AdminWebHTTPSProvisioningError: LocalizedError {
     }
 }
 
+private enum AdminWebPublicAccessError: LocalizedError {
+    case missingHostname
+    case invalidOriginURL
+    case tunnelStartupFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingHostname:
+            return "Enter a public hostname before enabling Public Access."
+        case .invalidOriginURL:
+            return "SwiftBot could not determine the local Web UI address for Cloudflare Tunnel."
+        case .tunnelStartupFailed(let detail):
+            return detail
+        }
+    }
+}
+
 private let genericAdminWebHTTPSSetupFailureMessage = "HTTPS setup couldn’t be completed. Verify Cloudflare access and DNS propagation, then try again."
+private let genericAdminWebPublicAccessFailureMessage = "Public Access couldn’t be completed. Verify the hostname, Cloudflare access, and tunnel configuration, then try again."
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -103,6 +135,7 @@ final class AppModel: ObservableObject {
     @Published var bugAutoFixStatusText: String = "Idle"
     @Published var bugAutoFixConsoleText: String = ""
     @Published private(set) var adminWebResolvedBaseURL: String = ""
+    @Published private(set) var adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
     @Published var workerModeMigrated = false
     // MARK: - P0.4 Diagnostics state
 
@@ -130,6 +163,7 @@ final class AppModel: ObservableObject {
     let cluster = ClusterCoordinator()
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
+    let publicAccessManager = PublicAccessManager()
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
@@ -413,6 +447,8 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.httpsDomain = settings.adminWebUI.normalizedHTTPSDomain
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.publicAccessHostname = settings.adminWebUI.normalizedPublicAccessHostname
+        settings.adminWebUI.publicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
         settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile
         settings.adminWebUI.importedCertificateChainFile = settings.adminWebUI.normalizedImportedCertificateChainFile
@@ -1350,6 +1386,9 @@ final class AppModel: ObservableObject {
     }
 
     func adminWebBaseURL() -> String {
+        if adminWebPublicAccessStatus.isEnabled, !adminWebPublicAccessStatus.publicURL.isEmpty {
+            return adminWebPublicAccessStatus.publicURL
+        }
         if !adminWebResolvedBaseURL.isEmpty {
             return adminWebResolvedBaseURL
         }
@@ -1375,6 +1414,11 @@ final class AppModel: ObservableObject {
     }
 
     func adminWebLaunchURL() -> URL? {
+        if adminWebPublicAccessStatus.isEnabled,
+           let publicURL = URL(string: adminWebPublicAccessStatus.publicURL) {
+            return publicURL
+        }
+
         let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !explicit.isEmpty {
             return URL(string: explicit)
@@ -2007,6 +2051,7 @@ final class AppModel: ObservableObject {
         )
         adminWebResolvedBaseURL = runtimeState.publicBaseURL
         updateAdminWebCertificateRenewalTask()
+        await updateAdminWebPublicAccessRuntime()
     }
 
     private func resolveAdminWebHTTPSConfiguration() async -> AdminWebServer.Configuration.HTTPSConfiguration? {
@@ -2165,6 +2210,261 @@ final class AppModel: ObservableObject {
         default:
             return genericAdminWebHTTPSSetupFailureMessage
         }
+    }
+
+    func adminWebPublicAccessURL() -> URL? {
+        if !adminWebPublicAccessStatus.publicURL.isEmpty {
+            return URL(string: adminWebPublicAccessStatus.publicURL)
+        }
+
+        let hostname = effectiveAdminWebPublicAccessHostname()
+        guard !hostname.isEmpty else { return nil }
+        return URL(string: "https://\(hostname)")
+    }
+
+    func startAdminWebPublicAccessSetup(
+        progress: @escaping @MainActor @Sendable (AdminWebPublicAccessSetupEvent) -> Void
+    ) async throws -> String {
+        let hostname = effectiveAdminWebPublicAccessHostname()
+        guard !hostname.isEmpty else {
+            throw AdminWebPublicAccessError.missingHostname
+        }
+
+        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw CertificateManager.Error.missingCloudflareToken
+        }
+
+        settings.adminWebUI.publicAccessHostname = hostname
+        settings.adminWebUI.cloudflareAPIToken = trimmedToken
+        settings.adminWebUI.enabled = true
+
+        if settings.adminWebUI.publicAccessEnabled,
+           settings.adminWebUI.publicAccessHostname == hostname,
+           !settings.adminWebUI.publicAccessTunnelID.isEmpty,
+           !settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            progress(.startingTunnelProcess)
+            await configureAdminWebServer()
+
+            if adminWebPublicAccessStatus.state == .error {
+                throw AdminWebPublicAccessError.tunnelStartupFailed(adminWebPublicAccessStatus.detail)
+            }
+
+            let publicURL = "https://\(hostname)"
+            progress(.publicAccessEnabled(url: publicURL))
+            return "Public access enabled"
+        }
+
+        let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
+        let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
+
+        progress(.verifyingCloudflareAccess)
+        let tokenIsValid = try await dnsProvider.verifyAPIToken()
+        guard tokenIsValid else {
+            throw CertificateManager.Error.inactiveCloudflareToken
+        }
+        progress(.cloudflareAccessVerified)
+
+        progress(.detectingCloudflareZone(domain: hostname))
+        guard let zone = try await dnsProvider.findZone(for: hostname) else {
+            throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
+        }
+        progress(.cloudflareZoneDetected(zone: zone.name))
+
+        guard let originURL = adminWebPublicAccessOriginURL() else {
+            throw AdminWebPublicAccessError.invalidOriginURL
+        }
+
+        progress(.creatingTunnel(hostname: hostname))
+        let tunnel = try await tunnelClient.createTunnel(hostname: hostname, zone: zone)
+        progress(.tunnelCreated(name: tunnel.name))
+
+        try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: originURL)
+
+        progress(.creatingTunnelDNSRecord(hostname: hostname))
+        let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
+        do {
+            _ = try await dnsProvider.createDNSRecord(
+                zoneID: zone.id,
+                type: "CNAME",
+                name: hostname,
+                content: tunnelTarget,
+                ttl: 120,
+                proxied: true
+            )
+        } catch CloudflareDNSProvider.Error.identicalRecordAlreadyExists {
+            guard try await dnsProvider.findDNSRecord(
+                zoneID: zone.id,
+                hostname: hostname,
+                allowedTypes: ["CNAME"],
+                expectedContent: tunnelTarget
+            ) != nil else {
+                throw CloudflareDNSProvider.Error.apiFailed(
+                    "Cloudflare already has a different DNS record for \(hostname). Update that record or choose another hostname."
+                )
+            }
+        }
+        progress(.tunnelDNSRecordCreated(hostname: hostname))
+
+        progress(.storingTunnelCredentials)
+        settings.adminWebUI.publicAccessEnabled = true
+        settings.adminWebUI.publicAccessHostname = hostname
+        settings.adminWebUI.publicAccessTunnelID = tunnel.id
+        settings.adminWebUI.publicAccessTunnelName = tunnel.name
+        settings.adminWebUI.publicAccessTunnelAccountID = tunnel.accountID
+        settings.adminWebUI.publicAccessTunnelToken = tunnel.token
+
+        try await store.save(settings)
+        try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+        logs.append("✅ Settings saved")
+
+        progress(.startingTunnelProcess)
+        await configureAdminWebServer()
+
+        if adminWebPublicAccessStatus.state == .error {
+            throw AdminWebPublicAccessError.tunnelStartupFailed(adminWebPublicAccessStatus.detail)
+        }
+
+        let publicURL = "https://\(hostname)"
+        progress(.publicAccessEnabled(url: publicURL))
+        logs.append("🌐 Public Access enabled at \(publicURL)")
+        return "Public access enabled"
+    }
+
+    func disableAdminWebPublicAccess() async {
+        let hostname = effectiveAdminWebPublicAccessHostname()
+        let tunnelID = settings.adminWebUI.publicAccessTunnelID
+        let accountID = settings.adminWebUI.publicAccessTunnelAccountID
+        let apiToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        settings.adminWebUI.publicAccessEnabled = false
+        settings.adminWebUI.publicAccessTunnelID = ""
+        settings.adminWebUI.publicAccessTunnelName = ""
+        settings.adminWebUI.publicAccessTunnelAccountID = ""
+        settings.adminWebUI.publicAccessTunnelToken = ""
+
+        await configureAdminWebServer()
+
+        if !apiToken.isEmpty, !tunnelID.isEmpty, !accountID.isEmpty, !hostname.isEmpty {
+            let dnsProvider = CloudflareDNSProvider(apiToken: apiToken)
+            let tunnelClient = CloudflareTunnelClient(apiToken: apiToken)
+
+            do {
+                if let zone = try await dnsProvider.findZone(for: hostname),
+                   let record = try await dnsProvider.findDNSRecord(
+                        zoneID: zone.id,
+                        hostname: hostname,
+                        allowedTypes: ["CNAME"],
+                        expectedContent: CloudflareTunnelClient.tunnelTargetHostname(for: tunnelID)
+                   ) {
+                    try? await dnsProvider.deleteDNSRecord(record)
+                }
+                try? await tunnelClient.deleteTunnel(accountID: accountID, tunnelID: tunnelID)
+            } catch {
+                logs.append("⚠️ Public Access cleanup warning: \(error.localizedDescription)")
+            }
+        }
+
+        do {
+            try await store.save(settings)
+            try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+            logs.append("✅ Settings saved")
+        } catch {
+            logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+        }
+    }
+
+    func userFacingAdminWebPublicAccessMessage(for error: Error) -> String {
+        switch error {
+        case let error as AdminWebPublicAccessError:
+            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+        case let error as CertificateManager.Error:
+            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+        case let error as CloudflareDNSProvider.Error:
+            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+        case let error as CloudflareTunnelClient.Error:
+            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+        case let error as PublicAccessManager.Error:
+            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+        case let error as LocalizedError:
+            let message = error.errorDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return message.isEmpty ? genericAdminWebPublicAccessFailureMessage : message
+        default:
+            return genericAdminWebPublicAccessFailureMessage
+        }
+    }
+
+    private func updateAdminWebPublicAccessRuntime() async {
+        let logger: @MainActor @Sendable (String) -> Void = { [weak self] message in
+            self?.logs.append(message)
+        }
+        let statusHandler: @MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void = { [weak self] status in
+            self?.adminWebPublicAccessStatus = status
+        }
+
+        guard settings.adminWebUI.enabled,
+              settings.adminWebUI.publicAccessEnabled
+        else {
+            await publicAccessManager.configure(nil, logger: logger, statusHandler: statusHandler)
+            return
+        }
+
+        let hostname = effectiveAdminWebPublicAccessHostname()
+        let tunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tunnelID = settings.adminWebUI.publicAccessTunnelID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !hostname.isEmpty, !tunnelToken.isEmpty, !tunnelID.isEmpty,
+              let originURL = adminWebPublicAccessOriginURL() else {
+            await publicAccessManager.configure(nil, logger: logger, statusHandler: statusHandler)
+            adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus(
+                state: .error,
+                publicURL: hostname.isEmpty ? "" : "https://\(hostname)",
+                detail: "Public Access is enabled but the stored tunnel configuration is incomplete."
+            )
+            return
+        }
+
+        await publicAccessManager.configure(
+            .init(
+                hostname: hostname,
+                publicURL: "https://\(hostname)",
+                originURL: originURL,
+                tunnelToken: tunnelToken
+            ),
+            logger: logger,
+            statusHandler: statusHandler
+        )
+    }
+
+    private func effectiveAdminWebPublicAccessHostname() -> String {
+        let explicit = settings.adminWebUI.normalizedPublicAccessHostname
+        if !explicit.isEmpty {
+            return explicit
+        }
+        return settings.adminWebUI.normalizedHTTPSDomain
+    }
+
+    private func adminWebPublicAccessOriginURL() -> String? {
+        let trimmedHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedHost = trimmedHost.lowercased()
+
+        let originHost: String
+        switch normalizedHost {
+        case "", "0.0.0.0", "::", "[::]", "localhost":
+            originHost = "127.0.0.1"
+        default:
+            originHost = trimmedHost
+        }
+
+        guard !originHost.isEmpty else {
+            return nil
+        }
+
+        if originHost.contains(":") && !originHost.hasPrefix("[") {
+            return "http://[\(originHost)]:\(settings.adminWebUI.port)"
+        }
+
+        return "http://\(originHost):\(settings.adminWebUI.port)"
     }
 
     private func updateAdminWebCertificateRenewalTask() {

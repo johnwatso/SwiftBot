@@ -20,6 +20,7 @@ enum SwiftBotStorage {
 actor ConfigStore {
     private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
     private let adminWebCloudflareTokenAccount = "admin-web-cloudflare-token"
+    private let adminWebPublicAccessTunnelTokenAccount = "admin-web-public-access-tunnel-token"
     private let openAIAPIKeyAccount = "openai-api-key"
     private let url: URL
     private let encoder = JSONEncoder()
@@ -27,6 +28,7 @@ actor ConfigStore {
     private var lastToken: String?
     private var lastOpenAIAPIKey: String?
     private var lastAdminWebCloudflareToken: String?
+    private var lastAdminWebPublicAccessTunnelToken: String?
 
     init(filename: String = SwiftBotStorage.settingsFileName) {
         let folder = SwiftBotStorage.folderURL()
@@ -76,6 +78,16 @@ actor ConfigStore {
         }
         lastAdminWebCloudflareToken = settings.adminWebUI.cloudflareAPIToken
 
+        if let tunnelToken = KeychainHelper.load(account: adminWebPublicAccessTunnelTokenAccount) {
+            settings.adminWebUI.publicAccessTunnelToken = tunnelToken
+        } else if !settings.adminWebUI.publicAccessTunnelToken.isEmpty {
+            let tokenToMigrate = settings.adminWebUI.publicAccessTunnelToken
+            if KeychainHelper.save(tokenToMigrate, account: adminWebPublicAccessTunnelTokenAccount) {
+                settings.adminWebUI.publicAccessTunnelToken = tokenToMigrate
+            }
+        }
+        lastAdminWebPublicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken
+
         if let storedKey = KeychainHelper.load(account: openAIAPIKeyAccount) {
             settings.openAIAPIKey = storedKey
         } else if !settings.openAIAPIKey.isEmpty {
@@ -116,6 +128,16 @@ actor ConfigStore {
             lastAdminWebCloudflareToken = trimmedCloudflareToken
         }
 
+        let trimmedTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTunnelToken != lastAdminWebPublicAccessTunnelToken {
+            if trimmedTunnelToken.isEmpty {
+                KeychainHelper.delete(account: adminWebPublicAccessTunnelTokenAccount)
+            } else {
+                KeychainHelper.save(trimmedTunnelToken, account: adminWebPublicAccessTunnelTokenAccount)
+            }
+            lastAdminWebPublicAccessTunnelToken = trimmedTunnelToken
+        }
+
         let trimmedOpenAIKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedOpenAIKey != lastOpenAIAPIKey {
             if trimmedOpenAIKey.isEmpty {
@@ -130,6 +152,7 @@ actor ConfigStore {
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordClientSecret = ""
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
+        settingsToSave.adminWebUI.publicAccessTunnelToken = ""
         settingsToSave.openAIAPIKey = ""
         settingsToSave.clusterSharedSecret = ""
         settingsToSave.clusterMode = .standalone
