@@ -152,18 +152,82 @@ struct GuildSettings: Codable, Hashable {
     var moveNotificationTemplate: String = "🔁 {username} moved: {fromChannelName} → {toChannelName}"
 }
 
+enum AdminWebUICertificateMode: String, Codable, Hashable, CaseIterable, Identifiable {
+    case automatic
+    case importCertificate
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic:
+            return "Automatic (Let's Encrypt)"
+        case .importCertificate:
+            return "Import Certificate"
+        }
+    }
+}
+
 struct AdminWebUISettings: Codable, Hashable {
     var enabled: Bool = false
     var bindHost: String = "127.0.0.1"
     var port: Int = 38888
     var publicBaseURL: String = ""
     var httpsEnabled: Bool = false
+    var certificateMode: AdminWebUICertificateMode = .automatic
     var httpsDomain: String = ""
     var cloudflareAPIToken: String = ""
+    var importedCertificateFile: String = ""
+    var importedPrivateKeyFile: String = ""
+    var importedCertificateChainFile: String = ""
     var discordClientID: String = ""
     var discordClientSecret: String = ""
     var redirectPath: String = "/auth/discord/callback"
+    var restrictAccessToSpecificUsers: Bool = false
     var allowedUserIDs: [String] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case bindHost
+        case port
+        case publicBaseURL
+        case httpsEnabled
+        case certificateMode
+        case httpsDomain
+        case cloudflareAPIToken
+        case importedCertificateFile
+        case importedPrivateKeyFile
+        case importedCertificateChainFile
+        case discordClientID
+        case discordClientSecret
+        case redirectPath
+        case restrictAccessToSpecificUsers
+        case allowedUserIDs
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        bindHost = try container.decodeIfPresent(String.self, forKey: .bindHost) ?? "127.0.0.1"
+        port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 38888
+        publicBaseURL = try container.decodeIfPresent(String.self, forKey: .publicBaseURL) ?? ""
+        httpsEnabled = try container.decodeIfPresent(Bool.self, forKey: .httpsEnabled) ?? false
+        certificateMode = try container.decodeIfPresent(AdminWebUICertificateMode.self, forKey: .certificateMode) ?? .automatic
+        httpsDomain = try container.decodeIfPresent(String.self, forKey: .httpsDomain) ?? ""
+        cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
+        importedCertificateFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateFile) ?? ""
+        importedPrivateKeyFile = try container.decodeIfPresent(String.self, forKey: .importedPrivateKeyFile) ?? ""
+        importedCertificateChainFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateChainFile) ?? ""
+        discordClientID = try container.decodeIfPresent(String.self, forKey: .discordClientID) ?? ""
+        discordClientSecret = try container.decodeIfPresent(String.self, forKey: .discordClientSecret) ?? ""
+        redirectPath = try container.decodeIfPresent(String.self, forKey: .redirectPath) ?? "/auth/discord/callback"
+        allowedUserIDs = try container.decodeIfPresent([String].self, forKey: .allowedUserIDs) ?? []
+        restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
+            ?? !allowedUserIDs.isEmpty
+    }
 
     var normalizedAllowedUserIDs: [String] {
         allowedUserIDs
@@ -189,6 +253,18 @@ struct AdminWebUISettings: Codable, Hashable {
         }
 
         return normalized
+    }
+
+    var normalizedImportedCertificateFile: String {
+        importedCertificateFile.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var normalizedImportedPrivateKeyFile: String {
+        importedPrivateKeyFile.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var normalizedImportedCertificateChainFile: String {
+        importedCertificateChainFile.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

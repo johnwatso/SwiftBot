@@ -26,8 +26,13 @@ struct PreferencesView: View {
             adminWebPort: app.settings.adminWebUI.port,
             adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
             adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
+            adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
             adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
             adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
+            adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
+            adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
+            adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
+            adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
             adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
@@ -110,8 +115,13 @@ private struct PreferencesSnapshot: Equatable {
     var adminWebPort = 38888
     var adminWebBaseURL = ""
     var adminWebHTTPSEnabled = false
+    var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
     var adminWebHTTPSDomain = ""
     var adminWebCloudflareToken = ""
+    var adminWebImportedCertificateFile = ""
+    var adminWebImportedPrivateKeyFile = ""
+    var adminWebImportedCertificateChainFile = ""
+    var adminRestrictSpecificUsers = false
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""
     var adminAllowedUserIDs = ""
