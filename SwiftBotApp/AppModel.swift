@@ -382,6 +382,9 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.httpsDomain = settings.adminWebUI.normalizedHTTPSDomain
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
+        settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile
+        settings.adminWebUI.importedCertificateChainFile = settings.adminWebUI.normalizedImportedCertificateChainFile
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
 
@@ -1328,8 +1331,10 @@ final class AppModel: ObservableObject {
             return explicit
         }
 
-        let usesHTTPS = preferHTTPS && !settings.adminWebUI.normalizedHTTPSDomain.isEmpty
-        let host = usesHTTPS ? settings.adminWebUI.normalizedHTTPSDomain : settings.adminWebUI.bindHost
+        let automaticHTTPSHost = settings.adminWebUI.normalizedHTTPSDomain
+        let importedHTTPS = settings.adminWebUI.certificateMode == .importCertificate
+        let usesHTTPS = preferHTTPS && (importedHTTPS || !automaticHTTPSHost.isEmpty)
+        let host = usesHTTPS && !automaticHTTPSHost.isEmpty ? automaticHTTPSHost : settings.adminWebUI.bindHost
         let scheme = usesHTTPS ? "https" : "http"
         let isDefaultPort = (usesHTTPS && settings.adminWebUI.port == 443) || (!usesHTTPS && settings.adminWebUI.port == 80)
         if isDefaultPort {
@@ -1344,10 +1349,7 @@ final class AppModel: ObservableObject {
             return URL(string: explicit)
         }
 
-        let bindHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedHost = bindHost.isEmpty ? "127.0.0.1" : bindHost
-        let normalizedPort = min(max(settings.adminWebUI.port, 1), 65535)
-        return URL(string: "http://\(normalizedHost):\(normalizedPort)")
+        return URL(string: desiredAdminWebBaseURL(preferHTTPS: settings.adminWebUI.httpsEnabled))
     }
 
     @discardableResult
@@ -1768,7 +1770,9 @@ final class AppModel: ObservableObject {
             discordClientID: settings.adminWebUI.discordClientID,
             discordClientSecret: settings.adminWebUI.discordClientSecret,
             redirectPath: settings.adminWebUI.redirectPath,
-            allowedUserIDs: settings.adminWebUI.normalizedAllowedUserIDs
+            allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
+                ? settings.adminWebUI.normalizedAllowedUserIDs
+                : []
         )
 
         let runtimeState = await adminWebServer.configure(
@@ -1979,35 +1983,74 @@ final class AppModel: ObservableObject {
             return nil
         }
 
-        let domain = settings.adminWebUI.normalizedHTTPSDomain
-        guard !domain.isEmpty else {
-            logs.append("⚠️ Admin Web UI HTTPS is enabled, but no domain is configured. Falling back to HTTP.")
-            return nil
-        }
-
         do {
-            let logStore = logs
-            let certificate = try await certificateManager.ensureCertificate(
-                for: domain,
-                cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken
-            ) { message in
-                logStore.append(message)
-            }
+            switch settings.adminWebUI.certificateMode {
+            case .automatic:
+                let domain = settings.adminWebUI.normalizedHTTPSDomain
+                guard !domain.isEmpty else {
+                    logs.append("⚠️ Admin Web UI HTTPS is enabled, but no domain is configured. Falling back to HTTP.")
+                    return nil
+                }
 
-            return AdminWebServer.Configuration.HTTPSConfiguration(
-                domain: domain,
-                certificatePath: certificate.certificateURL.path,
-                privateKeyPath: certificate.privateKeyURL.path
-            )
+                let logStore = logs
+                let certificate = try await certificateManager.ensureCertificate(
+                    for: domain,
+                    cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken
+                ) { message in
+                    logStore.append(message)
+                }
+
+                return AdminWebServer.Configuration.HTTPSConfiguration(
+                    certificatePath: certificate.certificateURL.path,
+                    privateKeyPath: certificate.privateKeyURL.path,
+                    hostOverride: domain,
+                    reloadToken: domain
+                )
+            case .importCertificate:
+                let imported = try await certificateManager.prepareImportedCertificate(
+                    certificateFilePath: settings.adminWebUI.importedCertificateFile,
+                    privateKeyFilePath: settings.adminWebUI.importedPrivateKeyFile,
+                    certificateChainFilePath: settings.adminWebUI.importedCertificateChainFile
+                )
+
+                logs.append("📥 Using imported TLS certificate for the Admin Web UI.")
+                return AdminWebServer.Configuration.HTTPSConfiguration(
+                    certificatePath: imported.certificateURL.path,
+                    privateKeyPath: imported.privateKeyURL.path,
+                    hostOverride: nil,
+                    reloadToken: imported.reloadToken
+                )
+            }
         } catch {
             logs.append("⚠️ Admin Web UI HTTPS unavailable: \(error.localizedDescription). Falling back to HTTP.")
             return nil
         }
     }
 
+    func validateAdminWebAutomaticHTTPSConfiguration() async -> CertificateManager.AutomaticHTTPSValidation {
+        await certificateManager.validateAutomaticHTTPSConfiguration(
+            for: settings.adminWebUI.normalizedHTTPSDomain,
+            cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken
+        )
+    }
+
+    func createAdminWebAutomaticHTTPSDNSRecord() async throws -> CertificateManager.DNSRecordCreation {
+        let creation = try await certificateManager.createAutomaticHTTPSDNSRecord(
+            for: settings.adminWebUI.normalizedHTTPSDomain,
+            cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken,
+            publicBaseURL: settings.adminWebUI.publicBaseURL,
+            bindHost: settings.adminWebUI.bindHost
+        )
+
+        logs.append("🌐 Created Cloudflare \(creation.type) record \(creation.name) -> \(creation.content) in \(creation.zoneName).")
+        return creation
+    }
+
     private func updateAdminWebCertificateRenewalTask() {
         let configuration = AdminWebCertificateRenewalConfiguration(
-            enabled: settings.adminWebUI.enabled && settings.adminWebUI.httpsEnabled,
+            enabled: settings.adminWebUI.enabled
+                && settings.adminWebUI.httpsEnabled
+                && settings.adminWebUI.certificateMode == .automatic,
             domain: settings.adminWebUI.normalizedHTTPSDomain,
             cloudflareToken: settings.adminWebUI.cloudflareAPIToken
         )

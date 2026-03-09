@@ -28,10 +28,6 @@ struct GeneralSettingsView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var canLaunchAdminWebUI: Bool {
-        app.settings.adminWebUI.enabled && app.adminWebLaunchURL() != nil
-    }
-
     private var developerFeaturesBinding: Binding<Bool> {
         Binding(
             get: { app.settings.devFeaturesEnabled },
@@ -57,8 +53,13 @@ struct GeneralSettingsView: View {
             adminWebPort: app.settings.adminWebUI.port,
             adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
             adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
+            adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
             adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
             adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
+            adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
+            adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
+            adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
+            adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
             adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
@@ -88,8 +89,14 @@ struct GeneralSettingsView: View {
             "Port: \(app.settings.adminWebUI.port)"
         ]
         if app.settings.adminWebUI.httpsEnabled {
-            let domain = app.settings.adminWebUI.normalizedHTTPSDomain
-            lines.append(domain.isEmpty ? "HTTPS pending configuration" : "HTTPS via \(domain)")
+            switch app.settings.adminWebUI.certificateMode {
+            case .automatic:
+                let domain = app.settings.adminWebUI.normalizedHTTPSDomain
+                lines.append(domain.isEmpty ? "HTTPS automatic setup pending" : "HTTPS via Let's Encrypt for \(domain)")
+            case .importCertificate:
+                let certificatePath = app.settings.adminWebUI.normalizedImportedCertificateFile
+                lines.append(certificatePath.isEmpty ? "HTTPS imported certificate pending" : "HTTPS via imported PEM")
+            }
         }
         return lines
     }
@@ -583,106 +590,39 @@ struct GeneralSettingsView: View {
     }
 
     private var webUIContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
-                .toggleStyle(.switch)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Bind Host")
-                    .font(.subheadline.weight(.medium))
-                TextField("127.0.0.1", text: $app.settings.adminWebUI.bindHost)
-                    .textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 14) {
+            adminWebSettingsCard(title: "Web Server", symbol: "globe") {
+                AdminWebServerConfigurationSection()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Port")
-                    .font(.subheadline.weight(.medium))
-                Stepper(value: $app.settings.adminWebUI.port, in: 1...65535) {
-                    Text("\(app.settings.adminWebUI.port)")
-                        .font(.body.monospacedDigit())
-                }
+            adminWebSettingsCard(title: "HTTPS", symbol: "lock.shield") {
+                AdminWebHTTPSConfigurationSection()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Public Base URL (optional)")
-                    .font(.subheadline.weight(.medium))
-                TextField("https://admin.example.com", text: $app.settings.adminWebUI.publicBaseURL)
-                    .textFieldStyle(.roundedBorder)
-                Text("Leave empty to use the active listener URL automatically.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            adminWebSettingsCard(title: "Authentication", symbol: "person.badge.key") {
+                AdminWebAuthenticationSection()
             }
 
-            Toggle("Enable HTTPS (Let's Encrypt)", isOn: $app.settings.adminWebUI.httpsEnabled)
-                .toggleStyle(.switch)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("HTTPS Domain")
-                    .font(.subheadline.weight(.medium))
-                TextField("admin.example.com", text: $app.settings.adminWebUI.httpsDomain)
-                    .textFieldStyle(.roundedBorder)
-                Text("Point this hostname at the machine running SwiftBot. DNS validation uses Cloudflare.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cloudflare API Token")
-                    .font(.subheadline.weight(.medium))
-                SecureField("Token with Zone DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
-                    .textFieldStyle(.roundedBorder)
-                Text("Stored in Keychain. Used only for the `_acme-challenge` TXT record flow.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Discord OAuth Client ID")
-                    .font(.subheadline.weight(.medium))
-                TextField("123456789012345678", text: $app.settings.adminWebUI.discordClientID)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Discord OAuth Client Secret")
-                    .font(.subheadline.weight(.medium))
-                SecureField("Client Secret", text: $app.settings.adminWebUI.discordClientSecret)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Allowed User IDs")
-                    .font(.subheadline.weight(.medium))
-                TextField("Comma-separated Discord user IDs", text: Binding(
-                    get: { app.settings.adminWebUI.allowedUserIDs.joined(separator: ", ") },
-                    set: { newValue in
-                        app.settings.adminWebUI.allowedUserIDs = newValue
-                            .split(separator: ",")
-                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty }
-                    }
-                ))
-                .textFieldStyle(.roundedBorder)
-                Text("If empty, only users who are in connected guilds and have Manage Server can log in.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Button {
-                    app.launchAdminWebUI()
-                } label: {
-                    Label("Launch Web UI", systemImage: "arrow.up.forward.square")
-                }
-                .buttonStyle(GlassActionButtonStyle())
-                .disabled(!canLaunchAdminWebUI)
-
-                Text("Opens \(app.adminWebLaunchURL()?.absoluteString ?? "the configured Web UI URL"). Save settings first if you changed the host, port, or public base URL.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+            AdminWebLaunchControls(usesGlassActionStyle: true)
         }
+    }
+
+    @ViewBuilder
+    private func adminWebSettingsCard<Content: View>(
+        title: String,
+        symbol: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label(title, systemImage: symbol)
+                .font(.headline)
+
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .commandCatalogSurface(cornerRadius: 18)
     }
 
     @ViewBuilder
@@ -761,8 +701,13 @@ private struct GeneralSettingsSnapshot: Equatable {
     var adminWebPort = 38888
     var adminWebBaseURL = ""
     var adminWebHTTPSEnabled = false
+    var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
     var adminWebHTTPSDomain = ""
     var adminWebCloudflareToken = ""
+    var adminWebImportedCertificateFile = ""
+    var adminWebImportedPrivateKeyFile = ""
+    var adminWebImportedCertificateChainFile = ""
+    var adminRestrictSpecificUsers = false
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""
     var adminAllowedUserIDs = ""

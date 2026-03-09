@@ -31,4 +31,36 @@ final class CertificateManagerTests: XCTestCase {
         XCTAssertTrue(CertificateManager.shouldRenew(expiresAt: renewSoon, referenceDate: referenceDate))
         XCTAssertFalse(CertificateManager.shouldRenew(expiresAt: renewLater, referenceDate: referenceDate))
     }
+
+    func testAutomaticHTTPSValidationSummaryRequiresCloudflareChecks() {
+        XCTAssertEqual(
+            CertificateManager.validationSummaryState(
+                tokenIsValid: true,
+                zoneFound: true,
+                dnsRecordFound: true,
+                hostnameResolves: true
+            ),
+            .success
+        )
+
+        XCTAssertEqual(
+            CertificateManager.validationSummaryState(
+                tokenIsValid: true,
+                zoneFound: true,
+                dnsRecordFound: true,
+                hostnameResolves: false
+            ),
+            .warning
+        )
+
+        XCTAssertEqual(
+            CertificateManager.validationSummaryState(
+                tokenIsValid: true,
+                zoneFound: false,
+                dnsRecordFound: true,
+                hostnameResolves: true
+            ),
+            .error
+        )
+    }
 }

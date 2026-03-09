@@ -276,9 +276,10 @@ actor AdminWebServer {
 
     struct Configuration: Equatable {
         struct HTTPSConfiguration: Equatable {
-            var domain: String
             var certificatePath: String
             var privateKeyPath: String
+            var hostOverride: String?
+            var reloadToken: String
         }
 
         var enabled: Bool
@@ -644,7 +645,7 @@ actor AdminWebServer {
         }
 
         let scheme = usingTLS ? "https" : "http"
-        let host = usingTLS ? (config.https?.domain ?? config.bindHost) : config.bindHost
+        let host = usingTLS ? (config.https?.hostOverride ?? config.bindHost) : config.bindHost
         let isDefaultPort = (usingTLS && config.port == 443) || (!usingTLS && config.port == 80)
         if isDefaultPort {
             return "\(scheme)://\(host)"
