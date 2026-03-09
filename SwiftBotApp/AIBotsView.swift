@@ -109,7 +109,9 @@ struct AIBotsView: View {
                 status: app.appleIntelligenceOnline ? .online : .offline,
                 isPrimary: app.settings.preferredAIProvider == .apple,
                 isExpanded: $showAppleSettings,
-                showsHeaderDivider: true
+                showsHeaderDivider: true,
+                showsLiquidGlow: true,
+                glowEnabled: true
             ) {
                 providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
             } settings: {
@@ -413,8 +415,12 @@ private struct EngineSectionView<Icon: View, Content: View>: View {
     let isPrimary: Bool
     @Binding var isExpanded: Bool
     var showsHeaderDivider = false
+    var showsLiquidGlow = false
+    var glowEnabled = false
     let icon: Icon
     let settingsContent: Content
+    @State private var isHovering = false
+    @State private var glowOpacity = 0.0
 
     init(
         title: String,
@@ -424,6 +430,8 @@ private struct EngineSectionView<Icon: View, Content: View>: View {
         isPrimary: Bool,
         isExpanded: Binding<Bool>,
         showsHeaderDivider: Bool = false,
+        showsLiquidGlow: Bool = false,
+        glowEnabled: Bool = false,
         @ViewBuilder icon: () -> Icon,
         @ViewBuilder settings: () -> Content
     ) {
@@ -434,6 +442,8 @@ private struct EngineSectionView<Icon: View, Content: View>: View {
         self.isPrimary = isPrimary
         self._isExpanded = isExpanded
         self.showsHeaderDivider = showsHeaderDivider
+        self.showsLiquidGlow = showsLiquidGlow
+        self.glowEnabled = glowEnabled
         self.icon = icon()
         self.settingsContent = settings()
     }
@@ -464,6 +474,64 @@ private struct EngineSectionView<Icon: View, Content: View>: View {
                 settingsContent
             }
             .padding(.leading, 52)
+        }
+        .overlay {
+            if showsLiquidGlow {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(liquidGlowGradient)
+                        .blur(radius: 35)
+                        .opacity(glowOpacity)
+                        .padding(-8)
+
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(liquidGlowGradient, lineWidth: 1)
+                        .opacity(glowOpacity * 0.55)
+                }
+                .blendMode(.screen)
+                .compositingGroup()
+                .allowsHitTesting(false)
+            }
+        }
+        .onAppear {
+            updateGlowOpacity(animated: false)
+        }
+        .onHover { hovering in
+            guard showsLiquidGlow else { return }
+            isHovering = hovering
+            updateGlowOpacity()
+        }
+        .onChange(of: glowEnabled) { _, _ in
+            updateGlowOpacity()
+        }
+    }
+
+    private var liquidGlowGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.blue.opacity(0.18),
+                Color.purple.opacity(0.15),
+                Color.orange.opacity(0.18)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private func updateGlowOpacity(animated: Bool = true) {
+        let targetOpacity: Double
+        if showsLiquidGlow && glowEnabled {
+            targetOpacity = isHovering ? 0.95 : 0.62
+        } else {
+            targetOpacity = 0
+        }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                glowOpacity = targetOpacity
+            }
+        } else {
+            glowOpacity = targetOpacity
         }
     }
 }
