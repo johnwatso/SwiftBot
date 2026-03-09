@@ -168,6 +168,15 @@ actor CertificateManager {
             )
         } else {
             let provider = CloudflareDNSProvider(apiToken: trimmedToken)
+            let detectedZone = CloudflareDNSProvider.extractRootZone(from: normalizedDomain)
+
+            if !normalizedDomain.isEmpty {
+                print("HTTPS Validation")
+                print("Hostname:", normalizedDomain)
+                print("Detected zone:", detectedZone ?? "Unavailable")
+                print("Querying Cloudflare zone:", detectedZone ?? "Unavailable")
+            }
+
             do {
                 tokenIsValid = try await provider.verifyAPIToken()
                 if tokenIsValid, let zone = try await provider.findZone(for: normalizedDomain) {

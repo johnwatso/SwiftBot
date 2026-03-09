@@ -190,23 +190,23 @@ struct CloudflareDNSProvider: Sendable {
     }
 
     func findZone(for fqdn: String) async throws -> ZoneSummary? {
-        for candidate in Self.zoneCandidates(for: fqdn) {
-            guard let url = zonesURL(matchingName: candidate) else {
-                throw Error.invalidDomain(fqdn)
-            }
-
-            let request = makeRequest(url: url, method: "GET")
-            let envelope: APIEnvelope<[Zone]> = try await send(request)
-            guard envelope.success else {
-                throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
-            }
-
-            if let zone = envelope.result?.first(where: { $0.name.caseInsensitiveCompare(candidate) == .orderedSame }) {
-                return ZoneSummary(id: zone.id, name: zone.name)
-            }
+        guard let zoneName = Self.extractRootZone(from: fqdn),
+              let url = zonesURL(matchingName: zoneName)
+        else {
+            throw Error.invalidDomain(fqdn)
         }
 
-        return nil
+        let request = makeRequest(url: url, method: "GET")
+        let envelope: APIEnvelope<[Zone]> = try await send(request)
+        guard envelope.success else {
+            throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
+        }
+
+        guard let zone = envelope.result?.first(where: { $0.name.caseInsensitiveCompare(zoneName) == .orderedSame }) else {
+            return nil
+        }
+
+        return ZoneSummary(id: zone.id, name: zone.name)
     }
 
     func findDNSRecord(zoneID: String, hostname: String, allowedTypes: Set<String>? = nil) async throws -> DNSRecordSummary? {
@@ -303,17 +303,79 @@ struct CloudflareDNSProvider: Sendable {
         return envelope
     }
 
-    static func zoneCandidates(for fqdn: String) -> [String] {
-        let normalized = fqdn
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    static func extractRootZone(from hostname: String) -> String? {
+        guard let normalized = normalizeHostname(hostname) else {
+            return nil
+        }
+
+        let labels = normalized.split(separator: ".").map(String.init)
+        guard labels.count >= 2 else {
+            return nil
+        }
+
+        let publicSuffixLabelCount = publicSuffixLabelCount(for: labels)
+        let registrableLabelCount = min(labels.count, publicSuffixLabelCount + 1)
+        return labels.suffix(registrableLabelCount).joined(separator: ".")
+    }
+
+    static func normalizeHostname(_ hostname: String) -> String? {
+        let trimmed = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let parsedHost: String
+        if let url = URL(string: trimmed), let host = url.host, !host.isEmpty {
+            parsedHost = host
+        } else if let url = URL(string: "https://\(trimmed)"), let host = url.host, !host.isEmpty {
+            parsedHost = host
+        } else {
+            parsedHost = trimmed
+        }
+
+        let withoutPath = parsedHost.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? parsedHost
+        let withoutPort: String
+        if withoutPath.hasPrefix("[") {
+            withoutPort = withoutPath.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        } else {
+            withoutPort = withoutPath.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true).first.map(String.init) ?? withoutPath
+        }
+
+        let normalized = withoutPort
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
             .lowercased()
 
-        guard !normalized.isEmpty else { return [] }
-
-        let labels = normalized.split(separator: ".").map(String.init)
-        return (0..<labels.count).map { index in
-            labels[index...].joined(separator: ".")
-        }
+        return normalized.isEmpty ? nil : normalized
     }
+
+    private static func publicSuffixLabelCount(for labels: [String]) -> Int {
+        guard labels.count >= 2 else {
+            return 1
+        }
+
+        let topLevelLabel = labels[labels.count - 1]
+        let secondLevelLabel = labels[labels.count - 2]
+
+        if topLevelLabel.count == 2, compoundPublicSuffixSecondLevelLabels.contains(secondLevelLabel) {
+            return 2
+        }
+
+        return 1
+    }
+
+    private static let compoundPublicSuffixSecondLevelLabels: Set<String> = [
+        "ac",
+        "co",
+        "com",
+        "edu",
+        "gen",
+        "gov",
+        "govt",
+        "id",
+        "mil",
+        "net",
+        "nom",
+        "org",
+        "sch"
+    ]
 }

@@ -10,16 +10,25 @@ final class CertificateManagerTests: XCTestCase {
         XCTAssertEqual(settings.normalizedHTTPSDomain, "admin.example.com")
     }
 
-    func testCloudflareZoneCandidatesWalkDownDomainLabels() {
+    func testCloudflareRootZoneExtractionStripsSubdomainsBeforeLookup() {
         XCTAssertEqual(
-            CloudflareDNSProvider.zoneCandidates(for: "_acme-challenge.api.dev.example.com"),
-            [
-                "_acme-challenge.api.dev.example.com",
-                "api.dev.example.com",
-                "dev.example.com",
-                "example.com",
-                "com"
-            ]
+            CloudflareDNSProvider.extractRootZone(from: "swiftbot.example.com"),
+            "example.com"
+        )
+
+        XCTAssertEqual(
+            CloudflareDNSProvider.extractRootZone(from: "api.admin.swiftbot.example.com"),
+            "example.com"
+        )
+
+        XCTAssertEqual(
+            CloudflareDNSProvider.extractRootZone(from: "test.example.co.nz"),
+            "example.co.nz"
+        )
+
+        XCTAssertEqual(
+            CloudflareDNSProvider.extractRootZone(from: "https://swiftbot.example.com/dashboard"),
+            "example.com"
         )
     }
 
