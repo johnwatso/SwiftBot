@@ -445,9 +445,9 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
         settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.httpsDomain = settings.adminWebUI.normalizedHTTPSDomain
+        settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.publicAccessHostname = settings.adminWebUI.normalizedPublicAccessHostname
+        settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.publicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
         settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile
@@ -1401,7 +1401,7 @@ final class AppModel: ObservableObject {
             return explicit
         }
 
-        let automaticHTTPSHost = settings.adminWebUI.normalizedHTTPSDomain
+        let automaticHTTPSHost = settings.adminWebUI.normalizedHostname
         let importedHTTPS = settings.adminWebUI.certificateMode == .importCertificate
         let usesHTTPS = preferHTTPS && (importedHTTPS || !automaticHTTPSHost.isEmpty)
         let host = usesHTTPS && !automaticHTTPSHost.isEmpty ? automaticHTTPSHost : settings.adminWebUI.bindHost
@@ -2062,9 +2062,9 @@ final class AppModel: ObservableObject {
         do {
             switch settings.adminWebUI.certificateMode {
             case .automatic:
-                let domain = settings.adminWebUI.normalizedHTTPSDomain
+                let domain = settings.adminWebUI.normalizedHostname
                 guard !domain.isEmpty else {
-                    logs.append("⚠️ Admin Web UI HTTPS is enabled, but no domain is configured. Falling back to HTTP.")
+                    logs.append("⚠️ Admin Web UI HTTPS is enabled, but no hostname is configured. Falling back to HTTP.")
                     return nil
                 }
 
@@ -2105,14 +2105,14 @@ final class AppModel: ObservableObject {
 
     func validateAdminWebAutomaticHTTPSConfiguration() async -> CertificateManager.AutomaticHTTPSValidation {
         await certificateManager.validateAutomaticHTTPSConfiguration(
-            for: settings.adminWebUI.normalizedHTTPSDomain,
+            for: settings.adminWebUI.normalizedHostname,
             cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken
         )
     }
 
     func createAdminWebAutomaticHTTPSDNSRecord() async throws -> CertificateManager.DNSRecordCreation {
         let creation = try await certificateManager.createAutomaticHTTPSDNSRecord(
-            for: settings.adminWebUI.normalizedHTTPSDomain,
+            for: settings.adminWebUI.normalizedHostname,
             cloudflareAPIToken: settings.adminWebUI.cloudflareAPIToken,
             publicBaseURL: settings.adminWebUI.publicBaseURL,
             bindHost: settings.adminWebUI.bindHost
@@ -2125,9 +2125,9 @@ final class AppModel: ObservableObject {
     func startAdminWebAutomaticHTTPSProvisioning(
         progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void
     ) async throws -> String {
-        let normalizedDomain = settings.adminWebUI.normalizedHTTPSDomain
+        let normalizedDomain = settings.adminWebUI.normalizedHostname
         guard !normalizedDomain.isEmpty else {
-            throw CertificateManager.Error.missingHTTPSDomain
+            throw CertificateManager.Error.missingHostname
         }
 
         let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2135,7 +2135,7 @@ final class AppModel: ObservableObject {
             throw CertificateManager.Error.missingCloudflareToken
         }
 
-        settings.adminWebUI.httpsDomain = normalizedDomain
+        settings.adminWebUI.hostname = normalizedDomain
         settings.adminWebUI.cloudflareAPIToken = trimmedToken
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.certificateMode = .automatic
@@ -2217,7 +2217,7 @@ final class AppModel: ObservableObject {
             return URL(string: adminWebPublicAccessStatus.publicURL)
         }
 
-        let hostname = effectiveAdminWebPublicAccessHostname()
+        let hostname = effectiveAdminWebHostname()
         guard !hostname.isEmpty else { return nil }
         return URL(string: "https://\(hostname)")
     }
@@ -2225,7 +2225,7 @@ final class AppModel: ObservableObject {
     func startAdminWebPublicAccessSetup(
         progress: @escaping @MainActor @Sendable (AdminWebPublicAccessSetupEvent) -> Void
     ) async throws -> String {
-        let hostname = effectiveAdminWebPublicAccessHostname()
+        let hostname = effectiveAdminWebHostname()
         guard !hostname.isEmpty else {
             throw AdminWebPublicAccessError.missingHostname
         }
@@ -2235,12 +2235,12 @@ final class AppModel: ObservableObject {
             throw CertificateManager.Error.missingCloudflareToken
         }
 
-        settings.adminWebUI.publicAccessHostname = hostname
+        settings.adminWebUI.hostname = hostname
         settings.adminWebUI.cloudflareAPIToken = trimmedToken
         settings.adminWebUI.enabled = true
 
         if settings.adminWebUI.publicAccessEnabled,
-           settings.adminWebUI.publicAccessHostname == hostname,
+           settings.adminWebUI.hostname == hostname,
            !settings.adminWebUI.publicAccessTunnelID.isEmpty,
            !settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             progress(.startingTunnelProcess)
@@ -2263,12 +2263,14 @@ final class AppModel: ObservableObject {
         guard tokenIsValid else {
             throw CertificateManager.Error.inactiveCloudflareToken
         }
+        logs.append("Cloudflare API verified")
         progress(.cloudflareAccessVerified)
 
         progress(.detectingCloudflareZone(domain: hostname))
         guard let zone = try await dnsProvider.findZone(for: hostname) else {
             throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
         }
+        logs.append("Cloudflare zone detected: \(zone.name)")
         progress(.cloudflareZoneDetected(zone: zone.name))
 
         guard let originURL = adminWebPublicAccessOriginURL() else {
@@ -2308,7 +2310,7 @@ final class AppModel: ObservableObject {
 
         progress(.storingTunnelCredentials)
         settings.adminWebUI.publicAccessEnabled = true
-        settings.adminWebUI.publicAccessHostname = hostname
+        settings.adminWebUI.hostname = hostname
         settings.adminWebUI.publicAccessTunnelID = tunnel.id
         settings.adminWebUI.publicAccessTunnelName = tunnel.name
         settings.adminWebUI.publicAccessTunnelAccountID = tunnel.accountID
@@ -2332,7 +2334,7 @@ final class AppModel: ObservableObject {
     }
 
     func disableAdminWebPublicAccess() async {
-        let hostname = effectiveAdminWebPublicAccessHostname()
+        let hostname = effectiveAdminWebHostname()
         let tunnelID = settings.adminWebUI.publicAccessTunnelID
         let accountID = settings.adminWebUI.publicAccessTunnelAccountID
         let apiToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2409,7 +2411,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let hostname = effectiveAdminWebPublicAccessHostname()
+        let hostname = effectiveAdminWebHostname()
         let tunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let tunnelID = settings.adminWebUI.publicAccessTunnelID.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -2436,12 +2438,12 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func effectiveAdminWebPublicAccessHostname() -> String {
-        let explicit = settings.adminWebUI.normalizedPublicAccessHostname
+    private func effectiveAdminWebHostname() -> String {
+        let explicit = settings.adminWebUI.normalizedHostname
         if !explicit.isEmpty {
             return explicit
         }
-        return settings.adminWebUI.normalizedHTTPSDomain
+        return settings.adminWebUI.normalizedHostname
     }
 
     private func adminWebPublicAccessOriginURL() -> String? {
@@ -2472,7 +2474,7 @@ final class AppModel: ObservableObject {
             enabled: settings.adminWebUI.enabled
                 && settings.adminWebUI.httpsEnabled
                 && settings.adminWebUI.certificateMode == .automatic,
-            domain: settings.adminWebUI.normalizedHTTPSDomain,
+            domain: settings.adminWebUI.normalizedHostname,
             cloudflareToken: settings.adminWebUI.cloudflareAPIToken
         )
 

@@ -68,11 +68,11 @@ final class CertificateManagerTests: XCTestCase {
         let status: String
     }
 
-    func testHTTPSDomainNormalizationStripsSchemeAndWhitespace() {
+    func testHostnameNormalizationStripsSchemeAndWhitespace() {
         var settings = AdminWebUISettings()
-        settings.httpsDomain = "  https://Admin.Example.com/dashboard  "
+        settings.hostname = "  https://Admin.Example.com/dashboard  "
 
-        XCTAssertEqual(settings.normalizedHTTPSDomain, "admin.example.com")
+        XCTAssertEqual(settings.normalizedHostname, "admin.example.com")
     }
 
     func testCloudflareRootZoneExtractionStripsSubdomainsBeforeLookup() {

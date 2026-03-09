@@ -312,6 +312,16 @@ final class LogStore: ObservableObject {
     private static let dateFormatter = ISO8601DateFormatter()
 
     func append(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("ViewBridge to RemoteViewService Terminated") || 
+           trimmed.contains("NSViewBridgeErrorCanceled") {
+            #if DEBUG
+            let stamp = Self.dateFormatter.string(from: Date())
+            lines.append("[\(stamp)] [DEBUG-ONLY] \(line)")
+            #endif
+            return
+        }
+
         let stamp = Self.dateFormatter.string(from: Date())
         lines.append("[\(stamp)] \(line)")
         if lines.count > 500 {

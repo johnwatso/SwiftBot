@@ -54,10 +54,9 @@ struct GeneralSettingsView: View {
             adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
             adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
             adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
-            adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
+            adminWebHostname: app.settings.adminWebUI.hostname,
             adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
             adminWebPublicAccessEnabled: app.settings.adminWebUI.publicAccessEnabled,
-            adminWebPublicAccessHostname: app.settings.adminWebUI.publicAccessHostname,
             adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
             adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
             adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
@@ -93,7 +92,7 @@ struct GeneralSettingsView: View {
         if app.settings.adminWebUI.httpsEnabled {
             switch app.settings.adminWebUI.certificateMode {
             case .automatic:
-                let domain = app.settings.adminWebUI.normalizedHTTPSDomain
+                let domain = app.settings.adminWebUI.normalizedHostname
                 lines.append(domain.isEmpty ? "HTTPS automatic setup pending" : "HTTPS via Let's Encrypt for \(domain)")
             case .importCertificate:
                 let certificatePath = app.settings.adminWebUI.normalizedImportedCertificateFile
@@ -101,7 +100,7 @@ struct GeneralSettingsView: View {
             }
         }
         if app.settings.adminWebUI.publicAccessEnabled {
-            let hostname = app.settings.adminWebUI.normalizedPublicAccessHostname
+            let hostname = app.settings.adminWebUI.normalizedHostname
             lines.append(hostname.isEmpty ? "Public Access setup pending" : "Public Access via Cloudflare Tunnel for \(hostname)")
         }
         return lines
@@ -736,10 +735,9 @@ private struct GeneralSettingsSnapshot: Equatable {
     var adminWebBaseURL = ""
     var adminWebHTTPSEnabled = false
     var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
-    var adminWebHTTPSDomain = ""
+    var adminWebHostname = ""
     var adminWebCloudflareToken = ""
     var adminWebPublicAccessEnabled = false
-    var adminWebPublicAccessHostname = ""
     var adminWebImportedCertificateFile = ""
     var adminWebImportedPrivateKeyFile = ""
     var adminWebImportedCertificateChainFile = ""

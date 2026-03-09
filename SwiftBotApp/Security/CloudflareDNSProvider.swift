@@ -51,13 +51,13 @@ struct CloudflareDNSProvider: Sendable {
         var errorDescription: String? {
             switch self {
             case .invalidDomain(let domain):
-                return "Invalid Cloudflare DNS domain: \(domain)"
+                return "Enter a valid hostname."
             case .zoneNotFound(let domain):
-                return "Cloudflare zone not found for \(domain)"
+                return "The domain \(domain) was not detected in Cloudflare."
             case .identicalRecordAlreadyExists:
-                return "The required DNS record already exists and will be reused for certificate provisioning."
-            case .apiFailed(let message):
-                return message
+                return "The required DNS record already exists and will be reused."
+            case .apiFailed(_):
+                return "Cloudflare authentication required."
             }
         }
     }
