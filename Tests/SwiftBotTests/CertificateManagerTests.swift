@@ -612,4 +612,191 @@ final class CertificateManagerTests: XCTestCase {
             .error
         )
     }
+
+    func testBundledCloudflaredDetectionFindsNestedResourcesFolderBinary() throws {
+        let fileManager = FileManager.default
+        let tempRoot = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let bundleURL = tempRoot.appendingPathComponent("SwiftBot.app", isDirectory: true)
+        let contentsURL = bundleURL.appendingPathComponent("Contents", isDirectory: true)
+        let nestedResourcesURL = contentsURL
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+        let binaryURL = nestedResourcesURL.appendingPathComponent("cloudflared")
+        let infoPlistURL = contentsURL.appendingPathComponent("Info.plist")
+
+        defer {
+            try? fileManager.removeItem(at: tempRoot)
+        }
+
+        try fileManager.createDirectory(at: nestedResourcesURL, withIntermediateDirectories: true)
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>com.example.SwiftBotTests</string>
+            <key>CFBundleName</key>
+            <string>SwiftBotTests</string>
+        </dict>
+        </plist>
+        """.write(to: infoPlistURL, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\nexit 0\n".write(to: binaryURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryURL.path)
+
+        let bundle = try XCTUnwrap(Bundle(path: bundleURL.path))
+        let installation = CertificateManager.detectCloudflaredInstallation(bundle: bundle, fileManager: fileManager)
+
+        XCTAssertEqual(installation.detectedPath, binaryURL.path)
+    }
+
+    func testCloudflareTunnelClientCreatesTunnelWithAccountFallbackAndConfiguresIngress() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        var requestCount = 0
+        MockCloudflareURLProtocol.requestHandler = { request in
+            requestCount += 1
+            let url = try XCTUnwrap(request.url)
+
+            switch requestCount {
+            case 1:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(url.path, "/client/v4/zones/zone-123")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": {
+                    "account": {
+                      "id": "account-456"
+                    }
+                  }
+                }
+                """.data(using: .utf8)!
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, data)
+            case 2:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+                let bodyData = try requestBodyData(from: request)
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+                XCTAssertEqual(body["name"] as? String, "swiftbot-swiftbot-example-com")
+                XCTAssertEqual(body["config_src"] as? String, "cloudflare")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": {
+                    "id": "tunnel-789",
+                    "name": "swiftbot-swiftbot-example-com"
+                  }
+                }
+                """.data(using: .utf8)!
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, data)
+            case 3:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel/tunnel-789/token")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": "token-abc"
+                }
+                """.data(using: .utf8)!
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, data)
+            case 4:
+                XCTAssertEqual(request.httpMethod, "PUT")
+                XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel/tunnel-789/configurations")
+
+                let bodyData = try requestBodyData(from: request)
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+                let config = try XCTUnwrap(body["config"] as? [String: Any])
+                let ingress = try XCTUnwrap(config["ingress"] as? [[String: Any]])
+                XCTAssertEqual(ingress.count, 2)
+                XCTAssertEqual(ingress.first?["hostname"] as? String, "swiftbot.example.com")
+                XCTAssertEqual(ingress.first?["service"] as? String, "http://127.0.0.1:38888")
+                XCTAssertEqual(ingress.last?["service"] as? String, "http_status:404")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": {
+                    "config": {
+                      "ingress": []
+                    }
+                  }
+                }
+                """.data(using: .utf8)!
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, data)
+            default:
+                XCTFail("Unexpected Cloudflare request: \(request)")
+                throw URLError(.badServerResponse)
+            }
+        }
+
+        let client = CloudflareTunnelClient(apiToken: "token-123", session: session)
+        let tunnel = try await client.createTunnel(
+            hostname: "swiftbot.example.com",
+            zone: .init(id: "zone-123", name: "example.com")
+        )
+
+        XCTAssertEqual(
+            tunnel,
+            .init(
+                accountID: "account-456",
+                id: "tunnel-789",
+                name: "swiftbot-swiftbot-example-com",
+                token: "token-abc"
+            )
+        )
+
+        try await client.configureTunnel(
+            tunnel,
+            hostname: "swiftbot.example.com",
+            originURL: "http://127.0.0.1:38888"
+        )
+
+        XCTAssertEqual(requestCount, 4)
+    }
 }

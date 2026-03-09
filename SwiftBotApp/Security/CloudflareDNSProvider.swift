@@ -25,6 +25,13 @@ struct CloudflareDNSProvider: Sendable {
     struct ZoneSummary: Sendable, Equatable {
         let id: String
         let name: String
+        let accountID: String?
+
+        init(id: String, name: String, accountID: String? = nil) {
+            self.id = id
+            self.name = name
+            self.accountID = accountID
+        }
     }
 
     enum Error: LocalizedError {
@@ -107,6 +114,11 @@ struct CloudflareDNSProvider: Sendable {
     private struct Zone: Decodable {
         let id: String
         let name: String
+        let account: AccountReference?
+    }
+
+    private struct AccountReference: Decodable {
+        let id: String
     }
 
     private struct CloudflareDNSRecord: Decodable {
@@ -325,7 +337,7 @@ struct CloudflareDNSProvider: Sendable {
             return nil
         }
 
-        return ZoneSummary(id: zone.id, name: zone.name)
+        return ZoneSummary(id: zone.id, name: zone.name, accountID: zone.account?.id)
     }
 
     func findDNSRecord(
@@ -410,6 +422,20 @@ struct CloudflareDNSProvider: Sendable {
 
     func dnsRecordExists(zoneID: String, hostname: String) async throws -> Bool {
         try await findDNSRecord(zoneID: zoneID, hostname: hostname) != nil
+    }
+
+    func deleteDNSRecord(_ record: DNSRecordSummary) async throws {
+        let requestURL = baseURL
+            .appendingPathComponent("zones")
+            .appendingPathComponent(record.zoneID)
+            .appendingPathComponent("dns_records")
+            .appendingPathComponent(record.recordID)
+
+        let request = makeRequest(url: requestURL, method: "DELETE")
+        let envelope: APIEnvelope<DNSRecord> = try await send(request)
+        guard envelope.success else {
+            throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
+        }
     }
 
     func resolveZoneID(for fqdn: String) async throws -> String {

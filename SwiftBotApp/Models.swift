@@ -177,6 +177,12 @@ struct AdminWebUISettings: Codable, Hashable {
     var certificateMode: AdminWebUICertificateMode = .automatic
     var httpsDomain: String = ""
     var cloudflareAPIToken: String = ""
+    var publicAccessEnabled: Bool = false
+    var publicAccessHostname: String = ""
+    var publicAccessTunnelID: String = ""
+    var publicAccessTunnelName: String = ""
+    var publicAccessTunnelAccountID: String = ""
+    var publicAccessTunnelToken: String = ""
     var importedCertificateFile: String = ""
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
@@ -195,6 +201,12 @@ struct AdminWebUISettings: Codable, Hashable {
         case certificateMode
         case httpsDomain
         case cloudflareAPIToken
+        case publicAccessEnabled
+        case publicAccessHostname
+        case publicAccessTunnelID
+        case publicAccessTunnelName
+        case publicAccessTunnelAccountID
+        case publicAccessTunnelToken
         case importedCertificateFile
         case importedPrivateKeyFile
         case importedCertificateChainFile
@@ -218,6 +230,12 @@ struct AdminWebUISettings: Codable, Hashable {
         certificateMode = try container.decodeIfPresent(AdminWebUICertificateMode.self, forKey: .certificateMode) ?? .automatic
         httpsDomain = try container.decodeIfPresent(String.self, forKey: .httpsDomain) ?? ""
         cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
+        publicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled) ?? false
+        publicAccessHostname = try container.decodeIfPresent(String.self, forKey: .publicAccessHostname) ?? ""
+        publicAccessTunnelID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelID) ?? ""
+        publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
+        publicAccessTunnelAccountID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelAccountID) ?? ""
+        publicAccessTunnelToken = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelToken) ?? ""
         importedCertificateFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateFile) ?? ""
         importedPrivateKeyFile = try container.decodeIfPresent(String.self, forKey: .importedPrivateKeyFile) ?? ""
         importedCertificateChainFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateChainFile) ?? ""
@@ -236,7 +254,27 @@ struct AdminWebUISettings: Codable, Hashable {
     }
 
     var normalizedHTTPSDomain: String {
-        let trimmed = httpsDomain.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalizeHostname(httpsDomain)
+    }
+
+    var normalizedPublicAccessHostname: String {
+        normalizeHostname(publicAccessHostname)
+    }
+
+    var normalizedImportedCertificateFile: String {
+        importedCertificateFile.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var normalizedImportedPrivateKeyFile: String {
+        importedPrivateKeyFile.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var normalizedImportedCertificateChainFile: String {
+        importedCertificateChainFile.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func normalizeHostname(_ rawValue: String) -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
         if let url = URL(string: trimmed), let host = url.host {
@@ -253,18 +291,6 @@ struct AdminWebUISettings: Codable, Hashable {
         }
 
         return normalized
-    }
-
-    var normalizedImportedCertificateFile: String {
-        importedCertificateFile.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var normalizedImportedPrivateKeyFile: String {
-        importedPrivateKeyFile.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var normalizedImportedCertificateChainFile: String {
-        importedCertificateChainFile.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
