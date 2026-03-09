@@ -596,20 +596,36 @@ struct GeneralSettingsView: View {
     }
 
     private var webUIContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            adminWebSettingsCard(title: "Web Server", symbol: "globe") {
+        VStack(alignment: .leading, spacing: 20) {
+            adminWebSettingsCard(
+                title: "Web Server",
+                symbol: "globe",
+                subtitle: "Manage the local SwiftBot dashboard listener and the URL SwiftBot shares with browsers."
+            ) {
                 AdminWebServerConfigurationSection()
             }
 
-            adminWebSettingsCard(title: "HTTPS", symbol: "lock.shield") {
+            adminWebSettingsCard(
+                title: "HTTPS",
+                symbol: "lock.shield",
+                subtitle: "Protect the Web UI with TLS certificates managed automatically or imported from an existing PEM."
+            ) {
                 AdminWebHTTPSConfigurationSection()
             }
 
-            adminWebSettingsCard(title: "Public Access", symbol: "network") {
+            adminWebSettingsCard(
+                title: "Public Access",
+                symbol: "network",
+                subtitle: "Expose SwiftBot securely over the internet without opening router ports."
+            ) {
                 AdminWebPublicAccessSection()
             }
 
-            adminWebSettingsCard(title: "Authentication", symbol: "person.badge.key") {
+            adminWebSettingsCard(
+                title: "Authentication",
+                symbol: "person.badge.key",
+                subtitle: "Control who can sign in to the Web UI with Discord."
+            ) {
                 AdminWebAuthenticationSection()
             }
 
@@ -621,16 +637,24 @@ struct GeneralSettingsView: View {
     private func adminWebSettingsCard<Content: View>(
         title: String,
         symbol: String,
+        subtitle: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: symbol)
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(title, systemImage: symbol)
+                    .font(.headline)
+
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .commandCatalogSurface(cornerRadius: 18)
     }

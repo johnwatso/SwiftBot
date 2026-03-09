@@ -17,38 +17,56 @@ struct AdminWebPublicAccessRuntimeStatus: Sendable, Equatable {
     }
 }
 
-actor PublicAccessManager {
-    struct Configuration: Sendable, Equatable {
-        let hostname: String
-        let publicURL: String
-        let originURL: String
-        let tunnelToken: String
-    }
+struct TunnelRuntimeConfiguration: Sendable, Equatable {
+    let hostname: String
+    let publicURL: String
+    let originURL: String
+    let tunnelToken: String
+}
+
+protocol TunnelProvider: Sendable {
+    func configure(
+        _ configuration: TunnelRuntimeConfiguration?,
+        logger: @escaping @MainActor @Sendable (String) -> Void,
+        statusHandler: @escaping @MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void
+    ) async
+}
+
+actor TunnelManager: TunnelProvider {
+    static let shared = TunnelManager()
 
     enum Error: LocalizedError {
         case missingTunnelToken
         case missingCloudflaredBinary
+        case cloudflaredNotExecutable
 
         var errorDescription: String? {
             switch self {
             case .missingTunnelToken:
                 return "SwiftBot could not find the stored Cloudflare Tunnel token."
             case .missingCloudflaredBinary:
-                return "cloudflared is unavailable. Reinstall SwiftBot or install cloudflared manually."
+                return "SwiftBot could not find the bundled cloudflared helper."
+            case .cloudflaredNotExecutable:
+                return "The bundled cloudflared helper is not executable."
             }
         }
     }
 
-    private var desiredConfiguration: Configuration?
+    private static let fallbackBinaryPaths = [
+        "/usr/local/bin/cloudflared",
+        "/opt/homebrew/bin/cloudflared"
+    ]
+
+    private var desiredConfiguration: TunnelRuntimeConfiguration?
     private var process: Process?
     private var restartTask: Task<Void, Never>?
     private var isStoppingProcess = false
-    private var runtimeStatus = AdminWebPublicAccessRuntimeStatus()
+    private var nextStartIsRestart = false
     private var logger: (@MainActor @Sendable (String) -> Void)?
     private var statusHandler: (@MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void)?
 
     func configure(
-        _ configuration: Configuration?,
+        _ configuration: TunnelRuntimeConfiguration?,
         logger: @escaping @MainActor @Sendable (String) -> Void,
         statusHandler: @escaping @MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void
     ) async {
@@ -67,7 +85,7 @@ actor PublicAccessManager {
             await publishStatus(.init(
                 state: .enabled,
                 publicURL: configuration.publicURL,
-                detail: "Public access enabled"
+                detail: "Traffic is routed securely through Cloudflare Tunnel."
             ))
             return
         }
@@ -83,6 +101,7 @@ actor PublicAccessManager {
         if clearDesiredConfiguration {
             desiredConfiguration = nil
         }
+        nextStartIsRestart = false
 
         guard let process else {
             await publishStatus(.init(
@@ -98,6 +117,7 @@ actor PublicAccessManager {
 
         if process.isRunning {
             process.terminate()
+            await logger?("🌐 Tunnel stopped")
         }
 
         self.process = nil
@@ -106,21 +126,18 @@ actor PublicAccessManager {
         await publishStatus(.init(
             state: desiredConfiguration == nil ? .disabled : .enabling,
             publicURL: desiredConfiguration?.publicURL ?? "",
-            detail: desiredConfiguration == nil ? "Public access disabled" : "Restarting public access"
+            detail: desiredConfiguration == nil ? "Public access disabled" : "Restarting Cloudflare Tunnel"
         ))
     }
 
-    private func startProcess(using configuration: Configuration) async {
+    private func startProcess(using configuration: TunnelRuntimeConfiguration) async {
         do {
             guard !configuration.tunnelToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw Error.missingTunnelToken
             }
 
-            guard let binaryPath = CertificateManager.detectCloudflaredInstallation().detectedPath else {
-                throw Error.missingCloudflaredBinary
-            }
+            let binaryURL = try Self.resolveCloudflaredBinaryURL()
 
-            await logger?("🌐 Starting Public Access tunnel for \(configuration.hostname)")
             await publishStatus(.init(
                 state: .enabling,
                 publicURL: configuration.publicURL,
@@ -128,7 +145,7 @@ actor PublicAccessManager {
             ))
 
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: binaryPath)
+            process.executableURL = binaryURL
             process.arguments = [
                 "tunnel",
                 "--no-autoupdate",
@@ -141,21 +158,16 @@ actor PublicAccessManager {
             let outputPipe = Pipe()
             process.standardOutput = outputPipe
             process.standardError = outputPipe
-
-            let outputHandle = outputPipe.fileHandleForReading
-            outputHandle.readabilityHandler = { [weak self] handle in
+            outputPipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
-                guard !data.isEmpty,
-                      let output = String(data: data, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines),
-                      !output.isEmpty
-                else {
-                    return
+                guard !data.isEmpty else { return }
+                #if DEBUG
+                if let output = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !output.isEmpty {
+                    print("TunnelManager:", output)
                 }
-
-                Task {
-                    await self?.logger?("🌐 Public Access: \(output)")
-                }
+                #endif
             }
 
             process.terminationHandler = { [weak self] terminatedProcess in
@@ -167,10 +179,16 @@ actor PublicAccessManager {
             try process.run()
             self.process = process
 
+            if nextStartIsRestart {
+                nextStartIsRestart = false
+                await logger?("🌐 Tunnel restarted")
+            } else {
+                await logger?("🌐 Tunnel started")
+            }
             await publishStatus(.init(
                 state: .enabled,
                 publicURL: configuration.publicURL,
-                detail: "SwiftBot is available at \(configuration.publicURL)"
+                detail: "Traffic is routed securely through Cloudflare Tunnel."
             ))
         } catch {
             await publishStatus(.init(
@@ -178,7 +196,7 @@ actor PublicAccessManager {
                 publicURL: configuration.publicURL,
                 detail: error.localizedDescription
             ))
-            await logger?("⚠️ Public Access failed to start: \(error.localizedDescription)")
+            await logger?("⚠️ Tunnel failed to start: \(error.localizedDescription)")
         }
     }
 
@@ -200,7 +218,7 @@ actor PublicAccessManager {
             return
         }
 
-        await logger?("⚠️ Public Access tunnel exited unexpectedly with status \(status). Restarting…")
+        await logger?("⚠️ Tunnel stopped unexpectedly")
         await publishStatus(.init(
             state: .error,
             publicURL: currentConfiguration.publicURL,
@@ -211,12 +229,54 @@ actor PublicAccessManager {
         restartTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
+            await self?.markNextStartAsRestart()
             await self?.startProcess(using: currentConfiguration)
         }
     }
 
     private func publishStatus(_ status: AdminWebPublicAccessRuntimeStatus) async {
-        runtimeStatus = status
         await statusHandler?(status)
+    }
+
+    private func markNextStartAsRestart() {
+        nextStartIsRestart = true
+    }
+
+    nonisolated static func resolveCloudflaredBinaryURL(
+        bundle: Bundle = .main,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        var foundBundledBinaryThatIsNotExecutable = false
+        for candidate in bundledCloudflaredCandidateURLs(bundle: bundle) {
+            let path = candidate.path
+            guard fileManager.fileExists(atPath: path) else {
+                continue
+            }
+            guard fileManager.isExecutableFile(atPath: path) else {
+                foundBundledBinaryThatIsNotExecutable = true
+                continue
+            }
+            return candidate
+        }
+
+        if foundBundledBinaryThatIsNotExecutable {
+            throw Error.cloudflaredNotExecutable
+        }
+
+        if let fallbackPath = fallbackBinaryPaths.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
+            return URL(fileURLWithPath: fallbackPath)
+        }
+
+        throw Error.missingCloudflaredBinary
+    }
+
+    nonisolated private static func bundledCloudflaredCandidateURLs(bundle: Bundle) -> [URL] {
+        [
+            bundle.url(forResource: "cloudflared", withExtension: nil),
+            bundle.resourceURL?
+                .appendingPathComponent("Resources", isDirectory: true)
+                .appendingPathComponent("cloudflared")
+        ]
+        .compactMap { $0 }
     }
 }

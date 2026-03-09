@@ -225,28 +225,44 @@ struct PreferencesTabContainer<Content: View>: View {
 struct PreferencesCard<Content: View>: View {
     let title: String
     let systemImage: String?
+    let subtitle: String?
     let content: Content
 
-    init(_ title: String, systemImage: String? = nil, @ViewBuilder content: () -> Content) {
+    init(
+        _ title: String,
+        systemImage: String? = nil,
+        subtitle: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.title = title
         self.systemImage = systemImage
+        self.subtitle = subtitle
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if let systemImage {
-                Label(title, systemImage: systemImage)
-                    .font(.headline)
-            } else {
-                Text(title)
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                if let systemImage {
+                    Label(title, systemImage: systemImage)
+                        .font(.headline)
+                } else {
+                    Text(title)
+                        .font(.headline)
+                }
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(18)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(

@@ -2,6 +2,30 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private func sharedAdminWebHostname(in settings: AdminWebUISettings) -> String {
+    let publicAccess = settings.normalizedPublicAccessHostname
+    if !publicAccess.isEmpty {
+        return publicAccess
+    }
+    return settings.normalizedHTTPSDomain
+}
+
+private func sharedAdminWebHostnameBinding(for app: AppModel) -> Binding<String> {
+    Binding(
+        get: {
+            let publicAccess = app.settings.adminWebUI.publicAccessHostname.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !publicAccess.isEmpty {
+                return publicAccess
+            }
+            return app.settings.adminWebUI.httpsDomain
+        },
+        set: { newValue in
+            app.settings.adminWebUI.httpsDomain = newValue
+            app.settings.adminWebUI.publicAccessHostname = newValue
+        }
+    )
+}
+
 struct WebUIPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
@@ -11,20 +35,36 @@ struct WebUIPreferencesView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
             }
 
-            VStack(alignment: .leading, spacing: 20) {
-                PreferencesCard("Web Server", systemImage: "globe") {
+            VStack(alignment: .leading, spacing: 24) {
+                PreferencesCard(
+                    "Web Server",
+                    systemImage: "globe",
+                    subtitle: "Manage the local SwiftBot dashboard listener and the URL SwiftBot shares with browsers."
+                ) {
                     AdminWebServerConfigurationSection()
                 }
 
-                PreferencesCard("HTTPS", systemImage: "lock.shield") {
+                PreferencesCard(
+                    "HTTPS",
+                    systemImage: "lock.shield",
+                    subtitle: "Protect the Web UI with TLS certificates managed automatically or imported from an existing PEM."
+                ) {
                     AdminWebHTTPSConfigurationSection()
                 }
 
-                PreferencesCard("Public Access", systemImage: "network") {
+                PreferencesCard(
+                    "Public Access",
+                    systemImage: "network",
+                    subtitle: "Expose SwiftBot securely over the internet without opening router ports."
+                ) {
                     AdminWebPublicAccessSection()
                 }
 
-                PreferencesCard("Authentication", systemImage: "person.badge.key") {
+                PreferencesCard(
+                    "Authentication",
+                    systemImage: "person.badge.key",
+                    subtitle: "Control who can sign in to the Web UI with Discord."
+                ) {
                     AdminWebAuthenticationSection()
                 }
 
@@ -39,8 +79,20 @@ struct WebUIPreferencesView: View {
 struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
 
+    private var publicURLPreview: String {
+        let sharedHostname = sharedAdminWebHostname(in: app.settings.adminWebUI)
+        if app.settings.adminWebUI.publicAccessEnabled, !sharedHostname.isEmpty {
+            return "https://\(sharedHostname)"
+        }
+        if app.settings.adminWebUI.httpsEnabled, !sharedHostname.isEmpty {
+            return "https://\(sharedHostname)"
+        }
+        let currentURL = app.adminWebBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        return currentURL
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
                 .toggleStyle(.switch)
 
@@ -61,11 +113,12 @@ struct AdminWebServerConfigurationSection: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Public Base URL")
+                Text("Public URL")
                     .font(.subheadline.weight(.medium))
-                TextField("https://admin.example.com", text: $app.settings.adminWebUI.publicBaseURL)
+                TextField("https://hostname", text: .constant(publicURLPreview))
                     .textFieldStyle(.roundedBorder)
-                Text("Leave empty to use the active listener URL automatically.")
+                    .disabled(true)
+                Text("Updates automatically when HTTPS or Public Access is configured.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -87,8 +140,12 @@ struct AdminWebHTTPSConfigurationSection: View {
     @State private var propagationTask: Task<Void, Never>?
     @State private var setupFeedback: AdminWebHTTPSSetupFeedback?
 
+    private var hostnameBinding: Binding<String> {
+        sharedAdminWebHostnameBinding(for: app)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             Toggle("Enable HTTPS", isOn: $app.settings.adminWebUI.httpsEnabled)
                 .toggleStyle(.switch)
 
@@ -101,6 +158,16 @@ struct AdminWebHTTPSConfigurationSection: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hostname")
+                    .font(.subheadline.weight(.medium))
+                TextField("admin.example.com", text: hostnameBinding)
+                    .textFieldStyle(.roundedBorder)
+                Text("Used for HTTPS and Public Access when Cloudflare services are enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if app.settings.adminWebUI.httpsEnabled {
@@ -130,21 +197,11 @@ struct AdminWebHTTPSConfigurationSection: View {
     private var automaticFields: some View {
         Group {
             VStack(alignment: .leading, spacing: 8) {
-                Text("HTTPS Domain")
-                    .font(.subheadline.weight(.medium))
-                TextField("admin.example.com", text: $app.settings.adminWebUI.httpsDomain)
-                    .textFieldStyle(.roundedBorder)
-                Text("Point this hostname at the machine running SwiftBot. DNS validation uses Cloudflare.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
                 Text("Cloudflare API Token")
                     .font(.subheadline.weight(.medium))
                 SecureField("Token with Zone DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
                     .textFieldStyle(.roundedBorder)
-                Text("Stored in Keychain. Used only for the `_acme-challenge` TXT record flow.")
+                Text("Stored in Keychain and reused for HTTPS validation and Public Access.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -248,7 +305,7 @@ struct AdminWebHTTPSConfigurationSection: View {
         [
             app.settings.adminWebUI.httpsEnabled ? "1" : "0",
             app.settings.adminWebUI.certificateMode.rawValue,
-            app.settings.adminWebUI.normalizedHTTPSDomain,
+            sharedAdminWebHostname(in: app.settings.adminWebUI),
             app.settings.adminWebUI.cloudflareAPIToken
         ].joined(separator: "|")
     }
@@ -448,6 +505,63 @@ private struct AdminWebHTTPSSetupFeedback {
     let message: String
 }
 
+private struct AdminWebStatusDisplay {
+    let title: String
+    let detail: String?
+}
+
+private struct AdminWebStatusRow: View {
+    let title: String
+    let detail: String?
+    let status: CertificateManager.ValidationStatus
+    let isProcessing: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: iconName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(iconColor)
+                .symbolRenderingMode(.hierarchical)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var iconName: String {
+        if isProcessing {
+            return "arrow.triangle.2.circlepath"
+        }
+
+        switch status {
+        case .pending:
+            return "circle"
+        case .success:
+            return "checkmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle"
+        case .error:
+            return "xmark.circle.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        if isProcessing {
+            return .orange
+        }
+        return status.color
+    }
+}
+
 private struct AdminWebHTTPSSetupStatusSection: View {
     let validation: CertificateManager.AutomaticHTTPSValidation?
     let provisioningItems: [CertificateManager.ValidationItem]?
@@ -466,10 +580,14 @@ private struct AdminWebHTTPSSetupStatusSection: View {
     let canEnableHTTPS: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("HTTPS Setup Status")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Setup Status")
+                    .font(.headline.weight(.semibold))
+                Text("SwiftBot checks Cloudflare and DNS, then enables HTTPS when everything is ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 10) {
                 Button {
@@ -496,10 +614,6 @@ private struct AdminWebHTTPSSetupStatusSection: View {
                         .foregroundStyle(.secondary)
                 }
             }
-
-            Text("SwiftBot checks the environment, creates the DNS challenge, waits for propagation, requests the certificate, and enables HTTPS automatically.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             if showsCloudflaredWarning {
                 VStack(alignment: .leading, spacing: 8) {
@@ -529,23 +643,14 @@ private struct AdminWebHTTPSSetupStatusSection: View {
 
             if let items = displayedItems {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text(item.status.symbol)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(item.status.color)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(index + 1). \(item.title)")
-                                    .font(.subheadline.weight(.medium))
-
-                                if let detail = item.detail, !detail.isEmpty {
-                                    Text(detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+                    ForEach(items) { item in
+                        let display = displayText(for: item)
+                        AdminWebStatusRow(
+                            title: display.title,
+                            detail: display.detail,
+                            status: item.status,
+                            isProcessing: item.id == activeProcessingItemID
+                        )
                     }
                 }
                 .padding(14)
@@ -579,11 +684,11 @@ private struct AdminWebHTTPSSetupStatusSection: View {
             if let feedback {
                 Text(feedback.message)
                     .font(.caption)
-                    .foregroundStyle(feedback.status.color)
+                    .foregroundStyle(feedback.status == .error ? .red : .secondary)
             }
 
             if isMonitoringPropagation {
-                Text("Waiting for DNS propagation. SwiftBot is re-checking automatically.")
+                Text("Waiting for DNS. SwiftBot keeps checking automatically.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -620,6 +725,67 @@ private struct AdminWebHTTPSSetupStatusSection: View {
 
     private var currentProvisioningStepTitle: String? {
         provisioningItems?.first(where: { $0.status == .warning })?.title
+    }
+
+    private var activeProcessingItemID: String? {
+        guard isRefreshing || isCreatingDNSRecord || isMonitoringPropagation || isProvisioningCertificate else {
+            return nil
+        }
+        return displayedItems?.first(where: { $0.status == .warning })?.id
+    }
+
+    private func displayText(for item: CertificateManager.ValidationItem) -> AdminWebStatusDisplay {
+        switch item.id {
+        case "cloudflare-access":
+            switch item.status {
+            case .success:
+                return .init(title: "Cloudflare API verified", detail: "Cloudflare authentication is ready.")
+            case .pending:
+                return .init(title: "Cloudflare authentication", detail: "Authentication will be checked when setup runs.")
+            case .warning:
+                return .init(title: "Cloudflare authentication", detail: "Authentication required.")
+            case .error:
+                return .init(title: "Cloudflare authentication", detail: "Authentication required.")
+            }
+        case "domain-resolves":
+            switch item.status {
+            case .success:
+                return .init(title: "Domain resolves", detail: "The hostname is reachable through system DNS.")
+            case .pending:
+                return .init(title: "Domain resolves", detail: "Not configured yet.")
+            case .warning:
+                return .init(title: "Domain resolves", detail: "Waiting for DNS.")
+            case .error:
+                return .init(title: "Domain resolves", detail: "Add a hostname to continue.")
+            }
+        case "dns-record-present":
+            switch item.status {
+            case .success:
+                return .init(title: "DNS record detected", detail: "The required DNS record is ready for HTTPS.")
+            case .pending:
+                return .init(title: "DNS record detected", detail: "SwiftBot will check for the DNS record during setup.")
+            case .warning:
+                let detail = item.detail?.contains("Skipped") == true
+                    ? "Waiting for Cloudflare authentication."
+                    : "Not configured yet."
+                return .init(title: "DNS record detected", detail: detail)
+            case .error:
+                return .init(title: "DNS record detected", detail: "Cloudflare access needs attention.")
+            }
+        case "ready":
+            switch item.status {
+            case .success:
+                return .init(title: "Ready to enable HTTPS", detail: "SwiftBot can request a certificate when you continue.")
+            case .pending:
+                return .init(title: "Ready to enable HTTPS", detail: "Checking configuration.")
+            case .warning:
+                return .init(title: "Ready to enable HTTPS", detail: "Waiting for DNS.")
+            case .error:
+                return .init(title: "Ready to enable HTTPS", detail: "Not configured yet.")
+            }
+        default:
+            return .init(title: item.title, detail: item.detail)
+        }
     }
 }
 
@@ -818,19 +984,6 @@ private struct AdminWebHTTPSProvisioningProgress {
 }
 
 private extension CertificateManager.ValidationStatus {
-    var symbol: String {
-        switch self {
-        case .pending:
-            return "○"
-        case .success:
-            return "●"
-        case .warning:
-            return "⚠"
-        case .error:
-            return "✖"
-        }
-    }
-
     var color: Color {
         switch self {
         case .pending:
@@ -861,6 +1014,75 @@ struct AdminWebPublicAccessSection: View {
         app.adminWebPublicAccessURL()?.absoluteString ?? ""
     }
 
+    private var sharedHostname: String {
+        sharedAdminWebHostname(in: app.settings.adminWebUI)
+    }
+
+    private var hasCloudflareAuthentication: Bool {
+        !app.settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canEnablePublicAccess: Bool {
+        !app.settings.adminWebUI.publicAccessEnabled
+            && !isEnablingPublicAccess
+            && !isDisablingPublicAccess
+            && hasCloudflareAuthentication
+            && !sharedHostname.isEmpty
+    }
+
+    private var checklistItems: [CertificateManager.ValidationItem] {
+        if let setupProgress {
+            return setupProgress.items
+        }
+
+        if app.settings.adminWebUI.publicAccessEnabled, app.adminWebPublicAccessStatus.isEnabled {
+            return [
+                .init(id: "cloudflare-access", title: "Cloudflare API verified", status: .success, detail: "Cloudflare authentication is ready."),
+                .init(id: "cloudflare-zone", title: "Cloudflare zone detected", status: .success, detail: "The hostname is associated with your Cloudflare account."),
+                .init(id: "create-tunnel", title: "Create Cloudflare tunnel", status: .success, detail: "The Cloudflare tunnel is configured."),
+                .init(id: "create-dns", title: "Configure DNS route", status: .success, detail: "Traffic is routed to the tunnel hostname."),
+                .init(id: "start-public-access", title: "Enable public access", status: .success, detail: "SwiftBot is available at \(publicURLString).")
+            ]
+        }
+
+        return [
+            .init(
+                id: "cloudflare-access",
+                title: "Cloudflare API verified",
+                status: hasCloudflareAuthentication ? .pending : .warning,
+                detail: hasCloudflareAuthentication
+                    ? "Ready to verify when Public Access starts."
+                    : "Cloudflare authentication required to create a tunnel."
+            ),
+            .init(
+                id: "cloudflare-zone",
+                title: "Cloudflare zone detected",
+                status: sharedHostname.isEmpty ? .pending : .pending,
+                detail: sharedHostname.isEmpty
+                    ? "Add a hostname in HTTPS to continue."
+                    : "SwiftBot will detect the matching Cloudflare zone during setup."
+            ),
+            .init(
+                id: "create-tunnel",
+                title: "Create Cloudflare tunnel",
+                status: .pending,
+                detail: "Created automatically during setup."
+            ),
+            .init(
+                id: "create-dns",
+                title: "Configure DNS route",
+                status: .pending,
+                detail: "Configured automatically during setup."
+            ),
+            .init(
+                id: "start-public-access",
+                title: "Enable public access",
+                status: canEnablePublicAccess ? .pending : .pending,
+                detail: canEnablePublicAccess ? "Ready when you choose Enable Public Access." : "Complete the items above to continue."
+            )
+        ]
+    }
+
     private var statusColor: Color {
         switch app.adminWebPublicAccessStatus.state {
         case .enabled:
@@ -879,34 +1101,23 @@ struct AdminWebPublicAccessSection: View {
         case .enabled:
             return "Enabled"
         case .enabling:
-            return "Enabling"
+            return "Setting up"
         case .disabled:
             return "Disabled"
         case .error:
-            return "Error"
+            return "Needs attention"
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Hostname")
                     .font(.subheadline.weight(.medium))
-                TextField("swiftbot.example.com", text: $app.settings.adminWebUI.publicAccessHostname)
+                TextField("Set a hostname in HTTPS", text: .constant(sharedHostname))
                     .textFieldStyle(.roundedBorder)
-                    .disabled(app.settings.adminWebUI.publicAccessEnabled || isEnablingPublicAccess || isDisablingPublicAccess)
-                Text("Cloudflare Tunnel will publish this hostname over HTTPS without requiring port forwarding.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cloudflare API Token")
-                    .font(.subheadline.weight(.medium))
-                SecureField("Token with Tunnel and DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(app.settings.adminWebUI.publicAccessEnabled || isEnablingPublicAccess || isDisablingPublicAccess)
-                Text("This reuses the same Cloudflare token setting as automatic HTTPS.")
+                    .disabled(true)
+                Text("Uses the same hostname and Cloudflare authentication configured for HTTPS.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -929,33 +1140,33 @@ struct AdminWebPublicAccessSection: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                        Text("Traffic is routed securely through Cloudflare Tunnel.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 } else if !app.adminWebPublicAccessStatus.detail.isEmpty {
                     Text(app.adminWebPublicAccessStatus.detail)
                         .font(.caption)
                         .foregroundStyle(app.adminWebPublicAccessStatus.state == .error ? .red : .secondary)
+                } else {
+                    Text("Public access disabled")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            if let setupProgress {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(setupProgress.items.enumerated()), id: \.element.id) { index, item in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text(item.status.symbol)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(item.status.color)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Setup Status")
+                    .font(.headline.weight(.semibold))
 
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(index + 1). \(item.title)")
-                                    .font(.subheadline.weight(.medium))
-
-                                if let detail = item.detail, !detail.isEmpty {
-                                    Text(detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(checklistItems) { item in
+                        AdminWebStatusRow(
+                            title: item.title,
+                            detail: item.detail,
+                            status: item.status,
+                            isProcessing: isEnablingPublicAccess && checklistItems.first(where: { $0.status == .warning })?.id == item.id
+                        )
                     }
                 }
                 .padding(14)
@@ -982,12 +1193,11 @@ struct AdminWebPublicAccessSection: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(isDisablingPublicAccess || isEnablingPublicAccess)
-                } else {
+                } else if canEnablePublicAccess {
                     Button("Enable Public Access") {
                         enablePublicAccess()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isEnablingPublicAccess || isDisablingPublicAccess)
                 }
 
                 if isEnablingPublicAccess || isDisablingPublicAccess {
@@ -996,10 +1206,16 @@ struct AdminWebPublicAccessSection: View {
                 }
             }
 
+            if !hasCloudflareAuthentication {
+                Label("Cloudflare authentication required to create a tunnel.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if let setupFeedback {
                 Text(setupFeedback.message)
                     .font(.caption)
-                    .foregroundStyle(setupFeedback.status.color)
+                    .foregroundStyle(setupFeedback.status == .error ? .red : .secondary)
             }
         }
     }
@@ -1034,8 +1250,8 @@ struct AdminWebPublicAccessSection: View {
                     setupProgress = progress
                 }
                 setupFeedback = AdminWebPublicAccessFeedback(
-                    status: .error,
-                    message: app.userFacingAdminWebPublicAccessMessage(for: error)
+                    status: feedbackStatus(for: error),
+                    message: neutralPublicAccessMessage(for: error)
                 )
                 isEnablingPublicAccess = false
             }
@@ -1081,6 +1297,36 @@ struct AdminWebPublicAccessSection: View {
             message: "Public URL copied"
         )
     }
+
+    private func feedbackStatus(for error: Error) -> CertificateManager.ValidationStatus {
+        let userMessage = app.userFacingAdminWebPublicAccessMessage(for: error)
+        switch error {
+        case CertificateManager.Error.missingCloudflareToken,
+             CertificateManager.Error.inactiveCloudflareToken,
+             CloudflareDNSProvider.Error.zoneNotFound:
+            return .warning
+        default:
+            return userMessage.localizedCaseInsensitiveContains("public hostname")
+                ? .warning
+                : .error
+        }
+    }
+
+    private func neutralPublicAccessMessage(for error: Error) -> String {
+        let userMessage = app.userFacingAdminWebPublicAccessMessage(for: error)
+        switch error {
+        case CertificateManager.Error.missingCloudflareToken,
+             CertificateManager.Error.inactiveCloudflareToken:
+            return "Cloudflare authentication required to create a tunnel."
+        case CloudflareDNSProvider.Error.zoneNotFound:
+            return "The hostname is not available in the current Cloudflare account yet."
+        default:
+            if userMessage.localizedCaseInsensitiveContains("public hostname") {
+                return "Add a hostname in HTTPS to continue."
+            }
+            return userMessage
+        }
+    }
 }
 
 private struct AdminWebPublicAccessSetupProgress {
@@ -1089,7 +1335,6 @@ private struct AdminWebPublicAccessSetupProgress {
         "cloudflare-zone",
         "create-tunnel",
         "create-dns",
-        "store-credentials",
         "start-public-access"
     ]
 
@@ -1112,25 +1357,19 @@ private struct AdminWebPublicAccessSetupProgress {
             ),
             "create-tunnel": .init(
                 id: "create-tunnel",
-                title: "Cloudflare Tunnel created",
+                title: "Create Cloudflare tunnel",
                 status: .pending,
                 detail: nil
             ),
             "create-dns": .init(
                 id: "create-dns",
-                title: "Public DNS route created",
-                status: .pending,
-                detail: nil
-            ),
-            "store-credentials": .init(
-                id: "store-credentials",
-                title: "Tunnel credentials stored securely",
+                title: "Configure DNS route",
                 status: .pending,
                 detail: nil
             ),
             "start-public-access": .init(
                 id: "start-public-access",
-                title: "Public access enabled",
+                title: "Enable public access",
                 status: .pending,
                 detail: nil
             )
@@ -1156,13 +1395,12 @@ private struct AdminWebPublicAccessSetupProgress {
         case .tunnelCreated(let name):
             setItem(id: "create-tunnel", status: .success, detail: "Created tunnel \(name).")
         case .creatingTunnelDNSRecord(let hostname):
-            setItem(id: "create-dns", status: .warning, detail: "Creating the public DNS record for \(hostname).")
+            setItem(id: "create-dns", status: .warning, detail: "Configuring the DNS route for \(hostname).")
         case .tunnelDNSRecordCreated(let hostname):
-            setItem(id: "create-dns", status: .success, detail: "Public DNS route created for \(hostname).")
+            setItem(id: "create-dns", status: .success, detail: "DNS route configured for \(hostname).")
         case .storingTunnelCredentials:
-            setItem(id: "store-credentials", status: .warning, detail: "Saving the tunnel token to the macOS Keychain.")
+            setItem(id: "start-public-access", status: .warning, detail: "Saving tunnel access securely.")
         case .startingTunnelProcess:
-            setItem(id: "store-credentials", status: .success, detail: "Tunnel credentials stored securely.")
             setItem(id: "start-public-access", status: .warning, detail: "Starting cloudflared in the background.")
         case .publicAccessEnabled(let url):
             setItem(id: "start-public-access", status: .success, detail: "SwiftBot is available at \(url).")
@@ -1221,6 +1459,10 @@ struct AdminWebAuthenticationSection: View {
             Toggle("Restrict access to specific users", isOn: $app.settings.adminWebUI.restrictAccessToSpecificUsers)
                 .toggleStyle(.switch)
 
+            Text("Access is automatically limited to Discord server administrators.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             if app.settings.adminWebUI.restrictAccessToSpecificUsers {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Discord User IDs")
@@ -1239,10 +1481,6 @@ struct AdminWebAuthenticationSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text("Access is automatically limited to Discord server administrators.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
