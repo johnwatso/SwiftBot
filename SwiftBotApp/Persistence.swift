@@ -111,7 +111,7 @@ actor ConfigStore {
             lastToken = settings.token
         }
 
-        let trimmedAdminSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAdminSecret = settings.adminWebUI.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedAdminSecret.isEmpty {
             KeychainHelper.delete(account: adminDiscordClientSecretAccount)
         } else {

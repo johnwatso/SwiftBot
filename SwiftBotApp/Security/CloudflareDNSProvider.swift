@@ -50,14 +50,14 @@ struct CloudflareDNSProvider: Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .invalidDomain(let domain):
+            case .invalidDomain:
                 return "Enter a valid hostname."
             case .zoneNotFound(let domain):
                 return "The domain \(domain) was not detected in Cloudflare."
             case .identicalRecordAlreadyExists:
                 return "The required DNS record already exists and will be reused."
-            case .apiFailed(_):
-                return "Cloudflare authentication required."
+            case .apiFailed(let message):
+                return message
             }
         }
     }
@@ -301,6 +301,38 @@ struct CloudflareDNSProvider: Sendable {
         }
 
         return status.lowercased() == "active"
+    }
+
+    func listZones() async throws -> [ZoneSummary] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("zones"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "per_page", value: "50")]
+        guard let url = components?.url else { return [] }
+
+        let request = makeRequest(url: url, method: "GET")
+        let (data, http) = try await sendData(request)
+
+        let response: CloudflareZoneResponse
+        do {
+            response = try decoder.decode(CloudflareZoneResponse.self, from: data)
+        } catch {
+            throw Error.apiFailed("Cloudflare zone list failed.")
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare request failed with HTTP \(http.statusCode)."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        guard response.success else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare zone list failed."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        return response.result.map { ZoneSummary(id: $0.id, name: $0.name, accountID: $0.account?.id) }
     }
 
     func findZone(for fqdn: String) async throws -> ZoneSummary? {

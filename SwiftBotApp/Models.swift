@@ -200,7 +200,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedCertificateChainFile: String = ""
     
     // OAuth Providers (Discord is active, others are placeholders)
-    var discordOAuth = OAuthProviderSettings(enabled: true)
+    var discordOAuth = OAuthProviderSettings()
     var appleOAuth = OAuthProviderSettings()
     var steamOAuth = OAuthProviderSettings()
     var githubOAuth = OAuthProviderSettings()

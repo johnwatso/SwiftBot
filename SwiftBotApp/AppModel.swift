@@ -78,6 +78,8 @@ enum InternetAccessSetupEvent: Sendable, Equatable {
     case tunnelDetected(name: String)
     case creatingTunnelDNSRecord(hostname: String)
     case tunnelDNSRecordCreated(hostname: String)
+    case issuingHTTPSCertificate(hostname: String)
+    case httpsCertificateIssued(hostname: String)
     case startingCloudflareTunnel
     case cloudflareTunnelStarted
     case internetAccessEnabled(url: String)
@@ -2391,6 +2393,27 @@ final class AppModel: ObservableObject {
 
     // MARK: - Unified Internet Access Setup
 
+    /// Verifies the Cloudflare API token and returns available zones.
+    /// - Parameter token: The Cloudflare API token to verify
+    /// - Returns: Array of zones available to this token
+    func verifyCloudflareTokenAndListZones(token: String) async throws -> [CloudflareDNSProvider.ZoneSummary] {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw CertificateManager.Error.missingCloudflareToken
+        }
+        
+        let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
+        
+        // First verify the token is valid by checking user info
+        let isValid = try await dnsProvider.verifyAPIToken()
+        guard isValid else {
+            throw CertificateManager.Error.inactiveCloudflareToken
+        }
+        
+        // Then list all available zones
+        return try await dnsProvider.listZones()
+    }
+
     func startInternetAccessSetup(
         progress: @escaping @MainActor @Sendable (InternetAccessSetupEvent) -> Void,
         forceReplaceDNS: Bool = false
@@ -2483,7 +2506,12 @@ final class AppModel: ObservableObject {
         }
         progress(.tunnelDNSRecordCreated(hostname: hostname))
 
-        // Step 5: Save tunnel credentials and start Cloudflare Tunnel
+        // Step 5: Issue HTTPS certificate (handled automatically by Cloudflare)
+        progress(.issuingHTTPSCertificate(hostname: hostname))
+        logs.append("HTTPS certificate provisioned by Cloudflare")
+        progress(.httpsCertificateIssued(hostname: hostname))
+
+        // Step 6: Save tunnel credentials and start Cloudflare Tunnel
         progress(.startingCloudflareTunnel)
         settings.adminWebUI.internetAccessEnabled = true
         settings.adminWebUI.publicAccessTunnelID = tunnel.id
