@@ -65,7 +65,7 @@ struct PreferencesView: View {
 
             MeshPreferencesView()
                 .tabItem {
-                    Label("SwiftMesh", systemImage: "network")
+                    Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
                 }
 
             WebUIPreferencesView()

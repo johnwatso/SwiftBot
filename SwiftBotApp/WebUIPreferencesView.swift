@@ -310,11 +310,13 @@ struct InternetAccessConfigurationSection: View {
                                 .foregroundStyle(.green)
                                 .font(.title3)
                             Text("SwiftBot Dashboard")
-                                .font(.subheadline.weight(.semibold))
+                                .font(.headline)
+                                .fontWeight(.semibold)
                         }
                         
                         Text(publicURLString)
-                            .font(.subheadline.weight(.medium))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                         
                         HStack(spacing: 10) {
@@ -343,7 +345,8 @@ struct InternetAccessConfigurationSection: View {
                             .controlSize(.regular)
                         }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
                     .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 } else {
                     HStack(spacing: 8) {
