@@ -169,16 +169,22 @@ enum AdminWebUICertificateMode: String, Codable, Hashable, CaseIterable, Identif
 }
 
 struct AdminWebUISettings: Codable, Hashable {
+    // Internal constants (not user-configurable)
+    static let defaultBindHost = "127.0.0.1"
+    static let defaultPort = 38888
+    
     var enabled: Bool = false
-    var bindHost: String = "127.0.0.1"
-    var port: Int = 38888
     var publicBaseURL: String = ""
-    var httpsEnabled: Bool = false
-    var certificateMode: AdminWebUICertificateMode = .automatic
     var internetAccessEnabled: Bool = false
     var hostname: String = ""
     var cloudflareAPIToken: String = ""
-    var publicAccessEnabled: Bool = false
+    
+    // Legacy compatibility - always returns fixed values
+    var bindHost: String { Self.defaultBindHost }
+    var port: Int { Self.defaultPort }
+    var httpsEnabled: Bool { false }
+    var certificateMode: AdminWebUICertificateMode { .automatic }
+    var publicAccessEnabled: Bool { internetAccessEnabled }
     var publicAccessTunnelID: String = ""
     var publicAccessTunnelName: String = ""
     var publicAccessTunnelAccountID: String = ""
@@ -193,29 +199,28 @@ struct AdminWebUISettings: Codable, Hashable {
     var allowedUserIDs: [String] = []
     private enum CodingKeys: String, CodingKey {
         case enabled
-        case bindHost
-        case port
         case publicBaseURL
-        case httpsEnabled
-        case certificateMode
-        case hostname
-        case httpsDomain
-        case publicAccessHostname
-        case cloudflareAPIToken
-        case publicAccessEnabled
         case internetAccessEnabled
+        case hostname
+        case cloudflareAPIToken
         case publicAccessTunnelID
         case publicAccessTunnelName
         case publicAccessTunnelAccountID
         case publicAccessTunnelToken
-        case importedCertificateFile
-        case importedPrivateKeyFile
-        case importedCertificateChainFile
         case discordClientID
         case discordClientSecret
         case redirectPath
         case restrictAccessToSpecificUsers
         case allowedUserIDs
+        // Legacy keys for migration
+        case bindHost
+        case port
+        case httpsEnabled
+        case certificateMode
+        case publicAccessEnabled
+        case importedCertificateFile
+        case importedPrivateKeyFile
+        case importedCertificateChainFile
     }
 
     init() {}
@@ -224,32 +229,22 @@ struct AdminWebUISettings: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
-        bindHost = try container.decodeIfPresent(String.self, forKey: .bindHost) ?? "127.0.0.1"
-        port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 38888
         publicBaseURL = try container.decodeIfPresent(String.self, forKey: .publicBaseURL) ?? ""
-        httpsEnabled = try container.decodeIfPresent(Bool.self, forKey: .httpsEnabled) ?? false
-        certificateMode = try container.decodeIfPresent(AdminWebUICertificateMode.self, forKey: .certificateMode) ?? .automatic
         
-        // Migration: prefer hostname, then publicAccessHostname, then httpsDomain.
-        let decodedHostname = try container.decodeIfPresent(String.self, forKey: .hostname)
-        let decodedPublicAccessHostname = try container.decodeIfPresent(String.self, forKey: .publicAccessHostname)
-        let decodedHTTPSDomain = try container.decodeIfPresent(String.self, forKey: .httpsDomain)
-        hostname = decodedHostname ?? decodedPublicAccessHostname ?? decodedHTTPSDomain ?? ""
+        // Migration: prefer hostname
+        hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? ""
         
         cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
         
+        // Migration: internetAccessEnabled replaces publicAccessEnabled
         let decodedInternetAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .internetAccessEnabled)
         let decodedPublicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled)
         internetAccessEnabled = decodedInternetAccessEnabled ?? decodedPublicAccessEnabled ?? false
         
-        publicAccessEnabled = decodedPublicAccessEnabled ?? false
         publicAccessTunnelID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelID) ?? ""
         publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
         publicAccessTunnelAccountID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelAccountID) ?? ""
         publicAccessTunnelToken = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelToken) ?? ""
-        importedCertificateFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateFile) ?? ""
-        importedPrivateKeyFile = try container.decodeIfPresent(String.self, forKey: .importedPrivateKeyFile) ?? ""
-        importedCertificateChainFile = try container.decodeIfPresent(String.self, forKey: .importedCertificateChainFile) ?? ""
         discordClientID = try container.decodeIfPresent(String.self, forKey: .discordClientID) ?? ""
         discordClientSecret = try container.decodeIfPresent(String.self, forKey: .discordClientSecret) ?? ""
         redirectPath = try container.decodeIfPresent(String.self, forKey: .redirectPath) ?? "/auth/discord/callback"
@@ -261,14 +256,9 @@ struct AdminWebUISettings: Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(enabled, forKey: .enabled)
-        try container.encode(bindHost, forKey: .bindHost)
-        try container.encode(port, forKey: .port)
         try container.encode(publicBaseURL, forKey: .publicBaseURL)
-        try container.encode(httpsEnabled, forKey: .httpsEnabled)
-        try container.encode(certificateMode, forKey: .certificateMode)
         try container.encode(hostname, forKey: .hostname)
         try container.encode(cloudflareAPIToken, forKey: .cloudflareAPIToken)
-        try container.encode(publicAccessEnabled, forKey: .publicAccessEnabled)
         try container.encode(internetAccessEnabled, forKey: .internetAccessEnabled)
         try container.encode(publicAccessTunnelID, forKey: .publicAccessTunnelID)
         try container.encode(publicAccessTunnelName, forKey: .publicAccessTunnelName)

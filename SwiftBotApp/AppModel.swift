@@ -78,10 +78,8 @@ enum InternetAccessSetupEvent: Sendable, Equatable {
     case tunnelDetected(name: String)
     case creatingTunnelDNSRecord(hostname: String)
     case tunnelDNSRecordCreated(hostname: String)
-    case issuingHTTPSCertificate(domain: String)
-    case httpsCertificateIssued(domain: String)
-    case storingCredentials
-    case enablingInternetAccess(url: String)
+    case startingCloudflareTunnel
+    case cloudflareTunnelStarted
     case internetAccessEnabled(url: String)
 }
 
@@ -452,14 +450,6 @@ final class AppModel: ObservableObject {
             settings.prefix = trimmedPrefix
         }
         settings.wikiBot.normalizeSources()
-        settings.adminWebUI.bindHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "127.0.0.1"
-            : settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedAdminPort = min(max(settings.adminWebUI.port, 1), 65535)
-        if normalizedAdminPort != settings.adminWebUI.port {
-            logs.append("⚠️ Admin Web UI port was out of range. Clamped to \(normalizedAdminPort).")
-            settings.adminWebUI.port = normalizedAdminPort
-        }
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
         settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2156,8 +2146,6 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.hostname = normalizedDomain
         settings.adminWebUI.cloudflareAPIToken = trimmedToken
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.certificateMode = .automatic
-        settings.adminWebUI.httpsEnabled = true
         settings.adminWebUI.enabled = true
 
         let logStore = logs
@@ -2335,7 +2323,7 @@ final class AppModel: ObservableObject {
         progress(.tunnelDNSRecordCreated(hostname: hostname))
 
         progress(.storingTunnelCredentials)
-        settings.adminWebUI.publicAccessEnabled = true
+        settings.adminWebUI.internetAccessEnabled = true
         settings.adminWebUI.hostname = hostname
         settings.adminWebUI.publicAccessTunnelID = tunnel.id
         settings.adminWebUI.publicAccessTunnelName = tunnel.name
@@ -2365,7 +2353,7 @@ final class AppModel: ObservableObject {
         let accountID = settings.adminWebUI.publicAccessTunnelAccountID
         let apiToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        settings.adminWebUI.publicAccessEnabled = false
+        settings.adminWebUI.internetAccessEnabled = false
         settings.adminWebUI.publicAccessTunnelID = ""
         settings.adminWebUI.publicAccessTunnelName = ""
         settings.adminWebUI.publicAccessTunnelAccountID = ""
@@ -2496,25 +2484,9 @@ final class AppModel: ObservableObject {
         }
         progress(.tunnelDNSRecordCreated(hostname: hostname))
 
-        // Step 5: Issue HTTPS certificate
-        progress(.issuingHTTPSCertificate(domain: hostname))
-        let logStore = logs
-        _ = try await certificateManager.setupAutomaticHTTPS(
-            for: hostname,
-            cloudflareAPIToken: trimmedToken,
-            progress: { _ in }
-        ) { message in
-            logStore.append(message)
-        }
-        logs.append("HTTPS certificate issued for \(hostname)")
-        progress(.httpsCertificateIssued(domain: hostname))
-
-        // Step 6: Enable Internet Access
-        progress(.storingCredentials)
+        // Step 5: Save tunnel credentials and start Cloudflare Tunnel
+        progress(.startingCloudflareTunnel)
         settings.adminWebUI.internetAccessEnabled = true
-        settings.adminWebUI.httpsEnabled = true
-        settings.adminWebUI.certificateMode = .automatic
-        settings.adminWebUI.publicAccessEnabled = true
         settings.adminWebUI.publicAccessTunnelID = tunnel.id
         settings.adminWebUI.publicAccessTunnelName = tunnel.name
         settings.adminWebUI.publicAccessTunnelAccountID = tunnel.accountID
@@ -2522,15 +2494,18 @@ final class AppModel: ObservableObject {
 
         try await store.save(settings)
         try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
-        logs.append("✅ Settings saved")
+        logs.append("✅ Tunnel credentials saved")
 
-        progress(.enablingInternetAccess(url: "https://\(hostname)"))
+        // Start the tunnel (local HTTP server is already running via configureAdminWebServer)
         await configureAdminWebServer()
 
         if adminWebPublicAccessStatus.state == .error {
             throw AdminWebPublicAccessError.tunnelStartupFailed(adminWebPublicAccessStatus.detail)
         }
+        logs.append("Cloudflare tunnel started")
+        progress(.cloudflareTunnelStarted)
 
+        // Step 6: Internet Access enabled
         let publicURL = "https://\(hostname)"
         logs.append("Internet Access enabled at \(publicURL)")
         progress(.internetAccessEnabled(url: publicURL))

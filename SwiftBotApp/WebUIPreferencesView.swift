@@ -28,9 +28,9 @@ struct WebUIPreferencesView: View {
 
             VStack(alignment: .leading, spacing: 24) {
                 PreferencesCard(
-                    "Web Server",
-                    systemImage: "globe",
-                    subtitle: "Manage the local SwiftBot dashboard listener and the URL SwiftBot shares with browsers."
+                    "Admin Web UI",
+                    systemImage: "macwindow",
+                    subtitle: "Enable the local web dashboard to manage SwiftBot from your browser."
                 ) {
                     AdminWebServerConfigurationSection()
                 }
@@ -38,7 +38,7 @@ struct WebUIPreferencesView: View {
                 PreferencesCard(
                     "Internet Access",
                     systemImage: "network",
-                    subtitle: "Expose SwiftBot securely over the internet with automatic HTTPS and Cloudflare Tunneling."
+                    subtitle: "Expose your dashboard securely over the internet via Cloudflare Tunnel."
                 ) {
                     InternetAccessConfigurationSection()
                 }
@@ -46,7 +46,7 @@ struct WebUIPreferencesView: View {
                 PreferencesCard(
                     "Authentication",
                     systemImage: "person.badge.key",
-                    subtitle: "Control who can sign in to the Web UI with Discord."
+                    subtitle: "Control who can sign in to your dashboard with Discord."
                 ) {
                     AdminWebAuthenticationSection()
                 }
@@ -62,45 +62,14 @@ struct WebUIPreferencesView: View {
 struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
 
-    private var publicURLPreview: String {
-        let sharedHostname = sharedAdminWebHostname(in: app.settings.adminWebUI)
-        if !sharedHostname.isEmpty {
-            return "https://\(sharedHostname)"
-        }
-        return app.adminWebBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
                 .toggleStyle(.switch)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Bind Address")
-                    .font(.subheadline.weight(.medium))
-                TextField("127.0.0.1", text: $app.settings.adminWebUI.bindHost)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Port")
-                    .font(.subheadline.weight(.medium))
-                Stepper(value: $app.settings.adminWebUI.port, in: 1...65535) {
-                    Text("\(app.settings.adminWebUI.port)")
-                        .font(.body.monospacedDigit())
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Public URL")
-                    .font(.subheadline.weight(.medium))
-                TextField("https://hostname", text: .constant(publicURLPreview))
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(true)
-                Text("Updates automatically when Internet Access is configured.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            
+            Text("Run a local web server to manage SwiftBot from your browser. This server is required for Internet Access.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -144,8 +113,7 @@ struct InternetAccessConfigurationSection: View {
                 .init(id: "cloudflare-zone", title: "Detect zone", status: .success, detail: "The hostname is associated with your Cloudflare account."),
                 .init(id: "create-tunnel", title: "Detect or create tunnel", status: .success, detail: "The secure tunnel is configured."),
                 .init(id: "create-dns", title: "Configure DNS route", status: .success, detail: "Traffic is routed to the tunnel."),
-                .init(id: "issue-cert", title: "Issue HTTPS certificate", status: .success, detail: "Secure communication is enabled."),
-                .init(id: "enable-access", title: "Enable Internet Access", status: .success, detail: "SwiftBot is available at \(publicURLString).")
+                .init(id: "start-tunnel", title: "Start Cloudflare tunnel", status: .success, detail: "SwiftBot is available at \(publicURLString).")
             ]
         }
 
@@ -177,14 +145,8 @@ struct InternetAccessConfigurationSection: View {
                 detail: "Configured automatically during setup."
             ),
             .init(
-                id: "issue-cert",
-                title: "Issue HTTPS certificate",
-                status: .pending,
-                detail: "Issued automatically via Cloudflare DNS challenge."
-            ),
-            .init(
-                id: "enable-access",
-                title: "Enable Internet Access",
+                id: "start-tunnel",
+                title: "Start Cloudflare tunnel",
                 status: .pending,
                 detail: canEnable ? "Ready to enable Internet Access." : "Complete the fields above to continue."
             )
@@ -238,95 +200,99 @@ struct InternetAccessConfigurationSection: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Status")
-                        .font(.subheadline.weight(.medium))
-                    Text(statusText)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(statusColor)
-                }
-
-                if app.settings.adminWebUI.internetAccessEnabled, app.adminWebPublicAccessStatus.isEnabled, !publicURLString.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Internet access active")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.green)
+                if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled && !publicURLString.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("SwiftBot is available at: \(publicURLString)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.subheadline.weight(.medium))
                             .textSelection(.enabled)
-                        Text("Traffic is routed securely through Cloudflare Tunnel with automatic HTTPS.")
+                        
+                        HStack(spacing: 10) {
+                            Button("Open in Browser") {
+                                openURL()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.regular)
+
+                            Button("Copy URL") {
+                                copyURL()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.regular)
+                            
+                            Spacer()
+                            
+                            Button("Disable") {
+                                disable()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.red)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(14)
+                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    HStack(spacing: 8) {
+                        Text("Status")
+                            .font(.subheadline.weight(.medium))
+                        Text(statusText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(statusColor)
+                    }
+
+                    if let feedback = setupFeedback {
+                        Text(feedback.message)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(feedback.status == .error ? .red : .secondary)
                     }
-                } else if let feedback = setupFeedback {
-                    Text(feedback.message)
-                        .font(.caption)
-                        .foregroundStyle(feedback.status == .error ? .red : .secondary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Setup Status")
-                    .font(.headline.weight(.semibold))
-
+            if !app.settings.adminWebUI.internetAccessEnabled || isEnabling || isDisabling {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(checklistItems) { item in
-                        AdminWebStatusRow(
-                            title: item.title,
-                            detail: item.detail,
-                            status: item.status,
-                            isProcessing: isEnabling && checklistItems.first(where: { $0.status == .warning })?.id == item.id
-                        )
-                    }
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
+                    Text("Setup Status")
+                        .font(.headline.weight(.semibold))
 
-            HStack(spacing: 10) {
-                if app.settings.adminWebUI.internetAccessEnabled {
-                    Button("Open in Browser") {
-                        openURL()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isDisabling || publicURLString.isEmpty || !app.adminWebPublicAccessStatus.isEnabled)
-
-                    Button("Copy URL") {
-                        copyURL()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isDisabling || publicURLString.isEmpty || !app.adminWebPublicAccessStatus.isEnabled)
-
-                    if !isEnabling && (app.adminWebPublicAccessStatus.state == .error || setupFeedback?.status == .error) {
-                        Button("Re-run Setup") {
-                            enable()
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(checklistItems) { item in
+                            AdminWebStatusRow(
+                                title: item.title,
+                                detail: item.detail,
+                                status: item.status,
+                                isProcessing: isEnabling && checklistItems.first(where: { $0.status == .warning })?.id == item.id
+                            )
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isDisabling || !hasCloudflareAuthentication)
                     }
-                } else if canEnable {
-                    if lastError is CloudflareDNSProvider.TunnelDNSConflict {
-                        Button("Override DNS") {
-                            enable(forceReplaceDNS: true)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Enable Internet Access") {
-                            enable()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-
-                if isEnabling || isDisabling {
-                    ProgressView()
-                        .controlSize(.small)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
 
-            if !hasCloudflareAuthentication {
+            if !app.settings.adminWebUI.internetAccessEnabled && !isEnabling && !isDisabling {
+                HStack(spacing: 10) {
+                    if canEnable {
+                        if lastError is CloudflareDNSProvider.TunnelDNSConflict {
+                            Button("Override DNS") {
+                                enable(forceReplaceDNS: true)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Button("Enable Internet Access") {
+                                enable()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+
+                    if isEnabling || isDisabling {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            }
+
+            if !hasCloudflareAuthentication && !app.settings.adminWebUI.internetAccessEnabled {
                 Label("Cloudflare authentication required.", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -385,7 +351,6 @@ struct InternetAccessConfigurationSection: View {
             // For now, we still use the old disable method, but we also clear the new flag.
             await app.disableAdminWebPublicAccess()
             app.settings.adminWebUI.internetAccessEnabled = false
-            app.settings.adminWebUI.httpsEnabled = false
             try? await app.store.save(app.settings)
             
             guard !Task.isCancelled else { return }
@@ -453,8 +418,7 @@ private struct InternetAccessSetupProgress {
         "cloudflare-zone",
         "create-tunnel",
         "create-dns",
-        "issue-cert",
-        "enable-access"
+        "start-tunnel"
     ]
 
     private var itemsByID: [String: CertificateManager.ValidationItem]
@@ -466,8 +430,7 @@ private struct InternetAccessSetupProgress {
             "cloudflare-zone": .init(id: "cloudflare-zone", title: "Detect zone", status: .pending, detail: normalizedHostname.isEmpty ? nil : "Preparing setup for \(normalizedHostname)."),
             "create-tunnel": .init(id: "create-tunnel", title: "Detect or create tunnel", status: .pending, detail: nil),
             "create-dns": .init(id: "create-dns", title: "Configure DNS route", status: .pending, detail: nil),
-            "issue-cert": .init(id: "issue-cert", title: "Issue HTTPS certificate", status: .pending, detail: nil),
-            "enable-access": .init(id: "enable-access", title: "Enable Internet Access", status: .pending, detail: nil)
+            "start-tunnel": .init(id: "start-tunnel", title: "Start Cloudflare tunnel", status: .pending, detail: nil)
         ]
     }
 
@@ -493,16 +456,12 @@ private struct InternetAccessSetupProgress {
             setItem(id: "create-dns", status: .warning, detail: "Configuring DNS route for \(hostname)…")
         case .tunnelDNSRecordCreated(let hostname):
             setItem(id: "create-dns", status: .success, detail: "DNS route configured for \(hostname).")
-        case .issuingHTTPSCertificate(let domain):
-            setItem(id: "issue-cert", status: .warning, detail: "Issuing certificate for \(domain)…")
-        case .httpsCertificateIssued(let domain):
-            setItem(id: "issue-cert", status: .success, detail: "HTTPS certificate active for \(domain).")
-        case .storingCredentials:
-            setItem(id: "enable-access", status: .warning, detail: "Saving configuration…")
-        case .enablingInternetAccess(let url):
-            setItem(id: "enable-access", status: .warning, detail: "Starting secure listener…")
-        case .internetAccessEnabled(let url):
-            setItem(id: "enable-access", status: .success, detail: "SwiftBot is available at \(url).")
+        case .startingCloudflareTunnel:
+            setItem(id: "start-tunnel", status: .warning, detail: "Starting Cloudflare tunnel…")
+        case .cloudflareTunnelStarted:
+            setItem(id: "start-tunnel", status: .success, detail: "Cloudflare tunnel active.")
+        case .internetAccessEnabled(_):
+            break
         }
     }
 
@@ -635,7 +594,7 @@ struct AdminWebLaunchControls: View {
                 Button {
                     app.launchAdminWebUI()
                 } label: {
-                    Label("Launch Web UI", systemImage: "arrow.up.forward.square")
+                    Label("Open in Browser", systemImage: "arrow.up.forward.square")
                 }
                 .buttonStyle(GlassActionButtonStyle())
                 .disabled(!canLaunchAdminWebUI)
@@ -643,13 +602,13 @@ struct AdminWebLaunchControls: View {
                 Button {
                     app.launchAdminWebUI()
                 } label: {
-                    Label("Launch Web UI", systemImage: "arrow.up.forward.square")
+                    Label("Open in Browser", systemImage: "arrow.up.forward.square")
                 }
                 .buttonStyle(.bordered)
                 .disabled(!canLaunchAdminWebUI)
             }
 
-            Text("Opens \(app.adminWebLaunchURL()?.absoluteString ?? "the configured Web UI URL"). Save settings first if you changed the host, port, or public base URL.")
+            Text("Opens \(app.adminWebLaunchURL()?.absoluteString ?? "the local dashboard").")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
