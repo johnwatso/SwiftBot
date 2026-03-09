@@ -3,25 +3,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private func sharedAdminWebHostname(in settings: AdminWebUISettings) -> String {
-    let publicAccess = settings.normalizedPublicAccessHostname
-    if !publicAccess.isEmpty {
-        return publicAccess
-    }
-    return settings.normalizedHTTPSDomain
+    settings.normalizedHostname
 }
 
 private func sharedAdminWebHostnameBinding(for app: AppModel) -> Binding<String> {
     Binding(
         get: {
-            let publicAccess = app.settings.adminWebUI.publicAccessHostname.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !publicAccess.isEmpty {
-                return publicAccess
-            }
-            return app.settings.adminWebUI.httpsDomain
+            app.settings.adminWebUI.hostname
         },
         set: { newValue in
-            app.settings.adminWebUI.httpsDomain = newValue
-            app.settings.adminWebUI.publicAccessHostname = newValue
+            app.settings.adminWebUI.hostname = newValue
         }
     )
 }
@@ -81,14 +72,10 @@ struct AdminWebServerConfigurationSection: View {
 
     private var publicURLPreview: String {
         let sharedHostname = sharedAdminWebHostname(in: app.settings.adminWebUI)
-        if app.settings.adminWebUI.publicAccessEnabled, !sharedHostname.isEmpty {
+        if !sharedHostname.isEmpty {
             return "https://\(sharedHostname)"
         }
-        if app.settings.adminWebUI.httpsEnabled, !sharedHostname.isEmpty {
-            return "https://\(sharedHostname)"
-        }
-        let currentURL = app.adminWebBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
-        return currentURL
+        return app.adminWebBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -373,7 +360,7 @@ struct AdminWebHTTPSConfigurationSection: View {
 
         isProvisioningCertificate = true
         setupFeedback = nil
-        provisioningProgress = AdminWebHTTPSProvisioningProgress(domain: app.settings.adminWebUI.normalizedHTTPSDomain)
+        provisioningProgress = AdminWebHTTPSProvisioningProgress(domain: app.settings.adminWebUI.normalizedHostname)
 
         Task { @MainActor in
             do {
@@ -550,7 +537,7 @@ private struct AdminWebStatusRow: View {
         case .warning:
             return "exclamationmark.triangle"
         case .error:
-            return "xmark.circle.fill"
+            return "exclamationmark.triangle"
         }
     }
 
@@ -739,49 +726,58 @@ private struct AdminWebHTTPSSetupStatusSection: View {
         case "cloudflare-access":
             switch item.status {
             case .success:
-                return .init(title: "Cloudflare API verified", detail: "Cloudflare authentication is ready.")
+                return .init(title: "Cloudflare API verified", detail: "Authentication is ready.")
             case .pending:
-                return .init(title: "Cloudflare authentication", detail: "Authentication will be checked when setup runs.")
+                return .init(title: "Cloudflare authentication", detail: "Will be checked when setup runs.")
+            case .warning, .error:
+                return .init(title: "Cloudflare authentication required", detail: "Add a Cloudflare API token to continue.")
+            }
+        case "cloudflare-zone":
+            switch item.status {
+            case .success:
+                return .init(title: "Cloudflare zone detected", detail: "Domain zone is ready for DNS management.")
+            case .pending:
+                return .init(title: "Cloudflare zone", detail: "Will be checked when authentication is ready.")
             case .warning:
-                return .init(title: "Cloudflare authentication", detail: "Authentication required.")
+                return .init(title: "Cloudflare zone", detail: "Waiting for Cloudflare authentication.")
             case .error:
-                return .init(title: "Cloudflare authentication", detail: "Authentication required.")
+                return .init(title: "Cloudflare zone not detected", detail: "Verify the hostname is in your Cloudflare account.")
             }
         case "domain-resolves":
             switch item.status {
             case .success:
-                return .init(title: "Domain resolves", detail: "The hostname is reachable through system DNS.")
+                return .init(title: "DNS record detected", detail: "The hostname is reachable through system DNS.")
             case .pending:
-                return .init(title: "Domain resolves", detail: "Not configured yet.")
+                return .init(title: "DNS record detection", detail: "Will be checked when setup runs.")
             case .warning:
-                return .init(title: "Domain resolves", detail: "Waiting for DNS.")
+                return .init(title: "DNS record detection", detail: "Waiting for DNS propagation.")
             case .error:
-                return .init(title: "Domain resolves", detail: "Add a hostname to continue.")
+                return .init(title: "DNS record not detected yet", detail: "Create a DNS record to continue.")
             }
         case "dns-record-present":
             switch item.status {
             case .success:
-                return .init(title: "DNS record detected", detail: "The required DNS record is ready for HTTPS.")
+                return .init(title: "Cloudflare DNS record ready", detail: "The DNS record is ready for certificate issuance.")
             case .pending:
-                return .init(title: "DNS record detected", detail: "SwiftBot will check for the DNS record during setup.")
+                return .init(title: "Cloudflare DNS record", detail: "Will be checked during setup.")
             case .warning:
                 let detail = item.detail?.contains("Skipped") == true
                     ? "Waiting for Cloudflare authentication."
-                    : "Not configured yet."
-                return .init(title: "DNS record detected", detail: detail)
+                    : "DNS record not created yet."
+                return .init(title: "Cloudflare DNS record", detail: detail)
             case .error:
-                return .init(title: "DNS record detected", detail: "Cloudflare access needs attention.")
+                return .init(title: "Cloudflare DNS record", detail: "Waiting for Cloudflare authentication.")
             }
         case "ready":
             switch item.status {
             case .success:
-                return .init(title: "Ready to enable HTTPS", detail: "SwiftBot can request a certificate when you continue.")
+                return .init(title: "Ready to enable HTTPS", detail: "All checks passed. You can request a certificate.")
             case .pending:
-                return .init(title: "Ready to enable HTTPS", detail: "Checking configuration.")
+                return .init(title: "HTTPS setup", detail: "Checking configuration…")
             case .warning:
-                return .init(title: "Ready to enable HTTPS", detail: "Waiting for DNS.")
+                return .init(title: "HTTPS setup", detail: "Waiting for DNS propagation.")
             case .error:
-                return .init(title: "Ready to enable HTTPS", detail: "Not configured yet.")
+                return .init(title: "HTTPS setup", detail: "Complete the steps above to continue.")
             }
         default:
             return .init(title: item.title, detail: item.detail)
@@ -1225,7 +1221,7 @@ struct AdminWebPublicAccessSection: View {
 
         isEnablingPublicAccess = true
         setupFeedback = nil
-        setupProgress = AdminWebPublicAccessSetupProgress(hostname: app.settings.adminWebUI.normalizedPublicAccessHostname)
+        setupProgress = AdminWebPublicAccessSetupProgress(hostname: app.settings.adminWebUI.normalizedHostname)
 
         Task { @MainActor in
             do {

@@ -74,7 +74,7 @@ actor CertificateManager {
     }
 
     enum Error: LocalizedError {
-        case missingHTTPSDomain
+        case missingHostname
         case invalidStoredCertificate(String)
         case missingCloudflareToken
         case missingCloudflaredBinary
@@ -90,32 +90,32 @@ actor CertificateManager {
 
         var errorDescription: String? {
             switch self {
-            case .missingHTTPSDomain:
-                return "HTTPS is enabled for the Admin Web UI, but no domain is configured."
+            case .missingHostname:
+                return "Enter an HTTPS domain to continue."
             case .invalidStoredCertificate(let message):
                 return message
             case .missingCloudflareToken:
-                return "A Cloudflare API token is required to provision or renew the Admin Web UI certificate."
+                return "Cloudflare authentication required."
             case .missingCloudflaredBinary:
-                return "cloudflared is required to complete HTTPS setup. Install it with: brew install cloudflared"
+                return "cloudflared is required for HTTPS setup."
             case .inactiveCloudflareToken:
-                return "Cloudflare reports that the configured API token is not active."
+                return "Cloudflare authentication required."
             case .certificateExpired(let domain):
-                return "The stored Admin Web UI certificate for \(domain) has expired."
+                return "The certificate for \(domain) has expired."
             case .missingImportedCertificateFile:
-                return "Select a PEM certificate file to use imported HTTPS."
+                return "Select a certificate file."
             case .missingImportedPrivateKeyFile:
-                return "Select a PEM private key file to use imported HTTPS."
+                return "Select a private key file."
             case .importedCertificateFileUnreadable(let path):
-                return "SwiftBot could not read the imported certificate file at \(path)."
+                return "Unable to read the certificate at \(path)."
             case .importedPrivateKeyFileUnreadable(let path):
-                return "SwiftBot could not read the imported private key file at \(path)."
+                return "Unable to read the private key at \(path)."
             case .importedChainFileUnreadable(let path):
-                return "SwiftBot could not read the imported certificate chain file at \(path)."
+                return "Unable to read the certificate chain at \(path)."
             case .unableToDetermineDNSRecordTarget:
-                return "SwiftBot could not determine a public DNS target automatically. Set a public base URL host or use a routable bind address, then try again."
+                return "Waiting for a valid public hostname or IP address."
             case .publicIPAddressLookupFailed:
-                return "SwiftBot could not detect the machine's public IP address automatically."
+                return "Unable to detect the machine's public IP address."
             }
         }
     }
@@ -208,19 +208,25 @@ actor CertificateManager {
         var matchedZoneName: String?
         var cloudflareItem = ValidationItem(
             id: "cloudflare-access",
-            title: "Cloudflare API access verified",
+            title: "Cloudflare API verified",
+            status: .warning,
+            detail: nil
+        )
+        var zoneItem = ValidationItem(
+            id: "cloudflare-zone",
+            title: "Cloudflare zone detected",
             status: .warning,
             detail: nil
         )
         var resolutionItem = ValidationItem(
             id: "domain-resolves",
-            title: "Domain resolves",
+            title: "DNS record detected",
             status: .warning,
             detail: nil
         )
         var dnsRecordItem = ValidationItem(
             id: "dns-record-present",
-            title: "DNS record present",
+            title: "Cloudflare DNS record ready",
             status: .warning,
             detail: nil
         )
@@ -228,19 +234,21 @@ actor CertificateManager {
         if trimmedToken.isEmpty {
             cloudflareItem = ValidationItem(
                 id: "cloudflare-access",
-                title: "Cloudflare API access verified",
+                title: "Cloudflare API verified",
                 status: .error,
-                detail: "Cloudflare verification failed. Check your API token."
+                detail: "Add a Cloudflare API token to continue."
             )
         } else {
             let provider = CloudflareDNSProvider(apiToken: trimmedToken)
             let detectedZone = CloudflareDNSProvider.extractRootZone(from: normalizedDomain)
 
             if !normalizedDomain.isEmpty {
+                #if DEBUG
                 print("HTTPS Validation")
                 print("Hostname:", normalizedDomain)
                 print("Detected zone:", detectedZone ?? "Unavailable")
                 print("Querying Cloudflare zone:", detectedZone ?? "Unavailable")
+                #endif
             }
 
             do {
@@ -251,31 +259,43 @@ actor CertificateManager {
                     matchedZoneName = zone.name
                     cloudflareItem = ValidationItem(
                         id: "cloudflare-access",
-                        title: "Cloudflare API access verified",
+                        title: "Cloudflare API verified",
                         status: .success,
-                        detail: "Cloudflare token is active and zone \(zone.name) is available."
+                        detail: "Authentication is ready."
+                    )
+                    zoneItem = ValidationItem(
+                        id: "cloudflare-zone",
+                        title: "Cloudflare zone detected",
+                        status: .success,
+                        detail: "Domain zone is ready for DNS management."
                     )
                 } else if tokenIsValid {
                     cloudflareItem = ValidationItem(
                         id: "cloudflare-access",
-                        title: "Cloudflare API access verified",
+                        title: "Cloudflare API verified",
+                        status: .success,
+                        detail: "Authentication is ready."
+                    )
+                    zoneItem = ValidationItem(
+                        id: "cloudflare-zone",
+                        title: "Cloudflare zone not detected",
                         status: .error,
-                        detail: "Cloudflare zone lookup failed. Check that the domain is in your Cloudflare account."
+                        detail: "Verify the hostname is in your Cloudflare account."
                     )
                 } else {
                     cloudflareItem = ValidationItem(
                         id: "cloudflare-access",
-                        title: "Cloudflare API access verified",
+                        title: "Cloudflare authentication required",
                         status: .error,
-                        detail: "Cloudflare verification failed. Check your API token."
+                        detail: "Add a Cloudflare API token to continue."
                     )
                 }
             } catch {
                 cloudflareItem = ValidationItem(
                     id: "cloudflare-access",
-                    title: "Cloudflare API access verified",
+                    title: "Cloudflare authentication required",
                     status: .error,
-                    detail: "Cloudflare verification failed. Check your API token."
+                    detail: "Add a Cloudflare API token to continue."
                 )
             }
         }
@@ -283,9 +303,9 @@ actor CertificateManager {
         if normalizedDomain.isEmpty {
             resolutionItem = ValidationItem(
                 id: "domain-resolves",
-                title: "Domain resolves",
+                title: "DNS record not detected yet",
                 status: .error,
-                detail: "Enter an HTTPS domain to validate DNS resolution."
+                detail: "Enter a hostname to continue."
             )
         } else {
             let resolution = await Task.detached(priority: .userInitiated) {
@@ -294,9 +314,9 @@ actor CertificateManager {
             domainResolves = resolution.success
             resolutionItem = ValidationItem(
                 id: "domain-resolves",
-                title: "Domain resolves",
+                title: "DNS record detected",
                 status: resolution.success ? .success : .warning,
-                detail: resolution.detail
+                detail: resolution.success ? "The hostname is reachable through system DNS." : "Waiting for DNS propagation."
             )
         }
 
@@ -312,41 +332,55 @@ actor CertificateManager {
                         dnsRecordFound = true
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
-                            title: "DNS record verified",
+                            title: "Cloudflare DNS record ready",
                             status: .success,
-                            detail: "The required DNS record already exists and will be reused for certificate provisioning."
+                            detail: "The DNS record is ready for certificate issuance."
                         )
                     } else {
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
-                            title: "DNS record present",
+                            title: "Cloudflare DNS record",
                             status: .warning,
-                            detail: "No Cloudflare DNS record exists for \(normalizedDomain). Create the DNS record before requesting a certificate."
+                            detail: "DNS record not created yet."
                         )
                     }
                 }
             } catch {
                 cloudflareItem = ValidationItem(
                     id: "cloudflare-access",
-                    title: "Cloudflare API access verified",
+                    title: "Cloudflare authentication required",
                     status: .error,
-                    detail: "Cloudflare DNS lookup failed. Check that the zone is accessible."
+                    detail: "Add a Cloudflare API token to continue."
+                )
+                zoneItem = ValidationItem(
+                    id: "cloudflare-zone",
+                    title: "Cloudflare zone",
+                    status: .warning,
+                    detail: "Waiting for Cloudflare authentication."
                 )
                 dnsRecordItem = ValidationItem(
                     id: "dns-record-present",
-                    title: "DNS record present",
+                    title: "Cloudflare DNS record",
                     status: .warning,
-                    detail: "Skipped until Cloudflare access is verified."
+                    detail: "Waiting for Cloudflare authentication."
                 )
                 zoneFound = false
                 dnsRecordFound = false
             }
         } else {
+            if !tokenIsValid {
+                zoneItem = ValidationItem(
+                    id: "cloudflare-zone",
+                    title: "Cloudflare zone",
+                    status: .warning,
+                    detail: "Waiting for Cloudflare authentication."
+                )
+            }
             dnsRecordItem = ValidationItem(
                 id: "dns-record-present",
-                title: "DNS record present",
+                title: "Cloudflare DNS record",
                 status: .warning,
-                detail: "Skipped until Cloudflare access is verified."
+                detail: "Waiting for Cloudflare authentication."
             )
         }
 
@@ -360,11 +394,12 @@ actor CertificateManager {
         return AutomaticHTTPSValidation(
             items: [
                 cloudflareItem,
-                resolutionItem,
+                zoneItem,
                 dnsRecordItem,
+                resolutionItem,
                 ValidationItem(
                     id: "ready",
-                    title: "Ready for certificate request",
+                    title: readyStatus == .success ? "Ready to enable HTTPS" : "HTTPS setup",
                     status: readyStatus,
                     detail: validationSummaryDetail(
                         domain: normalizedDomain,
@@ -390,7 +425,7 @@ actor CertificateManager {
     ) async throws -> DNSRecordCreation {
         let normalizedDomain = normalizeDomain(domain)
         guard !normalizedDomain.isEmpty else {
-            throw Error.missingHTTPSDomain
+            throw Error.missingHostname
         }
 
         let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -493,7 +528,7 @@ actor CertificateManager {
     ) async throws -> AutomaticHTTPSSetupResult {
         let normalizedDomain = normalizeDomain(domain)
         guard !normalizedDomain.isEmpty else {
-            throw Error.missingHTTPSDomain
+            throw Error.missingHostname
         }
 
         try ensureCertificatesDirectory()
@@ -544,7 +579,7 @@ actor CertificateManager {
     ) async throws -> StoredCertificate {
         let normalizedDomain = normalizeDomain(domain)
         guard !normalizedDomain.isEmpty else {
-            throw Error.missingHTTPSDomain
+            throw Error.missingHostname
         }
 
         try ensureCertificatesDirectory()
@@ -875,16 +910,13 @@ actor CertificateManager {
             hostnameResolves: hostnameResolves
         ) {
         case .success:
-            if let matchedZoneName {
-                return "\(domain) is ready for certificate provisioning through Cloudflare zone \(matchedZoneName)."
-            }
-            return "\(domain) is ready for certificate provisioning."
+            return "All checks passed. You can request a certificate."
         case .warning:
-            return "Certificate request not ready. DNS propagation is still in progress."
+            return "Waiting for DNS propagation."
         case .error:
-            return "Certificate request not ready."
+            return "Complete the steps above to continue."
         case .pending:
-            return "Checking certificate readiness."
+            return "Checking configuration…"
         }
     }
 
