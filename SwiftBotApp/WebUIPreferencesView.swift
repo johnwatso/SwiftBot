@@ -83,6 +83,8 @@ struct InternetAccessConfigurationSection: View {
     @State private var setupFeedback: InternetAccessFeedback?
     @State private var setupProgress: InternetAccessSetupProgress?
     @State private var lastError: Error? = nil
+    @State private var showingReRunSetupConfirmation = false
+
     // Progressive Setup State (Transients)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
     @State private var isVerifyingToken = false
@@ -332,6 +334,11 @@ struct InternetAccessConfigurationSection: View {
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
                             
+                            Button("Re-run Setup") {
+                                showingReRunSetupConfirmation = true
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.regular)
                         }
                     }
                     .padding(16)
@@ -409,20 +416,17 @@ struct InternetAccessConfigurationSection: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-
-            if app.settings.adminWebUI.internetAccessEnabled && !isEnabling && !isDisabling {
-                Divider()
-                    .padding(.top, 10)
-
-                Button {
-                    enable()
-                } label: {
-                    Label("Re-run Setup", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help("Re-run the Internet Access setup pipeline using your existing configuration.")
+        }
+        .alert("Re-run Internet Access Setup?", isPresented: $showingReRunSetupConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Repair Configuration") {
+                enable()
             }
+            Button("Reset and Start Over", role: .destructive) {
+                reset()
+            }
+        } message: {
+            Text("You can attempt to repair the existing configuration, or remove the configuration and start setup again.")
         }
     }
 
@@ -528,6 +532,25 @@ struct InternetAccessConfigurationSection: View {
 
             setupProgress = nil
             setupFeedback = InternetAccessFeedback(status: .success, message: "Internet Access stopped")
+            isDisabling = false
+        }
+    }
+
+    /// Destructive reset: removes tunnel, DNS record, and clears all stored configuration.
+    private func reset() {
+        guard !isDisabling else { return }
+
+        isDisabling = true
+        setupFeedback = nil
+        availableZones = []
+        hasVerifiedToken = false
+
+        Task { @MainActor in
+            await app.resetInternetAccess()
+            guard !Task.isCancelled else { return }
+
+            setupProgress = nil
+            setupFeedback = InternetAccessFeedback(status: .success, message: "Internet Access reset")
             isDisabling = false
         }
     }
