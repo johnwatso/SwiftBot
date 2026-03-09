@@ -35,6 +35,37 @@ private struct AdminWebCertificateRenewalConfiguration: Equatable {
     let cloudflareToken: String
 }
 
+enum AdminWebAutomaticHTTPSSetupEvent: Sendable, Equatable {
+    case verifyingCloudflareAccess
+    case cloudflareAccessVerified
+    case detectingCloudflareZone(domain: String)
+    case cloudflareZoneDetected(zone: String)
+    case creatingDNSChallengeRecord(recordName: String)
+    case dnsChallengeRecordCreated(recordName: String, reusedExistingRecord: Bool)
+    case waitingForDNSPropagation(recordName: String)
+    case dnsChallengeRecordPropagated(recordName: String)
+    case dnsChallengeRecordVerified(recordName: String, reusedExistingRecord: Bool)
+    case requestingTLSCertificate(domain: String)
+    case tlsCertificateIssued(domain: String)
+    case storingCertificate
+    case certificateStored(path: String)
+    case enablingHTTPSListener
+    case httpsListenerEnabled(url: String)
+}
+
+private enum AdminWebHTTPSProvisioningError: LocalizedError {
+    case tlsActivationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .tlsActivationFailed:
+            return "The certificate was issued, but SwiftBot could not start the Admin Web UI over HTTPS. Check the logs and TLS files, then try again."
+        }
+    }
+}
+
+private let genericAdminWebHTTPSSetupFailureMessage = "HTTPS setup couldn’t be completed. Verify Cloudflare access and DNS propagation, then try again."
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var settings = BotSettings()
@@ -2044,6 +2075,96 @@ final class AppModel: ObservableObject {
 
         logs.append("🌐 Created Cloudflare \(creation.type) record \(creation.name) -> \(creation.content) in \(creation.zoneName).")
         return creation
+    }
+
+    func startAdminWebAutomaticHTTPSProvisioning(
+        progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void
+    ) async throws -> String {
+        let normalizedDomain = settings.adminWebUI.normalizedHTTPSDomain
+        guard !normalizedDomain.isEmpty else {
+            throw CertificateManager.Error.missingHTTPSDomain
+        }
+
+        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw CertificateManager.Error.missingCloudflareToken
+        }
+
+        settings.adminWebUI.httpsDomain = normalizedDomain
+        settings.adminWebUI.cloudflareAPIToken = trimmedToken
+        settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.certificateMode = .automatic
+        settings.adminWebUI.httpsEnabled = true
+        settings.adminWebUI.enabled = true
+
+        let logStore = logs
+        let result = try await certificateManager.setupAutomaticHTTPS(
+            for: normalizedDomain,
+            cloudflareAPIToken: trimmedToken,
+            progress: progress
+        ) { message in
+            logStore.append(message)
+        }
+
+        progress(.enablingHTTPSListener)
+        await configureAdminWebServer()
+
+        if settings.adminWebUI.enabled,
+           !adminWebResolvedBaseURL.lowercased().hasPrefix("https://") {
+            throw AdminWebHTTPSProvisioningError.tlsActivationFailed
+        }
+        progress(.httpsListenerEnabled(url: adminWebResolvedBaseURL))
+
+        try await store.save(settings)
+        try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+        logs.append("✅ Settings saved")
+
+        if result.alreadyConfigured || !result.certificate.wasRenewed {
+            logs.append("🔒 Admin Web UI HTTPS already configured.")
+            return "HTTPS already configured"
+        }
+
+        logs.append("🔒 Admin Web UI HTTPS enabled.")
+        return "HTTPS enabled"
+    }
+
+    func userFacingAdminWebHTTPSSetupMessage(for error: Error) -> String {
+        switch error {
+        case let error as CertificateManager.Error:
+            return error.errorDescription ?? genericAdminWebHTTPSSetupFailureMessage
+        case let error as CloudflareDNSProvider.Error:
+            switch error {
+            case .identicalRecordAlreadyExists:
+                return "DNS challenge record verified. Existing DNS record will be reused for certificate provisioning."
+            default:
+                return error.errorDescription ?? genericAdminWebHTTPSSetupFailureMessage
+            }
+        case let error as ACMEClient.Error:
+            switch error {
+            case .invalidResponse,
+                 .missingReplayNonce,
+                 .missingAccountLocation,
+                 .missingAuthorizations:
+                return genericAdminWebHTTPSSetupFailureMessage
+            case .dnsChallengeUnavailable,
+                 .dnsPropagationTimedOut:
+                return error.errorDescription ?? genericAdminWebHTTPSSetupFailureMessage
+            case .orderFailed(let message),
+                 .challengeFailed(let message):
+                let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty,
+                      !trimmed.localizedCaseInsensitiveContains("data couldn")
+                else {
+                    return genericAdminWebHTTPSSetupFailureMessage
+                }
+                return trimmed
+            }
+        case let error as LocalizedError:
+            let message = error.errorDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return message.isEmpty ? genericAdminWebHTTPSSetupFailureMessage : message
+        default:
+            return genericAdminWebHTTPSSetupFailureMessage
+        }
     }
 
     private func updateAdminWebCertificateRenewalTask() {

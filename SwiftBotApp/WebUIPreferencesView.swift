@@ -71,10 +71,14 @@ struct AdminWebServerConfigurationSection: View {
 
 struct AdminWebHTTPSConfigurationSection: View {
     @EnvironmentObject var app: AppModel
+    @State private var cloudflaredInstallation: CertificateManager.CloudflaredInstallation?
+    @State private var isDetectingCloudflared = false
     @State private var isRefreshingSetupStatus = false
     @State private var isCreatingDNSRecord = false
     @State private var isMonitoringPropagation = false
+    @State private var isProvisioningCertificate = false
     @State private var validationResult: CertificateManager.AutomaticHTTPSValidation?
+    @State private var provisioningProgress: AdminWebHTTPSProvisioningProgress?
     @State private var validationTask: Task<Void, Never>?
     @State private var propagationTask: Task<Void, Never>?
     @State private var setupFeedback: AdminWebHTTPSSetupFeedback?
@@ -105,10 +109,12 @@ struct AdminWebHTTPSConfigurationSection: View {
             }
         }
         .onAppear {
+            detectCloudflaredInstallation()
             scheduleValidation(after: 150_000_000)
         }
         .onChange(of: validationInputSignature) { _, _ in
             resetValidationState()
+            detectCloudflaredInstallation()
             scheduleValidation(after: 500_000_000)
         }
         .onDisappear {
@@ -141,12 +147,22 @@ struct AdminWebHTTPSConfigurationSection: View {
 
             AdminWebHTTPSSetupStatusSection(
                 validation: validationResult,
+                provisioningItems: provisioningProgress?.items,
+                cloudflaredInstallation: cloudflaredInstallation,
+                isDetectingCloudflared: isDetectingCloudflared,
                 isRefreshing: isRefreshingSetupStatus,
                 isCreatingDNSRecord: isCreatingDNSRecord,
                 isMonitoringPropagation: isMonitoringPropagation,
+                isProvisioningCertificate: isProvisioningCertificate,
                 feedback: setupFeedback,
                 onRefresh: refreshSetupStatus,
-                onCreateDNSRecord: createDNSRecord
+                onOpenInstallGuide: openCloudflaredInstallGuide,
+                onRetryCloudflaredDetection: detectCloudflaredInstallation,
+                onCreateDNSRecord: createDNSRecord,
+                onEnableHTTPS: startCertificateProvisioning,
+                canEnableHTTPS: validationResult?.isReadyForCertificateRequest == true
+                    && (cloudflaredInstallation?.isInstalled == true)
+                    && !isDetectingCloudflared
             )
         }
     }
@@ -239,9 +255,11 @@ struct AdminWebHTTPSConfigurationSection: View {
         validationTask = nil
         propagationTask = nil
         validationResult = nil
+        provisioningProgress = nil
         isRefreshingSetupStatus = false
         isCreatingDNSRecord = false
         isMonitoringPropagation = false
+        isProvisioningCertificate = false
         setupFeedback = nil
     }
 
@@ -266,7 +284,9 @@ struct AdminWebHTTPSConfigurationSection: View {
 
                 setupFeedback = AdminWebHTTPSSetupFeedback(
                     status: .success,
-                    message: "Created \(creation.type) record \(creation.name) -> \(creation.content) in \(creation.zoneName)."
+                    message: creation.reusedExistingRecord
+                        ? "DNS record verified. The required DNS record already exists and will be reused for certificate provisioning."
+                        : "Created \(creation.type) record \(creation.name) -> \(creation.content) in \(creation.zoneName)."
                 )
                 isCreatingDNSRecord = false
                 scheduleValidation(after: 750_000_000)
@@ -274,12 +294,89 @@ struct AdminWebHTTPSConfigurationSection: View {
                 guard !Task.isCancelled else { return }
                 setupFeedback = AdminWebHTTPSSetupFeedback(
                     status: .error,
-                    message: error.localizedDescription
+                    message: app.userFacingAdminWebHTTPSSetupMessage(for: error)
                 )
                 isCreatingDNSRecord = false
                 scheduleValidation(after: 200_000_000)
             }
         }
+    }
+
+    private func startCertificateProvisioning() {
+        guard !isProvisioningCertificate,
+              validationResult?.isReadyForCertificateRequest == true,
+              cloudflaredInstallation?.isInstalled == true
+        else {
+            return
+        }
+
+        isProvisioningCertificate = true
+        setupFeedback = nil
+        provisioningProgress = AdminWebHTTPSProvisioningProgress(domain: app.settings.adminWebUI.normalizedHTTPSDomain)
+
+        Task { @MainActor in
+            do {
+                let resultMessage = try await app.startAdminWebAutomaticHTTPSProvisioning { event in
+                    guard var progress = provisioningProgress else {
+                        return
+                    }
+
+                    progress.apply(event)
+                    provisioningProgress = progress
+                }
+                guard !Task.isCancelled else { return }
+
+                provisioningProgress = nil
+                setupFeedback = AdminWebHTTPSSetupFeedback(
+                    status: .success,
+                    message: resultMessage
+                )
+                isProvisioningCertificate = false
+                scheduleValidation(after: 300_000_000)
+            } catch {
+                guard !Task.isCancelled else { return }
+
+                if var progress = provisioningProgress {
+                    progress.markFailed(message: app.userFacingAdminWebHTTPSSetupMessage(for: error))
+                    provisioningProgress = progress
+                }
+                setupFeedback = AdminWebHTTPSSetupFeedback(
+                    status: .error,
+                    message: app.userFacingAdminWebHTTPSSetupMessage(for: error)
+                )
+                isProvisioningCertificate = false
+            }
+        }
+    }
+
+    private func detectCloudflaredInstallation() {
+        guard app.settings.adminWebUI.httpsEnabled,
+              app.settings.adminWebUI.certificateMode == .automatic
+        else {
+            cloudflaredInstallation = nil
+            isDetectingCloudflared = false
+            return
+        }
+
+        isDetectingCloudflared = true
+
+        Task { @MainActor in
+            let installation = await Task.detached(priority: .userInitiated) {
+                CertificateManager.detectCloudflaredInstallation()
+            }.value
+
+            guard !Task.isCancelled else { return }
+            cloudflaredInstallation = installation
+            isDetectingCloudflared = false
+        }
+    }
+
+    private func openCloudflaredInstallGuide() {
+        guard let url = URL(string: "https://formulae.brew.sh/formula/cloudflared") else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
     }
 
     private func scheduleValidation(after nanoseconds: UInt64 = 0) {
@@ -349,12 +446,20 @@ private struct AdminWebHTTPSSetupFeedback {
 
 private struct AdminWebHTTPSSetupStatusSection: View {
     let validation: CertificateManager.AutomaticHTTPSValidation?
+    let provisioningItems: [CertificateManager.ValidationItem]?
+    let cloudflaredInstallation: CertificateManager.CloudflaredInstallation?
+    let isDetectingCloudflared: Bool
     let isRefreshing: Bool
     let isCreatingDNSRecord: Bool
     let isMonitoringPropagation: Bool
+    let isProvisioningCertificate: Bool
     let feedback: AdminWebHTTPSSetupFeedback?
     let onRefresh: () -> Void
+    let onOpenInstallGuide: () -> Void
+    let onRetryCloudflaredDetection: () -> Void
     let onCreateDNSRecord: () -> Void
+    let onEnableHTTPS: () -> Void
+    let canEnableHTTPS: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -369,17 +474,17 @@ private struct AdminWebHTTPSSetupStatusSection: View {
                     Label("Refresh Status", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
-                .disabled(isRefreshing || isCreatingDNSRecord)
+                .disabled(isRefreshing || isCreatingDNSRecord || isProvisioningCertificate || isDetectingCloudflared)
 
                 if validation?.canCreateDNSRecord == true {
                     Button("Create DNS Record") {
                         onCreateDNSRecord()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isRefreshing || isCreatingDNSRecord)
+                    .disabled(isRefreshing || isCreatingDNSRecord || isProvisioningCertificate || isDetectingCloudflared)
                 }
 
-                if isRefreshing || isCreatingDNSRecord || isMonitoringPropagation {
+                if isRefreshing || isCreatingDNSRecord || isMonitoringPropagation || isProvisioningCertificate || isDetectingCloudflared {
                     ProgressView()
                         .controlSize(.small)
                     Text(activityText)
@@ -388,13 +493,39 @@ private struct AdminWebHTTPSSetupStatusSection: View {
                 }
             }
 
-            Text("SwiftBot checks DNS and Cloudflare before requesting a certificate. It does not issue or renew certificates from this section.")
+            Text("SwiftBot checks the environment, creates the DNS challenge, waits for propagation, requests the certificate, and enables HTTPS automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let validation {
+            if showsCloudflaredWarning {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("cloudflared is required to complete HTTPS setup.")
+                        .font(.subheadline.weight(.medium))
+                    Text("Install it with: brew install cloudflared")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 10) {
+                        Button("Install Guide") {
+                            onOpenInstallGuide()
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("Retry Detection") {
+                            onRetryCloudflaredDetection()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isDetectingCloudflared)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if let items = displayedItems {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(Array(validation.items.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         HStack(alignment: .top, spacing: 10) {
                             Text(item.status.symbol)
                                 .font(.body.weight(.semibold))
@@ -420,6 +551,21 @@ private struct AdminWebHTTPSSetupStatusSection: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(.white.opacity(0.10), lineWidth: 1)
                 )
+
+                if canEnableHTTPS && provisioningItems == nil {
+                    Button("Enable HTTPS") {
+                        onEnableHTTPS()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        isRefreshing
+                            || isCreatingDNSRecord
+                            || isMonitoringPropagation
+                            || isProvisioningCertificate
+                            || isDetectingCloudflared
+                            || !canEnableHTTPS
+                    )
+                }
             } else {
                 Text("Checking current HTTPS setup…")
                     .font(.caption)
@@ -441,6 +587,12 @@ private struct AdminWebHTTPSSetupStatusSection: View {
     }
 
     private var activityText: String {
+        if isDetectingCloudflared {
+            return "Checking for cloudflared…"
+        }
+        if isProvisioningCertificate {
+            return currentProvisioningStepTitle ?? "Running HTTPS setup…"
+        }
         if isCreatingDNSRecord {
             return "Creating DNS record…"
         }
@@ -449,11 +601,223 @@ private struct AdminWebHTTPSSetupStatusSection: View {
         }
         return "Checking setup…"
     }
+
+    private var showsCloudflaredWarning: Bool {
+        guard let cloudflaredInstallation else {
+            return false
+        }
+
+        return !cloudflaredInstallation.isInstalled
+    }
+
+    private var displayedItems: [CertificateManager.ValidationItem]? {
+        provisioningItems ?? validation?.items
+    }
+
+    private var currentProvisioningStepTitle: String? {
+        provisioningItems?.first(where: { $0.status == .warning })?.title
+    }
+}
+
+private struct AdminWebHTTPSProvisioningProgress {
+    private static let orderedStepIDs = [
+        "cloudflare-access",
+        "cloudflare-zone",
+        "dns-record-create",
+        "dns-propagation",
+        "dns-record-verify",
+        "request-certificate",
+        "store-certificate"
+    ]
+
+    private var itemsByID: [String: CertificateManager.ValidationItem]
+
+    init(domain: String) {
+        let normalizedDomain = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.itemsByID = [
+            "cloudflare-access": .init(
+                id: "cloudflare-access",
+                title: "Cloudflare API access verified",
+                status: .pending,
+                detail: nil
+            ),
+            "cloudflare-zone": .init(
+                id: "cloudflare-zone",
+                title: "Cloudflare zone detected",
+                status: .pending,
+                detail: normalizedDomain.isEmpty ? nil : "Preparing HTTPS setup for \(normalizedDomain)."
+            ),
+            "dns-record-create": .init(
+                id: "dns-record-create",
+                title: "DNS challenge record created",
+                status: .pending,
+                detail: nil
+            ),
+            "dns-propagation": .init(
+                id: "dns-propagation",
+                title: "DNS propagation confirmed",
+                status: .pending,
+                detail: nil
+            ),
+            "dns-record-verify": .init(
+                id: "dns-record-verify",
+                title: "DNS challenge record verified",
+                status: .pending,
+                detail: nil
+            ),
+            "request-certificate": .init(
+                id: "request-certificate",
+                title: "TLS certificate requested",
+                status: .pending,
+                detail: nil
+            ),
+            "store-certificate": .init(
+                id: "store-certificate",
+                title: "Certificate stored securely",
+                status: .pending,
+                detail: nil
+            )
+        ]
+    }
+
+    var items: [CertificateManager.ValidationItem] {
+        Self.orderedStepIDs.compactMap { itemsByID[$0] }
+    }
+
+    mutating func apply(_ event: AdminWebAutomaticHTTPSSetupEvent) {
+        switch event {
+        case .verifyingCloudflareAccess:
+            setItem(
+                id: "cloudflare-access",
+                status: .warning,
+                detail: "Checking the configured Cloudflare API token."
+            )
+        case .cloudflareAccessVerified:
+            setItem(
+                id: "cloudflare-access",
+                status: .success,
+                detail: "Cloudflare API access verified."
+            )
+        case .detectingCloudflareZone(let domain):
+            setItem(
+                id: "cloudflare-zone",
+                status: .warning,
+                detail: "Detecting the Cloudflare zone for \(domain)."
+            )
+        case .cloudflareZoneDetected(let zone):
+            setItem(
+                id: "cloudflare-zone",
+                status: .success,
+                detail: "Using Cloudflare zone \(zone)."
+            )
+        case .creatingDNSChallengeRecord(let recordName):
+            setItem(
+                id: "dns-record-create",
+                status: .warning,
+                detail: "Creating TXT record \(recordName)."
+            )
+        case .dnsChallengeRecordCreated(let recordName, let reusedExistingRecord):
+            setItem(
+                id: "dns-record-create",
+                status: .success,
+                detail: reusedExistingRecord
+                    ? "Existing DNS record \(recordName) will be reused for certificate provisioning."
+                    : "Created TXT record \(recordName)."
+            )
+        case .waitingForDNSPropagation(let recordName):
+            setItem(
+                id: "dns-propagation",
+                status: .warning,
+                detail: "Waiting for public DNS to publish \(recordName)."
+            )
+        case .dnsChallengeRecordPropagated(let recordName):
+            setItem(
+                id: "dns-propagation",
+                status: .success,
+                detail: "Public DNS has propagated \(recordName)."
+            )
+        case .dnsChallengeRecordVerified(let recordName, let reusedExistingRecord):
+            setItem(
+                id: "dns-record-verify",
+                status: .success,
+                detail: reusedExistingRecord
+                    ? "DNS challenge record verified. The existing TXT record \(recordName) is ready."
+                    : "DNS challenge record verified via public DNS."
+            )
+        case .requestingTLSCertificate(let domain):
+            setItem(
+                id: "request-certificate",
+                status: .warning,
+                detail: "Requesting a TLS certificate for \(domain)."
+            )
+        case .tlsCertificateIssued(let domain):
+            setItem(
+                id: "request-certificate",
+                status: .success,
+                detail: "Let's Encrypt issued a TLS certificate for \(domain)."
+            )
+        case .storingCertificate:
+            setItem(
+                id: "store-certificate",
+                status: .warning,
+                detail: "Saving the certificate and private key securely."
+            )
+        case .certificateStored(let path):
+            setItem(
+                id: "store-certificate",
+                status: .success,
+                detail: "Certificate stored at \(path)."
+            )
+        case .enablingHTTPSListener:
+            setItem(
+                id: "store-certificate",
+                status: .warning,
+                detail: "Certificate stored. Starting the HTTPS listener."
+            )
+        case .httpsListenerEnabled(let url):
+            setItem(
+                id: "store-certificate",
+                status: .success,
+                detail: "Certificate stored and HTTPS enabled at \(url)."
+            )
+        }
+    }
+
+    mutating func markFailed(message: String) {
+        guard let failingStepID = currentStepID else {
+            return
+        }
+
+        setItem(id: failingStepID, status: .error, detail: message)
+    }
+
+    private var currentStepID: String? {
+        if let warningID = Self.orderedStepIDs.first(where: { itemsByID[$0]?.status == .warning }) {
+            return warningID
+        }
+
+        return Self.orderedStepIDs.first(where: { itemsByID[$0]?.status == .pending })
+    }
+
+    private mutating func setItem(id: String, status: CertificateManager.ValidationStatus, detail: String?) {
+        guard let existing = itemsByID[id] else {
+            return
+        }
+
+        itemsByID[id] = .init(
+            id: existing.id,
+            title: existing.title,
+            status: status,
+            detail: detail
+        )
+    }
 }
 
 private extension CertificateManager.ValidationStatus {
     var symbol: String {
         switch self {
+        case .pending:
+            return "○"
         case .success:
             return "●"
         case .warning:
@@ -465,6 +829,8 @@ private extension CertificateManager.ValidationStatus {
 
     var color: Color {
         switch self {
+        case .pending:
+            return .secondary
         case .success:
             return .green
         case .warning:

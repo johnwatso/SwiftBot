@@ -2,7 +2,72 @@ import Foundation
 import XCTest
 @testable import SwiftBot
 
+private final class MockCloudflareURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            XCTFail("Missing request handler for MockCloudflareURLProtocol.")
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+private func requestBodyData(from request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+
+    if let stream = request.httpBodyStream {
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+
+        while stream.hasBytesAvailable {
+            let readCount = stream.read(buffer, maxLength: bufferSize)
+            if readCount < 0 {
+                throw stream.streamError ?? URLError(.cannotDecodeRawData)
+            }
+            if readCount == 0 {
+                break
+            }
+            data.append(buffer, count: readCount)
+        }
+
+        return data
+    }
+
+    throw URLError(.badServerResponse)
+}
+
 final class CertificateManagerTests: XCTestCase {
+    private struct TestACMEPayload: Decodable, Equatable {
+        let status: String
+    }
+
     func testHTTPSDomainNormalizationStripsSchemeAndWhitespace() {
         var settings = AdminWebUISettings()
         settings.httpsDomain = "  https://Admin.Example.com/dashboard  "
@@ -29,6 +94,481 @@ final class CertificateManagerTests: XCTestCase {
         XCTAssertEqual(
             CloudflareDNSProvider.extractRootZone(from: "https://swiftbot.example.com/dashboard"),
             "example.com"
+        )
+    }
+
+    func testACMEChallengeRecordNamePrefixesHostname() {
+        XCTAssertEqual(
+            CloudflareDNSProvider.acmeChallengeRecordName(for: "swiftbot.roon.nz"),
+            "_acme-challenge.swiftbot.roon.nz"
+        )
+
+        XCTAssertEqual(
+            CloudflareDNSProvider.acmeChallengeRecordName(for: "_acme-challenge.swiftbot.roon.nz"),
+            "_acme-challenge.swiftbot.roon.nz"
+        )
+    }
+
+    func testCloudflareZoneLookupDecodesSuccessfulResponseWithoutErrorsField() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+            let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+            let zoneQuery = components.queryItems?.first(where: { $0.name == "name" })?.value
+            XCTAssertEqual(zoneQuery, "roon.nz")
+
+            let data = """
+            {
+              "success": true,
+              "result": [
+                {
+                  "id": "c59a1947ecd7d9a226e0c8411d62e8d7",
+                  "name": "roon.nz",
+                  "status": "active",
+                  "paused": false
+                }
+              ],
+              "result_info": {
+                "count": 1
+              }
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        let zone = try await provider.findZone(for: "swiftbot.roon.nz")
+
+        XCTAssertEqual(
+            zone,
+            CloudflareDNSProvider.ZoneSummary(
+                id: "c59a1947ecd7d9a226e0c8411d62e8d7",
+                name: "roon.nz"
+            )
+        )
+    }
+
+    func testCloudflareDNSRecordLookupDecodesSuccessfulResponseAndFindsMatchingRecord() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let url = try XCTUnwrap(request.url)
+            XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records")
+
+            let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+            let nameQuery = components.queryItems?.first(where: { $0.name == "name" })?.value
+            XCTAssertEqual(nameQuery, "swiftbot.roon.nz")
+
+            let data = """
+            {
+              "success": true,
+              "result": [
+                {
+                  "id": "txt-1",
+                  "type": "TXT",
+                  "name": "swiftbot.roon.nz",
+                  "content": "hello"
+                },
+                {
+                  "id": "cname-1",
+                  "type": "CNAME",
+                  "name": "swiftbot.roon.nz",
+                  "content": "target.example.com",
+                  "proxied": false
+                }
+              ]
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        let record = try await provider.findDNSRecord(
+            zoneID: "zone-123",
+            hostname: "swiftbot.roon.nz",
+            allowedTypes: ["A", "AAAA", "CNAME"]
+        )
+
+        XCTAssertEqual(
+            record,
+            CloudflareDNSProvider.DNSRecordSummary(
+                zoneID: "zone-123",
+                recordID: "cname-1",
+                type: "CNAME",
+                name: "swiftbot.roon.nz",
+                content: "target.example.com"
+            )
+        )
+    }
+
+    func testCloudflareACMEChallengeRecordCreationUsesTXTRecordForChallengeHostname() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        var requestCount = 0
+        MockCloudflareURLProtocol.requestHandler = { request in
+            requestCount += 1
+            let url = try XCTUnwrap(request.url)
+
+            switch requestCount {
+            case 1:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(url.path, "/client/v4/zones")
+
+                let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+                let zoneQuery = components.queryItems?.first(where: { $0.name == "name" })?.value
+                XCTAssertEqual(zoneQuery, "roon.nz")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": [
+                    {
+                      "id": "zone-123",
+                      "name": "roon.nz"
+                    }
+                  ]
+                }
+                """.data(using: .utf8)!
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                return (response, data)
+            case 2:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+                let bodyData = try requestBodyData(from: request)
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+                XCTAssertEqual(body["type"] as? String, "TXT")
+                XCTAssertEqual(body["name"] as? String, "_acme-challenge.swiftbot.roon.nz")
+                XCTAssertEqual(body["content"] as? String, "challenge-token")
+                XCTAssertEqual(body["ttl"] as? Int, 120)
+
+                let data = """
+                {
+                  "success": true,
+                  "result": {
+                    "id": "record-123",
+                    "zone_id": "zone-123",
+                    "type": "TXT",
+                    "name": "_acme-challenge.swiftbot.roon.nz",
+                    "content": "challenge-token"
+                  }
+                }
+                """.data(using: .utf8)!
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                return (response, data)
+            default:
+                XCTFail("Unexpected Cloudflare request: \(request)")
+                throw URLError(.badServerResponse)
+            }
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        let record = try await provider.createACMEChallengeRecord(
+            for: "swiftbot.roon.nz",
+            content: "challenge-token"
+        )
+
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(
+            record,
+            CloudflareDNSProvider.TXTRecord(
+                zoneID: "zone-123",
+                recordID: "record-123",
+                name: "_acme-challenge.swiftbot.roon.nz",
+                content: "challenge-token",
+                wasCreated: true
+            )
+        )
+    }
+
+    func testCloudflareACMEChallengeRecordReuseTreatsDuplicateAsSuccess() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        var requestCount = 0
+        MockCloudflareURLProtocol.requestHandler = { request in
+            requestCount += 1
+            let url = try XCTUnwrap(request.url)
+
+            switch requestCount {
+            case 1:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(url.path, "/client/v4/zones")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": [
+                    {
+                      "id": "zone-123",
+                      "name": "roon.nz"
+                    }
+                  ]
+                }
+                """.data(using: .utf8)!
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                return (response, data)
+            case 2:
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records")
+
+                let data = """
+                {
+                  "success": false,
+                  "errors": [
+                    {
+                      "code": 81057,
+                      "message": "An identical record already exists."
+                    }
+                  ]
+                }
+                """.data(using: .utf8)!
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 409,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                return (response, data)
+            case 3:
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records")
+
+                let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+                let nameQuery = components.queryItems?.first(where: { $0.name == "name" })?.value
+                XCTAssertEqual(nameQuery, "_acme-challenge.swiftbot.roon.nz")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": [
+                    {
+                      "id": "record-123",
+                      "type": "TXT",
+                      "name": "_acme-challenge.swiftbot.roon.nz",
+                      "content": "challenge-token"
+                    }
+                  ]
+                }
+                """.data(using: .utf8)!
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                return (response, data)
+            default:
+                XCTFail("Unexpected Cloudflare request: \(request)")
+                throw URLError(.badServerResponse)
+            }
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        let record = try await provider.createACMEChallengeRecord(
+            for: "swiftbot.roon.nz",
+            content: "challenge-token"
+        )
+
+        XCTAssertEqual(requestCount, 3)
+        XCTAssertEqual(
+            record,
+            CloudflareDNSProvider.TXTRecord(
+                zoneID: "zone-123",
+                recordID: "record-123",
+                name: "_acme-challenge.swiftbot.roon.nz",
+                content: "challenge-token",
+                wasCreated: false
+            )
+        )
+    }
+
+    func testCloudflareDuplicateDNSRecordErrorMapsToReusableRecordState() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(url.path, "/client/v4/zones/zone-123/dns_records")
+
+            let data = """
+            {
+              "success": false,
+              "errors": [
+                {
+                  "code": 81057,
+                  "message": "An identical record already exists."
+                }
+              ]
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 409,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+
+        do {
+            _ = try await provider.createDNSRecord(
+                zoneID: "zone-123",
+                type: "A",
+                name: "swiftbot.roon.nz",
+                content: "203.0.113.10"
+            )
+            XCTFail("Expected identical Cloudflare record to map to a reusable-record error.")
+        } catch let error as CloudflareDNSProvider.Error {
+            XCTAssertEqual(
+                error.errorDescription,
+                "The required DNS record already exists and will be reused for certificate provisioning."
+            )
+        }
+    }
+
+    func testACMEDNSPropagationParserExtractsTXTValuesFromDNSJSON() {
+        let data = """
+        {
+          "Status": 0,
+          "Answer": [
+            {
+              "name": "_acme-challenge.swiftbot.example.com",
+              "type": 16,
+              "TTL": 60,
+              "data": "\\"challenge-token\\""
+            },
+            {
+              "name": "_acme-challenge.swiftbot.example.com",
+              "type": 16,
+              "TTL": 60,
+              "data": "\\"part-one\\" \\"part-two\\""
+            },
+            {
+              "name": "_acme-challenge.swiftbot.example.com",
+              "type": 1,
+              "TTL": 60,
+              "data": "203.0.113.10"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertEqual(
+            ACMEClient.dnsTXTAnswerValues(from: data),
+            ["challenge-token", "part-onepart-two"]
+        )
+    }
+
+    func testACMEJSONDecodeIfPresentReturnsNilForEmptySuccessBody() throws {
+        XCTAssertNil(try ACMEClient.decodeJSONIfPresent(TestACMEPayload.self, from: Data()))
+        XCTAssertNil(try ACMEClient.decodeJSONIfPresent(TestACMEPayload.self, from: Data(" \n\t".utf8)))
+    }
+
+    func testACMEJSONDecodeIfPresentDecodesWhenBodyExists() throws {
+        let data = Data(#"{"status":"valid"}"#.utf8)
+
+        XCTAssertEqual(
+            try ACMEClient.decodeJSONIfPresent(TestACMEPayload.self, from: data),
+            TestACMEPayload(status: "valid")
         )
     }
 
