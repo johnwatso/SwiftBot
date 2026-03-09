@@ -84,16 +84,14 @@ struct InternetAccessConfigurationSection: View {
     @State private var setupProgress: InternetAccessSetupProgress?
     @State private var lastError: Error? = nil
     
-    // Progressive Setup State
+    // Progressive Setup State (Transients)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
-    @State private var selectedZoneID: String = ""
-    @State private var subdomain: String = ""
     @State private var isVerifyingToken = false
     @State private var hasVerifiedToken = false
     @State private var tokenVerificationTask: Task<Void, Never>? = nil
 
     private var selectedZone: CloudflareDNSProvider.ZoneSummary? {
-        availableZones.first(where: { $0.id == selectedZoneID })
+        availableZones.first(where: { $0.id == app.settings.adminWebUI.selectedZoneID })
     }
 
     private var publicURLString: String {
@@ -101,10 +99,8 @@ struct InternetAccessConfigurationSection: View {
             return app.adminWebPublicAccessURL()?.absoluteString ?? ""
         }
         
-        guard let zone = selectedZone, !subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return ""
-        }
-        return "https://\(subdomain.lowercased()).\(zone.name)"
+        let hostname = app.settings.adminWebUI.normalizedHostname
+        return hostname.isEmpty ? "" : "https://\(hostname)"
     }
 
     private var sharedHostname: String {
@@ -120,8 +116,8 @@ struct InternetAccessConfigurationSection: View {
             && !isEnabling
             && !isDisabling
             && hasVerifiedToken
-            && !selectedZoneID.isEmpty
-            && !subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !app.settings.adminWebUI.selectedZoneID.isEmpty
+            && !app.settings.adminWebUI.subdomain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var checklistItems: [CertificateManager.ValidationItem] {
@@ -135,7 +131,8 @@ struct InternetAccessConfigurationSection: View {
                 .init(id: "cloudflare-zone", title: "Detect zone", status: .success, detail: "The hostname is associated with your Cloudflare account."),
                 .init(id: "create-tunnel", title: "Detect or create tunnel", status: .success, detail: "The secure tunnel is configured."),
                 .init(id: "create-dns", title: "Configure DNS route", status: .success, detail: "Traffic is routed to the tunnel."),
-                .init(id: "start-tunnel", title: "Start Cloudflare tunnel", status: .success, detail: "SwiftBot is available at \(publicURLString).")
+                .init(id: "issue-certificate", title: "Issue HTTPS certificate", status: .success, detail: "Secure communication is enabled."),
+                .init(id: "enable-access", title: "Enable Internet Access", status: .success, detail: "SwiftBot is available at \(publicURLString).")
             ]
         }
 
@@ -167,8 +164,14 @@ struct InternetAccessConfigurationSection: View {
                 detail: "Configured automatically during setup."
             ),
             .init(
-                id: "start-tunnel",
-                title: "Start Cloudflare tunnel",
+                id: "issue-certificate",
+                title: "Issue HTTPS certificate",
+                status: .pending,
+                detail: "Issued automatically via Cloudflare Edge."
+            ),
+            .init(
+                id: "enable-access",
+                title: "Enable Internet Access",
                 status: .pending,
                 detail: canEnable ? "Ready to enable Internet Access." : "Complete the fields above to continue."
             )
@@ -211,7 +214,7 @@ struct InternetAccessConfigurationSection: View {
                         .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
                             hasVerifiedToken = false
                             availableZones = []
-                            selectedZoneID = ""
+                            app.settings.adminWebUI.selectedZoneID = ""
                         }
                     
                     if !hasVerifiedToken {
@@ -237,49 +240,63 @@ struct InternetAccessConfigurationSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            if hasVerifiedToken && !availableZones.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Cloudflare Zone")
-                        .font(.subheadline.weight(.medium))
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hostname")
+                    .font(.subheadline.weight(.medium))
+                
+                // Inline hostname editor: [subdomain] . [zone ▼]
+                HStack(spacing: 6) {
+                    TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 120)
+                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
+                        .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
+                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+                            if filtered != newValue {
+                                app.settings.adminWebUI.subdomain = filtered
+                            }
+                        }
                     
-                    Picker("", selection: $selectedZoneID) {
-                        Text("Select a zone").tag("")
-                        ForEach(availableZones, id: \.id) { zone in
-                            Text(zone.name).tag(zone.id)
+                    Text(".")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    
+                    Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
+                        if availableZones.isEmpty {
+                            if !app.settings.adminWebUI.selectedZoneName.isEmpty {
+                                Text(app.settings.adminWebUI.selectedZoneName)
+                                    .tag(app.settings.adminWebUI.selectedZoneID)
+                            } else {
+                                Text("Verify token to load zones")
+                                    .tag("")
+                            }
+                        } else {
+                            ForEach(availableZones, id: \.id) { zone in
+                                Text(zone.name).tag(zone.id)
+                            }
                         }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
+                    .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
+                    .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
+                        if let zone = availableZones.first(where: { $0.id == newValue }) {
+                            app.settings.adminWebUI.selectedZoneName = zone.name
+                        }
+                    }
                     
-                    Text("Choose the domain where you want to host your SwiftBot dashboard.")
+                    Spacer()
+                }
+                
+                // Live URL preview
+                HStack(spacing: 4) {
+                    Text("SwiftBot will be available at:")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-            }
-
-            if hasVerifiedToken && !selectedZoneID.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Subdomain")
-                        .font(.subheadline.weight(.medium))
-                    
-                    TextField("e.g. devbot", text: $subdomain)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: subdomain) { _, newValue in
-                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
-                            if filtered != newValue {
-                                subdomain = filtered
-                            }
-                        }
-                    
-                    if !subdomain.isEmpty {
-                        Text("SwiftBot will be available at:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(publicURLString)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                    }
+                    Text(publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -421,7 +438,8 @@ struct InternetAccessConfigurationSection: View {
                 
                 // Auto-select if only one zone
                 if zones.count == 1, let firstZone = zones.first {
-                    self.selectedZoneID = firstZone.id
+                    app.settings.adminWebUI.selectedZoneID = firstZone.id
+                    app.settings.adminWebUI.selectedZoneName = firstZone.name
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -439,8 +457,8 @@ struct InternetAccessConfigurationSection: View {
         guard !isEnabling else { return }
         
         let fullHostname: String
-        if !selectedZoneID.isEmpty, !subdomain.isEmpty, let zone = selectedZone {
-            fullHostname = "\(subdomain.lowercased()).\(zone.name)"
+        if !app.settings.adminWebUI.selectedZoneID.isEmpty, !app.settings.adminWebUI.subdomain.isEmpty, let zone = selectedZone {
+            fullHostname = "\(app.settings.adminWebUI.subdomain.lowercased()).\(zone.name)"
         } else {
             fullHostname = app.settings.adminWebUI.normalizedHostname
         }

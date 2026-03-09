@@ -183,6 +183,9 @@ struct AdminWebUISettings: Codable, Hashable {
     var publicBaseURL: String = ""
     var internetAccessEnabled: Bool = false
     var hostname: String = ""
+    var subdomain: String = "swiftbot"
+    var selectedZoneID: String = ""
+    var selectedZoneName: String = ""
     var cloudflareAPIToken: String = ""
     
     // Legacy compatibility - always returns fixed values
@@ -211,11 +214,22 @@ struct AdminWebUISettings: Codable, Hashable {
     var redirectPath: String = "/auth/discord/callback"
     var restrictAccessToSpecificUsers: Bool = false
     var allowedUserIDs: [String] = []
+
+    var normalizedHostname: String {
+        if !subdomain.isEmpty && !selectedZoneName.isEmpty {
+            return "\(subdomain.lowercased()).\(selectedZoneName.lowercased())"
+        }
+        return normalizeHostname(hostname)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case enabled
         case publicBaseURL
         case internetAccessEnabled
         case hostname
+        case subdomain
+        case selectedZoneID
+        case selectedZoneName
         case cloudflareAPIToken
         case publicAccessTunnelID
         case publicAccessTunnelName
@@ -253,6 +267,9 @@ struct AdminWebUISettings: Codable, Hashable {
         
         // Migration: prefer hostname
         hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? ""
+        subdomain = try container.decodeIfPresent(String.self, forKey: .subdomain) ?? "swiftbot"
+        selectedZoneID = try container.decodeIfPresent(String.self, forKey: .selectedZoneID) ?? ""
+        selectedZoneName = try container.decodeIfPresent(String.self, forKey: .selectedZoneName) ?? ""
         
         cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
         
@@ -288,6 +305,9 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(enabled, forKey: .enabled)
         try container.encode(publicBaseURL, forKey: .publicBaseURL)
         try container.encode(hostname, forKey: .hostname)
+        try container.encode(subdomain, forKey: .subdomain)
+        try container.encode(selectedZoneID, forKey: .selectedZoneID)
+        try container.encode(selectedZoneName, forKey: .selectedZoneName)
         try container.encode(cloudflareAPIToken, forKey: .cloudflareAPIToken)
         try container.encode(internetAccessEnabled, forKey: .internetAccessEnabled)
         try container.encode(publicAccessTunnelID, forKey: .publicAccessTunnelID)
@@ -310,10 +330,6 @@ struct AdminWebUISettings: Codable, Hashable {
         allowedUserIDs
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-    }
-
-    var normalizedHostname: String {
-        normalizeHostname(hostname)
     }
 
     var normalizedImportedCertificateFile: String {
