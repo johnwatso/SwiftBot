@@ -28,6 +28,10 @@ struct GeneralSettingsView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var canLaunchAdminWebUI: Bool {
+        app.settings.adminWebUI.enabled && app.adminWebLaunchURL() != nil
+    }
+
     private var developerFeaturesBinding: Binding<Bool> {
         Binding(
             get: { app.settings.devFeaturesEnabled },
@@ -662,6 +666,21 @@ struct GeneralSettingsView: View {
                 Text("If empty, only users who are in connected guilds and have Manage Server can log in.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    app.launchAdminWebUI()
+                } label: {
+                    Label("Launch Web UI", systemImage: "arrow.up.forward.square")
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .disabled(!canLaunchAdminWebUI)
+
+                Text("Opens \(app.adminWebLaunchURL()?.absoluteString ?? "the configured Web UI URL"). Save settings first if you changed the host, port, or public base URL.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
     }
