@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import UpdateEngine
@@ -1308,6 +1309,28 @@ final class AppModel: ObservableObject {
             return explicit
         }
         return "http://\(settings.adminWebUI.bindHost):\(settings.adminWebUI.port)"
+    }
+
+    func adminWebLaunchURL() -> URL? {
+        let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty {
+            return URL(string: explicit)
+        }
+
+        let bindHost = settings.adminWebUI.bindHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedHost = bindHost.isEmpty ? "127.0.0.1" : bindHost
+        let normalizedPort = min(max(settings.adminWebUI.port, 1), 65535)
+        return URL(string: "http://\(normalizedHost):\(normalizedPort)")
+    }
+
+    @discardableResult
+    func launchAdminWebUI() -> Bool {
+        guard let url = adminWebLaunchURL() else {
+            logs.append("⚠️ Admin Web UI URL is invalid.")
+            return false
+        }
+        NSWorkspace.shared.open(url)
+        return true
     }
 
     func adminWebConfigSnapshot() -> AdminWebConfigPayload {
