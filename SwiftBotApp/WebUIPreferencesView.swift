@@ -309,11 +309,11 @@ struct InternetAccessConfigurationSection: View {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundStyle(.green)
                                 .font(.title3)
-                            Text("Internet Access Active")
+                            Text("SwiftBot Dashboard")
                                 .font(.subheadline.weight(.semibold))
                         }
                         
-                        Text("SwiftBot is available at: \(publicURLString)")
+                        Text(publicURLString)
                             .font(.subheadline.weight(.medium))
                             .textSelection(.enabled)
                         
@@ -321,7 +321,7 @@ struct InternetAccessConfigurationSection: View {
                             Button {
                                 openURL()
                             } label: {
-                                Label("Open in Browser", systemImage: "arrow.up.forward.square")
+                                Label("Open in Browser", systemImage: "arrow.up.right.square")
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.regular)
@@ -334,8 +334,10 @@ struct InternetAccessConfigurationSection: View {
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
                             
-                            Button("Re-run Setup") {
+                            Button {
                                 showingReRunSetupConfirmation = true
+                            } label: {
+                                Label("Re-run Setup", systemImage: "arrow.clockwise")
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
@@ -916,7 +918,7 @@ struct AdminWebLaunchControls: View {
                 Button {
                     app.launchAdminWebUI()
                 } label: {
-                    Label("Open in Browser", systemImage: "arrow.up.forward.square")
+                    Label("Open in Browser", systemImage: "arrow.up.right.square")
                 }
                 .buttonStyle(GlassActionButtonStyle())
                 .disabled(!canLaunchAdminWebUI)
@@ -924,7 +926,7 @@ struct AdminWebLaunchControls: View {
                 Button {
                     app.launchAdminWebUI()
                 } label: {
-                    Label("Open in Browser", systemImage: "arrow.up.forward.square")
+                    Label("Open in Browser", systemImage: "arrow.up.right.square")
                 }
                 .buttonStyle(.bordered)
                 .disabled(!canLaunchAdminWebUI)
