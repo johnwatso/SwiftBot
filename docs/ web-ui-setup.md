@@ -119,17 +119,29 @@ The token is automatically shared between HTTPS and Public Access sections.
 
 # 5. DNS Configuration
 
-Create a DNS record for your dashboard.
+SwiftBot can create the DNS record automatically, or you can create it manually.
+
+## Automatic DNS (Recommended)
+
+In **SwiftBot → Settings → HTTPS**, click **Create DNS Record**.
+
+SwiftBot will create an A record pointing to your public IP address.
+
+## Manual DNS
+
+If you prefer to create the record manually:
 
 Example:
 
 admin.example.com → YOUR.SERVER.IP
 
-Example configuration:
+Configuration:
 
 Type: A  
 Name: admin  
 Content: YOUR.SERVER.IP
+
+Then return to SwiftBot and click **Refresh Status** to detect the new record.
 
 ---
 
