@@ -4,6 +4,11 @@ import SwiftASN1
 import X509
 
 actor ACMEClient {
+    static let publicDNSPropagationResolvers: [URL] = [
+        URL(string: "https://cloudflare-dns.com/dns-query")!,
+        URL(string: "https://dns.google/resolve")!
+    ]
+
     struct IssuedCertificate: Sendable {
         let certificatePEM: String
     }
@@ -14,6 +19,7 @@ actor ACMEClient {
         case missingAccountLocation
         case missingAuthorizations
         case dnsChallengeUnavailable(String)
+        case dnsPropagationTimedOut(String)
         case orderFailed(String)
         case challengeFailed(String)
 
@@ -29,6 +35,8 @@ actor ACMEClient {
                 return "The ACME order did not contain any authorization URLs."
             case .dnsChallengeUnavailable(let domain):
                 return "No dns-01 ACME challenge was available for \(domain)."
+            case .dnsPropagationTimedOut(let recordName):
+                return "SwiftBot could not verify the DNS challenge record for \(recordName) via public DNS yet. Wait for propagation, then try again."
             case .orderFailed(let message):
                 return message
             case .challengeFailed(let message):
@@ -84,6 +92,21 @@ actor ACMEClient {
     }
 
     private struct EmptyJSONPayload: Encodable {}
+
+    private struct DNSQueryResponse: Decodable {
+        let status: Int?
+        let answer: [DNSAnswer]?
+
+        private enum CodingKeys: String, CodingKey {
+            case status = "Status"
+            case answer = "Answer"
+        }
+    }
+
+    private struct DNSAnswer: Decodable {
+        let type: Int?
+        let data: String?
+    }
 
     private struct AccountMetadata: Codable {
         var keyID: String
@@ -160,6 +183,7 @@ actor ACMEClient {
         for domain: String,
         certificatePrivateKey: P256.Signing.PrivateKey,
         dnsProvider: CloudflareDNSProvider,
+        progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void,
         log: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> IssuedCertificate {
         let normalizedDomain = domain.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -171,9 +195,15 @@ actor ACMEClient {
             to: try await directory().newOrder,
             payload: NewOrderPayload(identifiers: [.init(type: "dns", value: normalizedDomain)])
         )
-        var order = try decodeOrder(from: orderResult.data)
         guard let orderURL = locationURL(from: orderResult.response) else {
             throw Error.invalidResponse
+        }
+        let initialOrder = try decodeOrder(from: orderResult.data)
+        var order: OrderResponse
+        if let initialOrder {
+            order = initialOrder
+        } else {
+            order = try await fetchOrderDetails(orderURL: orderURL)
         }
 
         guard let authorizations = order.authorizations, !authorizations.isEmpty else {
@@ -181,7 +211,7 @@ actor ACMEClient {
         }
 
         for authorizationURL in authorizations {
-            let authorization = try await signedPOSTAsGET(url: authorizationURL, as: AuthorizationResponse.self)
+            let authorization = try await fetchDecodedResource(url: authorizationURL, as: AuthorizationResponse.self)
             switch authorization.status {
             case "valid":
                 continue
@@ -189,6 +219,7 @@ actor ACMEClient {
                 try await solveDNSChallenge(
                     authorization: authorization,
                     dnsProvider: dnsProvider,
+                    progress: progress,
                     log: log
                 )
             default:
@@ -200,6 +231,7 @@ actor ACMEClient {
         order = try await pollOrderReady(orderURL: orderURL)
         let csrDER = try buildCSRDER(for: normalizedDomain, privateKey: certificatePrivateKey)
 
+        await progress(.requestingTLSCertificate(domain: normalizedDomain))
         await log("📜 Finalizing Let's Encrypt certificate for \(normalizedDomain)")
         _ = try await signedJSONRequest(
             to: order.finalize,
@@ -218,6 +250,7 @@ actor ACMEClient {
             throw Error.orderFailed("Let's Encrypt returned an empty certificate chain.")
         }
 
+        await progress(.tlsCertificateIssued(domain: normalizedDomain))
         await log("✅ Let's Encrypt issued a certificate for \(normalizedDomain)")
         return IssuedCertificate(certificatePEM: certificatePEM)
     }
@@ -225,24 +258,54 @@ actor ACMEClient {
     private func solveDNSChallenge(
         authorization: AuthorizationResponse,
         dnsProvider: CloudflareDNSProvider,
+        progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void,
         log: @escaping @MainActor @Sendable (String) -> Void
     ) async throws {
         guard let challenge = authorization.challenges.first(where: { $0.type == "dns-01" }) else {
             throw Error.dnsChallengeUnavailable(authorization.identifier.value)
         }
 
-        let recordName = "_acme-challenge.\(authorization.identifier.value)"
         let challengeValue = try dnsChallengeValue(for: challenge.token)
+        let recordName = CloudflareDNSProvider.acmeChallengeRecordName(for: authorization.identifier.value) ?? "_acme-challenge.\(authorization.identifier.value)"
+        await progress(.creatingDNSChallengeRecord(recordName: recordName))
+        let record = try await dnsProvider.createACMEChallengeRecord(
+            for: authorization.identifier.value,
+            content: challengeValue
+        )
+        let shouldDeleteChallengeRecord = record.wasCreated
 
-        await log("🌐 Creating Cloudflare TXT record for \(recordName)")
-        let record = try await dnsProvider.createTXTRecord(name: recordName, content: challengeValue)
         defer {
-            Task {
-                try? await dnsProvider.deleteTXTRecord(record)
+            if shouldDeleteChallengeRecord {
+                Task {
+                    try? await dnsProvider.deleteTXTRecord(record)
+                    await log("🧹 Removed Cloudflare TXT record for \(recordName)")
+                }
             }
         }
 
-        try await sleep(seconds: 20)
+        if record.wasCreated {
+            await log("🌐 Creating Cloudflare TXT record for \(recordName)")
+        } else {
+            await log("✅ DNS challenge record verified")
+            await log("Existing DNS record will be reused for certificate provisioning.")
+        }
+
+        await progress(.dnsChallengeRecordCreated(
+            recordName: recordName,
+            reusedExistingRecord: !record.wasCreated
+        ))
+        await progress(.waitingForDNSPropagation(recordName: recordName))
+        await log("⏳ Waiting for DNS propagation for \(recordName)")
+        try await waitForDNSPropagation(
+            recordName: recordName,
+            expectedValue: challengeValue,
+            log: log
+        )
+        await progress(.dnsChallengeRecordPropagated(recordName: recordName))
+        await progress(.dnsChallengeRecordVerified(
+            recordName: recordName,
+            reusedExistingRecord: !record.wasCreated
+        ))
 
         await log("🧩 Notifying Let's Encrypt that the DNS challenge is ready")
         _ = try await signedJSONRequest(to: challenge.url, payload: EmptyJSONPayload())
@@ -252,6 +315,67 @@ actor ACMEClient {
             let message = validated.error?.errorDescription ?? "dns-01 validation failed for \(authorization.identifier.value)."
             throw Error.challengeFailed(message)
         }
+    }
+
+    private func waitForDNSPropagation(
+        recordName: String,
+        expectedValue: String,
+        log: @escaping @MainActor @Sendable (String) -> Void
+    ) async throws {
+        for attempt in 1...18 {
+            if await dnsTXTRecordIsVisible(recordName: recordName, expectedValue: expectedValue) {
+                await log("✅ DNS TXT record propagated for \(recordName)")
+                return
+            }
+
+            if attempt < 18 {
+                try? await sleep(seconds: 5)
+            }
+        }
+
+        await log("⚠️ DNS propagation for \(recordName) was not confirmed via public DNS.")
+        throw Error.dnsPropagationTimedOut(recordName)
+    }
+
+    private func dnsTXTRecordIsVisible(recordName: String, expectedValue: String) async -> Bool {
+        for resolver in Self.publicDNSPropagationResolvers {
+            do {
+                let data = try await dnsQueryTXTRecord(recordName: recordName, resolver: resolver)
+                let values = Self.dnsTXTAnswerValues(from: data)
+                if values.contains(expectedValue) {
+                    return true
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return false
+    }
+
+    private func dnsQueryTXTRecord(recordName: String, resolver: URL) async throws -> Data {
+        var components = URLComponents(url: resolver, resolvingAgainstBaseURL: false)
+        let existingItems = components?.queryItems ?? []
+        components?.queryItems = existingItems + [
+            URLQueryItem(name: "name", value: recordName),
+            URLQueryItem(name: "type", value: "TXT")
+        ]
+
+        guard let url = components?.url else {
+            throw Error.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/dns-json", forHTTPHeaderField: "Accept")
+        request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw Error.invalidResponse
+        }
+
+        return data
     }
 
     private func pollOrderReady(orderURL: URL) async throws -> OrderResponse {
@@ -264,7 +388,10 @@ actor ACMEClient {
 
     private func pollOrder(orderURL: URL, acceptedStates: Set<String>) async throws -> OrderResponse {
         for _ in 0..<30 {
-            let order = try await signedPOSTAsGET(url: orderURL, as: OrderResponse.self)
+            guard let order = try await signedPOSTAsGET(url: orderURL, as: OrderResponse.self) else {
+                try await sleep(seconds: 2)
+                continue
+            }
             if acceptedStates.contains(order.status) {
                 return order
             }
@@ -280,7 +407,10 @@ actor ACMEClient {
 
     private func pollChallenge(url: URL) async throws -> Challenge {
         for _ in 0..<30 {
-            let challenge = try await signedPOSTAsGET(url: url, as: Challenge.self)
+            guard let challenge = try await signedPOSTAsGET(url: url, as: Challenge.self) else {
+                try await sleep(seconds: 2)
+                continue
+            }
             switch challenge.status {
             case "valid":
                 return challenge
@@ -321,6 +451,40 @@ actor ACMEClient {
         let keyAuthorization = token + "." + thumbprint
         let digest = SHA256.hash(data: Data(keyAuthorization.utf8))
         return base64URLEncode(Data(digest))
+    }
+
+    static func dnsTXTAnswerValues(from data: Data) -> [String] {
+        guard let response = try? JSONDecoder().decode(DNSQueryResponse.self, from: data),
+              (response.status ?? 0) == 0
+        else {
+            return []
+        }
+
+        return (response.answer ?? [])
+            .filter { $0.type == 16 }
+            .compactMap(\.data)
+            .map(normalizeTXTAnswerValue)
+            .filter { !$0.isEmpty }
+    }
+
+    static func normalizeTXTAnswerValue(_ value: String) -> String {
+        var normalized = ""
+        var isInsideQuotes = false
+
+        for character in value {
+            if character == "\"" {
+                isInsideQuotes.toggle()
+                continue
+            }
+
+            if character == " " && !isInsideQuotes {
+                continue
+            }
+
+            normalized.append(character)
+        }
+
+        return normalized
     }
 
     private func ensureAccount() async throws {
@@ -391,12 +555,34 @@ actor ACMEClient {
         return replayNonce
     }
 
-    private func signedPOSTAsGET<ResponseType: Decodable>(url: URL, as type: ResponseType.Type) async throws -> ResponseType {
+    private func fetchOrderDetails(orderURL: URL) async throws -> OrderResponse {
+        try await fetchDecodedResource(url: orderURL, as: OrderResponse.self)
+    }
+
+    private func fetchDecodedResource<ResponseType: Decodable>(
+        url: URL,
+        as type: ResponseType.Type,
+        attempts: Int = 5
+    ) async throws -> ResponseType {
+        for attempt in 0..<attempts {
+            if let response = try await signedPOSTAsGET(url: url, as: type) {
+                return response
+            }
+
+            if attempt < attempts - 1 {
+                try await sleep(seconds: 1)
+            }
+        }
+
+        throw Error.invalidResponse
+    }
+
+    private func signedPOSTAsGET<ResponseType: Decodable>(url: URL, as type: ResponseType.Type) async throws -> ResponseType? {
         let result = try await signedRawRequest(to: url, payload: nil)
         guard (200..<300).contains(result.response.statusCode) else {
             throw try problemDocument(from: result)
         }
-        return try decoder.decode(ResponseType.self, from: result.data)
+        return try Self.decodeJSONIfPresent(type, from: result.data, using: decoder)
     }
 
     private func signedJSONRequest<Payload: Encodable>(
@@ -503,8 +689,8 @@ actor ACMEClient {
         return try problemDocument(from: result)
     }
 
-    private func decodeOrder(from data: Data) throws -> OrderResponse {
-        try decoder.decode(OrderResponse.self, from: data)
+    private func decodeOrder(from data: Data) throws -> OrderResponse? {
+        try Self.decodeJSONIfPresent(OrderResponse.self, from: data, using: decoder)
     }
 
     private func locationURL(from response: HTTPURLResponse) -> URL? {
@@ -578,5 +764,28 @@ actor ACMEClient {
 
     private func sleep(seconds: UInt64) async throws {
         try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+    }
+
+    static func decodeJSONIfPresent<ResponseType: Decodable>(
+        _ type: ResponseType.Type,
+        from data: Data,
+        using decoder: JSONDecoder = JSONDecoder()
+    ) throws -> ResponseType? {
+        guard hasMeaningfulResponseBody(data) else {
+            return nil
+        }
+
+        return try decoder.decode(ResponseType.self, from: data)
+    }
+
+    static func hasMeaningfulResponseBody(_ data: Data) -> Bool {
+        data.contains { byte in
+            switch byte {
+            case 0x09, 0x0A, 0x0D, 0x20:
+                return false
+            default:
+                return true
+            }
+        }
     }
 }

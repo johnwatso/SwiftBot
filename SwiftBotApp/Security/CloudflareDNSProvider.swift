@@ -1,11 +1,17 @@
 import Foundation
 
 struct CloudflareDNSProvider: Sendable {
+    private struct APIError: Decodable {
+        let code: Int?
+        let message: String
+    }
+
     struct TXTRecord: Sendable, Equatable {
         let zoneID: String
         let recordID: String
         let name: String
         let content: String
+        let wasCreated: Bool
     }
 
     struct DNSRecordSummary: Sendable, Equatable {
@@ -24,6 +30,7 @@ struct CloudflareDNSProvider: Sendable {
     enum Error: LocalizedError {
         case invalidDomain(String)
         case zoneNotFound(String)
+        case identicalRecordAlreadyExists
         case apiFailed(String)
 
         var errorDescription: String? {
@@ -32,6 +39,8 @@ struct CloudflareDNSProvider: Sendable {
                 return "Invalid Cloudflare DNS domain: \(domain)"
             case .zoneNotFound(let domain):
                 return "Cloudflare zone not found for \(domain)"
+            case .identicalRecordAlreadyExists:
+                return "The required DNS record already exists and will be reused for certificate provisioning."
             case .apiFailed(let message):
                 return message
             }
@@ -39,19 +48,72 @@ struct CloudflareDNSProvider: Sendable {
     }
 
     private struct APIEnvelope<ResultType: Decodable>: Decodable {
-        struct APIError: Decodable {
-            let code: Int?
-            let message: String
-        }
-
         let success: Bool
         let result: ResultType?
         let errors: [APIError]
+
+        private enum CodingKeys: String, CodingKey {
+            case success
+            case result
+            case errors
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            success = try container.decode(Bool.self, forKey: .success)
+            result = try container.decodeIfPresent(ResultType.self, forKey: .result)
+            errors = try container.decodeIfPresent([APIError].self, forKey: .errors) ?? []
+        }
+    }
+
+    private struct CloudflareZoneResponse: Decodable {
+        let success: Bool
+        let result: [Zone]
+        let errors: [APIError]
+
+        private enum CodingKeys: String, CodingKey {
+            case success
+            case result
+            case errors
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            success = try container.decode(Bool.self, forKey: .success)
+            result = try container.decodeIfPresent([Zone].self, forKey: .result) ?? []
+            errors = try container.decodeIfPresent([APIError].self, forKey: .errors) ?? []
+        }
+    }
+
+    private struct CloudflareDNSResponse: Decodable {
+        let success: Bool
+        let result: [CloudflareDNSRecord]
+        let errors: [APIError]
+
+        private enum CodingKeys: String, CodingKey {
+            case success
+            case result
+            case errors
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            success = try container.decode(Bool.self, forKey: .success)
+            result = try container.decodeIfPresent([CloudflareDNSRecord].self, forKey: .result) ?? []
+            errors = try container.decodeIfPresent([APIError].self, forKey: .errors) ?? []
+        }
     }
 
     private struct Zone: Decodable {
         let id: String
         let name: String
+    }
+
+    private struct CloudflareDNSRecord: Decodable {
+        let id: String
+        let type: String
+        let name: String
+        let content: String
     }
 
     private struct DNSRecord: Decodable {
@@ -89,21 +151,50 @@ struct CloudflareDNSProvider: Sendable {
         self.session = session
     }
 
+    func createACMEChallengeRecord(for hostname: String, content: String, ttl: Int = 120) async throws -> TXTRecord {
+        guard let recordName = Self.acmeChallengeRecordName(for: hostname) else {
+            throw Error.invalidDomain(hostname)
+        }
+
+        return try await createTXTRecord(name: recordName, content: content, ttl: ttl)
+    }
+
     func createTXTRecord(name: String, content: String, ttl: Int = 120) async throws -> TXTRecord {
         let zoneID = try await resolveZoneID(for: name)
-        let record = try await createDNSRecord(
-            zoneID: zoneID,
-            type: "TXT",
-            name: name,
-            content: content,
-            ttl: ttl
-        )
+        let record: DNSRecordSummary
+        do {
+            record = try await createDNSRecord(
+                zoneID: zoneID,
+                type: "TXT",
+                name: name,
+                content: content,
+                ttl: ttl
+            )
+        } catch Error.identicalRecordAlreadyExists {
+            guard let existingRecord = try await findDNSRecord(
+                zoneID: zoneID,
+                hostname: name,
+                allowedTypes: ["TXT"],
+                expectedContent: content
+            ) else {
+                throw Error.apiFailed("Cloudflare reports that the DNS challenge record already exists, but SwiftBot could not verify it.")
+            }
+
+            return TXTRecord(
+                zoneID: existingRecord.zoneID,
+                recordID: existingRecord.recordID,
+                name: existingRecord.name,
+                content: existingRecord.content,
+                wasCreated: false
+            )
+        }
 
         return TXTRecord(
             zoneID: record.zoneID,
             recordID: record.recordID,
             name: record.name,
-            content: record.content
+            content: record.content,
+            wasCreated: true
         )
     }
 
@@ -133,6 +224,9 @@ struct CloudflareDNSProvider: Sendable {
 
         let envelope: APIEnvelope<DNSRecord> = try await send(request)
         guard envelope.success, let record = envelope.result else {
+            if Self.hasIdenticalRecordError(envelope.errors) {
+                throw Error.identicalRecordAlreadyExists
+            }
             throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
         }
 
@@ -197,19 +291,49 @@ struct CloudflareDNSProvider: Sendable {
         }
 
         let request = makeRequest(url: url, method: "GET")
-        let envelope: APIEnvelope<[Zone]> = try await send(request)
-        guard envelope.success else {
-            throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
+        let (data, http) = try await sendData(request)
+
+        print("Cloudflare raw response:")
+        print(String(data: data, encoding: .utf8) ?? "nil")
+
+        let response: CloudflareZoneResponse
+        do {
+            response = try decoder.decode(CloudflareZoneResponse.self, from: data)
+        } catch {
+            print("Cloudflare decode error:", error)
+            throw Error.apiFailed("Cloudflare zone lookup failed.")
         }
 
-        guard let zone = envelope.result?.first(where: { $0.name.caseInsensitiveCompare(zoneName) == .orderedSame }) else {
+        print("Cloudflare success:", response.success)
+        print("Zones returned:", response.result.count)
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare request failed with HTTP \(http.statusCode)."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        guard response.success else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare zone lookup failed."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        guard !response.result.isEmpty, let zone = response.result.first else {
             return nil
         }
 
         return ZoneSummary(id: zone.id, name: zone.name)
     }
 
-    func findDNSRecord(zoneID: String, hostname: String, allowedTypes: Set<String>? = nil) async throws -> DNSRecordSummary? {
+    func findDNSRecord(
+        zoneID: String,
+        hostname: String,
+        allowedTypes: Set<String>? = nil,
+        expectedContent: String? = nil
+    ) async throws -> DNSRecordSummary? {
         var components = URLComponents(
             url: baseURL
                 .appendingPathComponent("zones")
@@ -219,7 +343,7 @@ struct CloudflareDNSProvider: Sendable {
         )
         components?.queryItems = [
             URLQueryItem(name: "name", value: hostname),
-            URLQueryItem(name: "per_page", value: "1")
+            URLQueryItem(name: "per_page", value: "100")
         ]
 
         guard let url = components?.url else {
@@ -227,18 +351,45 @@ struct CloudflareDNSProvider: Sendable {
         }
 
         let request = makeRequest(url: url, method: "GET")
-        let envelope: APIEnvelope<[DNSRecord]> = try await send(request)
-        guard envelope.success else {
-            throw Error.apiFailed(envelope.errors.map(\.message).joined(separator: ", "))
+        let (data, http) = try await sendData(request)
+
+        let response: CloudflareDNSResponse
+        do {
+            response = try decoder.decode(CloudflareDNSResponse.self, from: data)
+        } catch {
+            print("Cloudflare DNS decode error:", error)
+            throw Error.apiFailed("Cloudflare DNS lookup failed.")
         }
 
-        let record = envelope.result?.first { record in
+        guard (200..<300).contains(http.statusCode) else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare request failed with HTTP \(http.statusCode)."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        guard response.success else {
+            let message = response.errors.isEmpty
+                ? "Cloudflare DNS lookup failed."
+                : response.errors.map(\.message).joined(separator: ", ")
+            throw Error.apiFailed(message)
+        }
+
+        print("DNS records found:", response.result.count)
+
+        let record = response.result.first { record in
             guard record.name.caseInsensitiveCompare(hostname) == .orderedSame else {
                 return false
             }
 
             if let allowedTypes {
-                return allowedTypes.contains(record.type.uppercased())
+                guard allowedTypes.contains(record.type.uppercased()) else {
+                    return false
+                }
+            }
+
+            if let expectedContent {
+                return record.content == expectedContent
             }
 
             return true
@@ -249,7 +400,7 @@ struct CloudflareDNSProvider: Sendable {
         }
 
         return DNSRecordSummary(
-            zoneID: record.zoneID,
+            zoneID: zoneID,
             recordID: record.id,
             type: record.type,
             name: record.name,
@@ -282,25 +433,45 @@ struct CloudflareDNSProvider: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
         return request
     }
 
     private func send<ResultType: Decodable>(_ request: URLRequest) async throws -> APIEnvelope<ResultType> {
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw Error.apiFailed("Cloudflare returned an invalid response.")
-        }
+        let (data, http) = try await sendData(request)
 
         let envelope = try decoder.decode(APIEnvelope<ResultType>.self, from: data)
         guard (200..<300).contains(http.statusCode) else {
+            if Self.hasIdenticalRecordError(envelope.errors) {
+                throw Error.identicalRecordAlreadyExists
+            }
             let message = envelope.errors.isEmpty
                 ? "Cloudflare request failed with HTTP \(http.statusCode)."
                 : envelope.errors.map(\.message).joined(separator: ", ")
             throw Error.apiFailed(message)
         }
         return envelope
+    }
+
+    private func sendData(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw Error.apiFailed("Cloudflare returned an invalid response.")
+        }
+
+        return (data, http)
+    }
+
+    private static func hasIdenticalRecordError(_ errors: [APIError]) -> Bool {
+        errors.contains { error in
+            if error.code == 81057 {
+                return true
+            }
+
+            return error.message.localizedCaseInsensitiveContains("identical record already exists")
+        }
     }
 
     static func extractRootZone(from hostname: String) -> String? {
@@ -316,6 +487,18 @@ struct CloudflareDNSProvider: Sendable {
         let publicSuffixLabelCount = publicSuffixLabelCount(for: labels)
         let registrableLabelCount = min(labels.count, publicSuffixLabelCount + 1)
         return labels.suffix(registrableLabelCount).joined(separator: ".")
+    }
+
+    static func acmeChallengeRecordName(for hostname: String) -> String? {
+        guard let normalized = normalizeHostname(hostname) else {
+            return nil
+        }
+
+        if normalized.hasPrefix("_acme-challenge.") {
+            return normalized
+        }
+
+        return "_acme-challenge.\(normalized)"
     }
 
     static func normalizeHostname(_ hostname: String) -> String? {

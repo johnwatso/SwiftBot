@@ -6,6 +6,7 @@ import Darwin
 
 actor CertificateManager {
     enum ValidationStatus: String, Sendable {
+        case pending
         case success
         case warning
         case error
@@ -25,11 +26,25 @@ actor CertificateManager {
         let isAwaitingDNSPropagation: Bool
     }
 
+    struct CloudflaredInstallation: Sendable, Equatable {
+        let detectedPath: String?
+
+        var isInstalled: Bool {
+            detectedPath != nil
+        }
+    }
+
+    struct AutomaticHTTPSSetupResult: Sendable {
+        let certificate: StoredCertificate
+        let alreadyConfigured: Bool
+    }
+
     struct DNSRecordCreation: Sendable {
         let type: String
         let name: String
         let content: String
         let zoneName: String
+        let reusedExistingRecord: Bool
     }
 
     private struct AutomaticHTTPSRecordTarget: Sendable {
@@ -62,6 +77,7 @@ actor CertificateManager {
         case missingHTTPSDomain
         case invalidStoredCertificate(String)
         case missingCloudflareToken
+        case missingCloudflaredBinary
         case inactiveCloudflareToken
         case certificateExpired(String)
         case missingImportedCertificateFile
@@ -80,6 +96,8 @@ actor CertificateManager {
                 return message
             case .missingCloudflareToken:
                 return "A Cloudflare API token is required to provision or renew the Admin Web UI certificate."
+            case .missingCloudflaredBinary:
+                return "cloudflared is required to complete HTTPS setup. Install it with: brew install cloudflared"
             case .inactiveCloudflareToken:
                 return "Cloudflare reports that the configured API token is not active."
             case .certificateExpired(let domain):
@@ -114,6 +132,11 @@ actor CertificateManager {
     private let certificatesDirectoryURL: URL
     private let acmeClient: ACMEClient
 
+    static let cloudflaredCandidatePaths = [
+        "/usr/local/bin/cloudflared",
+        "/opt/homebrew/bin/cloudflared"
+    ]
+
     init() {
         let directory = SwiftBotStorage.folderURL().appendingPathComponent("certs", isDirectory: true)
         self.certificatesDirectoryURL = directory
@@ -125,6 +148,14 @@ actor CertificateManager {
         self.importedChainURL = directory.appendingPathComponent("imported-chain.pem")
         self.importedFullChainURL = directory.appendingPathComponent("imported-fullchain.pem")
         self.acmeClient = ACMEClient(storageDirectoryURL: directory)
+    }
+
+    nonisolated static func detectCloudflaredInstallation(fileManager: FileManager = .default) -> CloudflaredInstallation {
+        let detectedPath = cloudflaredCandidatePaths.first { path in
+            fileManager.isExecutableFile(atPath: path)
+        }
+
+        return CloudflaredInstallation(detectedPath: detectedPath)
     }
 
     func validateAutomaticHTTPSConfiguration(
@@ -237,25 +268,25 @@ actor CertificateManager {
         if tokenIsValid, zoneFound, !normalizedDomain.isEmpty {
             let provider = CloudflareDNSProvider(apiToken: trimmedToken)
             do {
-                if let matchedZoneID, let matchedZoneName {
-                    if let record = try await provider.findDNSRecord(
+                if let matchedZoneID {
+                    if try await provider.findDNSRecord(
                         zoneID: matchedZoneID,
                         hostname: normalizedDomain,
                         allowedTypes: Self.hostnameRecordTypes
-                    ) {
+                    ) != nil {
                         dnsRecordFound = true
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
-                            title: "DNS record present",
+                            title: "DNS record verified",
                             status: .success,
-                            detail: "Found \(record.type) \(record.content) for \(normalizedDomain) in \(matchedZoneName)."
+                            detail: "The required DNS record already exists and will be reused for certificate provisioning."
                         )
                     } else {
                         dnsRecordItem = ValidationItem(
                             id: "dns-record-present",
                             title: "DNS record present",
                             status: .warning,
-                            detail: "DNS record missing."
+                            detail: "No Cloudflare DNS record exists for \(normalizedDomain). Create the DNS record before requesting a certificate."
                         )
                     }
                 }
@@ -348,7 +379,7 @@ actor CertificateManager {
             switch error {
             case .zoneNotFound:
                 throw error
-            case .invalidDomain, .apiFailed:
+            case .invalidDomain, .identicalRecordAlreadyExists, .apiFailed:
                 throw CloudflareDNSProvider.Error.apiFailed("Cloudflare zone lookup failed. Check that the domain is in your Cloudflare account.")
             }
         } catch {
@@ -371,7 +402,8 @@ actor CertificateManager {
                 type: existing.type,
                 name: existing.name,
                 content: existing.content,
-                zoneName: zone.name
+                zoneName: zone.name,
+                reusedExistingRecord: true
             )
         }
 
@@ -390,6 +422,21 @@ actor CertificateManager {
                 ttl: 120,
                 proxied: false
             )
+        } catch CloudflareDNSProvider.Error.identicalRecordAlreadyExists {
+            if let existing = try await provider.findDNSRecord(
+                zoneID: zone.id,
+                hostname: normalizedDomain,
+                allowedTypes: Self.hostnameRecordTypes
+            ) {
+                return DNSRecordCreation(
+                    type: existing.type,
+                    name: existing.name,
+                    content: existing.content,
+                    zoneName: zone.name,
+                    reusedExistingRecord: true
+                )
+            }
+            throw CloudflareDNSProvider.Error.apiFailed("Cloudflare reports that the DNS record already exists, but SwiftBot could not verify it.")
         } catch {
             throw CloudflareDNSProvider.Error.apiFailed("Cloudflare DNS record creation failed. Check that the token has DNS edit access.")
         }
@@ -398,8 +445,61 @@ actor CertificateManager {
             type: record.type,
             name: record.name,
             content: record.content,
-            zoneName: zone.name
+            zoneName: zone.name,
+            reusedExistingRecord: false
         )
+    }
+
+    func setupAutomaticHTTPS(
+        for domain: String,
+        cloudflareAPIToken: String,
+        progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void,
+        log: @escaping @MainActor @Sendable (String) -> Void
+    ) async throws -> AutomaticHTTPSSetupResult {
+        let normalizedDomain = normalizeDomain(domain)
+        guard !normalizedDomain.isEmpty else {
+            throw Error.missingHTTPSDomain
+        }
+
+        try ensureCertificatesDirectory()
+
+        if let existing = try loadStoredCertificate(for: normalizedDomain), !shouldRenew(existing.expiresAt) {
+            return AutomaticHTTPSSetupResult(certificate: existing, alreadyConfigured: true)
+        }
+
+        guard let cloudflaredPath = Self.detectCloudflaredInstallation().detectedPath else {
+            throw Error.missingCloudflaredBinary
+        }
+        await log("☁️ Using cloudflared at \(cloudflaredPath)")
+
+        let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw Error.missingCloudflareToken
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: trimmedToken)
+
+        await progress(.verifyingCloudflareAccess)
+        let tokenIsValid = try await provider.verifyAPIToken()
+        guard tokenIsValid else {
+            throw Error.inactiveCloudflareToken
+        }
+        await progress(.cloudflareAccessVerified)
+
+        await progress(.detectingCloudflareZone(domain: normalizedDomain))
+        guard let zone = try await provider.findZone(for: normalizedDomain) else {
+            throw CloudflareDNSProvider.Error.zoneNotFound(normalizedDomain)
+        }
+        await progress(.cloudflareZoneDetected(zone: zone.name))
+
+        let certificate = try await provisionCertificate(
+            for: normalizedDomain,
+            dnsProvider: provider,
+            progress: progress,
+            log: log
+        )
+
+        return AutomaticHTTPSSetupResult(certificate: certificate, alreadyConfigured: false)
     }
 
     func ensureCertificate(
@@ -526,6 +626,20 @@ actor CertificateManager {
         log: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> StoredCertificate {
         let dnsProvider = CloudflareDNSProvider(apiToken: cloudflareAPIToken)
+        return try await provisionCertificate(
+            for: domain,
+            dnsProvider: dnsProvider,
+            progress: { _ in },
+            log: log
+        )
+    }
+
+    private func provisionCertificate(
+        for domain: String,
+        dnsProvider: CloudflareDNSProvider,
+        progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void,
+        log: @escaping @MainActor @Sendable (String) -> Void
+    ) async throws -> StoredCertificate {
         let privateKey = P256.Signing.PrivateKey()
 
         await log("🔏 Provisioning Let's Encrypt certificate for \(domain)")
@@ -533,16 +647,19 @@ actor CertificateManager {
             for: domain,
             certificatePrivateKey: privateKey,
             dnsProvider: dnsProvider,
+            progress: progress,
             log: log
         )
 
         let expiresAt = try leafCertificateExpirationDate(from: issued.certificatePEM)
+        await progress(.storingCertificate)
         try saveCertificateArtifacts(
             certificatePEM: issued.certificatePEM,
             privateKeyPEM: privateKey.pemRepresentation,
             domain: domain,
             expiresAt: expiresAt
         )
+        await progress(.certificateStored(path: certificateURL.path))
 
         await log("💾 Saved Admin Web UI certificate to \(certificateURL.path)")
         return StoredCertificate(
@@ -731,6 +848,8 @@ actor CertificateManager {
             return "Certificate request not ready. DNS propagation is still in progress."
         case .error:
             return "Certificate request not ready."
+        case .pending:
+            return "Checking certificate readiness."
         }
     }
 
