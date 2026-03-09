@@ -117,7 +117,7 @@ actor TunnelManager: TunnelProvider {
 
         if process.isRunning {
             process.terminate()
-            await logger?("🌐 Tunnel stopped")
+            await logger?("Cloudflare tunnel stopped")
         }
 
         self.process = nil
@@ -126,7 +126,7 @@ actor TunnelManager: TunnelProvider {
         await publishStatus(.init(
             state: desiredConfiguration == nil ? .disabled : .enabling,
             publicURL: desiredConfiguration?.publicURL ?? "",
-            detail: desiredConfiguration == nil ? "Public access disabled" : "Restarting Cloudflare Tunnel"
+            detail: desiredConfiguration == nil ? "Public access disabled" : "Cloudflare tunnel starting"
         ))
     }
 
@@ -141,7 +141,7 @@ actor TunnelManager: TunnelProvider {
             await publishStatus(.init(
                 state: .enabling,
                 publicURL: configuration.publicURL,
-                detail: "Starting Cloudflare Tunnel"
+                detail: "Cloudflare tunnel starting"
             ))
 
             let process = Process()
@@ -181,9 +181,9 @@ actor TunnelManager: TunnelProvider {
 
             if nextStartIsRestart {
                 nextStartIsRestart = false
-                await logger?("🌐 Tunnel restarted")
+                await logger?("Cloudflare tunnel restarted")
             } else {
-                await logger?("🌐 Tunnel started")
+                await logger?("Cloudflare tunnel running")
             }
             await publishStatus(.init(
                 state: .enabled,
@@ -196,7 +196,7 @@ actor TunnelManager: TunnelProvider {
                 publicURL: configuration.publicURL,
                 detail: error.localizedDescription
             ))
-            await logger?("⚠️ Tunnel failed to start: \(error.localizedDescription)")
+            await logger?("⚠️ Tunnel failed: \(error.localizedDescription)")
         }
     }
 
@@ -218,11 +218,11 @@ actor TunnelManager: TunnelProvider {
             return
         }
 
-        await logger?("⚠️ Tunnel stopped unexpectedly")
+        await logger?("⚠️ Cloudflare tunnel stopped unexpectedly")
         await publishStatus(.init(
             state: .error,
             publicURL: currentConfiguration.publicURL,
-            detail: "The Cloudflare Tunnel stopped unexpectedly. Restarting…"
+            detail: "Cloudflare tunnel stopped unexpectedly. Restarting…"
         ))
 
         restartTask?.cancel()

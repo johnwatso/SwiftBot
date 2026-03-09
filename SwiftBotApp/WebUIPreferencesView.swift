@@ -186,9 +186,9 @@ struct AdminWebHTTPSConfigurationSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Cloudflare API Token")
                     .font(.subheadline.weight(.medium))
-                SecureField("Token with Zone DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                SecureField("Token with DNS edit + Cloudflare Tunnel edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
                     .textFieldStyle(.roundedBorder)
-                Text("Stored in Keychain and reused for HTTPS validation and Public Access.")
+                Text("Requires Zone DNS: Edit for HTTPS, and Account Cloudflare Tunnel: Edit for Public Access. Stored in Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1060,9 +1060,9 @@ struct AdminWebPublicAccessSection: View {
             ),
             .init(
                 id: "create-tunnel",
-                title: "Create Cloudflare tunnel",
+                title: "Cloudflare tunnel",
                 status: .pending,
-                detail: "Created automatically during setup."
+                detail: "Created or detected automatically during setup."
             ),
             .init(
                 id: "create-dns",
@@ -1132,7 +1132,7 @@ struct AdminWebPublicAccessSection: View {
                         Text("Public access enabled")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.green)
-                        Text("SwiftBot is available at \(publicURLString)")
+                        Text("SwiftBot is available at: \(publicURLString)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -1178,7 +1178,7 @@ struct AdminWebPublicAccessSection: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(isDisablingPublicAccess || publicURLString.isEmpty || !app.adminWebPublicAccessStatus.isEnabled)
 
-                    Button("Copy Public URL") {
+                    Button("Copy URL") {
                         copyPublicAccessURL()
                     }
                     .buttonStyle(.bordered)
@@ -1316,9 +1316,24 @@ struct AdminWebPublicAccessSection: View {
             return "Cloudflare authentication required to create a tunnel."
         case CloudflareDNSProvider.Error.zoneNotFound:
             return "The hostname is not available in the current Cloudflare account yet."
+        case let tunnelError as CloudflareTunnelClient.Error:
+            switch tunnelError {
+            case .apiFailed(let message)
+                where message.localizedCaseInsensitiveContains("auth")
+                    || message.localizedCaseInsensitiveContains("permission")
+                    || message.localizedCaseInsensitiveContains("forbidden")
+                    || message.localizedCaseInsensitiveContains("10000"):
+                return "The Cloudflare API token needs 'Cloudflare Tunnel: Edit' permission. Update your token in the Cloudflare dashboard and try again."
+            default:
+                return userMessage
+            }
         default:
             if userMessage.localizedCaseInsensitiveContains("public hostname") {
                 return "Add a hostname in HTTPS to continue."
+            }
+            if userMessage.localizedCaseInsensitiveContains("authentication error")
+                || userMessage.localizedCaseInsensitiveContains("10000") {
+                return "The Cloudflare API token needs 'Cloudflare Tunnel: Edit' permission. Update your token in the Cloudflare dashboard and try again."
             }
             return userMessage
         }
@@ -1390,6 +1405,8 @@ private struct AdminWebPublicAccessSetupProgress {
             setItem(id: "create-tunnel", status: .warning, detail: "Creating a Cloudflare Tunnel for \(hostname).")
         case .tunnelCreated(let name):
             setItem(id: "create-tunnel", status: .success, detail: "Created tunnel \(name).")
+        case .tunnelDetected(let name):
+            setItem(id: "create-tunnel", title: "Cloudflare tunnel detected", status: .success, detail: "Using existing tunnel \(name).")
         case .creatingTunnelDNSRecord(let hostname):
             setItem(id: "create-dns", status: .warning, detail: "Configuring the DNS route for \(hostname).")
         case .tunnelDNSRecordCreated(let hostname):
@@ -1419,14 +1436,14 @@ private struct AdminWebPublicAccessSetupProgress {
         return Self.orderedStepIDs.first(where: { itemsByID[$0]?.status == .pending })
     }
 
-    private mutating func setItem(id: String, status: CertificateManager.ValidationStatus, detail: String?) {
+    private mutating func setItem(id: String, title: String? = nil, status: CertificateManager.ValidationStatus, detail: String?) {
         guard let existing = itemsByID[id] else {
             return
         }
 
         itemsByID[id] = .init(
             id: existing.id,
-            title: existing.title,
+            title: title ?? existing.title,
             status: status,
             detail: detail
         )

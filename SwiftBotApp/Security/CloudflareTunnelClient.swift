@@ -93,37 +93,77 @@ struct CloudflareTunnelClient: Sendable {
         self.session = session
     }
 
-    func createTunnel(hostname: String, zone: CloudflareDNSProvider.ZoneSummary) async throws -> TunnelSummary {
+    func createTunnel(hostname: String, zone: CloudflareDNSProvider.ZoneSummary) async throws -> (tunnel: TunnelSummary, alreadyExists: Bool) {
         let accountID = try await resolveAccountID(for: zone)
+        let sanitizedName = Self.tunnelName(for: hostname)
+
+        // Check if a tunnel with this name already exists first
+        if let existing = try await findExistingTunnel(name: sanitizedName, accountID: accountID) {
+            let token = try await fetchTunnelTokenIfNeeded(
+                accountID: accountID,
+                tunnelID: existing.id,
+                inlineToken: existing.token
+            )
+            return (TunnelSummary(accountID: accountID, id: existing.id, name: existing.name, token: token), true)
+        }
+
         let requestURL = baseURL
             .appendingPathComponent("accounts")
             .appendingPathComponent(accountID)
             .appendingPathComponent("cfd_tunnel")
 
-        let sanitizedName = Self.tunnelName(for: hostname)
         var request = makeRequest(url: requestURL, method: "POST")
         request.httpBody = try encoder.encode(CreateTunnelRequest(name: sanitizedName, configSrc: "cloudflare"))
 
-        let envelope: APIEnvelope<TunnelResponse> = try await send(request)
-        guard envelope.success, let tunnel = envelope.result else {
-            let message = envelope.errors.isEmpty
-                ? "Cloudflare tunnel creation failed."
-                : envelope.errors.map(\.message).joined(separator: ", ")
+        do {
+            let envelope: APIEnvelope<TunnelResponse> = try await send(request)
+            guard let tunnel = envelope.result else {
+                throw Error.invalidResponse
+            }
+            let token = try await fetchTunnelTokenIfNeeded(
+                accountID: accountID,
+                tunnelID: tunnel.id,
+                inlineToken: tunnel.token
+            )
+            return (TunnelSummary(accountID: accountID, id: tunnel.id, name: tunnel.name, token: token), false)
+        } catch Error.apiFailed(let message) where Self.isTunnelNameConflictMessage(message) {
+            if let existing = try await findExistingTunnel(name: sanitizedName, accountID: accountID) {
+                let token = try await fetchTunnelTokenIfNeeded(
+                    accountID: accountID,
+                    tunnelID: existing.id,
+                    inlineToken: existing.token
+                )
+                return (TunnelSummary(accountID: accountID, id: existing.id, name: existing.name, token: token), true)
+            }
             throw Error.apiFailed(message)
         }
+    }
 
-        let token = try await fetchTunnelTokenIfNeeded(
-            accountID: accountID,
-            tunnelID: tunnel.id,
-            inlineToken: tunnel.token
+    private func findExistingTunnel(name: String, accountID: String) async throws -> TunnelResponse? {
+        var components = URLComponents(
+            url: baseURL
+                .appendingPathComponent("accounts")
+                .appendingPathComponent(accountID)
+                .appendingPathComponent("cfd_tunnel"),
+            resolvingAgainstBaseURL: false
         )
+        components?.queryItems = [
+            URLQueryItem(name: "name", value: name),
+            URLQueryItem(name: "is_deleted", value: "false")
+        ]
+        guard let url = components?.url else { return nil }
 
-        return TunnelSummary(
-            accountID: accountID,
-            id: tunnel.id,
-            name: tunnel.name,
-            token: token
-        )
+        let request = makeRequest(url: url, method: "GET")
+        let envelope: APIEnvelope<[TunnelResponse]> = try await send(request)
+        return envelope.result?.first { $0.name == name }
+    }
+
+    private static func isTunnelNameConflictMessage(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("already have a tunnel")
+            || message.localizedCaseInsensitiveContains("already exist")
+            || message.localizedCaseInsensitiveContains("name is already in use")
+            || message.localizedCaseInsensitiveContains("tunnel name")
+            || message.contains("1001")
     }
 
     func configureTunnel(_ tunnel: TunnelSummary, hostname: String, originURL: String) async throws {

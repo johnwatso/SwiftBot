@@ -60,6 +60,7 @@ enum AdminWebPublicAccessSetupEvent: Sendable, Equatable {
     case cloudflareZoneDetected(zone: String)
     case creatingTunnel(hostname: String)
     case tunnelCreated(name: String)
+    case tunnelDetected(name: String)
     case creatingTunnelDNSRecord(hostname: String)
     case tunnelDNSRecordCreated(hostname: String)
     case storingTunnelCredentials
@@ -2251,6 +2252,7 @@ final class AppModel: ObservableObject {
             }
 
             let publicURL = "https://\(hostname)"
+            logs.append("Public access available at \(publicURL)")
             progress(.publicAccessEnabled(url: publicURL))
             return "Public access enabled"
         }
@@ -2270,7 +2272,7 @@ final class AppModel: ObservableObject {
         guard let zone = try await dnsProvider.findZone(for: hostname) else {
             throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
         }
-        logs.append("Cloudflare zone detected: \(zone.name)")
+        logs.append("Cloudflare zone detected")
         progress(.cloudflareZoneDetected(zone: zone.name))
 
         guard let originURL = adminWebPublicAccessOriginURL() else {
@@ -2278,8 +2280,14 @@ final class AppModel: ObservableObject {
         }
 
         progress(.creatingTunnel(hostname: hostname))
-        let tunnel = try await tunnelClient.createTunnel(hostname: hostname, zone: zone)
-        progress(.tunnelCreated(name: tunnel.name))
+        let (tunnel, alreadyExists) = try await tunnelClient.createTunnel(hostname: hostname, zone: zone)
+        if alreadyExists {
+            logs.append("Cloudflare tunnel detected")
+            logs.append("Using existing tunnel: \(tunnel.name)")
+            progress(.tunnelDetected(name: tunnel.name))
+        } else {
+            progress(.tunnelCreated(name: tunnel.name))
+        }
 
         try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: originURL)
 
@@ -2328,8 +2336,8 @@ final class AppModel: ObservableObject {
         }
 
         let publicURL = "https://\(hostname)"
+        logs.append("Public access available at \(publicURL)")
         progress(.publicAccessEnabled(url: publicURL))
-        logs.append("🌐 Public Access enabled at \(publicURL)")
         return "Public access enabled"
     }
 
@@ -2385,7 +2393,13 @@ final class AppModel: ObservableObject {
         case let error as CloudflareDNSProvider.Error:
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
         case let error as CloudflareTunnelClient.Error:
-            return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+            let message = error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
+            if message.localizedCaseInsensitiveContains("authentication") || 
+               message.localizedCaseInsensitiveContains("access denied") ||
+               message.localizedCaseInsensitiveContains("permission") {
+                return "Cloudflare authentication failed. Ensure your API token has 'Cloudflare Tunnel: Edit' permissions."
+            }
+            return message
         case let error as TunnelManager.Error:
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
         case let error as LocalizedError:

@@ -313,19 +313,15 @@ struct CloudflareDNSProvider: Sendable {
         let request = makeRequest(url: url, method: "GET")
         let (data, http) = try await sendData(request)
 
-        Self.debugLog("Cloudflare raw response:")
-        Self.debugLog(String(data: data, encoding: .utf8) ?? "nil")
-
         let response: CloudflareZoneResponse
         do {
             response = try decoder.decode(CloudflareZoneResponse.self, from: data)
         } catch {
-            Self.debugLog("Cloudflare decode error: \(error)")
+            #if DEBUG
+            print("Cloudflare zone lookup decode error: \(error)")
+            #endif
             throw Error.apiFailed("Cloudflare zone lookup failed.")
         }
-
-        Self.debugLog("Cloudflare success: \(response.success)")
-        Self.debugLog("Zones returned: \(response.result.count)")
 
         guard (200..<300).contains(http.statusCode) else {
             let message = response.errors.isEmpty
@@ -377,7 +373,9 @@ struct CloudflareDNSProvider: Sendable {
         do {
             response = try decoder.decode(CloudflareDNSResponse.self, from: data)
         } catch {
-            Self.debugLog("Cloudflare DNS decode error: \(error)")
+            #if DEBUG
+            print("Cloudflare DNS record lookup decode error: \(error)")
+            #endif
             throw Error.apiFailed("Cloudflare DNS lookup failed.")
         }
 
@@ -394,8 +392,6 @@ struct CloudflareDNSProvider: Sendable {
                 : response.errors.map(\.message).joined(separator: ", ")
             throw Error.apiFailed(message)
         }
-
-        Self.debugLog("DNS records found: \(response.result.count)")
 
         let record = response.result.first { record in
             guard record.name.caseInsensitiveCompare(hostname) == .orderedSame else {
@@ -461,11 +457,6 @@ struct CloudflareDNSProvider: Sendable {
             URLQueryItem(name: "per_page", value: "1")
         ]
         return components?.url
-    }
-
-    private static func debugLog(_ message: @autoclosure () -> String) {
-        guard cloudflareDebugLoggingEnabled else { return }
-        print(message())
     }
 
     private func makeRequest(url: URL, method: String) -> URLRequest {
