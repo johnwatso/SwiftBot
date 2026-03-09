@@ -83,7 +83,6 @@ struct InternetAccessConfigurationSection: View {
     @State private var setupFeedback: InternetAccessFeedback?
     @State private var setupProgress: InternetAccessSetupProgress?
     @State private var lastError: Error? = nil
-    
     // Progressive Setup State (Transients)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
     @State private var isVerifyingToken = false
@@ -197,7 +196,7 @@ struct InternetAccessConfigurationSection: View {
                     if newValue {
                         enable()
                     } else {
-                        disable()
+                        stop()
                     }
                 }
             ))
@@ -211,6 +210,7 @@ struct InternetAccessConfigurationSection: View {
                 HStack(spacing: 8) {
                     SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
                         .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
                             hasVerifiedToken = false
                             availableZones = []
@@ -228,7 +228,7 @@ struct InternetAccessConfigurationSection: View {
                             }
                         }
                         .buttonStyle(.bordered)
-                        .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty)
+                        .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
                     } else {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -332,14 +332,6 @@ struct InternetAccessConfigurationSection: View {
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
                             
-                            Spacer()
-                            
-                            Button("Disable") {
-                                disable()
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.red)
-                            .controlSize(.small)
                         }
                     }
                     .padding(16)
@@ -416,6 +408,20 @@ struct InternetAccessConfigurationSection: View {
                 Label("Cloudflare authentication required.", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
+            }
+
+            if app.settings.adminWebUI.internetAccessEnabled && !isEnabling && !isDisabling {
+                Divider()
+                    .padding(.top, 10)
+
+                Button {
+                    enable()
+                } label: {
+                    Label("Re-run Setup", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Re-run the Internet Access setup pipeline using your existing configuration.")
             }
         }
     }
@@ -509,25 +515,19 @@ struct InternetAccessConfigurationSection: View {
         }
     }
 
-    private func disable() {
+    /// Stops the tunnel at runtime but keeps all configuration intact.
+    private func stop() {
         guard !isDisabling else { return }
 
         isDisabling = true
         setupFeedback = nil
 
         Task { @MainActor in
-            // For now, we still use the old disable method, but we also clear the new flag.
-            await app.disableAdminWebPublicAccess()
-            app.settings.adminWebUI.internetAccessEnabled = false
-            try? await app.store.save(app.settings)
-            
+            await app.stopInternetAccess()
             guard !Task.isCancelled else { return }
 
             setupProgress = nil
-            setupFeedback = InternetAccessFeedback(
-                status: .success,
-                message: "Internet access disabled"
-            )
+            setupFeedback = InternetAccessFeedback(status: .success, message: "Internet Access stopped")
             isDisabling = false
         }
     }
