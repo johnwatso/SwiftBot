@@ -19,12 +19,14 @@ enum SwiftBotStorage {
 
 actor ConfigStore {
     private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
+    private let adminWebCloudflareTokenAccount = "admin-web-cloudflare-token"
     private let openAIAPIKeyAccount = "openai-api-key"
     private let url: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var lastToken: String?
     private var lastOpenAIAPIKey: String?
+    private var lastAdminWebCloudflareToken: String?
 
     init(filename: String = SwiftBotStorage.settingsFileName) {
         let folder = SwiftBotStorage.folderURL()
@@ -64,6 +66,16 @@ actor ConfigStore {
             }
         }
 
+        if let cloudflareToken = KeychainHelper.load(account: adminWebCloudflareTokenAccount) {
+            settings.adminWebUI.cloudflareAPIToken = cloudflareToken
+        } else if !settings.adminWebUI.cloudflareAPIToken.isEmpty {
+            let tokenToMigrate = settings.adminWebUI.cloudflareAPIToken
+            if KeychainHelper.save(tokenToMigrate, account: adminWebCloudflareTokenAccount) {
+                settings.adminWebUI.cloudflareAPIToken = tokenToMigrate
+            }
+        }
+        lastAdminWebCloudflareToken = settings.adminWebUI.cloudflareAPIToken
+
         if let storedKey = KeychainHelper.load(account: openAIAPIKeyAccount) {
             settings.openAIAPIKey = storedKey
         } else if !settings.openAIAPIKey.isEmpty {
@@ -94,6 +106,16 @@ actor ConfigStore {
             KeychainHelper.save(trimmedAdminSecret, account: adminDiscordClientSecretAccount)
         }
 
+        let trimmedCloudflareToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedCloudflareToken != lastAdminWebCloudflareToken {
+            if trimmedCloudflareToken.isEmpty {
+                KeychainHelper.delete(account: adminWebCloudflareTokenAccount)
+            } else {
+                KeychainHelper.save(trimmedCloudflareToken, account: adminWebCloudflareTokenAccount)
+            }
+            lastAdminWebCloudflareToken = trimmedCloudflareToken
+        }
+
         let trimmedOpenAIKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedOpenAIKey != lastOpenAIAPIKey {
             if trimmedOpenAIKey.isEmpty {
@@ -107,6 +129,7 @@ actor ConfigStore {
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordClientSecret = ""
+        settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.openAIAPIKey = ""
         settingsToSave.clusterSharedSecret = ""
         settingsToSave.clusterMode = .standalone

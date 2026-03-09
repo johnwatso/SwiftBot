@@ -34,7 +34,30 @@ struct WebUIPreferencesView: View {
                         .font(.subheadline.weight(.medium))
                     TextField("https://admin.example.com", text: $app.settings.adminWebUI.publicBaseURL)
                         .textFieldStyle(.roundedBorder)
-                    Text("Leave empty to use http://\(app.settings.adminWebUI.bindHost):\(app.settings.adminWebUI.port)")
+                    Text("Leave empty to use the active listener URL automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle("Enable HTTPS (Let's Encrypt)", isOn: $app.settings.adminWebUI.httpsEnabled)
+                    .toggleStyle(.switch)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("HTTPS Domain")
+                        .font(.subheadline.weight(.medium))
+                    TextField("admin.example.com", text: $app.settings.adminWebUI.httpsDomain)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Point this hostname at the machine running SwiftBot. DNS validation uses Cloudflare.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cloudflare API Token")
+                        .font(.subheadline.weight(.medium))
+                    SecureField("Token with Zone DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Stored in Keychain. Used only for the `_acme-challenge` TXT record flow.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -52,6 +52,9 @@ struct GeneralSettingsView: View {
             adminWebHost: app.settings.adminWebUI.bindHost,
             adminWebPort: app.settings.adminWebUI.port,
             adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
+            adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
+            adminWebHTTPSDomain: app.settings.adminWebUI.httpsDomain,
+            adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
             adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
@@ -76,10 +79,15 @@ struct GeneralSettingsView: View {
     }
 
     private var webUISummaryLines: [String] {
-        [
+        var lines = [
             "Admin Web UI \(app.settings.adminWebUI.enabled ? "Enabled" : "Disabled")",
             "Port: \(app.settings.adminWebUI.port)"
         ]
+        if app.settings.adminWebUI.httpsEnabled {
+            let domain = app.settings.adminWebUI.normalizedHTTPSDomain
+            lines.append(domain.isEmpty ? "HTTPS pending configuration" : "HTTPS via \(domain)")
+        }
+        return lines
     }
 
     var body: some View {
@@ -596,7 +604,30 @@ struct GeneralSettingsView: View {
                     .font(.subheadline.weight(.medium))
                 TextField("https://admin.example.com", text: $app.settings.adminWebUI.publicBaseURL)
                     .textFieldStyle(.roundedBorder)
-                Text("Leave empty to use http://\(app.settings.adminWebUI.bindHost):\(app.settings.adminWebUI.port)")
+                Text("Leave empty to use the active listener URL automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle("Enable HTTPS (Let's Encrypt)", isOn: $app.settings.adminWebUI.httpsEnabled)
+                .toggleStyle(.switch)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HTTPS Domain")
+                    .font(.subheadline.weight(.medium))
+                TextField("admin.example.com", text: $app.settings.adminWebUI.httpsDomain)
+                    .textFieldStyle(.roundedBorder)
+                Text("Point this hostname at the machine running SwiftBot. DNS validation uses Cloudflare.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Cloudflare API Token")
+                    .font(.subheadline.weight(.medium))
+                SecureField("Token with Zone DNS edit access", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                    .textFieldStyle(.roundedBorder)
+                Text("Stored in Keychain. Used only for the `_acme-challenge` TXT record flow.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -710,6 +741,9 @@ private struct GeneralSettingsSnapshot: Equatable {
     var adminWebHost = ""
     var adminWebPort = 38888
     var adminWebBaseURL = ""
+    var adminWebHTTPSEnabled = false
+    var adminWebHTTPSDomain = ""
+    var adminWebCloudflareToken = ""
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""
     var adminAllowedUserIDs = ""
