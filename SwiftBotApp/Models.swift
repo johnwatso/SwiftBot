@@ -175,6 +175,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var publicBaseURL: String = ""
     var httpsEnabled: Bool = false
     var certificateMode: AdminWebUICertificateMode = .automatic
+    var internetAccessEnabled: Bool = false
     var hostname: String = ""
     var cloudflareAPIToken: String = ""
     var publicAccessEnabled: Bool = false
@@ -202,6 +203,7 @@ struct AdminWebUISettings: Codable, Hashable {
         case publicAccessHostname
         case cloudflareAPIToken
         case publicAccessEnabled
+        case internetAccessEnabled
         case publicAccessTunnelID
         case publicAccessTunnelName
         case publicAccessTunnelAccountID
@@ -235,7 +237,12 @@ struct AdminWebUISettings: Codable, Hashable {
         hostname = decodedHostname ?? decodedPublicAccessHostname ?? decodedHTTPSDomain ?? ""
         
         cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
-        publicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled) ?? false
+        
+        let decodedInternetAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .internetAccessEnabled)
+        let decodedPublicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled)
+        internetAccessEnabled = decodedInternetAccessEnabled ?? decodedPublicAccessEnabled ?? false
+        
+        publicAccessEnabled = decodedPublicAccessEnabled ?? false
         publicAccessTunnelID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelID) ?? ""
         publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
         publicAccessTunnelAccountID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelAccountID) ?? ""
@@ -262,6 +269,7 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(hostname, forKey: .hostname)
         try container.encode(cloudflareAPIToken, forKey: .cloudflareAPIToken)
         try container.encode(publicAccessEnabled, forKey: .publicAccessEnabled)
+        try container.encode(internetAccessEnabled, forKey: .internetAccessEnabled)
         try container.encode(publicAccessTunnelID, forKey: .publicAccessTunnelID)
         try container.encode(publicAccessTunnelName, forKey: .publicAccessTunnelName)
         try container.encode(publicAccessTunnelAccountID, forKey: .publicAccessTunnelAccountID)

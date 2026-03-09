@@ -68,6 +68,23 @@ enum AdminWebPublicAccessSetupEvent: Sendable, Equatable {
     case publicAccessEnabled(url: String)
 }
 
+enum InternetAccessSetupEvent: Sendable, Equatable {
+    case verifyingCloudflareAccess
+    case cloudflareAccessVerified
+    case detectingCloudflareZone(domain: String)
+    case cloudflareZoneDetected(zone: String)
+    case creatingTunnel(hostname: String)
+    case tunnelCreated(name: String)
+    case tunnelDetected(name: String)
+    case creatingTunnelDNSRecord(hostname: String)
+    case tunnelDNSRecordCreated(hostname: String)
+    case issuingHTTPSCertificate(domain: String)
+    case httpsCertificateIssued(domain: String)
+    case storingCredentials
+    case enablingInternetAccess(url: String)
+    case internetAccessEnabled(url: String)
+}
+
 private enum AdminWebHTTPSProvisioningError: LocalizedError {
     case tlsActivationFailed
 
@@ -2224,39 +2241,30 @@ final class AppModel: ObservableObject {
     }
 
     func startAdminWebPublicAccessSetup(
-        progress: @escaping @MainActor @Sendable (AdminWebPublicAccessSetupEvent) -> Void
+        progress: @escaping @MainActor @Sendable (AdminWebPublicAccessSetupEvent) -> Void,
+        forceReplaceDNS: Bool = false
     ) async throws -> String {
+        logs.append("=== Public Access Setup Started ===")
+        
         let hostname = effectiveAdminWebHostname()
+        logs.append("Hostname: \(hostname)")
         guard !hostname.isEmpty else {
+            logs.append("❌ Missing hostname")
             throw AdminWebPublicAccessError.missingHostname
         }
 
         let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
+            logs.append("❌ Missing Cloudflare API token")
             throw CertificateManager.Error.missingCloudflareToken
         }
+        logs.append("✅ API token present")
 
         settings.adminWebUI.hostname = hostname
         settings.adminWebUI.cloudflareAPIToken = trimmedToken
         settings.adminWebUI.enabled = true
 
-        if settings.adminWebUI.publicAccessEnabled,
-           settings.adminWebUI.hostname == hostname,
-           !settings.adminWebUI.publicAccessTunnelID.isEmpty,
-           !settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            progress(.startingTunnelProcess)
-            await configureAdminWebServer()
-
-            if adminWebPublicAccessStatus.state == .error {
-                throw AdminWebPublicAccessError.tunnelStartupFailed(adminWebPublicAccessStatus.detail)
-            }
-
-            let publicURL = "https://\(hostname)"
-            logs.append("Public access available at \(publicURL)")
-            progress(.publicAccessEnabled(url: publicURL))
-            return "Public access enabled"
-        }
-
+        logs.append("Proceeding to Cloudflare tunnel detection...")
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
 
@@ -2308,30 +2316,21 @@ final class AppModel: ObservableObject {
         progress(.creatingTunnelDNSRecord(hostname: hostname))
         let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
         logs.append("Tunnel target: \(tunnelTarget)")
-        do {
-            logs.append("Creating CNAME record...")
-            _ = try await dnsProvider.createDNSRecord(
-                zoneID: zone.id,
-                type: "CNAME",
-                name: hostname,
-                content: tunnelTarget,
-                ttl: 120,
-                proxied: true
-            )
+
+        let dnsResult = try await dnsProvider.configureTunnelDNSRoute(
+            hostname: hostname,
+            tunnelTarget: tunnelTarget,
+            zoneID: zone.id,
+            force: forceReplaceDNS
+        )
+
+        switch dnsResult {
+        case .created:
             logs.append("DNS route created for \(hostname)")
-        } catch CloudflareDNSProvider.Error.identicalRecordAlreadyExists {
-            logs.append("DNS record already exists, verifying...")
-            guard try await dnsProvider.findDNSRecord(
-                zoneID: zone.id,
-                hostname: hostname,
-                allowedTypes: ["CNAME"],
-                expectedContent: tunnelTarget
-            ) != nil else {
-                throw CloudflareDNSProvider.Error.apiFailed(
-                    "Cloudflare already has a different DNS record for \(hostname). Update that record or choose another hostname."
-                )
-            }
-            logs.append("DNS route already exists for \(hostname)")
+        case .alreadyConfigured:
+            logs.append("DNS route already configured for \(hostname)")
+        case .replaced(let previousType):
+            logs.append("Replaced existing \(previousType) record with Cloudflare Tunnel route for \(hostname)")
         }
         progress(.tunnelDNSRecordCreated(hostname: hostname))
 
@@ -2401,6 +2400,141 @@ final class AppModel: ObservableObject {
         } catch {
             logs.append("❌ Failed saving settings: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Unified Internet Access Setup
+
+    func startInternetAccessSetup(
+        progress: @escaping @MainActor @Sendable (InternetAccessSetupEvent) -> Void,
+        forceReplaceDNS: Bool = false
+    ) async throws -> String {
+        logs.append("=== Internet Access Setup Started ===")
+        
+        let hostname = effectiveAdminWebHostname()
+        logs.append("Hostname: \(hostname)")
+        guard !hostname.isEmpty else {
+            logs.append("❌ Missing hostname")
+            throw AdminWebPublicAccessError.missingHostname
+        }
+
+        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            logs.append("❌ Missing Cloudflare API token")
+            throw CertificateManager.Error.missingCloudflareToken
+        }
+        logs.append("✅ API token present")
+
+        settings.adminWebUI.hostname = hostname
+        settings.adminWebUI.cloudflareAPIToken = trimmedToken
+        settings.adminWebUI.enabled = true
+
+        let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
+        let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
+
+        // Step 1: Verify Cloudflare API
+        progress(.verifyingCloudflareAccess)
+        let tokenIsValid = try await dnsProvider.verifyAPIToken()
+        guard tokenIsValid else {
+            throw CertificateManager.Error.inactiveCloudflareToken
+        }
+        logs.append("Cloudflare API verified")
+        progress(.cloudflareAccessVerified)
+
+        // Step 2: Detect Cloudflare zone
+        progress(.detectingCloudflareZone(domain: hostname))
+        guard let zone = try await dnsProvider.findZone(for: hostname) else {
+            throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
+        }
+        logs.append("Cloudflare zone detected: \(zone.name)")
+        progress(.cloudflareZoneDetected(zone: zone.name))
+
+        // Step 3: Detect or create tunnel
+        progress(.creatingTunnel(hostname: hostname))
+        let (tunnel, alreadyExists) = try await tunnelClient.createTunnel(hostname: hostname, zone: zone)
+        if alreadyExists {
+            logs.append("Cloudflare tunnel detected")
+            logs.append("Using existing tunnel: \(tunnel.name)")
+            progress(.tunnelDetected(name: tunnel.name))
+        } else {
+            logs.append("Created tunnel: \(tunnel.name)")
+            progress(.tunnelCreated(name: tunnel.name))
+        }
+
+        // Configure tunnel ingress
+        logs.append("Configuring tunnel ingress...")
+        do {
+            try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: "http://localhost:\(settings.adminWebUI.port)")
+            logs.append("Tunnel ingress configured")
+        } catch let tunnelError as CloudflareTunnelClient.Error {
+            logs.append("Tunnel configuration error: \(tunnelError.localizedDescription)")
+            if alreadyExists && isTunnelConfigurationAuthError(tunnelError) {
+                logs.append("⚠️ Tunnel configuration skipped (existing tunnel may already be configured)")
+            } else {
+                throw tunnelError
+            }
+        }
+
+        // Step 4: Configure DNS route
+        progress(.creatingTunnelDNSRecord(hostname: hostname))
+        let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
+        logs.append("Tunnel target: \(tunnelTarget)")
+
+        let dnsResult = try await dnsProvider.configureTunnelDNSRoute(
+            hostname: hostname,
+            tunnelTarget: tunnelTarget,
+            zoneID: zone.id,
+            force: forceReplaceDNS
+        )
+
+        switch dnsResult {
+        case .created:
+            logs.append("DNS route created for \(hostname)")
+        case .alreadyConfigured:
+            logs.append("DNS route already configured for \(hostname)")
+        case .replaced(let previousType):
+            logs.append("Replaced existing \(previousType) record with Cloudflare Tunnel route for \(hostname)")
+        }
+        progress(.tunnelDNSRecordCreated(hostname: hostname))
+
+        // Step 5: Issue HTTPS certificate
+        progress(.issuingHTTPSCertificate(domain: hostname))
+        let logStore = logs
+        _ = try await certificateManager.setupAutomaticHTTPS(
+            for: hostname,
+            cloudflareAPIToken: trimmedToken,
+            progress: { _ in }
+        ) { message in
+            logStore.append(message)
+        }
+        logs.append("HTTPS certificate issued for \(hostname)")
+        progress(.httpsCertificateIssued(domain: hostname))
+
+        // Step 6: Enable Internet Access
+        progress(.storingCredentials)
+        settings.adminWebUI.internetAccessEnabled = true
+        settings.adminWebUI.httpsEnabled = true
+        settings.adminWebUI.certificateMode = .automatic
+        settings.adminWebUI.publicAccessEnabled = true
+        settings.adminWebUI.publicAccessTunnelID = tunnel.id
+        settings.adminWebUI.publicAccessTunnelName = tunnel.name
+        settings.adminWebUI.publicAccessTunnelAccountID = tunnel.accountID
+        settings.adminWebUI.publicAccessTunnelToken = tunnel.token
+
+        try await store.save(settings)
+        try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+        logs.append("✅ Settings saved")
+
+        progress(.enablingInternetAccess(url: "https://\(hostname)"))
+        await configureAdminWebServer()
+
+        if adminWebPublicAccessStatus.state == .error {
+            throw AdminWebPublicAccessError.tunnelStartupFailed(adminWebPublicAccessStatus.detail)
+        }
+
+        let publicURL = "https://\(hostname)"
+        logs.append("Internet Access enabled at \(publicURL)")
+        progress(.internetAccessEnabled(url: publicURL))
+        return "Internet Access enabled"
     }
 
     private func isTunnelConfigurationAuthError(_ error: CloudflareTunnelClient.Error) -> Bool {
