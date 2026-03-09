@@ -60,11 +60,11 @@ actor ConfigStore {
         }
 
         if let adminSecret = KeychainHelper.load(account: adminDiscordClientSecretAccount) {
-            settings.adminWebUI.discordClientSecret = adminSecret
-        } else if !settings.adminWebUI.discordClientSecret.isEmpty {
-            let secretToMigrate = settings.adminWebUI.discordClientSecret
+            settings.adminWebUI.discordOAuth.clientSecret = adminSecret
+        } else if !settings.adminWebUI.discordOAuth.clientSecret.isEmpty {
+            let secretToMigrate = settings.adminWebUI.discordOAuth.clientSecret
             if KeychainHelper.save(secretToMigrate, account: adminDiscordClientSecretAccount) {
-                settings.adminWebUI.discordClientSecret = secretToMigrate
+                settings.adminWebUI.discordOAuth.clientSecret = secretToMigrate
             }
         }
 
@@ -150,7 +150,7 @@ actor ConfigStore {
 
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
-        settingsToSave.adminWebUI.discordClientSecret = ""
+        settingsToSave.adminWebUI.discordOAuth.clientSecret = ""
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
         settingsToSave.openAIAPIKey = ""

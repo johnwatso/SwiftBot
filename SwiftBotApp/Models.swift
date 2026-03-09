@@ -168,6 +168,12 @@ enum AdminWebUICertificateMode: String, Codable, Hashable, CaseIterable, Identif
     }
 }
 
+struct OAuthProviderSettings: Codable, Hashable {
+    var enabled: Bool = false
+    var clientID: String = ""
+    var clientSecret: String = ""
+}
+
 struct AdminWebUISettings: Codable, Hashable {
     // Internal constants (not user-configurable)
     static let defaultBindHost = "127.0.0.1"
@@ -192,8 +198,16 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedCertificateFile: String = ""
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
-    var discordClientID: String = ""
-    var discordClientSecret: String = ""
+    
+    // OAuth Providers (Discord is active, others are placeholders)
+    var discordOAuth = OAuthProviderSettings(enabled: true)
+    var appleOAuth = OAuthProviderSettings()
+    var steamOAuth = OAuthProviderSettings()
+    var githubOAuth = OAuthProviderSettings()
+    
+    // Legacy compatibility - migrated to oauth providers
+    var discordClientID: String { discordOAuth.clientID }
+    var discordClientSecret: String { discordOAuth.clientSecret }
     var redirectPath: String = "/auth/discord/callback"
     var restrictAccessToSpecificUsers: Bool = false
     var allowedUserIDs: [String] = []
@@ -207,8 +221,10 @@ struct AdminWebUISettings: Codable, Hashable {
         case publicAccessTunnelName
         case publicAccessTunnelAccountID
         case publicAccessTunnelToken
-        case discordClientID
-        case discordClientSecret
+        case discordOAuth
+        case appleOAuth
+        case steamOAuth
+        case githubOAuth
         case redirectPath
         case restrictAccessToSpecificUsers
         case allowedUserIDs
@@ -221,9 +237,13 @@ struct AdminWebUISettings: Codable, Hashable {
         case importedCertificateFile
         case importedPrivateKeyFile
         case importedCertificateChainFile
+        case discordClientID
+        case discordClientSecret
     }
 
-    init() {}
+    init() {
+        self.discordOAuth.enabled = true
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -245,8 +265,18 @@ struct AdminWebUISettings: Codable, Hashable {
         publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
         publicAccessTunnelAccountID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelAccountID) ?? ""
         publicAccessTunnelToken = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelToken) ?? ""
-        discordClientID = try container.decodeIfPresent(String.self, forKey: .discordClientID) ?? ""
-        discordClientSecret = try container.decodeIfPresent(String.self, forKey: .discordClientSecret) ?? ""
+        
+        // OAuth Providers - decode or migrate from legacy fields
+        discordOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .discordOAuth)
+            ?? OAuthProviderSettings(
+                enabled: (try? container.decodeIfPresent(String.self, forKey: .discordClientID))?.isEmpty == false,
+                clientID: try container.decodeIfPresent(String.self, forKey: .discordClientID) ?? "",
+                clientSecret: try container.decodeIfPresent(String.self, forKey: .discordClientSecret) ?? ""
+            )
+        appleOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .appleOAuth) ?? OAuthProviderSettings()
+        steamOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .steamOAuth) ?? OAuthProviderSettings()
+        githubOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .githubOAuth) ?? OAuthProviderSettings()
+        
         redirectPath = try container.decodeIfPresent(String.self, forKey: .redirectPath) ?? "/auth/discord/callback"
         allowedUserIDs = try container.decodeIfPresent([String].self, forKey: .allowedUserIDs) ?? []
         restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
@@ -267,8 +297,10 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(importedCertificateFile, forKey: .importedCertificateFile)
         try container.encode(importedPrivateKeyFile, forKey: .importedPrivateKeyFile)
         try container.encode(importedCertificateChainFile, forKey: .importedCertificateChainFile)
-        try container.encode(discordClientID, forKey: .discordClientID)
-        try container.encode(discordClientSecret, forKey: .discordClientSecret)
+        try container.encode(discordOAuth, forKey: .discordOAuth)
+        try container.encode(appleOAuth, forKey: .appleOAuth)
+        try container.encode(steamOAuth, forKey: .steamOAuth)
+        try container.encode(githubOAuth, forKey: .githubOAuth)
         try container.encode(redirectPath, forKey: .redirectPath)
         try container.encode(restrictAccessToSpecificUsers, forKey: .restrictAccessToSpecificUsers)
         try container.encode(allowedUserIDs, forKey: .allowedUserIDs)

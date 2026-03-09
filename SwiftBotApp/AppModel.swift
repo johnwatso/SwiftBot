@@ -451,8 +451,8 @@ final class AppModel: ObservableObject {
         }
         settings.wikiBot.normalizeSources()
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
-        settings.adminWebUI.discordClientID = settings.adminWebUI.discordClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.discordClientSecret = settings.adminWebUI.discordClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.discordOAuth.clientID = settings.adminWebUI.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.discordOAuth.clientSecret = settings.adminWebUI.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
@@ -1850,8 +1850,7 @@ final class AppModel: ObservableObject {
             port: settings.adminWebUI.port,
             publicBaseURL: settings.adminWebUI.publicBaseURL,
             https: httpsConfiguration,
-            discordClientID: settings.adminWebUI.discordClientID,
-            discordClientSecret: settings.adminWebUI.discordClientSecret,
+            discordOAuth: settings.adminWebUI.discordOAuth,
             redirectPath: settings.adminWebUI.redirectPath,
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
