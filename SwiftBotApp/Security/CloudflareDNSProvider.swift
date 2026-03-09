@@ -1,6 +1,14 @@
 import Foundation
 
 struct CloudflareDNSProvider: Sendable {
+    private static let cloudflareDebugLoggingEnabled: Bool = {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }()
+
     private struct APIError: Decodable {
         let code: Int?
         let message: String
@@ -305,19 +313,19 @@ struct CloudflareDNSProvider: Sendable {
         let request = makeRequest(url: url, method: "GET")
         let (data, http) = try await sendData(request)
 
-        print("Cloudflare raw response:")
-        print(String(data: data, encoding: .utf8) ?? "nil")
+        Self.debugLog("Cloudflare raw response:")
+        Self.debugLog(String(data: data, encoding: .utf8) ?? "nil")
 
         let response: CloudflareZoneResponse
         do {
             response = try decoder.decode(CloudflareZoneResponse.self, from: data)
         } catch {
-            print("Cloudflare decode error:", error)
+            Self.debugLog("Cloudflare decode error: \(error)")
             throw Error.apiFailed("Cloudflare zone lookup failed.")
         }
 
-        print("Cloudflare success:", response.success)
-        print("Zones returned:", response.result.count)
+        Self.debugLog("Cloudflare success: \(response.success)")
+        Self.debugLog("Zones returned: \(response.result.count)")
 
         guard (200..<300).contains(http.statusCode) else {
             let message = response.errors.isEmpty
@@ -369,7 +377,7 @@ struct CloudflareDNSProvider: Sendable {
         do {
             response = try decoder.decode(CloudflareDNSResponse.self, from: data)
         } catch {
-            print("Cloudflare DNS decode error:", error)
+            Self.debugLog("Cloudflare DNS decode error: \(error)")
             throw Error.apiFailed("Cloudflare DNS lookup failed.")
         }
 
@@ -387,7 +395,7 @@ struct CloudflareDNSProvider: Sendable {
             throw Error.apiFailed(message)
         }
 
-        print("DNS records found:", response.result.count)
+        Self.debugLog("DNS records found: \(response.result.count)")
 
         let record = response.result.first { record in
             guard record.name.caseInsensitiveCompare(hostname) == .orderedSame else {
@@ -453,6 +461,11 @@ struct CloudflareDNSProvider: Sendable {
             URLQueryItem(name: "per_page", value: "1")
         ]
         return components?.url
+    }
+
+    private static func debugLog(_ message: @autoclosure () -> String) {
+        guard cloudflareDebugLoggingEnabled else { return }
+        print(message())
     }
 
     private func makeRequest(url: URL, method: String) -> URLRequest {

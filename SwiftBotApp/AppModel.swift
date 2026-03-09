@@ -163,7 +163,7 @@ final class AppModel: ObservableObject {
     let cluster = ClusterCoordinator()
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
-    let publicAccessManager = PublicAccessManager()
+    let tunnelProvider: any TunnelProvider = TunnelManager.shared
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
@@ -2384,7 +2384,7 @@ final class AppModel: ObservableObject {
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
         case let error as CloudflareTunnelClient.Error:
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
-        case let error as PublicAccessManager.Error:
+        case let error as TunnelManager.Error:
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
         case let error as LocalizedError:
             let message = error.errorDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -2405,7 +2405,7 @@ final class AppModel: ObservableObject {
         guard settings.adminWebUI.enabled,
               settings.adminWebUI.publicAccessEnabled
         else {
-            await publicAccessManager.configure(nil, logger: logger, statusHandler: statusHandler)
+            await tunnelProvider.configure(nil, logger: logger, statusHandler: statusHandler)
             return
         }
 
@@ -2415,7 +2415,7 @@ final class AppModel: ObservableObject {
 
         guard !hostname.isEmpty, !tunnelToken.isEmpty, !tunnelID.isEmpty,
               let originURL = adminWebPublicAccessOriginURL() else {
-            await publicAccessManager.configure(nil, logger: logger, statusHandler: statusHandler)
+            await tunnelProvider.configure(nil, logger: logger, statusHandler: statusHandler)
             adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus(
                 state: .error,
                 publicURL: hostname.isEmpty ? "" : "https://\(hostname)",
@@ -2424,7 +2424,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        await publicAccessManager.configure(
+        await tunnelProvider.configure(
             .init(
                 hostname: hostname,
                 publicURL: "https://\(hostname)",

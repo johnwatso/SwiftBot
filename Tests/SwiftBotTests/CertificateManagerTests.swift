@@ -646,8 +646,10 @@ final class CertificateManagerTests: XCTestCase {
 
         let bundle = try XCTUnwrap(Bundle(path: bundleURL.path))
         let installation = CertificateManager.detectCloudflaredInstallation(bundle: bundle, fileManager: fileManager)
+        let resolvedBinaryURL = try TunnelManager.resolveCloudflaredBinaryURL(bundle: bundle, fileManager: fileManager)
 
         XCTAssertEqual(installation.detectedPath, binaryURL.path)
+        XCTAssertEqual(resolvedBinaryURL.path, binaryURL.path)
     }
 
     func testCloudflareTunnelClientCreatesTunnelWithAccountFallbackAndConfiguresIngress() async throws {
