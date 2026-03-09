@@ -605,19 +605,11 @@ struct GeneralSettingsView: View {
             }
 
             adminWebSettingsCard(
-                title: "HTTPS",
-                symbol: "lock.shield",
-                subtitle: "Protect the Web UI with TLS certificates managed automatically or imported from an existing PEM."
-            ) {
-                AdminWebHTTPSConfigurationSection()
-            }
-
-            adminWebSettingsCard(
-                title: "Public Access",
+                title: "Internet Access",
                 symbol: "network",
-                subtitle: "Expose SwiftBot securely over the internet without opening router ports."
+                subtitle: "Expose SwiftBot securely over the internet with automatic HTTPS and Cloudflare Tunneling."
             ) {
-                AdminWebPublicAccessSection()
+                InternetAccessConfigurationSection()
             }
 
             adminWebSettingsCard(

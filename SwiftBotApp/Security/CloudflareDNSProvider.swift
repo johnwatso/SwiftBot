@@ -442,6 +442,65 @@ struct CloudflareDNSProvider: Sendable {
         }
     }
 
+    enum TunnelDNSRouteResult: Sendable {
+        case created
+        case alreadyConfigured
+        case replaced(previousType: String)
+    }
+
+    enum TunnelDNSConflict: LocalizedError, Sendable {
+        case existingCNAMEToOtherTarget(current: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .existingCNAMEToOtherTarget(let current):
+                return "This hostname already points to \(current). Override to replace it with the Cloudflare Tunnel route."
+            }
+        }
+    }
+
+    /// Ensures a CNAME record `hostname → tunnelTarget` exists in `zoneID`.
+    /// - Skips if the correct CNAME already exists (Case 1).
+    /// - Deletes and replaces A/AAAA records automatically (Case 2).
+    /// - If `force` is false, throws `TunnelDNSConflict` for a CNAME to a different target (Case 3).
+    /// - If `force` is true, replaces the conflicting CNAME without prompting (Case 3 override).
+    func configureTunnelDNSRoute(
+        hostname: String,
+        tunnelTarget: String,
+        zoneID: String,
+        force: Bool = false
+    ) async throws -> TunnelDNSRouteResult {
+        let existing = try await findDNSRecord(zoneID: zoneID, hostname: hostname)
+
+        if let existing {
+            let type = existing.type.uppercased()
+
+            if type == "CNAME" {
+                if existing.content.caseInsensitiveCompare(tunnelTarget) == .orderedSame {
+                    // Case 1: already correct
+                    return .alreadyConfigured
+                } else if !force {
+                    // Case 3: CNAME to different target — prompt user unless forced
+                    throw TunnelDNSConflict.existingCNAMEToOtherTarget(current: existing.content)
+                }
+            }
+
+            // Case 2 / forced Case 3: delete and replace
+            try await deleteDNSRecord(existing)
+        }
+
+        _ = try await createDNSRecord(
+            zoneID: zoneID,
+            type: "CNAME",
+            name: hostname,
+            content: tunnelTarget,
+            ttl: 1,
+            proxied: true
+        )
+
+        return existing != nil ? .replaced(previousType: existing!.type) : .created
+    }
+
     func resolveZoneID(for fqdn: String) async throws -> String {
         if let zone = try await findZone(for: fqdn) {
             return zone.id
