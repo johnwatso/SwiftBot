@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>SwiftBot</title>
+        <item>
+            <title>1.8.28</title>
+            <pubDate>Mon, 09 Mar 2026 13:42:08 +1300</pubDate>
+            <sparkle:version>1828000</sparkle:version>
+            <sparkle:shortVersionString>1.8.28</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.8.28-beta/SwiftBot-1.8.28-beta.zip" length="12251056" type="application/octet-stream" sparkle:edSignature="PbNgU/xfroBhRKplz7J2/xwJC37/ZldPml0B2DqeJBbO9iuKQ4uJHeU3oWO74Qj3xAkwNQmpj+2V/IcHP6fIDg=="/>
+        </item>
+    </channel>
+</rss>
