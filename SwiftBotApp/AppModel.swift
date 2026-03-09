@@ -2289,11 +2289,27 @@ final class AppModel: ObservableObject {
             progress(.tunnelCreated(name: tunnel.name))
         }
 
-        try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: originURL)
+        logs.append("Configuring tunnel ingress...")
+        do {
+            try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: originURL)
+            logs.append("Tunnel ingress configured")
+        } catch let tunnelError as CloudflareTunnelClient.Error {
+            logs.append("Tunnel configuration error: \(tunnelError.localizedDescription)")
+            if alreadyExists && isTunnelConfigurationAuthError(tunnelError) {
+                logs.append("⚠️ Tunnel configuration skipped (existing tunnel may already be configured)")
+            } else {
+                throw tunnelError
+            }
+        }
 
+        logs.append("Configuring Cloudflare DNS route...")
+        logs.append("Tunnel: \(tunnel.name)")
+        logs.append("Hostname: \(hostname)")
         progress(.creatingTunnelDNSRecord(hostname: hostname))
         let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
+        logs.append("Tunnel target: \(tunnelTarget)")
         do {
+            logs.append("Creating CNAME record...")
             _ = try await dnsProvider.createDNSRecord(
                 zoneID: zone.id,
                 type: "CNAME",
@@ -2302,7 +2318,9 @@ final class AppModel: ObservableObject {
                 ttl: 120,
                 proxied: true
             )
+            logs.append("DNS route created for \(hostname)")
         } catch CloudflareDNSProvider.Error.identicalRecordAlreadyExists {
+            logs.append("DNS record already exists, verifying...")
             guard try await dnsProvider.findDNSRecord(
                 zoneID: zone.id,
                 hostname: hostname,
@@ -2313,6 +2331,7 @@ final class AppModel: ObservableObject {
                     "Cloudflare already has a different DNS record for \(hostname). Update that record or choose another hostname."
                 )
             }
+            logs.append("DNS route already exists for \(hostname)")
         }
         progress(.tunnelDNSRecordCreated(hostname: hostname))
 
@@ -2382,6 +2401,14 @@ final class AppModel: ObservableObject {
         } catch {
             logs.append("❌ Failed saving settings: \(error.localizedDescription)")
         }
+    }
+
+    private func isTunnelConfigurationAuthError(_ error: CloudflareTunnelClient.Error) -> Bool {
+        guard case .apiFailed(let message) = error else { return false }
+        return message.localizedCaseInsensitiveContains("auth")
+            || message.localizedCaseInsensitiveContains("permission")
+            || message.localizedCaseInsensitiveContains("forbidden")
+            || message.localizedCaseInsensitiveContains("10000")
     }
 
     func userFacingAdminWebPublicAccessMessage(for error: Error) -> String {
