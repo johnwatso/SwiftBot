@@ -143,6 +143,8 @@ final class AppModel: ObservableObject {
     @Published var workerConnectionTestStatus: String = "Not tested"
     @Published var workerConnectionTestIsSuccess = false
     @Published var workerConnectionTestInProgress = false
+    @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome? = nil
+    @Published var lastClusterStatusRefreshAt: Date? = nil
     @Published var appleIntelligenceOnline = false
     @Published var ollamaOnline = false
     @Published var openAIOnline = false
@@ -400,6 +402,7 @@ final class AppModel: ObservableObject {
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
+                leaderPort: settings.clusterLeaderPort,
                 listenPort: settings.clusterListenPort,
                 sharedSecret: settings.clusterSharedSecret,
                 leaderTerm: settings.clusterLeaderTerm
@@ -480,6 +483,7 @@ final class AppModel: ObservableObject {
                 mode: settings.clusterMode,
                 nodeName: settings.clusterNodeName,
                 leaderAddress: settings.clusterLeaderAddress,
+                leaderPort: settings.clusterLeaderPort,
                 listenPort: settings.clusterListenPort,
                 sharedSecret: settings.clusterSharedSecret
             )
@@ -970,6 +974,7 @@ final class AppModel: ObservableObject {
             mode: settings.clusterMode,
             nodeName: settings.clusterNodeName,
             leaderAddress: settings.clusterLeaderAddress,
+            leaderPort: settings.clusterLeaderPort,
             listenPort: settings.clusterListenPort,
             sharedSecret: settings.clusterSharedSecret,
             leaderTerm: settings.clusterLeaderTerm
@@ -1844,13 +1849,35 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    /// Returns the base URL that OAuth redirect URIs must be built from.
+    ///
+    /// Priority:
+    /// 1. Explicit `publicBaseURL` override (user-configured) — always wins.
+    /// 2. Internet Access enabled + hostname configured → `https://<hostname>` (Cloudflare tunnel path).
+    /// 3. Dev mode (Internet Access off) → `http://localhost:<port>` — uses `localhost` rather
+    ///    than the bind address (127.0.0.1) so redirect URIs match Discord developer portal
+    ///    registrations, which typically list localhost not the loopback IP.
+    private func oauthPublicBaseURL() -> String {
+        let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+
+        let hostname = settings.adminWebUI.normalizedHostname
+        if settings.adminWebUI.internetAccessEnabled, !hostname.isEmpty {
+            return "https://\(hostname)"
+        }
+
+        // Dev mode: always use localhost (not bindHost / 127.0.0.1) so the redirect URI
+        // matches standard Discord developer portal registrations.
+        return "http://localhost:\(settings.adminWebUI.port)"
+    }
+
     func configureAdminWebServer() async {
         let httpsConfiguration = await resolveAdminWebHTTPSConfiguration()
         let config = AdminWebServer.Configuration(
             enabled: settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
-            publicBaseURL: settings.adminWebUI.publicBaseURL,
+            publicBaseURL: oauthPublicBaseURL(),
             https: httpsConfiguration,
             discordOAuth: settings.adminWebUI.discordOAuth,
             redirectPath: settings.adminWebUI.redirectPath,
@@ -2764,30 +2791,46 @@ final class AppModel: ObservableObject {
     }
 
     func refreshClusterStatus() {
+        print("[DEBUG] AppModel.refreshClusterStatus() called")
         Task {
+            print("[DEBUG] AppModel.refreshClusterStatus() Task started")
             await pollClusterStatus()
             let snapshot = await cluster.currentSnapshot()
             await MainActor.run {
+                print("[DEBUG] AppModel.refreshClusterStatus() UI update")
                 self.clusterSnapshot = snapshot
+                self.lastClusterStatusRefreshAt = Date()
                 self.logSwiftMeshStatus(snapshot, context: "Refresh")
             }
         }
     }
 
-    func testWorkerLeaderConnection() {
+    func testWorkerLeaderConnection(leaderAddress: String? = nil, leaderPort: Int? = nil) {
+        let address = leaderAddress ?? settings.clusterLeaderAddress
+        let port = leaderPort ?? settings.clusterLeaderPort
+
+        print("[DEBUG] AppModel.testWorkerLeaderConnection() called with address=\(address), port=\(port)")
         Task {
+            print("[DEBUG] AppModel.testWorkerLeaderConnection() Task started")
             await MainActor.run {
                 self.workerConnectionTestInProgress = true
                 self.workerConnectionTestIsSuccess = false
                 self.workerConnectionTestStatus = "Testing connection..."
+                self.workerConnectionTestOutcome = nil
             }
 
-            let outcome = await performWorkerConnectionTest(leaderAddress: settings.clusterLeaderAddress)
+            let outcome = await performWorkerConnectionTest(
+                leaderAddress: address,
+                leaderPort: port
+            )
+            print("[DEBUG] AppModel.testWorkerLeaderConnection() outcome: \(outcome.isSuccess)")
 
             await MainActor.run {
                 self.workerConnectionTestInProgress = false
                 self.workerConnectionTestIsSuccess = outcome.isSuccess
                 self.workerConnectionTestStatus = outcome.message
+                self.workerConnectionTestOutcome = outcome
+                self.lastClusterStatusRefreshAt = Date()
                 self.logs.append("SwiftMesh worker connection test: \(outcome.message)")
             }
         }
@@ -2944,15 +2987,29 @@ final class AppModel: ObservableObject {
         await refreshAIStatus()
     }
 
-    func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String) async {
+    func applyClusterSettingsRuntime(mode: ClusterMode, nodeName: String, leaderAddress: String, leaderPort: Int, listenPort: Int, sharedSecret: String) async {
+        // Phase 5 Safety Guard: Prevent invalid mesh ports from being used.
+        guard listenPort > 0 && listenPort <= 65535 else {
+            logs.append("❌ [SwiftMesh] Invalid port '\(listenPort)' — aborting mesh connection.")
+            return
+        }
+
         await cluster.applySettings(
             mode: mode,
             nodeName: nodeName,
             leaderAddress: leaderAddress,
+            leaderPort: leaderPort,
             listenPort: listenPort,
             sharedSecret: sharedSecret,
             leaderTerm: settings.clusterLeaderTerm
         )
+
+        // Phase 4: Configuration Consistency - log final mesh endpoint
+        if mode != .standalone {
+            let host = ProcessInfo.processInfo.hostName
+            logs.append("SwiftMesh listening on \(host):\(listenPort)")
+        }
+
         await cluster.setOffloadPolicy(
             aiReplies: settings.clusterOffloadAIReplies,
             wikiLookups: settings.clusterOffloadWikiLookups
@@ -3022,7 +3079,7 @@ final class AppModel: ObservableObject {
     }
 
     private func fetchRemoteLeaderNodesIfAvailable() async -> [ClusterNodeStatus]? {
-        guard let baseURL = normalizedSwiftMeshBaseURL(from: settings.clusterLeaderAddress),
+        guard let baseURL = normalizedSwiftMeshBaseURL(from: settings.clusterLeaderAddress, defaultPort: settings.clusterLeaderPort),
               let statusURL = URL(string: baseURL.absoluteString + "/cluster/status"),
               let host = baseURL.host else {
             return nil
@@ -3705,6 +3762,8 @@ final class MemoryViewModel: ObservableObject {
 struct WorkerConnectionTestOutcome {
     let message: String
     let isSuccess: Bool
+    var latencyMs: Double? = nil
+    var nodeName: String? = nil
 }
 
 enum WorkerReachabilityResult {
@@ -3742,7 +3801,6 @@ actor ClusterStatusPollingService {
 
     func fetchPing(from endpoint: URL, headers: [String: String] = [:]) async -> (response: SwiftMeshPingResponse, latencyMs: Double)? {
         do {
-            let startedAt = Date()
             var request = URLRequest(url: endpoint)
             request.httpMethod = "GET"
             request.timeoutInterval = 3
@@ -3750,14 +3808,16 @@ actor ClusterStatusPollingService {
                 request.setValue(value, forHTTPHeaderField: header)
             }
 
+            let startedAt = Date()
             let (data, response) = try await URLSession.shared.data(for: request)
+            let latencyMs = max(0, Date().timeIntervalSince(startedAt) * 1000)
+
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 return nil
             }
 
             let payload = try decoder.decode(SwiftMeshPingResponse.self, from: data)
-            let latencyMs = max(0, Date().timeIntervalSince(startedAt) * 1000)
             return (payload, latencyMs)
         } catch {
             return nil

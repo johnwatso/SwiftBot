@@ -2748,11 +2748,11 @@ extension AppModel {
         )
     }
 
-    func performWorkerConnectionTest(leaderAddress rawValue: String) async -> WorkerConnectionTestOutcome {
-        guard let baseURL = normalizedSwiftMeshBaseURL(from: rawValue),
+    func performWorkerConnectionTest(leaderAddress rawValue: String, leaderPort: Int? = nil) async -> WorkerConnectionTestOutcome {
+        guard let baseURL = normalizedSwiftMeshBaseURL(from: rawValue, defaultPort: leaderPort),
               let host = baseURL.host else {
             return WorkerConnectionTestOutcome(
-                message: "Invalid URL. Use `host:port` or `http(s)://host[:port]`. Input: \"\(rawValue.trimmingCharacters(in: .whitespacesAndNewlines))\"",
+                message: "Invalid URL. Use `host` + `port` or `http(s)://host[:port]`. Input: \"\(rawValue.trimmingCharacters(in: .whitespacesAndNewlines))\" (Port: \(leaderPort?.description ?? "-"))",
                 isSuccess: false
             )
         }
@@ -2763,7 +2763,7 @@ extension AppModel {
         case .hostUnreachable(let reason):
             return WorkerConnectionTestOutcome(
                 message: """
-                Step 1/3 Resolve+Reachability: FAILED
+                Resolve + Reachability ✗
                 Target: \(endpoint)
                 Reason: \(reason)
                 """,
@@ -2776,8 +2776,8 @@ extension AppModel {
         guard let pingURL = URL(string: baseURL.absoluteString + "/cluster/ping") else {
             return WorkerConnectionTestOutcome(
                 message: """
-                Step 1/3 Resolve+Reachability: OK
-                Step 2/3 Build Request: FAILED
+                Resolve + Reachability ✓
+                HTTP /cluster/ping ✗
                 Target: \(baseURL.absoluteString)/cluster/ping
                 Reason: Invalid URL
                 """,
@@ -2789,15 +2789,17 @@ extension AppModel {
         request.httpMethod = "GET"
         request.timeoutInterval = 3
         await applyMeshAuthToConnectionTestRequest(&request, path: "/cluster/ping")
-        let startedAt = Date()
 
         do {
+            let startedAt = Date()
             let (data, response) = try await URLSession.shared.data(for: request)
+            let latencyMs = max(1.0, Date().timeIntervalSince(startedAt) * 1000)
+
             guard let http = response as? HTTPURLResponse else {
                 return WorkerConnectionTestOutcome(
                     message: """
-                    Step 1/3 Resolve+Reachability: OK
-                    Step 2/3 HTTP GET /cluster/ping: FAILED
+                    Resolve + Reachability ✓
+                    HTTP /cluster/ping ✗
                     Target: \(pingURL.absoluteString)
                     Reason: No HTTP response
                     """,
@@ -2808,11 +2810,11 @@ extension AppModel {
                 let authMode = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : "HMAC"
                 return WorkerConnectionTestOutcome(
                     message: """
-                    Step 1/3 Resolve+Reachability: OK
-                    Step 2/3 HTTP GET /cluster/ping: FAILED (401)
+                    Resolve + Reachability ✓
+                    HTTP /cluster/ping ✗ (401 Unauthorized)
                     Target: \(pingURL.absoluteString)
-                    Auth: \(authMode)
-                    Reason: Authentication failed (shared secret mismatch or missing secret in clustered mode)
+                    Auth mode: \(authMode)
+                    Reason: Shared secret mismatch or missing secret
                     """,
                     isSuccess: false
                 )
@@ -2826,25 +2828,27 @@ extension AppModel {
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? "-"
                 return WorkerConnectionTestOutcome(
                     message: """
-                    Step 1/3 Resolve+Reachability: OK
-                    Step 2/3 HTTP GET /cluster/ping: FAILED (\(http.statusCode))
+                    Resolve + Reachability ✓
+                    HTTP /cluster/ping ✗ (\(http.statusCode))
                     Target: \(pingURL.absoluteString)
-                    Reason: Server reachable but response is not SwiftBot leader
+                    Reason: Server reachable but not a SwiftBot leader
                     Response: \(String(snippet.prefix(180)))
                     """,
                     isSuccess: false
                 )
             }
 
-            let latencyMs = max(1, Int((Date().timeIntervalSince(startedAt) * 1000).rounded()))
+            let latencyValue = Int(latencyMs.rounded())
             return WorkerConnectionTestOutcome(
                 message: """
-                Step 1/3 Resolve+Reachability: OK (\(endpoint))
-                Step 2/3 HTTP GET /cluster/ping: OK (200)
-                Step 3/3 Validate role/status: OK (role=\(payload.role), node=\(payload.node))
-                Latency: \(latencyMs) ms
+                Resolve + Reachability ✓
+                HTTP /cluster/ping ✓ (200)
+                Role Validation ✓ (role=\(payload.role), node=\(payload.node))
+                Latency: \(latencyValue) ms
                 """,
-                isSuccess: true
+                isSuccess: true,
+                latencyMs: latencyMs,
+                nodeName: payload.node
             )
         } catch let error as URLError {
             switch error.code {
@@ -2886,7 +2890,7 @@ extension AppModel {
         request.setValue(signature, forHTTPHeaderField: "X-Mesh-Signature")
     }
 
-    func normalizedSwiftMeshBaseURL(from rawValue: String) -> URL? {
+    func normalizedSwiftMeshBaseURL(from rawValue: String, defaultPort: Int? = nil) -> URL? {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -2905,12 +2909,12 @@ extension AppModel {
               !host.isEmpty else {
             return nil
         }
-        // For host-only input (no scheme), require an explicit port to avoid
-        // silently probing the wrong endpoint and reporting timeouts.
-        if !hadExplicitScheme, url.port == nil {
+        // For host-only input (no scheme), require an explicit port (or use defaultPort)
+        // to avoid silently probing the wrong endpoint and reporting timeouts.
+        if !hadExplicitScheme, url.port == nil, defaultPort == nil {
             return nil
         }
-        let resolvedPort = url.port ?? (scheme.lowercased() == "https" ? 443 : 80)
+        let resolvedPort = url.port ?? defaultPort ?? (scheme.lowercased() == "https" ? 443 : 80)
 
         var components = URLComponents()
         components.scheme = scheme

@@ -63,15 +63,39 @@ struct WebUIPreferencesView: View {
 
 struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
+    @State private var isAdvancedExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
                 .toggleStyle(.switch)
-            
-            Text("Run a local web server to manage SwiftBot from your browser. This server is required for Internet Access.")
+
+            Text("SwiftBot automatically detects the correct public URL for OAuth redirects.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            DisclosureGroup(isExpanded: $isAdvancedExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Override Public Base URL")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.top, 10)
+
+                    TextField("https://example.com", text: $app.settings.adminWebUI.publicBaseURL)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Optional. Only required when running behind a custom proxy or tunnel.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } label: {
+                Text("Advanced Options")
+                    .font(.subheadline.weight(.medium))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isAdvancedExpanded)
+        .onAppear {
+            isAdvancedExpanded = !app.settings.adminWebUI.publicBaseURL
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 }
