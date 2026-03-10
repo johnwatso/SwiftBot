@@ -914,11 +914,10 @@ struct OAuthProviderCard: View {
                     }
                 }
                 .padding([.horizontal, .bottom], 14)
-                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .animation(.easeInOut(duration: 0.15), value: settings.enabled)
+        .animation(.easeInOut(duration: 0.2), value: settings.enabled)
     }
 
     private func copyToClipboard(_ value: String) {
