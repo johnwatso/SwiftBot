@@ -2957,6 +2957,9 @@ final class AppModel: ObservableObject {
             aiReplies: settings.clusterOffloadAIReplies,
             wikiLookups: settings.clusterOffloadWikiLookups
         )
+        // Sync secondary safety guard: only Primary nodes may send Discord output.
+        let isPrimary = mode == .standalone || mode == .leader
+        await service.setOutputAllowed(isPrimary)
         configureMeshSync()
         if mode == .standby {
             await pullConfigFilesFromLeader()
