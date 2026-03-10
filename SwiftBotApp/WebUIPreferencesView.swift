@@ -84,6 +84,7 @@ struct InternetAccessConfigurationSection: View {
     @State private var setupProgress: InternetAccessSetupProgress?
     @State private var lastError: Error? = nil
     @State private var showingReRunSetupConfirmation = false
+    @State private var showingNonPrimaryWarning = false
 
     // Progressive Setup State (Transients)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
@@ -196,7 +197,11 @@ struct InternetAccessConfigurationSection: View {
                 get: { app.settings.adminWebUI.internetAccessEnabled },
                 set: { newValue in
                     if newValue {
-                        enable()
+                        if app.isFailoverManagedNode {
+                            showingNonPrimaryWarning = true
+                        } else {
+                            enable()
+                        }
                     } else {
                         stop()
                     }
@@ -396,12 +401,20 @@ struct InternetAccessConfigurationSection: View {
                     if canEnable {
                         if lastError is CloudflareDNSProvider.TunnelDNSConflict {
                             Button("Override DNS") {
-                                enable(forceReplaceDNS: true)
+                                if app.isFailoverManagedNode {
+                                    showingNonPrimaryWarning = true
+                                } else {
+                                    enable(forceReplaceDNS: true)
+                                }
                             }
                             .buttonStyle(.borderedProminent)
                         } else {
                             Button {
-                                enable()
+                                if app.isFailoverManagedNode {
+                                    showingNonPrimaryWarning = true
+                                } else {
+                                    enable()
+                                }
                             } label: {
                                 Label("Enable Internet Access", systemImage: "network")
                             }
@@ -432,6 +445,21 @@ struct InternetAccessConfigurationSection: View {
             }
         } message: {
             Text("You can attempt to repair the existing configuration, or remove the configuration and start setup again.")
+        }
+        .alert("Web UI Configuration on Non-Primary Node", isPresented: $showingNonPrimaryWarning) {
+            Button("Cancel", role: .cancel) { }
+            Button("Continue Anyway") {
+                enable()
+            }
+        } message: {
+            let primaryHost = app.settings.clusterLeaderAddress
+            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead."
+            
+            if !primaryHost.isEmpty {
+                Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
+            } else {
+                Text(message)
+            }
         }
     }
 
