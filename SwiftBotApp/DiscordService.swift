@@ -343,6 +343,15 @@ struct OpenAIImageEngine {
 
 actor DiscordService {
 
+    /// Secondary safety guard — set by AppModel based on SwiftMesh cluster role.
+    /// When `false`, all outbound Discord sends are blocked at the actor level.
+    /// The primary gate is `ActionDispatcher`; this is a final backstop.
+    private(set) var outputAllowed: Bool = true
+
+    func setOutputAllowed(_ allowed: Bool) {
+        outputAllowed = allowed
+    }
+
     private let discordLogger = Logger(subsystem: "com.swiftbot", category: "discord")
 
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
@@ -1372,6 +1381,10 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: respondToInteraction blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         var req = URLRequest(url: restBase.appendingPathComponent("interactions/\(interactionID)/\(interactionToken)/callback"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1599,6 +1612,10 @@ actor DiscordService {
 
     @discardableResult
     func sendMessage(channelId: String, payload: [String: Any], token: String) async throws -> (statusCode: Int, responseBody: String) {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3316,6 +3333,10 @@ actor DiscordService {
     }
 
     private func updatePresence(text: String) async {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: updatePresence blocked — outputAllowed is false (node is not Primary).")
+            return
+        }
         let payload: [String: Any] = [
             "op": 3,
             "d": [

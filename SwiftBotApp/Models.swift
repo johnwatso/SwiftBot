@@ -1587,15 +1587,42 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .standalone:
-            return "Runs Discord and all tasks locally. No clustering."
-        case .leader:
-            return "Primary node — owns Discord, distributes jobs to Workers, and coordinates the mesh."
-        case .worker:
-            return "Connects to the Primary node, receives and runs offloaded jobs."
-        case .standby:
-            return "Fail Over node — silently monitors the Primary and automatically promotes if it fails. Discord stays offline until promotion."
+        case .standalone: return "Normal operation. All bot features are managed locally."
+        case .leader:     return "This node acts as the Primary controller for the SwiftMesh cluster."
+        case .worker:     return "Deprecated. This node performs offloaded compute tasks for the Primary."
+        case .standby:    return "This node will automatically promote to Primary if the current Leader fails."
         }
+    }
+}
+
+/// Central authority for Discord output actions in a SwiftMesh cluster.
+///
+/// All outbound Discord actions must pass through this gate before execution.
+/// Only Primary nodes (`.standalone` or `.leader`) are permitted to perform
+/// Discord side-effects. Worker and Standby nodes are blocked at this layer.
+///
+/// This design is intentionally extensible: in future, `canSend` can be updated
+/// to route blocked actions to a Primary node via SwiftMesh HTTP instead of
+/// simply discarding them, enabling distributed task delegation.
+enum ActionDispatcher {
+
+    /// Returns `true` if the current node is permitted to send Discord output.
+    ///
+    /// - Parameters:
+    ///   - clusterMode: The current SwiftMesh cluster role of this node.
+    ///   - action: A descriptive label for the action being attempted (used in logs).
+    ///   - log: A closure that receives warning messages when an action is blocked.
+    /// - Returns: `true` if the node may proceed; `false` if the action is blocked.
+    static func canSend(
+        clusterMode: ClusterMode,
+        action: String,
+        log: (String) -> Void
+    ) -> Bool {
+        guard clusterMode == .standalone || clusterMode == .leader else {
+            log("⚠️ [ActionDispatcher] Blocked '\(action)' — node role '\(clusterMode.rawValue)' is not authorised to send Discord output. Only Primary (Standalone/Leader) may perform Discord side-effects.")
+            return false
+        }
+        return true
     }
 }
 

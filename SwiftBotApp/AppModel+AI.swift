@@ -102,6 +102,7 @@ extension AppModel {
     }
 
     func send(_ channelId: String, _ message: String) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessage", log: { logs.append($0) }) else { return false }
         do {
             try await service.sendMessage(channelId: channelId, content: message, token: settings.token)
             return true
@@ -111,6 +112,7 @@ extension AppModel {
     }
 
     func sendMessageReturningID(channelId: String, content: String) async -> String? {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageReturningID", log: { logs.append($0) }) else { return nil }
         do {
             return try await service.sendMessageReturningID(channelId: channelId, content: content, token: settings.token)
         } catch {
@@ -119,6 +121,7 @@ extension AppModel {
     }
 
     func sendEmbed(_ channelId: String, embed: [String: Any]) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendEmbed", log: { logs.append($0) }) else { return false }
         do {
             _ = try await service.sendMessage(
                 channelId: channelId,
@@ -132,6 +135,7 @@ extension AppModel {
     }
 
     func editMessage(channelId: String, messageId: String, content: String) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessage", log: { logs.append($0) }) else { return false }
         do {
             try await service.editMessage(channelId: channelId, messageId: messageId, content: content, token: settings.token)
             return true
@@ -157,6 +161,7 @@ extension AppModel {
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "addReaction", log: { logs.append($0) }) else { return false }
         do {
             try await service.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
             return true
@@ -207,6 +212,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageWithImage", log: { logs.append($0) }) else { return false }
         do {
             _ = try await service.sendMessageWithImage(
                 channelId: channelId,
@@ -228,6 +234,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessageWithImage", log: { logs.append($0) }) else { return false }
         do {
             try await service.editMessageWithImage(
                 channelId: channelId,
@@ -249,6 +256,9 @@ extension AppModel {
         embedJSON: String?,
         roleIDs: [String]
     ) async -> (ok: Bool, detail: String) {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendPatchyNotification", log: { logs.append($0) }) else {
+            return (false, "Patchy send blocked — node is not Primary.")
+        }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else {
             let detail = "Patchy send failed. status=- token missing."

@@ -403,6 +403,7 @@ extension AppModel {
         guard case let .object(data)? = map["data"],
               case let .string(commandName)? = data["name"] else { return }
 
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
         let context = interactionContext(from: map)
         do {
             try await service.respondToInteraction(
