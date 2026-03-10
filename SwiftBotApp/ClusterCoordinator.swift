@@ -57,6 +57,7 @@ actor ClusterCoordinator {
     var mode: ClusterMode = .standalone
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var leaderAddress: String = ""
+    var leaderPort: Int = 38787
     var listenPort: Int = 38787
     var sharedSecret: String = ""
     var offloadAIReplies: Bool = true
@@ -159,7 +160,7 @@ actor ClusterCoordinator {
         await onCursorsChanged?(replicationCursors)
     }
 
-    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, listenPort: Int, sharedSecret: String, leaderTerm: Int = 0) async {
+    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, leaderPort: Int, listenPort: Int, sharedSecret: String, leaderTerm: Int = 0) async {
         // Restore persisted term; never go backwards.
         if leaderTerm > self.leaderTerm {
             self.leaderTerm = leaderTerm
@@ -169,7 +170,8 @@ actor ClusterCoordinator {
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
-        self.leaderAddress = normalizedBaseURL(leaderAddress) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.leaderPort = leaderPort
+        self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: leaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         self.mode = await startupReconciledMode(requestedMode: mode)
 
@@ -203,7 +205,7 @@ actor ClusterCoordinator {
     /// at the configured leaderAddress, demote to standby and register with that leader.
     private func startupReconciledMode(requestedMode: ClusterMode) async -> ClusterMode {
         guard requestedMode == .leader else { return requestedMode }
-        guard let configuredLeader = normalizedBaseURL(leaderAddress), !configuredLeader.isEmpty else {
+        guard let configuredLeader = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !configuredLeader.isEmpty else {
             return requestedMode
         }
         guard !isSelfClusterEndpoint(configuredLeader) else { return requestedMode }
@@ -260,7 +262,7 @@ actor ClusterCoordinator {
     func refreshWorkerHealth() async {
         switch mode {
         case .standby:
-            guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+            guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
                 snapshot.workerState = .inactive
                 snapshot.workerStatusText = "Primary not configured"
                 snapshot.diagnostics = "Fail Over requires a Primary Address"
@@ -307,7 +309,7 @@ actor ClusterCoordinator {
             snapshot.diagnostics = "Registered workers: \(workers.count), reachable: \(reachable)"
             await publishSnapshot()
         case .worker:
-            guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+            guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
                 snapshot.workerState = .inactive
                 snapshot.workerStatusText = "Primary not configured"
                 snapshot.diagnostics = "Worker requires a Primary Address"
@@ -974,7 +976,7 @@ actor ClusterCoordinator {
         standbyHealthMisses = 0
 
         guard mode == .standby else { return }
-        guard let leaderBaseURL = normalizedBaseURL(leaderAddress), !leaderBaseURL.isEmpty else {
+        guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
             return
         }
 
@@ -1140,7 +1142,7 @@ actor ClusterCoordinator {
         workerRegistrationTask = nil
 
         guard mode == .worker || mode == .standby else { return }
-        guard let normalizedLeader = normalizedBaseURL(leaderAddress), !normalizedLeader.isEmpty else {
+        guard let normalizedLeader = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !normalizedLeader.isEmpty else {
             snapshot.workerState = .inactive
             snapshot.workerStatusText = "Primary not configured"
             snapshot.diagnostics = "Set Primary Address to enable registration"
@@ -1302,7 +1304,7 @@ actor ClusterCoordinator {
         return "http://\(resolvedHost):\(listenPort)"
     }
 
-    func normalizedBaseURL(_ raw: String) -> String? {
+    func normalizedBaseURL(_ raw: String, defaultPort: Int? = nil) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let hadExplicitScheme = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
@@ -1325,13 +1327,14 @@ actor ClusterCoordinator {
             return nil
         }
 
-        // For host-only input (no scheme), require an explicit port to avoid
-        // silently targeting the wrong endpoint.
-        if !hadExplicitScheme, url.port == nil {
+        // For host-only input (no scheme), require an explicit port (or defaultPort)
+        // to avoid silently targeting the wrong endpoint.
+        if !hadExplicitScheme, url.port == nil, defaultPort == nil {
             return nil
         }
         let resolvedPort: Int = {
             if let explicit = url.port { return explicit }
+            if let def = defaultPort { return def }
             if scheme.lowercased() == "https" { return 443 }
             return 80
         }()
@@ -1519,7 +1522,7 @@ actor ClusterCoordinator {
         }
 
         if mode == .standby,
-           let leaderBaseURL = normalizedBaseURL(leaderAddress),
+           let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
            !leaderBaseURL.isEmpty,
            !isSelfClusterEndpoint(leaderBaseURL) {
             if let remoteStatus = await fetchRemoteClusterStatus(baseURL: leaderBaseURL) {
@@ -1845,7 +1848,7 @@ actor ClusterCoordinator {
         snapshot.workerStatusText = "Re-registering with new Primary"
         await publishSnapshot()
 
-        if mode == .worker, let normalizedLeader = normalizedBaseURL(leaderAddress) {
+        if mode == .worker, let normalizedLeader = normalizedBaseURL(leaderAddress, defaultPort: leaderPort) {
             await registerWithLeader(normalizedLeader)
         }
 
@@ -1957,7 +1960,7 @@ actor ClusterCoordinator {
     /// Standby: fetch one page of conversation records from the leader using correct HMAC auth.
     func fetchResyncPage(fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
         guard mode == .standby,
-              let baseURL = normalizedBaseURL(leaderAddress),
+              let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
               !baseURL.isEmpty,
               let url = URL(string: baseURL + "/v1/mesh/sync/conversations/resync") else { return nil }
         let req = MeshResyncRequest(fromRecordID: fromRecordID, pageSize: pageSize)
@@ -1980,7 +1983,7 @@ actor ClusterCoordinator {
     /// Standby: fetch wiki cache entries from the leader using correct HMAC auth.
     func fetchWikiCache() async -> Data? {
         guard mode == .standby,
-              let baseURL = normalizedBaseURL(leaderAddress),
+              let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
               !baseURL.isEmpty,
               let url = URL(string: baseURL + "/v1/mesh/sync/wiki-cache") else { return nil }
         var request = URLRequest(url: url)
@@ -1998,7 +2001,7 @@ actor ClusterCoordinator {
 
     func fetchConfigFiles() async -> Data? {
         guard mode == .standby,
-              let baseURL = normalizedBaseURL(leaderAddress),
+              let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
               !baseURL.isEmpty,
               let url = URL(string: baseURL + "/v1/mesh/sync/config-files") else { return nil }
         var request = URLRequest(url: url)

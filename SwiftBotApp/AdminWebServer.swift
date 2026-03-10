@@ -1235,11 +1235,14 @@ actor AdminWebServer {
         let state = randomToken()
         pendingStates[state] = PendingState(value: state, expiresAt: Date().addingTimeInterval(stateTTL))
 
-        var components = URLComponents(string: "https://discord.com/api/oauth2/authorize")
+        let uri = redirectURI()
+        await logger?("[OAuth] Redirect URI: \(uri)")
+
+        var components = URLComponents(string: "https://discord.com/oauth2/authorize")
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: redirectURI()),
+            URLQueryItem(name: "redirect_uri", value: uri),
             URLQueryItem(name: "scope", value: "identify guilds"),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "prompt", value: "consent")

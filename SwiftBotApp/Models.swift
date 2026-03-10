@@ -378,6 +378,7 @@ struct BotSettings: Codable, Hashable {
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var clusterLeaderAddress: String = ""
+    var clusterLeaderPort: Int = 38787
     var clusterListenPort: Int = 38787
     var clusterSharedSecret: String = ""
     var clusterLeaderTerm: Int = 0
@@ -427,6 +428,7 @@ struct BotSettings: Codable, Hashable {
                 mode: clusterMode,
                 nodeName: clusterNodeName,
                 leaderAddress: clusterLeaderAddress,
+                leaderPort: clusterLeaderPort,
                 listenPort: clusterListenPort,
                 sharedSecret: clusterSharedSecret,
                 leaderTerm: clusterLeaderTerm
@@ -436,6 +438,7 @@ struct BotSettings: Codable, Hashable {
             clusterMode = newValue.mode
             clusterNodeName = newValue.nodeName
             clusterLeaderAddress = newValue.leaderAddress
+            clusterLeaderPort = newValue.leaderPort
             clusterListenPort = newValue.listenPort
             clusterSharedSecret = newValue.sharedSecret
             clusterLeaderTerm = newValue.leaderTerm
@@ -455,6 +458,7 @@ struct BotSettings: Codable, Hashable {
         case clusterMode
         case clusterNodeName
         case clusterLeaderAddress
+        case clusterLeaderPort
         case clusterWorkerBaseURLLegacy = "clusterWorkerBaseURL"
         case clusterListenPort
         case clusterSharedSecret
@@ -515,6 +519,7 @@ struct BotSettings: Codable, Hashable {
         clusterNodeName = try container.decodeIfPresent(String.self, forKey: .clusterNodeName) ?? (Host.current().localizedName ?? "SwiftBot Node")
         clusterLeaderAddress = try container.decodeIfPresent(String.self, forKey: .clusterLeaderAddress)
             ?? (try container.decodeIfPresent(String.self, forKey: .clusterWorkerBaseURLLegacy) ?? "")
+        clusterLeaderPort = try container.decodeIfPresent(Int.self, forKey: .clusterLeaderPort) ?? 38787
         clusterListenPort = try container.decodeIfPresent(Int.self, forKey: .clusterListenPort) ?? 38787
         clusterSharedSecret = try container.decodeIfPresent(String.self, forKey: .clusterSharedSecret) ?? ""
         clusterLeaderTerm = try container.decodeIfPresent(Int.self, forKey: .clusterLeaderTerm) ?? 0
@@ -1549,6 +1554,7 @@ struct SwiftMeshSettings: Codable, Hashable {
     var mode: ClusterMode = .standalone
     var nodeName: String = Host.current().localizedName ?? "SwiftBot Node"
     var leaderAddress: String = ""
+    var leaderPort: Int = 38787
     var listenPort: Int = 38787
     var sharedSecret: String = ""
     var leaderTerm: Int = 0
