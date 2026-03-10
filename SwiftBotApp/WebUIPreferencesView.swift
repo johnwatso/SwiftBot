@@ -777,17 +777,15 @@ struct AdminWebAuthenticationSection: View {
             Text("Sign-in")
                 .font(.headline.weight(.semibold))
 
-            if app.settings.adminWebUI.discordOAuth.enabled {
-                OAuthProviderCard(
-                    name: "Discord",
-                    icon: "message.fill",
-                    color: .indigo,
-                    settings: $app.settings.adminWebUI.discordOAuth,
-                    redirectURL: redirectURL(for: "discord")
-                )
-            }
+            OAuthProviderCard(
+                name: "Discord",
+                icon: "message.fill",
+                color: .indigo,
+                settings: $app.settings.adminWebUI.discordOAuth,
+                redirectURL: redirectURL(for: "discord")
+            )
 
-            if app.settings.adminWebUI.appleOAuth.enabled {
+            if app.settings.devFeaturesEnabled {
                 OAuthProviderCard(
                     name: "Apple",
                     icon: "apple.logo",
@@ -795,9 +793,7 @@ struct AdminWebAuthenticationSection: View {
                     settings: $app.settings.adminWebUI.appleOAuth,
                     redirectURL: redirectURL(for: "apple")
                 )
-            }
 
-            if app.settings.adminWebUI.steamOAuth.enabled {
                 OAuthProviderCard(
                     name: "Steam",
                     icon: "gamecontroller.fill",
@@ -805,9 +801,7 @@ struct AdminWebAuthenticationSection: View {
                     settings: $app.settings.adminWebUI.steamOAuth,
                     redirectURL: redirectURL(for: "steam")
                 )
-            }
 
-            if app.settings.adminWebUI.githubOAuth.enabled {
                 OAuthProviderCard(
                     name: "GitHub",
                     icon: "cat.fill",
@@ -898,22 +892,22 @@ struct OAuthProviderCard: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Redirect URL")
                             .font(.caption.weight(.medium))
-                        
+
                         HStack(spacing: 8) {
                             TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(true)
-                            
+
                             Button {
                                 copyToClipboard(redirectURL)
                             } label: {
                                 Image(systemName: "doc.on.doc")
                             }
                             .buttonStyle(.bordered)
-                            .disabled(redirectURL.isEmpty)
+                            .disabled(redirectURL.isEmpty || !settings.enabled)
                             .help("Copy Redirect URL")
                         }
-                        
+
                         Text("Use this URL in your \(name) developer portal.")
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
@@ -924,7 +918,7 @@ struct OAuthProviderCard: View {
             }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .animation(.spring(duration: 0.3), value: settings.enabled)
+        .animation(.easeInOut(duration: 0.15), value: settings.enabled)
     }
 
     private func copyToClipboard(_ value: String) {

@@ -9,11 +9,31 @@ struct AdvancedPreferencesView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
             }
 
-            PreferencesCard("Experimental Features", systemImage: "wrench") {
+            PreferencesCard("Developer Mode", systemImage: "hammer.circle") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Enable Developer Mode", isOn: Binding(
+                        get: { app.settings.devFeaturesEnabled },
+                        set: { newValue in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                app.settings.devFeaturesEnabled = newValue
+                            }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+
+                    Text("Unlock experimental SwiftBot features including Bug Auto-Fix and Codex automation. These tools are under active development.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+
+            PreferencesCard("Experimental Tools", systemImage: "wrench") {
                 Text(
                     app.settings.devFeaturesEnabled
-                    ? "Advanced features are enabled. Bug Auto-Fix and other experimental tools are available below."
-                    : "Enable Advanced Features in the General tab to configure Bug Auto-Fix and other experimental tools."
+                    ? "Developer Mode is active. Bug Auto-Fix and other experimental tools are available below."
+                    : "Enable Developer Mode above to configure Bug Auto-Fix and other experimental tools."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -162,7 +182,7 @@ struct AdvancedPreferencesView: View {
                 .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             } else {
                 PreferencesCard("Bug Auto-Fix", systemImage: "sparkles") {
-                    Text("Enable Advanced Features in the General tab to access Bug Auto-Fix configuration.")
+                    Text("Enable Developer Mode above to access Bug Auto-Fix configuration.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

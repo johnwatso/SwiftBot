@@ -58,11 +58,6 @@ struct PreferencesView: View {
                     Label("General", systemImage: "gear")
                 }
 
-            DiscordPreferencesView()
-                .tabItem {
-                    Label("Discord", systemImage: "message")
-                }
-
             MeshPreferencesView()
                 .tabItem {
                     Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
@@ -80,7 +75,7 @@ struct PreferencesView: View {
 
             AdvancedPreferencesView()
                 .tabItem {
-                    Label("Advanced", systemImage: "wrench")
+                    Label("Developer", systemImage: "wrench")
                 }
         }
         .frame(width: 720, height: 480)
