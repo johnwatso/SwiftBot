@@ -12,7 +12,7 @@ struct RuleListView: View {
             RulePaneHeader(
                 title: "Actions",
                 subtitle: "Build reusable flows from triggers, filters, and outputs.",
-                systemImage: "point.3.filled.connected.trianglepath.dotted"
+                systemImage: "bolt.circle"
             )
 
             if isLoading {
@@ -69,7 +69,7 @@ private struct RuleListEmptyStateView: View {
         VStack(spacing: 0) {
             Spacer()
             VStack(spacing: 16) {
-                Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                Image(systemName: "bolt.circle")
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
 

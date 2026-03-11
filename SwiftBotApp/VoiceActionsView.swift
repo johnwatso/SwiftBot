@@ -130,7 +130,7 @@ struct RuleEditorView: View {
     @Binding var rule: Rule
     @EnvironmentObject var app: AppModel
 
-    @AppStorage("hasSeenRuleOnboarding") private var hasSeenRuleOnboarding: Bool = false
+    @State private var hasSeenRuleOnboarding: Bool = false
     @State private var guidedStep: GuidedBuildStep = .none
     @State private var scrollToTriggersSignal: Bool = false
 
@@ -185,7 +185,7 @@ struct RuleEditorView: View {
                 RulePaneHeader(
                     title: rule.name.isEmpty ? "Action Rule" : rule.name,
                     subtitle: rule.triggerSummary,
-                    systemImage: "point.3.filled.connected.trianglepath.dotted"
+                    systemImage: "bolt.circle"
                 )
 
                 TextField("Rule Name", text: $rule.name)
