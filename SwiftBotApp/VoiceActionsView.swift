@@ -225,15 +225,7 @@ struct RuleEditorView: View {
                             RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow,
                                               guidedHighlight: guidedStep == .trigger) {
                                 TriggerSectionView(
-                                    triggerType: $rule.trigger,
-                                    triggerServerId: $rule.triggerServerId,
-                                    triggerVoiceChannelId: $rule.triggerVoiceChannelId,
-                                    triggerMessageContains: $rule.triggerMessageContains,
-                                    replyToDMs: $rule.replyToDMs,
-                                    includeStageChannels: $rule.includeStageChannels,
-                                    serverIds: serverIds,
-                                    serverName: serverName(for:),
-                                    voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                                    triggerType: $rule.trigger
                                 )
                                 if guidedStep == .trigger {
                                     Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
@@ -261,7 +253,7 @@ struct RuleEditorView: View {
                                     conditions: $rule.conditions,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
-                                    voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                                    voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 }
                                 )
                             }
 
@@ -270,6 +262,8 @@ struct RuleEditorView: View {
                             RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
                                 ActionsSectionView(
                                     actions: $rule.modifiers,
+                                    category: .modifiers,
+                                    allModifiers: rule.modifiers,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer
@@ -282,6 +276,8 @@ struct RuleEditorView: View {
                                               guidedHighlight: guidedStep == .action) {
                                 ActionsSectionView(
                                     actions: $rule.actions,
+                                    category: .messaging,
+                                    allModifiers: rule.modifiers,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer,
@@ -360,7 +356,7 @@ struct RuleEditorView: View {
         case .generateAIResponse:
             action.message = "You are a helpful assistant. {message}"
         // Other action types
-        case .replyToMessage, .sendDM, .deleteMessage, .addReaction, .addRole, .removeRole,
+        case .sendDM, .deleteMessage, .addReaction, .addRole, .removeRole,
              .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook, .delay,
              .setVariable, .randomChoice:
             break
@@ -372,11 +368,6 @@ struct RuleEditorView: View {
 
     private func initializeRuleDefaultsIfNeeded() {
         var didChange = false
-
-        if rule.triggerServerId.isEmpty {
-            rule.triggerServerId = serverIds.first ?? ""
-            didChange = true
-        }
 
         // Fix missing server/channel IDs on existing actions (legacy rules).
         // Never pre-populate a default action — empty rules show the empty-state UI.
@@ -401,9 +392,11 @@ struct RuleEditorView: View {
 
     private func applyExampleRule() {
         rule.name = "Hello World"
-        rule.trigger = .messageContains
-        rule.triggerMessageContains = "@swiftbot hello"
-        rule.triggerServerId = serverIds.first ?? ""
+        rule.trigger = .messageCreated
+
+        var filter = Condition(type: .messageContains)
+        filter.value = "@swiftbot hello"
+        rule.conditions = [filter]
 
         var action = RuleAction()
         action.type = .sendMessage
@@ -432,9 +425,10 @@ struct RuleEditorView: View {
             didChange = true
         }
 
-        if newTrigger == .messageContains,
-           rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            rule.triggerMessageContains = "up to?"
+        // Auto-insert a messageContains filter when that trigger is selected (if not already present)
+        if newTrigger == .messageCreated,
+           !rule.conditions.contains(where: { $0.type == .messageContains }) {
+            rule.conditions.append(Condition(type: .messageContains))
             didChange = true
         }
 
@@ -744,49 +738,12 @@ struct RuleGroupSection<Content: View>: View {
 
 struct TriggerSectionView: View {
     @Binding var triggerType: TriggerType?
-    @Binding var triggerServerId: String
-    @Binding var triggerVoiceChannelId: String
-    @Binding var triggerMessageContains: String
-    @Binding var replyToDMs: Bool
-    @Binding var includeStageChannels: Bool
-
-    let serverIds: [String]
-    let serverName: (String) -> String
-    let voiceChannels: [GuildVoiceChannel]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Event", selection: $triggerType) {
-                Text("Select a trigger...").tag(TriggerType?.none)
-                ForEach(TriggerType.allCases) { trigger in
-                    Label(trigger.rawValue, systemImage: trigger.symbol).tag(Optional(trigger))
-                }
-            }
-
-            Picker("Server", selection: $triggerServerId) {
-                ForEach(serverIds, id: \.self) { serverId in
-                    Text(serverName(serverId)).tag(serverId)
-                }
-            }
-
-            if let type = triggerType {
-                if type != .messageContains, type != .memberJoined, !voiceChannels.isEmpty {
-                    Picker("Voice Channel", selection: $triggerVoiceChannelId) {
-                        Text("Any Channel").tag("")
-                        ForEach(voiceChannels) { channel in
-                            Text(channel.name).tag(channel.id)
-                        }
-                    }
-                }
-
-                if type == .messageContains {
-                    TextField("Message contains…", text: $triggerMessageContains)
-                    Toggle("Reply to DMs", isOn: $replyToDMs)
-                }
-
-                if type == .userJoinedVoice || type == .userMovedVoice {
-                    Toggle("Include Stage Channels", isOn: $includeStageChannels)
-                }
+        Picker("Event", selection: $triggerType) {
+            Text("Select a trigger...").tag(TriggerType?.none)
+            ForEach(TriggerType.allCases) { trigger in
+                Label(trigger.rawValue, systemImage: trigger.symbol).tag(Optional(trigger))
             }
         }
     }
@@ -881,27 +838,39 @@ struct ConditionRowView: View {
                 }
             }
         case .usernameContains:
-            TextField("Username contains…", text: $condition.value)
+            TextField("Enter username fragment…", text: $condition.value)
         case .minimumDuration:
             HStack {
-                TextField("Minimum", text: $condition.value)
+                TextField("Minutes", text: $condition.value)
                     .frame(width: 80)
                 Text("minutes in channel")
                     .foregroundStyle(.secondary)
             }
         // New condition types - placeholder UI
         case .channelIs:
-            TextField("Channel ID", text: $condition.value)
+            TextField("Enter channel name or ID…", text: $condition.value)
+        case .channelCategory:
+            TextField("Enter category name or ID…", text: $condition.value)
                 .foregroundStyle(.secondary)
         case .userHasRole:
-            TextField("Role ID", text: $condition.value)
+            TextField("Enter role name or ID…", text: $condition.value)
+        case .userJoinedRecently:
+            TextField("Joined within (days)…", text: $condition.value)
                 .foregroundStyle(.secondary)
+        case .messageContains:
+            TextField("Enter text to match…", text: $condition.value)
+        case .messageStartsWith:
+            TextField("Enter prefix to match…", text: $condition.value)
+        case .messageRegex:
+            TextField("Enter regex pattern…", text: $condition.value)
         }
     }
 }
 
 struct ActionsSectionView: View {
     @Binding var actions: [Action]
+    let category: BlockCategory
+    let allModifiers: [Action]
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -915,12 +884,12 @@ struct ActionsSectionView: View {
                     Image(systemName: "rectangle.stack.badge.plus")
                         .font(.title2)
                         .foregroundStyle(.secondary)
-                    Text("No actions yet")
+                    Text("No blocks yet")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                     Text(isGuided
-                         ? "Select an action from the Block Library to the left."
-                         : "Use the Block Library to add your first action.")
+                         ? "Select a block from the Block Library to the left."
+                         : "Use the Block Library to add your first block.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -931,6 +900,8 @@ struct ActionsSectionView: View {
                 ForEach($actions) { $action in
                     ActionSectionView(
                         action: $action,
+                        category: category,
+                        allModifiers: allModifiers,
                         serverIds: serverIds,
                         serverName: serverName,
                         textChannels: textChannelsByServer[action.serverId] ?? [],
@@ -946,6 +917,8 @@ struct ActionsSectionView: View {
 
 struct ActionSectionView: View {
     @Binding var action: Action
+    let category: BlockCategory
+    let allModifiers: [Action]
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -955,8 +928,8 @@ struct ActionSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Picker("Action", selection: $action.type) {
-                    ForEach(ActionType.allCases) { actionType in
+                Picker(category == .modifiers ? "Modifier" : "Action", selection: $action.type) {
+                    ForEach(ActionType.allCases.filter { $0.category == category }) { actionType in
                         Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
                     }
                 }
@@ -994,6 +967,27 @@ struct ActionSectionView: View {
                     Text("Message")
                         .font(.subheadline.weight(.semibold))
                     VariableAwareTextEditor(text: $action.message)
+                    if action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label("Message content is required.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                // UI refinement: show active modifiers that affect this action
+                if category == .messaging {
+                    VStack(alignment: .leading, spacing: 4) {
+                        let activeModifiers = allModifiers.map { $0.type.rawValue }.joined(separator: ", ")
+                        if !activeModifiers.isEmpty {
+                            Label("Active Modifiers: \(activeModifiers)", systemImage: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.indigo)
+                        } else {
+                            Text("Add modifier blocks (Reply To Trigger, Send To Channel…) above this action to control message routing.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             case .addLogEntry:
                 TextField("Log message", text: $action.message)
@@ -1006,12 +1000,6 @@ struct ActionSectionView: View {
                         .foregroundStyle(.secondary)
                 }
             // New action types
-            case .replyToMessage:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Reply Message")
-                        .font(.subheadline.weight(.semibold))
-                    VariableAwareTextEditor(text: $action.message)
-                }
             case .sendDM:
                 Toggle("Mention user", isOn: $action.mentionUser)
                 VStack(alignment: .leading, spacing: 6) {

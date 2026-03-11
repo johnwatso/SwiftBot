@@ -3379,6 +3379,15 @@ final class AppModel: ObservableObject {
             _ = await send(channelId, message)
         }
 
+        let joinedAt: Date? = {
+            if case let .string(dateStr)? = map["joined_at"] {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                return formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr)
+            }
+            return nil
+        }()
+
         // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
         let ruleEvent = VoiceRuleEvent(
             kind: .memberJoin,
@@ -3395,7 +3404,8 @@ final class AppModel: ObservableObject {
             triggerChannelId: nil,
             triggerGuildId: guildId,
             triggerUserId: userId,
-            isDirectMessage: false
+            isDirectMessage: false,
+            joinedAt: joinedAt
         )
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
@@ -3415,6 +3425,56 @@ final class AppModel: ObservableObject {
         // Log username only — no internal IDs or metadata.
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "👋 \(safeUsername) joined \(serverName)"))
         logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
+    }
+
+    func handleMemberLeave(_ raw: DiscordJSON?) async {
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"],
+              case let .string(userId)? = user["id"],
+              case let .string(guildId)? = map["guild_id"]
+        else { return }
+
+        let now = Date()
+        
+        // Best-effort member count decrement
+        if let count = guildMemberCounts[guildId] {
+            guildMemberCounts[guildId] = max(0, count - 1)
+        }
+
+        let username: String = {
+            if case let .string(name)? = user["global_name"] ?? user["username"] { return name }
+            return "Unknown"
+        }()
+
+        let ruleEvent = VoiceRuleEvent(
+            kind: .memberLeave,
+            guildId: guildId,
+            userId: userId,
+            username: username,
+            channelId: "",
+            fromChannelId: nil,
+            toChannelId: nil,
+            durationSeconds: nil,
+            messageContent: nil,
+            messageId: nil,
+            triggerMessageId: nil,
+            triggerChannelId: nil,
+            triggerGuildId: guildId,
+            triggerUserId: userId,
+            isDirectMessage: false,
+            joinedAt: nil
+        )
+
+        let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
+        for rule in matchedRules {
+            var context = PipelineContext()
+            for action in rule.processedActions {
+                await service.execute(action: action, for: ruleEvent, context: &context)
+            }
+        }
+
+        addEvent(ActivityEvent(timestamp: now, kind: .info, message: "🚪 \(username) left the server"))
+        logs.append("Member leave handled for \(username)")
     }
 
     func handleGuildCreate(_ raw: DiscordJSON?) async {
