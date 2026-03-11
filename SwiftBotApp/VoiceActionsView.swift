@@ -39,7 +39,8 @@ struct VoiceWorkspaceView: View {
                 },
                 onDeleteRuleID: { ruleID in
                     ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
-                }
+                },
+                isLoading: ruleStore.isLoading
             )
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
 
@@ -129,6 +130,10 @@ struct RuleEditorView: View {
     @Binding var rule: Rule
     @EnvironmentObject var app: AppModel
 
+    @State private var hasSeenRuleOnboarding: Bool = false
+    @State private var guidedStep: GuidedBuildStep = .none
+    @State private var scrollToTriggersSignal: Bool = false
+
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
@@ -137,6 +142,143 @@ struct RuleEditorView: View {
 
     private func serverName(for serverId: String) -> String {
         app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
+    }
+
+    private var ruleCanvasContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if rule.trigger == nil && !hasSeenRuleOnboarding {
+                EmptyRuleStateView(
+                    icon: "bolt.circle",
+                    title: "Choose a Trigger",
+                    description: "Select a trigger from the Block Library to begin building this rule.",
+                    onShowMe: {
+                        scrollToTriggersSignal = true
+                        guidedStep = .trigger
+                    },
+                    onContinue: {
+                        hasSeenRuleOnboarding = true
+                    }
+                )
+                .padding(.top, 40)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity.combined(with: .scale(scale: 0.96))
+                    )
+                )
+            } else {
+                RuleCanvasSection(title: "Trigger", systemImage: "bolt.fill", accent: .yellow,
+                                  guidedHighlight: guidedStep == .trigger) {
+                    TriggerSectionView(
+                        triggerType: rule.trigger
+                    )
+                    if guidedStep == .trigger {
+                        Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
+                            .font(.caption)
+                            .foregroundStyle(.yellow.opacity(0.8))
+                            .padding(.top, 4)
+                    }
+                    // Trigger can be replaced but not deleted
+                    Button {
+                        rule.isEditingTrigger = true
+                        scrollToTriggersSignal = true
+                        guidedStep = .trigger
+                    } label: {
+                        Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.yellow)
+                    .padding(.top, 4)
+                }
+
+                Divider().opacity(0.4)
+
+                // Filters Section
+                RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .blue) {
+                    ConditionsSectionView(
+                        conditions: $rule.conditions,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
+                        textChannels: app.availableTextChannelsByServer.values.flatMap { $0 },
+                        roles: app.availableRolesByServer.values.flatMap { $0 },
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                Divider().opacity(0.4)
+
+                // AI Processing Section
+                RuleCanvasSection(title: "AI Processing", systemImage: "sparkles", accent: .purple) {
+                    ActionsSectionView(
+                        actions: $rule.aiBlocks,
+                        category: .ai,
+                        allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                Divider().opacity(0.4)
+
+                RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
+                    ActionsSectionView(
+                        actions: $rule.modifiers,
+                        category: .messaging,
+                        allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                RuleFlowArrow()
+
+                RuleCanvasSection(title: "Actions", systemImage: "paperplane.fill", accent: .mint,
+                                  guidedHighlight: guidedStep == .action) {
+                    ActionsSectionView(
+                        actions: $rule.actions,
+                        category: .actions,
+                        allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        isGuided: guidedStep == .action,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
+        .frame(maxWidth: 880, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
     }
 
     var body: some View {
@@ -148,17 +290,26 @@ struct RuleEditorView: View {
                     systemImage: "square.stack.3d.up.fill"
                 )
 
-                ScrollView {
-                    RuleBuilderLibraryView(
+                RuleBuilderLibraryView(
                         serverIds: serverIds,
                         onAddCondition: addCondition(_:),
                         onAddAction: addAction(_:),
-                        focusTrigger: { applyTriggerDefaults(for: rule.trigger) }
+                        onSetTrigger: { type in
+                            rule.trigger = type
+                            rule.isEditingTrigger = false
+                            hasSeenRuleOnboarding = true
+                            applyTriggerDefaults(for: type)
+                            if guidedStep == .trigger { guidedStep = .action }
+                        },
+                        focusTrigger: {
+                            if let trigger = rule.trigger {
+                                applyTriggerDefaults(for: trigger)
+                            }
+                        },
+                        scrollToTriggersSignal: $scrollToTriggersSignal,
+                        currentTrigger: rule.trigger,
+                        isEditingTrigger: rule.isEditingTrigger
                     )
-                    .padding(.horizontal, 18)
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
-                }
             }
             .frame(minWidth: 250, idealWidth: 270, maxWidth: 300)
             .background(rulePaneBackground)
@@ -171,7 +322,7 @@ struct RuleEditorView: View {
                 RulePaneHeader(
                     title: rule.name.isEmpty ? "Action Rule" : rule.name,
                     subtitle: rule.triggerSummary,
-                    systemImage: "point.3.filled.connected.trianglepath.dotted"
+                    systemImage: "bolt.circle"
                 )
 
                 TextField("Rule Name", text: $rule.name)
@@ -192,44 +343,15 @@ struct RuleEditorView: View {
                     .padding(.bottom, 16)
                 .background(rulePaneBackground)
 
+                if !rule.isEmptyRule && !rule.isEditingTrigger && !rule.validationIssues.isEmpty {
+                    ValidationBannerView(issues: rule.validationIssues)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                }
+
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow) {
-                            TriggerSectionView(
-                                triggerType: $rule.trigger,
-                                triggerServerId: $rule.triggerServerId,
-                                triggerVoiceChannelId: $rule.triggerVoiceChannelId,
-                                triggerMessageContains: $rule.triggerMessageContains,
-                                replyToDMs: $rule.replyToDMs,
-                                includeStageChannels: $rule.includeStageChannels,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
-                            )
-                        }
-
-                        RuleFlowArrow()
-
-                        RuleCanvasSection(title: "Filter Blocks", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
-                            ConditionsSectionView(
-                                conditions: $rule.conditions,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
-                            )
-                        }
-
-                        RuleFlowArrow()
-
-                        RuleCanvasSection(title: "Action Blocks", systemImage: "paperplane.fill", accent: .mint) {
-                            ActionsSectionView(
-                                actions: $rule.actions,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                textChannelsByServer: app.availableTextChannelsByServer
-                            )
-                        }
-                    }
+                    ruleCanvasContent
+                    .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
                     .frame(maxWidth: 880, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 20)
@@ -241,11 +363,18 @@ struct RuleEditorView: View {
         .onAppear {
             initializeRuleDefaultsIfNeeded()
         }
+        .onChange(of: rule.actions) { _, newActions in
+            if guidedStep == .trigger && !newActions.isEmpty {
+                guidedStep = .none
+            }
+        }
         .onChange(of: rule) {
             app.ruleStore.scheduleAutoSave()
         }
         .onChange(of: rule.trigger) { _, newTrigger in
-            applyTriggerDefaults(for: newTrigger)
+            if let newTrigger = newTrigger {
+                applyTriggerDefaults(for: newTrigger)
+            }
         }
     }
 
@@ -257,56 +386,102 @@ struct RuleEditorView: View {
     private func addAction(_ type: ActionType) {
         var action = RuleAction()
         action.type = type
-        action.serverId = serverIds.first ?? ""
-        action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
-        action.message = rule.trigger.defaultMessage
+        action.message = rule.trigger?.defaultMessage ?? ""
 
         switch type {
         case .sendMessage:
-            break
+            action.destinationMode = MessageDestination.defaultMode(for: rule.trigger)
+            if action.destinationMode == .specificChannel {
+                action.serverId = serverIds.first ?? ""
+                action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
+            }
         case .addLogEntry:
             action.message = "Rule fired for {username}"
         case .setStatus:
-            action.statusText = "Handling \(rule.trigger.rawValue.lowercased())"
+            action.statusText = "Handling \(rule.trigger?.rawValue.lowercased() ?? "action")"
+        // Modifier blocks
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
+            break
+        // AI blocks
+        case .generateAIResponse:
+            action.message = "You are a helpful assistant. {message}"
+        case .summariseMessage:
+            action.message = ""
+        case .classifyMessage:
+            action.message = ""
+            action.categories = "question, feedback, spam, other"
+        case .extractEntities:
+            action.message = ""
+            action.entityTypes = "names, dates, locations, organizations"
+        case .rewriteMessage:
+            action.message = ""
+            action.rewriteStyle = "professional"
+        // Other action types
+        case .sendDM, .deleteMessage, .addReaction, .addRole, .removeRole,
+             .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook, .delay,
+             .setVariable, .randomChoice:
+            break
         }
 
-        rule.actions.append(action)
+        // Route blocks to their correct section based on category
+        switch type.category {
+        case .ai:
+            rule.aiBlocks.append(action)
+        case .messaging:
+            rule.modifiers.append(action)
+        case .actions, .moderation:
+            rule.actions.append(action)
+        default:
+            rule.actions.append(action)
+        }
         app.ruleStore.scheduleAutoSave()
     }
 
     private func initializeRuleDefaultsIfNeeded() {
         var didChange = false
 
-        if rule.triggerServerId.isEmpty {
-            rule.triggerServerId = serverIds.first ?? ""
-            didChange = true
-        }
-
-        if rule.actions.isEmpty {
-            var action = RuleAction()
-            action.serverId = serverIds.first ?? ""
-            let channels = app.availableTextChannelsByServer[action.serverId] ?? []
-            action.channelId = channels.first?.id ?? ""
-            action.message = rule.trigger.defaultMessage
-            rule.actions = [action]
-            didChange = true
-        } else {
-            if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
-                rule.actions[0].serverId = first
+        for index in rule.actions.indices where rule.actions[index].type == .sendMessage {
+            if rule.actions[index].destinationMode == nil {
+                rule.actions[index].destinationMode = MessageDestination.defaultMode(for: rule.trigger)
                 didChange = true
             }
-            if rule.actions[0].channelId.isEmpty {
-                let channels = app.availableTextChannelsByServer[rule.actions[0].serverId] ?? []
-                if let first = channels.first {
-                    rule.actions[0].channelId = first.id
-                    didChange = true
-                }
+
+            let destinationMode = rule.actions[index].destinationMode ?? MessageDestination.defaultMode(for: rule.trigger)
+            guard destinationMode == .specificChannel else { continue }
+
+            if rule.actions[index].serverId.isEmpty, let first = serverIds.first {
+                rule.actions[index].serverId = first
+                didChange = true
+            }
+
+            let channels = app.availableTextChannelsByServer[rule.actions[index].serverId] ?? []
+            if !channels.contains(where: { $0.id == rule.actions[index].channelId }),
+               let first = channels.first {
+                rule.actions[index].channelId = first.id
+                didChange = true
             }
         }
 
         if didChange {
             app.ruleStore.scheduleAutoSave()
         }
+    }
+
+    private func applyExampleRule() {
+        rule.name = "Hello World"
+        rule.trigger = .messageCreated
+
+        var filter = Condition(type: .messageContains)
+        filter.value = "@swiftbot hello"
+        rule.conditions = [filter]
+
+        var action = RuleAction()
+        action.type = .sendMessage
+        action.destinationMode = .replyToTrigger
+        action.message = "Hello World 👋"
+        rule.actions = [action]
+
+        app.ruleStore.scheduleAutoSave()
     }
 
     private func applyTriggerDefaults(for newTrigger: TriggerType) {
@@ -326,9 +501,10 @@ struct RuleEditorView: View {
             didChange = true
         }
 
-        if newTrigger == .messageContains,
-           rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            rule.triggerMessageContains = "up to?"
+        // Auto-insert a messageContains filter when that trigger is selected (if not already present)
+        if newTrigger == .messageCreated,
+           !rule.conditions.contains(where: { $0.type == .messageContains }) {
+            rule.conditions.append(Condition(type: .messageContains))
             didChange = true
         }
 
@@ -347,52 +523,154 @@ struct RuleBuilderLibraryView: View {
     let serverIds: [String]
     let onAddCondition: (ConditionType) -> Void
     let onAddAction: (ActionType) -> Void
+    let onSetTrigger: (TriggerType) -> Void
     let focusTrigger: () -> Void
+    @Binding var scrollToTriggersSignal: Bool
+    let currentTrigger: TriggerType?
+    let isEditingTrigger: Bool
+
+    @State private var triggerSectionHighlighted: Bool = false
+    private let triggersSectionID = "library-triggers"
+
+    private func types(for category: BlockCategory) -> [ActionType] {
+        ActionType.allCases.filter { $0.category == category }
+    }
+
+    private func isCompatible(_ reqs: Set<ContextVariable>) -> Bool {
+        guard let currentTrigger = currentTrigger else { return reqs.isEmpty }
+        return reqs.isSubset(of: currentTrigger.providedVariables)
+    }
+
+    private func tooltipFor(_ reqs: Set<ContextVariable>) -> String? {
+        guard !isCompatible(reqs) else { return nil }
+        return "Requires \(reqs.friendlyRequirement)."
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RuleLibrarySection(title: "Start") {
-                RuleLibraryButton(
-                    title: "Trigger Block",
-                    subtitle: "Choose the event that starts this rule",
-                    systemImage: "bolt.fill",
-                    accent: .yellow,
-                    action: focusTrigger
-                )
-            }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if currentTrigger == nil || isEditingTrigger {
+                        RuleLibrarySection(title: currentTrigger == nil ? "Select a Trigger" : "Triggers", highlighted: triggerSectionHighlighted) {
+                            ForEach(TriggerType.allCases) { type in
+                                RuleLibraryButton(
+                                    title: type.rawValue,
+                                    subtitle: "Set this as the rule trigger",
+                                    systemImage: type.symbol,
+                                    accent: .yellow,
+                                    action: { onSetTrigger(type); focusTrigger() }
+                                )
+                            }
+                        }
+                        .id(triggersSectionID)
+                    }
 
             RuleLibrarySection(title: "Filters") {
                 ForEach(ConditionType.allCases) { type in
-                    RuleLibraryButton(
-                        title: type.rawValue,
-                        subtitle: "Add a reusable filter block",
-                        systemImage: type.symbol,
-                        accent: .cyan,
-                        action: { onAddCondition(type) }
-                    )
+                    if type.isCompatible(with: currentTrigger) {
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Add a filter condition",
+                            systemImage: type.symbol,
+                            accent: .cyan,
+                            action: { onAddCondition(type) }
+                        )
+                    }
                 }
             }
 
-            RuleLibrarySection(title: "Actions") {
-                ForEach(ActionType.allCases) { type in
-                    RuleLibraryButton(
-                        title: type.rawValue,
-                        subtitle: "Insert this output block into the flow",
-                        systemImage: type.symbol,
-                        accent: .mint,
-                        action: { onAddAction(type) }
-                    )
+            let aiTypes = types(for: .ai)
+            if !aiTypes.isEmpty {
+                RuleLibrarySection(title: "AI Blocks") {
+                    ForEach(aiTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Process input with AI",
+                                systemImage: type.symbol,
+                                accent: .purple,
+                                action: { onAddAction(type) }
+                            )
+                        }
+                    }
                 }
             }
 
-            if serverIds.isEmpty {
-                Text("Connect the bot to Discord to unlock server and channel pickers in action blocks.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            let messageTypes = types(for: .messaging)
+            if !messageTypes.isEmpty {
+                RuleLibrarySection(title: "Message Modifiers") { // Changed title from "Message"
+                    ForEach(messageTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Formatting and routing modifiers",
+                                systemImage: type.symbol,
+                                accent: .orange,
+                                action: { onAddAction(type) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            let actionTypes = types(for: .actions)
+            if !actionTypes.isEmpty {
+                RuleLibrarySection(title: "Actions") {
+                    ForEach(actionTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Output blocks",
+                                systemImage: type.symbol,
+                                accent: .mint,
+                                action: { onAddAction(type) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            let moderationTypes = types(for: .moderation)
+            if !moderationTypes.isEmpty {
+                RuleLibrarySection(title: "Moderation") {
+                    ForEach(moderationTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Server management",
+                                systemImage: type.symbol,
+                                accent: .red,
+                                action: { onAddAction(type) }
+                            )
+                        }
+                    }
+                }
+            }
+
+                    if serverIds.isEmpty {
+                        Text("Connect the bot to Discord to unlock server and channel pickers in action blocks.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+            }
+            .onChange(of: scrollToTriggersSignal) { _, newValue in
+                guard newValue else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(triggersSectionID, anchor: .top)
+                }
+                triggerSectionHighlighted = true
+                scrollToTriggersSignal = false
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    await MainActor.run { triggerSectionHighlighted = false }
+                }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .padding(.vertical, 4)
     }
 }
 
@@ -426,17 +704,28 @@ struct RulePaneHeader: View {
 
 struct RuleLibrarySection<Content: View>: View {
     let title: String
+    var highlighted: Bool = false
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(highlighted ? .yellow : .secondary)
             VStack(alignment: .leading, spacing: 8) {
                 content
             }
         }
+        .padding(highlighted ? 8 : 0)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(highlighted ? Color.yellow.opacity(0.12) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(highlighted ? Color.yellow.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.25), value: highlighted)
     }
 }
 
@@ -445,6 +734,9 @@ struct RuleLibraryButton: View {
     let subtitle: String
     let systemImage: String
     let accent: Color
+    var isDisabled: Bool = false
+    var disabledReason: String? = nil
+    var dragItem: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -452,23 +744,27 @@ struct RuleLibraryButton: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.headline)
-                    .foregroundStyle(accent)
+                    .foregroundStyle(isDisabled ? .secondary : accent)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
-                    Text(subtitle)
+                        .foregroundStyle(isDisabled ? .secondary : .primary)
+                    Text(isDisabled ? (disabledReason ?? subtitle) : subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isDisabled ? .red.opacity(0.8) : .secondary)
                 }
                 Spacer()
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(accent)
+                Image(systemName: isDisabled ? "nosign" : "plus.circle.fill")
+                    .foregroundStyle(isDisabled ? .secondary : accent)
             }
             .padding(12)
             .glassCard(cornerRadius: 18, tint: .white.opacity(0.05), stroke: .white.opacity(0.14))
+            .opacity(isDisabled ? 0.6 : 1.0)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(isDisabled ? (disabledReason ?? "Incompatible") : "")
     }
 }
 
@@ -476,6 +772,7 @@ struct RuleCanvasSection<Content: View>: View {
     let title: String
     let systemImage: String
     let accent: Color
+    var guidedHighlight: Bool = false
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -491,7 +788,8 @@ struct RuleCanvasSection<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: .white.opacity(0.18))
+        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: guidedHighlight ? accent.opacity(0.6) : .white.opacity(0.18))
+        .animation(.easeInOut(duration: 0.3), value: guidedHighlight)
     }
 }
 
@@ -531,112 +829,93 @@ struct RuleGroupSection<Content: View>: View {
 }
 
 struct TriggerSectionView: View {
-    @Binding var triggerType: TriggerType
-    @Binding var triggerServerId: String
-    @Binding var triggerVoiceChannelId: String
-    @Binding var triggerMessageContains: String
-    @Binding var replyToDMs: Bool
-    @Binding var includeStageChannels: Bool
-
-    let serverIds: [String]
-    let serverName: (String) -> String
-    let voiceChannels: [GuildVoiceChannel]
+    let triggerType: TriggerType?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Event", selection: $triggerType) {
-                ForEach(TriggerType.allCases) { trigger in
-                    Label(trigger.rawValue, systemImage: trigger.symbol).tag(trigger)
-                }
-            }
-
-            Picker("Server", selection: $triggerServerId) {
-                ForEach(serverIds, id: \.self) { serverId in
-                    Text(serverName(serverId)).tag(serverId)
-                }
-            }
-
-            if triggerType != .messageContains, triggerType != .memberJoined, !voiceChannels.isEmpty {
-                Picker("Voice Channel", selection: $triggerVoiceChannelId) {
-                    Text("Any Channel").tag("")
-                    ForEach(voiceChannels) { channel in
-                        Text(channel.name).tag(channel.id)
-                    }
-                }
-            }
-
-            if triggerType == .messageContains {
-                TextField("Message contains…", text: $triggerMessageContains)
-                Toggle("Reply to DMs", isOn: $replyToDMs)
-            }
-
-            if triggerType == .userJoinedVoice || triggerType == .userMovedVoice {
-                Toggle("Include Stage Channels", isOn: $includeStageChannels)
-            }
+        if let type = triggerType {
+            Label(type.rawValue, systemImage: type.symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.yellow)
+        } else {
+            Text("No trigger selected.")
+                .foregroundStyle(.secondary)
         }
     }
 }
 
 struct ConditionsSectionView: View {
     @Binding var conditions: [Condition]
+    let hasTrigger: Bool
 
     let serverIds: [String]
     let serverName: (String) -> String
     let voiceChannels: [GuildVoiceChannel]
+    let textChannels: [GuildTextChannel]
+    let roles: [GuildRole]
+    var incompatibleBlocks: [UUID] = []
+    var availableVariables: Set<ContextVariable> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if conditions.isEmpty {
-                Text("No conditions configured. Rules will run for all matching events.")
+                Text("No filters yet. Use the Block Library to add one.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
             } else {
                 ForEach($conditions) { $condition in
+                    let isCompat = !incompatibleBlocks.contains(condition.id)
+                    let missing = condition.type.requiredVariables.subtracting(availableVariables)
+
                     ConditionRowView(
                         condition: $condition,
+                        isIncompatible: !isCompat,
+                        missingContext: missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)",
                         serverIds: serverIds,
                         serverName: serverName,
                         voiceChannels: voiceChannels,
+                        textChannels: textChannels,
+                        roles: roles,
                         onDelete: {
                             conditions.removeAll { $0.id == condition.id }
                         }
                     )
                 }
             }
-
-            Menu {
-                ForEach(ConditionType.allCases) { type in
-                    Button {
-                        conditions.append(Condition(type: type))
-                    } label: {
-                        Label(type.rawValue, systemImage: type.symbol)
-                    }
-                }
-            } label: {
-                Label("Add Condition", systemImage: "plus")
-            }
-            .menuStyle(.borderlessButton)
         }
+        .disabled(!hasTrigger)
+        .opacity(hasTrigger ? 1.0 : 0.5)
     }
 }
 
 struct ConditionRowView: View {
     @Binding var condition: Condition
+    var isIncompatible: Bool = false
+    var missingContext: String? = nil
 
     let serverIds: [String]
     let serverName: (String) -> String
     let voiceChannels: [GuildVoiceChannel]
+    let textChannels: [GuildTextChannel]
+    let roles: [GuildRole]
     let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Picker("Condition", selection: $condition.type) {
-                    ForEach(ConditionType.allCases) { type in
-                        Label(type.rawValue, systemImage: type.symbol).tag(type)
-                    }
+                Label(condition.type.rawValue, systemImage: condition.type.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                
+                if isIncompatible {
+                    Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.leading, 8)
                 }
-                Toggle("Enabled", isOn: $condition.enabled)
-                    .toggleStyle(.switch)
+
+                Spacer()
+                
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -646,7 +925,8 @@ struct ConditionRowView: View {
             conditionEditor
         }
         .padding(10)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: .white.opacity(0.16))
+        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
+        .opacity(isIncompatible ? 0.6 : 1.0)
     }
 
     @ViewBuilder
@@ -666,13 +946,68 @@ struct ConditionRowView: View {
                 }
             }
         case .usernameContains:
-            TextField("Username contains…", text: $condition.value)
+            TextField("Enter username fragment…", text: $condition.value)
         case .minimumDuration:
             HStack {
-                TextField("Minimum", text: $condition.value)
+                TextField("Minutes", text: $condition.value)
                     .frame(width: 80)
                 Text("minutes in channel")
                     .foregroundStyle(.secondary)
+            }
+        // New condition types - placeholder UI
+        case .channelIs:
+            SearchableIDPicker(
+                title: "Channel",
+                selectionID: $condition.value,
+                items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
+                prompt: "Select a channel..."
+            )
+        case .channelCategory:
+            TextField("Enter category name or ID…", text: $condition.value)
+                .foregroundStyle(.secondary)
+        case .userHasRole:
+            SearchableIDPicker(
+                title: "Role",
+                selectionID: $condition.value,
+                items: roles.map { .init(id: $0.id, name: $0.name) },
+                prompt: "Select a role..."
+            )
+        case .userJoinedRecently:
+            HStack {
+                TextField("Minutes", text: $condition.value)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                Text("minutes")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .messageContains:
+            TextField("Enter text to match…", text: $condition.value)
+        case .messageStartsWith:
+            TextField("Enter prefix to match…", text: $condition.value)
+        case .messageRegex:
+            TextField("Enter regex pattern…", text: $condition.value)
+        case .isDirectMessage:
+            Text("Passes if the triggering message was sent in a DM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .isFromBot:
+            Text("Passes if the triggering user is a bot.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .isFromUser:
+            Text("Passes if the triggering user is a human.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .channelType:
+            Picker("Channel Type", selection: $condition.value) {
+                Text("Text Channel").tag("0")
+                Text("DM").tag("1")
+                Text("Voice Channel").tag("2")
+                Text("Group DM").tag("3")
+                Text("Category").tag("4")
+                Text("News").tag("5")
+                Text("Stage").tag("13")
             }
         }
     }
@@ -680,29 +1015,56 @@ struct ConditionRowView: View {
 
 struct ActionsSectionView: View {
     @Binding var actions: [Action]
+    let category: BlockCategory
+    let allModifiers: [Action]
+    let currentTrigger: TriggerType?
+    let hasTrigger: Bool
 
     let serverIds: [String]
     let serverName: (String) -> String
     let textChannelsByServer: [String: [GuildTextChannel]]
+    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
+    let rolesByServer: [String: [GuildRole]]
+    let knownUsers: [String: String]
+    var isGuided: Bool = false
+    var incompatibleBlocks: [UUID] = []
+    var availableVariables: Set<ContextVariable> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if actions.isEmpty {
-                Button {
-                    var action = Action()
-                    action.serverId = serverIds.first ?? ""
-                    action.channelId = textChannelsByServer[action.serverId]?.first?.id ?? ""
-                    actions = [action]
-                } label: {
-                    Label("Add First Action Block", systemImage: "plus")
+                VStack(spacing: 10) {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("No blocks yet")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(textForEmptyState(category: category, isGuided: isGuided))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             } else {
                 ForEach($actions) { $action in
+                    let isCompat = !incompatibleBlocks.contains(action.id)
+                    let missing = action.type.requiredVariables.subtracting(availableVariables)
+
                     ActionSectionView(
                         action: $action,
+                        category: category,
+                        allModifiers: allModifiers,
+                        currentTrigger: currentTrigger,
+                        isIncompatible: !isCompat,
+                        missingContext: missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)",
                         serverIds: serverIds,
                         serverName: serverName,
-                        textChannels: textChannelsByServer[action.serverId] ?? [],
+                        textChannelsByServer: textChannelsByServer,
+                        voiceChannelsByServer: voiceChannelsByServer,
+                        rolesByServer: rolesByServer,
+                        knownUsers: knownUsers,
                         onDelete: {
                             actions.removeAll { $0.id == action.id }
                         }
@@ -710,26 +1072,100 @@ struct ActionsSectionView: View {
                 }
             }
         }
+        .disabled(!hasTrigger)
+        .opacity(hasTrigger ? 1.0 : 0.5)
+    }
+
+    private func textForEmptyState(category: BlockCategory, isGuided: Bool) -> String {
+        switch category {
+        case .ai:
+            return "No AI processing blocks yet. Add one from the Block Library.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
+        default:
+            return isGuided
+                 ? "Select a block from the Block Library to the left."
+                 : "Use the Block Library to add your first block."
+        }
     }
 }
 
 struct ActionSectionView: View {
     @Binding var action: Action
+    let category: BlockCategory
+    let allModifiers: [Action]
+    let currentTrigger: TriggerType?
+    var isIncompatible: Bool = false
+    var missingContext: String? = nil
 
     let serverIds: [String]
     let serverName: (String) -> String
-    let textChannels: [GuildTextChannel]
+    let textChannelsByServer: [String: [GuildTextChannel]]
+    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
+    let rolesByServer: [String: [GuildRole]]
+    let knownUsers: [String: String]
     let onDelete: () -> Void
+
+    private var resolvedDestinationMode: MessageDestination {
+        action.destinationMode ?? MessageDestination.defaultMode(for: currentTrigger)
+    }
+
+    private var resolvedServerId: String {
+        if !action.serverId.isEmpty {
+            return action.serverId
+        }
+        return serverIds.first ?? ""
+    }
+
+    private var textChannels: [GuildTextChannel] {
+        textChannelsByServer[resolvedServerId] ?? []
+    }
+
+    private var voiceChannels: [GuildVoiceChannel] {
+        voiceChannelsByServer[resolvedServerId] ?? []
+    }
+
+    private var roles: [GuildRole] {
+        rolesByServer[resolvedServerId] ?? []
+    }
+
+    private var destinationBinding: Binding<MessageDestination> {
+        Binding(
+            get: { resolvedDestinationMode },
+            set: { newValue in
+                action.destinationMode = newValue
+                if newValue == .specificChannel {
+                    ensureSpecificChannelSelection()
+                }
+            }
+        )
+    }
+
+    private func ensureSpecificChannelSelection() {
+        if action.serverId.isEmpty {
+            action.serverId = serverIds.first ?? ""
+        }
+        let availableChannels = textChannelsByServer[action.serverId] ?? []
+        if !availableChannels.contains(where: { $0.id == action.channelId }) {
+            action.channelId = availableChannels.first?.id ?? ""
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Block header — immutable once created; type is fixed at drop time
             HStack {
-                Picker("Action", selection: $action.type) {
-                    ForEach(ActionType.allCases) { actionType in
-                        Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
-                    }
+                Label(action.type.rawValue, systemImage: action.type.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(category == .messaging ? .orange : .mint)
+                
+                if isIncompatible {
+                    Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.leading, 8)
                 }
+
                 Spacer()
+                
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -738,55 +1174,84 @@ struct ActionSectionView: View {
 
             switch action.type {
             case .sendMessage:
-                if serverIds.isEmpty {
-                    Text("No connected servers available yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Server", selection: $action.serverId) {
-                        ForEach(serverIds, id: \.self) { serverId in
-                            Text(serverName(serverId)).tag(serverId)
-                        }
+                Picker("Destination", selection: destinationBinding) {
+                    ForEach(MessageDestination.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
                 }
 
-                Toggle("Mention user in message", isOn: $action.mentionUser)
-                Toggle("Reply to trigger message", isOn: $action.replyToTriggerMessage)
-                Toggle("Reply with AI", isOn: $action.replyWithAI)
-
-                if action.replyToTriggerMessage {
-                    Text("Reply will be sent in the same channel as the triggering message.")
+                switch resolvedDestinationMode {
+                case .replyToTrigger:
+                    Label("Replies to the triggering message automatically.", systemImage: "arrowshape.turn.up.left.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    if textChannels.isEmpty {
-                        Text("No text channels discovered for this server.")
+                case .sameChannel:
+                    Label("Uses the trigger channel automatically.", systemImage: "number")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .specificChannel:
+                    if serverIds.isEmpty {
+                        Text("No connected servers available yet.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Text Channel", selection: $action.channelId) {
-                            ForEach(textChannels) { channel in
-                                Text("#\(channel.name)").tag(channel.id)
+                        Picker("Server", selection: $action.serverId) {
+                            ForEach(serverIds, id: \.self) { serverId in
+                                Text(serverName(serverId)).tag(serverId)
+                            }
+                        }
+                        if textChannels.isEmpty {
+                            Text("No text channels discovered for this server.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Text Channel", selection: $action.channelId) {
+                                ForEach(textChannels) { channel in
+                                    Text("#\(channel.name)").tag(channel.id)
+                                }
                             }
                         }
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(action.replyWithAI ? "AI Prompt" : "Message")
-                        .font(.subheadline.weight(.semibold))
-                    TextEditor(text: $action.message)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 120)
-                        .padding(6)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
-                        )
+                Picker("Content Source", selection: $action.contentSource) {
+                    ForEach(ContentSource.allCases, id: \.self) { source in
+                        Text(source.displayName).tag(source)
+                    }
                 }
-                if action.replyWithAI {
-                    Text("AI will generate the final reply from this prompt template.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+                if action.contentSource == .custom {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Message")
+                            .font(.subheadline.weight(.semibold))
+                        VariableAwareTextEditor(text: $action.message)
+                        if action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Label("Message content is required.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "wand.and.stars")
+                            .foregroundStyle(.indigo)
+                        Text("Uses AI output from \(action.contentSource.displayName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if category == .actions {
+                    VStack(alignment: .leading, spacing: 4) {
+                        let activeModifiers = allModifiers.map { $0.type.rawValue }.joined(separator: ", ")
+                        if !activeModifiers.isEmpty {
+                            Label("Active Modifiers: \(activeModifiers)", systemImage: "info.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.indigo)
+                        } else {
+                            Text("Add modifier blocks (Reply To Trigger, Send To Channel…) above this action to control message routing.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             case .addLogEntry:
                 TextField("Log message", text: $action.message)
@@ -798,24 +1263,469 @@ struct ActionSectionView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            case .sendDM:
+                Toggle("Mention user", isOn: $action.mentionUser)
+            case .deleteMessage:
+                Text("Delete the triggering message")
+                    .foregroundStyle(.secondary)
+            case .addReaction:
+                TextField("Emoji", text: $action.emoji)
+            case .addRole, .removeRole:
+                SearchableIDPicker(
+                    title: "Role",
+                    selectionID: $action.roleId,
+                    items: roles.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a role..."
+                )
+            case .timeoutMember:
+                HStack {
+                    TextField("Duration (seconds)", value: $action.timeoutDuration, format: .number)
+                    Text("seconds")
+                        .foregroundStyle(.secondary)
+                }
+            case .kickMember:
+                TextField("Reason (optional)", text: $action.kickReason)
+            case .moveMember:
+                SearchableIDPicker(
+                    title: "Target Voice Channel",
+                    selectionID: $action.targetVoiceChannelId,
+                    items: voiceChannels.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a voice channel..."
+                )
+            case .createChannel:
+                TextField("Channel Name", text: $action.newChannelName)
+            case .webhook:
+                TextField("Webhook URL", text: $action.webhookURL)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Payload Content")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.webhookContent)
+                }
+            case .delay:
+                HStack {
+                    TextField("Seconds", value: $action.delaySeconds, format: .number)
+                    Text("seconds")
+                        .foregroundStyle(.secondary)
+                }
+            case .setVariable:
+                HStack {
+                    TextField("Variable name", text: $action.variableName)
+                    Text("=")
+                    TextField("Value", text: $action.variableValue)
+                }
+            case .randomChoice:
+                Text("Random options not yet configurable")
+                    .foregroundStyle(.secondary)
+            // Message Modifier blocks
+            case .replyToTrigger:
+                Text("Replies to the message that triggered this rule.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .mentionUser:
+                Text("Prefixes the message with a mention of the triggering user.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .mentionRole:
+                SearchableIDPicker(
+                    title: "Role to Mention",
+                    selectionID: $action.roleId,
+                    items: roles.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a role..."
+                )
+            case .disableMention:
+                Text("Strips any existing user mentions from the message template.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .sendToChannel:
+                SearchableIDPicker(
+                    title: "Target Channel",
+                    selectionID: $action.channelId,
+                    items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
+                    prompt: "Select a channel..."
+                )
+            case .sendToDM:
+                Text("Sends the message as a DM to the triggering user.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            // AI blocks
+            case .generateAIResponse:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AI Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI response is available as {ai.response} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .summariseMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Summarization Prompt (Optional)")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI summary is available as {ai.summary} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .classifyMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Classification Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI classification is available as {ai.classification} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .extractEntities:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Entity Extraction Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The extracted entities are available as {ai.entities} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .rewriteMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Rewriting Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The rewritten message is available as {ai.rewrite} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}, {duration}")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding(12)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.06), stroke: .white.opacity(0.16))
+        .padding(10)
+        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
+        .opacity(isIncompatible ? 0.6 : 1.0)
         .onAppear {
-            if action.serverId.isEmpty {
-                action.serverId = serverIds.first ?? ""
-            }
-            if action.channelId.isEmpty {
-                action.channelId = textChannels.first?.id ?? ""
+            if action.type == .sendMessage, resolvedDestinationMode == .specificChannel {
+                ensureSpecificChannelSelection()
             }
         }
-        .onChange(of: action.serverId) {
-            action.channelId = textChannels.first?.id ?? ""
+        .onChange(of: action.serverId) { _, _ in
+            if action.type == .sendMessage, resolvedDestinationMode == .specificChannel {
+                ensureSpecificChannelSelection()
+            }
         }
     }
+}
+
+// MARK: - Validation Banner
+
+struct EmptyRuleStateView: View {
+    let icon: String
+    let title: String
+    let description: String
+    var onShowMe: (() -> Void)? = nil
+    var onContinue: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundStyle(.yellow)
+                .symbolEffect(.bounce, value: true)
+            
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                Text(description)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            if onShowMe != nil || onContinue != nil {
+                HStack(spacing: 12) {
+                    if let onShowMe = onShowMe {
+                        Button("Show Me", action: onShowMe)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                    }
+                    if let onContinue = onContinue {
+                        Button("Continue", action: onContinue)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity)
+        .glassCard(cornerRadius: 24, tint: .white.opacity(0.05), stroke: .white.opacity(0.1))
+    }
+}
+
+struct ValidationBannerView: View {
+    let issues: [ValidationIssue]
+
+    private var errors: [ValidationIssue] { issues.filter { $0.severity == .error } }
+    private var warnings: [ValidationIssue] { issues.filter { $0.severity == .warning } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(errors) { issue in
+                ValidationIssueRow(issue: issue)
+            }
+            ForEach(warnings) { issue in
+                ValidationIssueRow(issue: issue)
+            }
+        }
+    }
+}
+
+private struct ValidationIssueRow: View {
+    let issue: ValidationIssue
+
+    private var accent: Color { issue.severity == .error ? .red : .orange }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: issue.severity.icon)
+                .foregroundStyle(accent)
+                .font(.caption.weight(.semibold))
+            Text(issue.message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer()
+            Text(issue.blockType.rawValue)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(accent.opacity(0.30), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Variable-Aware Text Editor
+
+struct VariableAwareTextEditor: View {
+    @Binding var text: String
+    @State private var showPicker = false
+    @State private var cursorAtEnd = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            TextEditor(text: $text)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 100)
+                .padding(6)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                )
+                .onChange(of: text) { _, newValue in
+                    if newValue.hasSuffix("{") {
+                        showPicker = true
+                    }
+                }
+
+            Button {
+                showPicker = true
+            } label: {
+                Label("Insert Variable", systemImage: "curlybraces")
+                    .font(.caption.weight(.medium))
+                    .labelStyle(.iconOnly)
+                    .padding(6)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .popover(isPresented: $showPicker, arrowEdge: .top) {
+                VariablePickerPopover { variable in
+                    // Remove the trailing `{` that triggered the picker if present
+                    if text.hasSuffix("{") {
+                        text.removeLast()
+                    }
+                    text += variable.rawValue
+                    showPicker = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Variable Picker Popover
+
+struct VariablePickerPopover: View {
+    let onSelect: (ContextVariable) -> Void
+
+    private var grouped: [(category: String, variables: [ContextVariable])] {
+        let categories = ["User", "Message", "Channel", "Server", "Voice", "Reaction", "Other"]
+        return categories.compactMap { cat in
+            let vars = ContextVariable.allCases.filter { $0.category == cat }
+            return vars.isEmpty ? nil : (category: cat, variables: vars)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Insert Variable")
+                .font(.headline)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(grouped, id: \.category) { group in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.category.uppercased())
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+
+                            ForEach(group.variables, id: \.self) { variable in
+                                Button {
+                                    onSelect(variable)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Text(variable.rawValue)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.cyan)
+                                            .frame(minWidth: 120, alignment: .leading)
+                                        Text(variable.displayName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .frame(width: 320, height: 340)
+    }
+}
+
+// MARK: - Searchable ID Picker
+
+struct SearchablePickerItem: Identifiable {
+    let id: String
+    let name: String
+}
+
+struct SearchableIDPicker: View {
+    let title: String
+    @Binding var selectionID: String
+    let items: [SearchablePickerItem]
+    let prompt: String
+
+    @State private var showPopover = false
+    @State private var searchText = ""
+
+    private var filteredItems: [SearchablePickerItem] {
+        if searchText.isEmpty {
+            return items
+        }
+        return items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private var selectedName: String {
+        items.first { $0.id == selectionID }?.name ?? (selectionID.isEmpty ? prompt : selectionID)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Button {
+                showPopover = true
+            } label: {
+                HStack {
+                    Text(selectedName)
+                        .font(.subheadline)
+                        .foregroundStyle(selectionID.isEmpty ? .secondary : .primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search...", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(10)
+                .background(.white.opacity(0.05))
+                
+                Divider()
+                
+                if filteredItems.isEmpty {
+                    Text("No results found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(filteredItems) { (item: SearchablePickerItem) in
+                                Button {
+                                    selectionID = item.id
+                                    showPopover = false
+                                } label: {
+                                    HStack {
+                                        Text(item.name)
+                                            .font(.subheadline)
+                                        Spacer()
+                                        if selectionID == item.id {
+                                            Image(systemName: "checkmark")
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(minWidth: 220, maxHeight: 300)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Guided Build Step
+
+enum GuidedBuildStep {
+    case none, trigger, action
 }
