@@ -219,6 +219,7 @@ struct RuleEditorView: View {
                         actions: $rule.aiBlocks,
                         category: .ai,
                         allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
                         hasTrigger: rule.trigger != nil,
                         serverIds: serverIds,
                         serverName: serverName(for:),
@@ -238,6 +239,7 @@ struct RuleEditorView: View {
                         actions: $rule.modifiers,
                         category: .messaging,
                         allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
                         hasTrigger: rule.trigger != nil,
                         serverIds: serverIds,
                         serverName: serverName(for:),
@@ -258,6 +260,7 @@ struct RuleEditorView: View {
                         actions: $rule.actions,
                         category: .actions,
                         allModifiers: rule.modifiers,
+                        currentTrigger: rule.trigger,
                         hasTrigger: rule.trigger != nil,
                         serverIds: serverIds,
                         serverName: serverName(for:),
@@ -383,13 +386,15 @@ struct RuleEditorView: View {
     private func addAction(_ type: ActionType) {
         var action = RuleAction()
         action.type = type
-        action.serverId = serverIds.first ?? ""
-        action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
         action.message = rule.trigger?.defaultMessage ?? ""
 
         switch type {
         case .sendMessage:
-            break
+            action.destinationMode = MessageDestination.defaultMode(for: rule.trigger)
+            if action.destinationMode == .specificChannel {
+                action.serverId = serverIds.first ?? ""
+                action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
+            }
         case .addLogEntry:
             action.message = "Rule fired for {username}"
         case .setStatus:
@@ -435,19 +440,25 @@ struct RuleEditorView: View {
     private func initializeRuleDefaultsIfNeeded() {
         var didChange = false
 
-        // Fix missing server/channel IDs on existing actions (legacy rules).
-        // Never pre-populate a default action — empty rules show the empty-state UI.
-        if !rule.actions.isEmpty {
-            if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
-                rule.actions[0].serverId = first
+        for index in rule.actions.indices where rule.actions[index].type == .sendMessage {
+            if rule.actions[index].destinationMode == nil {
+                rule.actions[index].destinationMode = MessageDestination.defaultMode(for: rule.trigger)
                 didChange = true
             }
-            if rule.actions[0].channelId.isEmpty {
-                let channels = app.availableTextChannelsByServer[rule.actions[0].serverId] ?? []
-                if let first = channels.first {
-                    rule.actions[0].channelId = first.id
-                    didChange = true
-                }
+
+            let destinationMode = rule.actions[index].destinationMode ?? MessageDestination.defaultMode(for: rule.trigger)
+            guard destinationMode == .specificChannel else { continue }
+
+            if rule.actions[index].serverId.isEmpty, let first = serverIds.first {
+                rule.actions[index].serverId = first
+                didChange = true
+            }
+
+            let channels = app.availableTextChannelsByServer[rule.actions[index].serverId] ?? []
+            if !channels.contains(where: { $0.id == rule.actions[index].channelId }),
+               let first = channels.first {
+                rule.actions[index].channelId = first.id
+                didChange = true
             }
         }
 
@@ -466,8 +477,7 @@ struct RuleEditorView: View {
 
         var action = RuleAction()
         action.type = .sendMessage
-        action.serverId = serverIds.first ?? ""
-        action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
+        action.destinationMode = .replyToTrigger
         action.message = "Hello World 👋"
         rule.actions = [action]
 
@@ -1007,6 +1017,7 @@ struct ActionsSectionView: View {
     @Binding var actions: [Action]
     let category: BlockCategory
     let allModifiers: [Action]
+    let currentTrigger: TriggerType?
     let hasTrigger: Bool
 
     let serverIds: [String]
@@ -1045,13 +1056,14 @@ struct ActionsSectionView: View {
                         action: $action,
                         category: category,
                         allModifiers: allModifiers,
+                        currentTrigger: currentTrigger,
                         isIncompatible: !isCompat,
                         missingContext: missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)",
                         serverIds: serverIds,
                         serverName: serverName,
-                        textChannels: textChannelsByServer[action.serverId] ?? [],
-                        voiceChannels: voiceChannelsByServer[action.serverId] ?? [],
-                        roles: rolesByServer[action.serverId] ?? [],
+                        textChannelsByServer: textChannelsByServer,
+                        voiceChannelsByServer: voiceChannelsByServer,
+                        rolesByServer: rolesByServer,
                         knownUsers: knownUsers,
                         onDelete: {
                             actions.removeAll { $0.id == action.id }
@@ -1080,16 +1092,62 @@ struct ActionSectionView: View {
     @Binding var action: Action
     let category: BlockCategory
     let allModifiers: [Action]
+    let currentTrigger: TriggerType?
     var isIncompatible: Bool = false
     var missingContext: String? = nil
 
     let serverIds: [String]
     let serverName: (String) -> String
-    let textChannels: [GuildTextChannel]
-    let voiceChannels: [GuildVoiceChannel]
-    let roles: [GuildRole]
+    let textChannelsByServer: [String: [GuildTextChannel]]
+    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
+    let rolesByServer: [String: [GuildRole]]
     let knownUsers: [String: String]
     let onDelete: () -> Void
+
+    private var resolvedDestinationMode: MessageDestination {
+        action.destinationMode ?? MessageDestination.defaultMode(for: currentTrigger)
+    }
+
+    private var resolvedServerId: String {
+        if !action.serverId.isEmpty {
+            return action.serverId
+        }
+        return serverIds.first ?? ""
+    }
+
+    private var textChannels: [GuildTextChannel] {
+        textChannelsByServer[resolvedServerId] ?? []
+    }
+
+    private var voiceChannels: [GuildVoiceChannel] {
+        voiceChannelsByServer[resolvedServerId] ?? []
+    }
+
+    private var roles: [GuildRole] {
+        rolesByServer[resolvedServerId] ?? []
+    }
+
+    private var destinationBinding: Binding<MessageDestination> {
+        Binding(
+            get: { resolvedDestinationMode },
+            set: { newValue in
+                action.destinationMode = newValue
+                if newValue == .specificChannel {
+                    ensureSpecificChannelSelection()
+                }
+            }
+        )
+    }
+
+    private func ensureSpecificChannelSelection() {
+        if action.serverId.isEmpty {
+            action.serverId = serverIds.first ?? ""
+        }
+        let availableChannels = textChannelsByServer[action.serverId] ?? []
+        if !availableChannels.contains(where: { $0.id == action.channelId }) {
+            action.channelId = availableChannels.first?.id ?? ""
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1116,36 +1174,50 @@ struct ActionSectionView: View {
 
             switch action.type {
             case .sendMessage:
-                // Server/Channel selection (used when no routing modifier is active)
-                if serverIds.isEmpty {
-                    Text("No connected servers available yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Server", selection: $action.serverId) {
-                        ForEach(serverIds, id: \.self) { serverId in
-                            Text(serverName(serverId)).tag(serverId)
-                        }
+                Picker("Destination", selection: destinationBinding) {
+                    ForEach(MessageDestination.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                    if textChannels.isEmpty {
-                        Text("No text channels discovered for this server.")
+                }
+
+                switch resolvedDestinationMode {
+                case .replyToTrigger:
+                    Label("Replies to the triggering message automatically.", systemImage: "arrowshape.turn.up.left.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .sameChannel:
+                    Label("Uses the trigger channel automatically.", systemImage: "number")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .specificChannel:
+                    if serverIds.isEmpty {
+                        Text("No connected servers available yet.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Text Channel", selection: $action.channelId) {
-                            ForEach(textChannels) { channel in
-                                Text("#\(channel.name)").tag(channel.id)
+                        Picker("Server", selection: $action.serverId) {
+                            ForEach(serverIds, id: \.self) { serverId in
+                                Text(serverName(serverId)).tag(serverId)
+                            }
+                        }
+                        if textChannels.isEmpty {
+                            Text("No text channels discovered for this server.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Text Channel", selection: $action.channelId) {
+                                ForEach(textChannels) { channel in
+                                    Text("#\(channel.name)").tag(channel.id)
+                                }
                             }
                         }
                     }
                 }
-                
-                // Content Source picker
+
                 Picker("Content Source", selection: $action.contentSource) {
                     ForEach(ContentSource.allCases, id: \.self) { source in
                         Text(source.displayName).tag(source)
                     }
                 }
-                
-                // Show message editor for custom content, AI source info for AI content
+
                 if action.contentSource == .custom {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Message")
@@ -1158,7 +1230,6 @@ struct ActionSectionView: View {
                         }
                     }
                 } else {
-                    // Show AI content source info
                     HStack {
                         Image(systemName: "wand.and.stars")
                             .foregroundStyle(.indigo)
@@ -1168,8 +1239,7 @@ struct ActionSectionView: View {
                     }
                 }
 
-                // UI refinement: show active modifiers that affect this action
-                if category == .actions { // Action blocks section
+                if category == .actions {
                     VStack(alignment: .leading, spacing: 4) {
                         let activeModifiers = allModifiers.map { $0.type.rawValue }.joined(separator: ", ")
                         if !activeModifiers.isEmpty {
@@ -1328,16 +1398,15 @@ struct ActionSectionView: View {
         .padding(10)
         .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
         .opacity(isIncompatible ? 0.6 : 1.0)
-    }
-
-    private func textForEmptyState(category: BlockCategory, isGuided: Bool) -> String {
-        switch category {
-        case .ai:
-            return "No AI processing blocks yet. Add one from the Block Library.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
-        default:
-            return isGuided
-                 ? "Select a block from the Block Library to the left."
-                 : "Use the Block Library to add your first block."
+        .onAppear {
+            if action.type == .sendMessage, resolvedDestinationMode == .specificChannel {
+                ensureSpecificChannelSelection()
+            }
+        }
+        .onChange(of: action.serverId) { _, _ in
+            if action.type == .sendMessage, resolvedDestinationMode == .specificChannel {
+                ensureSpecificChannelSelection()
+            }
         }
     }
 }

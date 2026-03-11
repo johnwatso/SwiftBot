@@ -1789,7 +1789,7 @@ extension AdminWebBuilderMetadata {
             categories: BlockCategory.allCases.map { $0.toMetadata() },
             blocks: ActionType.allCases.map { $0.toMetadata() },
             variables: ContextVariable.allCases.map { $0.toMetadata() },
-            schemaVersion: 1
+            schemaVersion: 2
         )
     }
 }
@@ -2046,12 +2046,22 @@ extension ActionType {
         case .sendMessage:
             return [
                 AdminWebFieldMetadata(
+                    id: "destinationMode",
+                    name: "Destination",
+                    type: .picker,
+                    required: true,
+                    defaultValue: "replyToTrigger",
+                    description: "Where the message should be sent by default",
+                    placeholder: nil,
+                    optionsSource: .predefined
+                ),
+                AdminWebFieldMetadata(
                     id: "serverId",
                     name: "Server",
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target server (used as fallback when no routing modifier is active)",
+                    description: "Only used when Destination is 'Specific Channel'",
                     placeholder: "Select a server",
                     optionsSource: .servers
                 ),
@@ -2061,7 +2071,7 @@ extension ActionType {
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target channel (used as fallback when no routing modifier is active, ignored if Send To DM modifier is active)",
+                    description: "Only used when Destination is 'Specific Channel'",
                     placeholder: "Select a channel",
                     optionsSource: .textChannels
                 ),

@@ -2777,6 +2777,18 @@
       actionsStaticBound = true;
     }
 
+    function defaultDestinationModeForTrigger(trigger) {
+      switch (trigger) {
+        case 'Message Created':
+        case 'Reaction Added':
+          return 'replyToTrigger';
+        case 'Slash Command':
+          return 'sameChannel';
+        default:
+          return 'specificChannel';
+      }
+    }
+
     // Create a new block instance from metadata defaults
     function createBlockFromMetadata(blockId, category) {
       // Find block metadata
@@ -2810,8 +2822,10 @@
       const base = {
         id: uuid(),
         type: blockId,
-        serverId: (actionsData?.servers?.[0]?.id || ''),
+        serverId: '',
         channelId: '',
+        contentSource: 'custom',
+        destinationMode: blockId === 'Send Message' ? 'replyToTrigger' : undefined,
         mentionUser: true,
         replyToTriggerMessage: false,  // Legacy field - migrated to modifier block
         message: '',
@@ -3096,7 +3110,7 @@
           description: ''
         };
         const icon = sfSymbolToMaterial(meta.symbol);
-        const fields = renderBlockFields(block, meta, blockType, idx);
+        const fields = renderBlockFields(block, meta, blockType, idx, rule);
         
         return `
           <div class="block-row" data-block-type="${blockType}" data-block-index="${idx}">
@@ -3112,34 +3126,38 @@
     }
 
     // Render fields for a specific block based on metadata
-    function renderBlockFields(block, meta, blockType, idx) {
+    function renderBlockFields(block, meta, blockType, idx, rule) {
       const fields = meta.fields || [];
       if (fields.length === 0) {
         return `<div style="font-size:11px;color:var(--muted);">${meta.description || 'No configuration needed'}</div>`;
       }
 
+      const effectiveDestinationMode = block.destinationMode || defaultDestinationModeForTrigger(rule?.trigger);
       const serverID = block.serverId || actionsData.servers?.[0]?.id || '';
       
       return fields.map(field => {
-        const value = block[field.id] || field.defaultValue || '';
+        const value = block[field.id] ?? field.defaultValue ?? '';
         const placeholder = field.placeholder || '';
+        const effectiveContentSource = block.contentSource || 'custom';
+        const isMessageField = field.id === 'message';
+        const isSpecificChannelField = field.id === 'serverId' || field.id === 'channelId';
+        const messageConditionalAttr = isMessageField ? ' data-show-if-content="custom"' : '';
+        const messageHiddenStyle = isMessageField && effectiveContentSource !== 'custom' ? ' style="display:none;"' : '';
+        const destinationConditionalAttr = isSpecificChannelField ? ' data-show-if-destination="specificChannel"' : '';
+        const destinationHiddenStyle = isSpecificChannelField && effectiveDestinationMode !== 'specificChannel' ? ' style="display:none;"' : '';
         
         // Render based on field type
         switch (field.type) {
           case 'text':
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${destinationConditionalAttr}${destinationHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <input class="field-input block-field" data-field="${field.id}" value="${value.replaceAll('"', '&quot;')}" placeholder="${placeholder}">
               </div>
             `;
           case 'multiline':
-            // Message field only shows when contentSource is 'custom'
-            const isMessageField = field.id === 'message';
-            const msgConditionalAttr = isMessageField ? ' data-show-if-content="custom"' : '';
-            const msgHiddenStyle = isMessageField && block.contentSource !== 'custom' && block.contentSource !== undefined ? ' style="display:none;"' : '';
             return `
-              <div style="margin-bottom:8px;"${msgConditionalAttr}${msgHiddenStyle}>
+              <div style="margin-bottom:8px;"${messageConditionalAttr}${messageHiddenStyle}${destinationConditionalAttr}${destinationHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <textarea class="field-textarea block-field" data-field="${field.id}" placeholder="${placeholder}">${value}</textarea>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px;">Use {variable} syntax for context variables</div>
@@ -3147,14 +3165,14 @@
             `;
           case 'number':
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${destinationConditionalAttr}${destinationHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <input class="field-input block-field" data-field="${field.id}" type="number" value="${value}" placeholder="${placeholder}">
               </div>
             `;
           case 'boolean':
             return `
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"${destinationConditionalAttr}${destinationHiddenStyle}>
                 <label class="switch">
                   <input class="block-field" data-field="${field.id}" type="checkbox" ${value ? 'checked' : ''}>
                   <span class="switch-track"><span class="switch-knob"></span></span>
@@ -3184,18 +3202,25 @@
                 { id: 'ai.rewrite', name: 'AI Rewrite' }
               ];
               options = sources.map(s => `<option value="${s.id}" ${s.id === value ? 'selected' : ''}>${s.name}</option>`).join('');
+            } else if (field.optionsSource === 'predefined' && field.id === 'destinationMode') {
+              const destinations = [
+                { id: 'replyToTrigger', name: 'Reply to Trigger' },
+                { id: 'sameChannel', name: 'Same Channel' },
+                { id: 'specificChannel', name: 'Specific Channel' }
+              ];
+              options = destinations.map(d => `<option value="${d.id}" ${d.id === value ? 'selected' : ''}>${d.name}</option>`).join('');
             } else {
               options = `<option value="${value}" selected>${value}</option>`;
             }
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${destinationConditionalAttr}${destinationHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <select class="field-select block-field" data-field="${field.id}">${options}</select>
               </div>
             `;
           default:
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${destinationConditionalAttr}${destinationHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <input class="field-input block-field" data-field="${field.id}" value="${value.replaceAll('"', '&quot;')}">
               </div>
@@ -3224,6 +3249,18 @@
       editorNode.querySelectorAll('[data-block-type]').forEach(blockEl => {
         const blockType = blockEl.dataset.blockType;
         const idx = Number(blockEl.dataset.blockIndex);
+        const updateConditionalFields = () => {
+          const contentSource = blockEl.querySelector('[data-field="contentSource"]')?.value || 'custom';
+          const destinationMode = blockEl.querySelector('[data-field="destinationMode"]')?.value
+            || defaultDestinationModeForTrigger(selected.trigger);
+
+          blockEl.querySelectorAll('[data-show-if-content]').forEach(el => {
+            el.style.display = contentSource === 'custom' ? '' : 'none';
+          });
+          blockEl.querySelectorAll('[data-show-if-destination]').forEach(el => {
+            el.style.display = destinationMode === 'specificChannel' ? '' : 'none';
+          });
+        };
         
         // Delete block
         blockEl.querySelector('[data-delete-block]')?.addEventListener('click', () => {
@@ -3251,6 +3288,21 @@
               
               if (block) {
                 block[fieldId] = value;
+
+                if (fieldId === 'destinationMode' && value === 'specificChannel') {
+                  block.serverId = block.serverId || actionsData.servers?.[0]?.id || '';
+                  const channels = actionsData.textChannelsByServer?.[block.serverId] || [];
+                  if (!channels.some(ch => ch.id === block.channelId)) {
+                    block.channelId = channels[0]?.id || '';
+                  }
+                }
+
+                if (fieldId === 'serverId') {
+                  const channels = actionsData.textChannelsByServer?.[block.serverId] || [];
+                  if (!channels.some(ch => ch.id === block.channelId)) {
+                    block.channelId = channels[0]?.id || '';
+                  }
+                }
               }
             });
           };
@@ -3263,19 +3315,14 @@
             fieldEl.addEventListener('input', handler);
           }
           
-          // Special handling for contentSource to show/hide message field
-          if (fieldId === 'contentSource') {
+          if (fieldId === 'contentSource' || fieldId === 'destinationMode') {
             fieldEl.addEventListener('change', (e) => {
-              const showCustom = e.target.value === 'custom';
-              const parent = blockEl.closest('.block-row');
-              if (parent) {
-                parent.querySelectorAll('[data-show-if-content]').forEach(el => {
-                  el.style.display = showCustom ? '' : 'none';
-                });
-              }
+              updateConditionalFields();
             });
           }
         });
+
+        updateConditionalFields();
       });
     }
 

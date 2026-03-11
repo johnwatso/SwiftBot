@@ -2518,6 +2518,9 @@ struct PipelineContext: CustomStringConvertible {
     var aiClassification: String?
     var aiEntities: String?
     var aiRewrite: String?
+    var triggerGuildId: String?
+    var triggerChannelId: String?
+    var triggerMessageId: String?
     var targetChannelId: String?
     var targetServerId: String?
     var mentionUser: Bool = true
@@ -2532,7 +2535,8 @@ struct PipelineContext: CustomStringConvertible {
         let ai = aiResponse != nil ? "AI(\(aiResponse!.count) chars)" : "nil"
         let summary = aiSummary != nil ? "Summary(\(aiSummary!.count) chars)" : "nil"
         let target = targetChannelId ?? "default"
-        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), summary: \(summary), handled: \(eventHandled)]"
+        let trigger = triggerChannelId ?? "none"
+        return "[PipelineContext target: \(target), trigger: \(trigger), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), summary: \(summary), handled: \(eventHandled)]"
     }
 }
 
@@ -3586,13 +3590,15 @@ struct RuleAction: Identifiable, Codable, Equatable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        let legacyReplyToTrigger = type == .sendMessage ? (destinationMode == .replyToTrigger) : replyToTriggerMessage
+        let legacyReplyWithAI = type == .sendMessage ? (contentSource == .aiResponse) : replyWithAI
         try container.encode(id, forKey: .id)
         try container.encode(type, forKey: .type)
         try container.encode(serverId, forKey: .serverId)
         try container.encode(channelId, forKey: .channelId)
         try container.encode(mentionUser, forKey: .mentionUser)
-        try container.encode(replyToTriggerMessage, forKey: .replyToTriggerMessage)
-        try container.encode(replyWithAI, forKey: .replyWithAI)
+        try container.encode(legacyReplyToTrigger, forKey: .replyToTriggerMessage)
+        try container.encode(legacyReplyWithAI, forKey: .replyWithAI)
         try container.encode(message, forKey: .message)
         try container.encode(statusText, forKey: .statusText)
         // New fields
@@ -3651,6 +3657,29 @@ enum MessageDestination: String, Codable, CaseIterable {
         case .sameChannel: return "Same Channel"
         case .specificChannel: return "Specific Channel"
         }
+    }
+}
+
+extension MessageDestination {
+    static func defaultMode(for trigger: TriggerType?) -> MessageDestination {
+        switch trigger {
+        case .messageCreated, .reactionAdded:
+            return .replyToTrigger
+        case .slashCommand:
+            return .sameChannel
+        case .userJoinedVoice, .userLeftVoice, .userMovedVoice, .memberJoined, .memberLeft, .none:
+            return .specificChannel
+        }
+    }
+
+    static func defaultMode(for event: VoiceRuleEvent, context: PipelineContext) -> MessageDestination {
+        if context.triggerMessageId != nil || event.triggerMessageId != nil {
+            return .replyToTrigger
+        }
+        if context.triggerChannelId != nil || event.triggerChannelId != nil {
+            return .sameChannel
+        }
+        return .specificChannel
     }
 }
 
@@ -3780,6 +3809,19 @@ struct Rule: Identifiable, Codable, Equatable {
             aiBlocks.append(contentsOf: aiBlocksFromActions)
             actions = remainingActions
         }
+
+        actions = actions.map { action in
+            guard action.type == .sendMessage, action.destinationMode == nil else { return action }
+            var updated = action
+            if action.replyToTriggerMessage {
+                updated.destinationMode = .replyToTrigger
+            } else if !action.channelId.isEmpty || !action.serverId.isEmpty {
+                updated.destinationMode = .specificChannel
+            } else {
+                updated.destinationMode = MessageDestination.defaultMode(for: trigger)
+            }
+            return updated
+        }
     }
 
     /// Provides the full pipeline of blocks for the rule engine in execution order:
@@ -3798,7 +3840,7 @@ struct Rule: Identifiable, Codable, Equatable {
             var actionWithModifiers = action
             
             // Legacy: replyWithAI toggle creates an AI block
-            if action.replyWithAI {
+            if action.type == .sendMessage && action.replyWithAI && action.contentSource == .custom {
                 var aiBlock = RuleAction()
                 aiBlock.type = .generateAIResponse
                 // Insert AI block at the beginning (before modifiers)
@@ -3807,7 +3849,7 @@ struct Rule: Identifiable, Codable, Equatable {
             }
             
             // Extract reply-to-trigger as a modifier
-            if action.replyToTriggerMessage {
+            if action.type == .sendMessage && action.replyToTriggerMessage && action.destinationMode == nil {
                 var replyBlock = RuleAction()
                 replyBlock.type = .replyToTrigger
                 pipeline.append(replyBlock)
@@ -3926,10 +3968,23 @@ struct Rule: Identifiable, Codable, Equatable {
             }
             
             // Task 5: Prevent empty Send Message actions
-            if action.type == .sendMessage && action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if action.type == .sendMessage,
+               action.contentSource == .custom,
+               action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 issues.append(.init(
                     severity: .error,
                     message: "Message content is required for 'Send Message' actions.",
+                    blockType: .action,
+                    blockId: action.id
+                ))
+            }
+
+            if action.type == .sendMessage,
+               (action.destinationMode ?? MessageDestination.defaultMode(for: trigger)) == .specificChannel,
+               action.channelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append(.init(
+                    severity: .error,
+                    message: "Select a channel when destination is set to 'Specific Channel'.",
                     blockType: .action,
                     blockId: action.id
                 ))
