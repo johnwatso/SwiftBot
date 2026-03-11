@@ -3405,6 +3405,7 @@ final class AppModel: ObservableObject {
             triggerGuildId: guildId,
             triggerUserId: userId,
             isDirectMessage: false,
+            authorIsBot: nil,
             joinedAt: joinedAt
         )
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
@@ -3462,6 +3463,7 @@ final class AppModel: ObservableObject {
             triggerGuildId: guildId,
             triggerUserId: userId,
             isDirectMessage: false,
+            authorIsBot: nil,
             joinedAt: nil
         )
 
