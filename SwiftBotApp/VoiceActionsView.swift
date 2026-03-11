@@ -144,6 +144,140 @@ struct RuleEditorView: View {
         app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
     }
 
+    private var ruleCanvasContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if rule.trigger == nil && !hasSeenRuleOnboarding {
+                EmptyRuleStateView(
+                    icon: "bolt.circle",
+                    title: "Choose a Trigger",
+                    description: "Select a trigger from the Block Library to begin building this rule.",
+                    onShowMe: {
+                        scrollToTriggersSignal = true
+                        guidedStep = .trigger
+                    },
+                    onContinue: {
+                        hasSeenRuleOnboarding = true
+                    }
+                )
+                .padding(.top, 40)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity.combined(with: .scale(scale: 0.96))
+                    )
+                )
+            } else {
+                RuleCanvasSection(title: "Trigger", systemImage: "bolt.fill", accent: .yellow,
+                                  guidedHighlight: guidedStep == .trigger) {
+                    TriggerSectionView(
+                        triggerType: rule.trigger
+                    )
+                    if guidedStep == .trigger {
+                        Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
+                            .font(.caption)
+                            .foregroundStyle(.yellow.opacity(0.8))
+                            .padding(.top, 4)
+                    }
+                    // Trigger can be replaced but not deleted
+                    Button {
+                        rule.isEditingTrigger = true
+                        scrollToTriggersSignal = true
+                        guidedStep = .trigger
+                    } label: {
+                        Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.yellow)
+                    .padding(.top, 4)
+                }
+
+                Divider().opacity(0.4)
+
+                // Filters Section
+                RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .blue) {
+                    ConditionsSectionView(
+                        conditions: $rule.conditions,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
+                        textChannels: app.availableTextChannelsByServer.values.flatMap { $0 },
+                        roles: app.availableRolesByServer.values.flatMap { $0 },
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                Divider().opacity(0.4)
+
+                // AI Processing Section
+                RuleCanvasSection(title: "AI Processing", systemImage: "sparkles", accent: .purple) {
+                    ActionsSectionView(
+                        actions: $rule.aiBlocks,
+                        category: .ai,
+                        allModifiers: rule.modifiers,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                Divider().opacity(0.4)
+
+                RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
+                    ActionsSectionView(
+                        actions: $rule.modifiers,
+                        category: .messaging,
+                        allModifiers: rule.modifiers,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+
+                RuleFlowArrow()
+
+                RuleCanvasSection(title: "Actions", systemImage: "paperplane.fill", accent: .mint,
+                                  guidedHighlight: guidedStep == .action) {
+                    ActionsSectionView(
+                        actions: $rule.actions,
+                        category: .actions,
+                        allModifiers: rule.modifiers,
+                        hasTrigger: rule.trigger != nil,
+                        serverIds: serverIds,
+                        serverName: serverName(for:),
+                        textChannelsByServer: app.availableTextChannelsByServer,
+                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                        rolesByServer: app.availableRolesByServer,
+                        knownUsers: app.knownUsersById,
+                        isGuided: guidedStep == .action,
+                        incompatibleBlocks: rule.incompatibleBlocks,
+                        availableVariables: rule.trigger?.providedVariables ?? []
+                    )
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
+        .frame(maxWidth: 880, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
@@ -213,116 +347,7 @@ struct RuleEditorView: View {
                 }
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if rule.trigger == nil && !hasSeenRuleOnboarding {
-                            EmptyRuleStateView(
-                                icon: "bolt.circle",
-                                title: "Choose a Trigger",
-                                description: "Select a trigger from the Block Library to begin building this rule.",
-                                onShowMe: {
-                                    scrollToTriggersSignal = true
-                                    guidedStep = .trigger
-                                },
-                                onContinue: {
-                                    hasSeenRuleOnboarding = true
-                                }
-                            )
-                            .padding(.top, 40)
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                                    removal: .opacity.combined(with: .scale(scale: 0.96))
-                                )
-                            )
-                        } else {
-                            RuleCanvasSection(title: "Trigger", systemImage: "bolt.fill", accent: .yellow,
-                                              guidedHighlight: guidedStep == .trigger) {
-                                TriggerSectionView(
-                                    triggerType: rule.trigger
-                                )
-                                if guidedStep == .trigger {
-                                    Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
-                                        .font(.caption)
-                                        .foregroundStyle(.yellow.opacity(0.8))
-                                        .padding(.top, 4)
-                                }
-                                // Trigger can be replaced but not deleted
-                                Button {
-                                    rule.isEditingTrigger = true
-                                    scrollToTriggersSignal = true
-                                    guidedStep = .trigger
-                                } label: {
-                                    Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
-                                        .font(.subheadline.weight(.medium))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 2)
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(.yellow)
-                                .padding(.top, 4)
-                            }
-
-                            Divider().opacity(0.4)
-
-                            // AI Processing Section
-                            RuleCanvasSection(title: "AI Processing", systemImage: "sparkles", accent: .purple) {
-                                ActionsSectionView(
-                                    actions: $rule.aiBlocks,
-                                    category: .ai,
-                                    allModifiers: rule.modifiers,
-                                    hasTrigger: rule.trigger != nil,
-                                    serverIds: serverIds,
-                                    serverName: serverName(for:),
-                                    textChannelsByServer: app.availableTextChannelsByServer,
-                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                                    rolesByServer: app.availableRolesByServer,
-                                    knownUsers: app.knownUsersById,
-                                    incompatibleBlocks: rule.incompatibleBlocks,
-                                    availableVariables: rule.trigger?.providedVariables ?? []
-                                )
-                            }
-
-                            Divider().opacity(0.4)
-
-                            RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
-                                ActionsSectionView(
-                                    actions: $rule.modifiers,
-                                    category: .messaging, // Used to be .modifiers
-                                    allModifiers: rule.modifiers,
-                                    hasTrigger: rule.trigger != nil,
-                                    serverIds: serverIds,
-                                    serverName: serverName(for:),
-                                    textChannelsByServer: app.availableTextChannelsByServer,
-                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                                    rolesByServer: app.availableRolesByServer,
-                                    knownUsers: app.knownUsersById,
-                                    incompatibleBlocks: rule.incompatibleBlocks,
-                                    availableVariables: rule.trigger?.providedVariables ?? []
-                                )
-                            }
-
-                            RuleFlowArrow()
-
-                            RuleCanvasSection(title: "Actions", systemImage: "paperplane.fill", accent: .mint,
-                                              guidedHighlight: guidedStep == .action) {
-                                ActionsSectionView(
-                                    actions: $rule.actions,
-                                    category: .actions, // Used to be .messaging
-                                    allModifiers: rule.modifiers,
-                                    hasTrigger: rule.trigger != nil,
-                                    serverIds: serverIds,
-                                    serverName: serverName(for:),
-                                    textChannelsByServer: app.availableTextChannelsByServer,
-                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                                    rolesByServer: app.availableRolesByServer,
-                                    knownUsers: app.knownUsersById,
-                                    isGuided: guidedStep == .action,
-                                    incompatibleBlocks: rule.incompatibleBlocks,
-                                    availableVariables: rule.trigger?.providedVariables ?? []
-                                )
-                            }
-                        }
-                    }
+                    ruleCanvasContent
                     .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
                     .frame(maxWidth: 880, alignment: .leading)
                     .padding(.horizontal, 20)
@@ -393,10 +418,15 @@ struct RuleEditorView: View {
             break
         }
 
-        // Fix: Route modifiers to rule.modifiers, actions to rule.actions
-        if type.category == .messaging {
+        // Route blocks to their correct section based on category
+        switch type.category {
+        case .ai:
+            rule.aiBlocks.append(action)
+        case .messaging:
             rule.modifiers.append(action)
-        } else {
+        case .actions, .moderation:
+            rule.actions.append(action)
+        default:
             rule.actions.append(action)
         }
         app.ruleStore.scheduleAutoSave()
