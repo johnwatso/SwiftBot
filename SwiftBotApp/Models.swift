@@ -2926,6 +2926,26 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
     }
 }
 
+extension Set where Element == ContextVariable {
+    /// Returns a user-friendly description of the required context (Task 1)
+    var friendlyRequirement: String {
+        if self.isEmpty { return "" }
+        
+        // Priority based on trigger types
+        if self.contains(where: { $0.category == "Message" || $0.category == "Reaction" }) {
+            return "a message trigger"
+        }
+        if self.contains(where: { $0.category == "Channel" || $0.category == "Voice" }) {
+            return "a channel event"
+        }
+        if self.contains(where: { $0.category == "User" }) {
+            return "a user trigger"
+        }
+        
+        return "additional context"
+    }
+}
+
 // MARK: - Discord Permissions
 
 /// Discord permission flags for validation
@@ -3714,8 +3734,8 @@ struct Rule: Identifiable, Codable, Equatable {
             let missingVars = requiredVars.subtracting(availableVariables)
             if !missingVars.isEmpty {
                 issues.append(.init(
-                    severity: .error,
-                    message: "Condition '\(condition.type.rawValue)' requires variables not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    severity: .warning, // Task 1: Use warning style
+                    message: "Requires \(requiredVars.friendlyRequirement)", // Task 1: User-friendly wording
                     blockType: .condition,
                     blockId: condition.id
                 ))
@@ -3728,8 +3748,8 @@ struct Rule: Identifiable, Codable, Equatable {
             let missingVars = requiredVars.subtracting(availableVariables)
             if !missingVars.isEmpty {
                 issues.append(.init(
-                    severity: .error,
-                    message: "Modifier '\(modifier.type.rawValue)' requires context not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    severity: .warning, // Task 1: Use warning style
+                    message: "Requires \(requiredVars.friendlyRequirement)", // Task 1: User-friendly wording
                     blockType: .modifier,
                     blockId: modifier.id
                 ))
@@ -3752,8 +3772,8 @@ struct Rule: Identifiable, Codable, Equatable {
             let missingVars = requiredVars.subtracting(availableVariables)
             if !missingVars.isEmpty {
                 issues.append(.init(
-                    severity: .error,
-                    message: "Action '\(action.type.rawValue)' requires context not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    severity: .warning, // Task 1: Use warning style
+                    message: "Requires \(requiredVars.friendlyRequirement)", // Task 1: User-friendly wording
                     blockType: .action,
                     blockId: action.id
                 ))
