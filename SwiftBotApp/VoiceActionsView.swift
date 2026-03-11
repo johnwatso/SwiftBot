@@ -270,7 +270,9 @@ struct RuleEditorView: View {
                                     hasTrigger: rule.trigger != nil,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
-                                    voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
+                                    voiceChannels: rule.triggerServerId.isEmpty ? [] : (app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []),
+                                    textChannels: rule.triggerServerId.isEmpty ? [] : (app.availableTextChannelsByServer[rule.triggerServerId] ?? []),
+                                    roles: rule.triggerServerId.isEmpty ? [] : (app.availableRolesByServer[rule.triggerServerId] ?? []),
                                     incompatibleBlocks: rule.incompatibleBlocks,
                                     availableVariables: rule.trigger?.providedVariables ?? []
                                 )
@@ -287,6 +289,9 @@ struct RuleEditorView: View {
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer,
+                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                                    rolesByServer: app.availableRolesByServer,
+                                    knownUsers: app.knownUsersById,
                                     incompatibleBlocks: rule.incompatibleBlocks,
                                     availableVariables: rule.trigger?.providedVariables ?? []
                                 )
@@ -304,6 +309,9 @@ struct RuleEditorView: View {
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer,
+                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                                    rolesByServer: app.availableRolesByServer,
+                                    knownUsers: app.knownUsersById,
                                     isGuided: guidedStep == .action,
                                     incompatibleBlocks: rule.incompatibleBlocks,
                                     availableVariables: rule.trigger?.providedVariables ?? []
@@ -770,6 +778,8 @@ struct ConditionsSectionView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let voiceChannels: [GuildVoiceChannel]
+    let textChannels: [GuildTextChannel]
+    let roles: [GuildRole]
     var incompatibleBlocks: [UUID] = []
     var availableVariables: Set<ContextVariable> = []
 
@@ -792,6 +802,8 @@ struct ConditionsSectionView: View {
                         serverIds: serverIds,
                         serverName: serverName,
                         voiceChannels: voiceChannels,
+                        textChannels: textChannels,
+                        roles: roles,
                         onDelete: {
                             conditions.removeAll { $0.id == condition.id }
                         }
@@ -812,6 +824,8 @@ struct ConditionRowView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let voiceChannels: [GuildVoiceChannel]
+    let textChannels: [GuildTextChannel]
+    let roles: [GuildRole]
     let onDelete: () -> Void
 
     var body: some View {
@@ -870,12 +884,22 @@ struct ConditionRowView: View {
             }
         // New condition types - placeholder UI
         case .channelIs:
-            TextField("Enter channel name or ID…", text: $condition.value)
+            SearchableIDPicker(
+                title: "Channel",
+                selectionID: $condition.value,
+                items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
+                prompt: "Select a channel..."
+            )
         case .channelCategory:
             TextField("Enter category name or ID…", text: $condition.value)
                 .foregroundStyle(.secondary)
         case .userHasRole:
-            TextField("Enter role name or ID…", text: $condition.value)
+            SearchableIDPicker(
+                title: "Role",
+                selectionID: $condition.value,
+                items: roles.map { .init(id: $0.id, name: $0.name) },
+                prompt: "Select a role..."
+            )
         case .userJoinedRecently:
             HStack {
                 TextField("Minutes", text: $condition.value)
@@ -926,6 +950,9 @@ struct ActionsSectionView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let textChannelsByServer: [String: [GuildTextChannel]]
+    let voiceChannelsByServer: [String: [GuildVoiceChannel]]
+    let rolesByServer: [String: [GuildRole]]
+    let knownUsers: [String: String]
     var isGuided: Bool = false
     var incompatibleBlocks: [UUID] = []
     var availableVariables: Set<ContextVariable> = []
@@ -963,6 +990,9 @@ struct ActionsSectionView: View {
                         serverIds: serverIds,
                         serverName: serverName,
                         textChannels: textChannelsByServer[action.serverId] ?? [],
+                        voiceChannels: voiceChannelsByServer[action.serverId] ?? [],
+                        roles: rolesByServer[action.serverId] ?? [],
+                        knownUsers: knownUsers,
                         onDelete: {
                             actions.removeAll { $0.id == action.id }
                         }
@@ -985,6 +1015,9 @@ struct ActionSectionView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let textChannels: [GuildTextChannel]
+    let voiceChannels: [GuildVoiceChannel]
+    let roles: [GuildRole]
+    let knownUsers: [String: String]
     let onDelete: () -> Void
 
     var body: some View {
@@ -1082,7 +1115,12 @@ struct ActionSectionView: View {
             case .addReaction:
                 TextField("Emoji", text: $action.emoji)
             case .addRole, .removeRole:
-                TextField("Role ID", text: $action.roleId)
+                SearchableIDPicker(
+                    title: "Role",
+                    selectionID: $action.roleId,
+                    items: roles.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a role..."
+                )
             case .timeoutMember:
                 HStack {
                     TextField("Duration (seconds)", value: $action.timeoutDuration, format: .number)
@@ -1092,7 +1130,12 @@ struct ActionSectionView: View {
             case .kickMember:
                 TextField("Reason (optional)", text: $action.kickReason)
             case .moveMember:
-                TextField("Target Voice Channel ID", text: $action.targetVoiceChannelId)
+                SearchableIDPicker(
+                    title: "Target Voice Channel",
+                    selectionID: $action.targetVoiceChannelId,
+                    items: voiceChannels.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a voice channel..."
+                )
             case .createChannel:
                 TextField("Channel Name", text: $action.newChannelName)
             case .webhook:
@@ -1127,22 +1170,23 @@ struct ActionSectionView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .mentionRole:
-                TextField("Role ID to mention", text: $action.roleId)
+                SearchableIDPicker(
+                    title: "Role to Mention",
+                    selectionID: $action.roleId,
+                    items: roles.map { .init(id: $0.id, name: $0.name) },
+                    prompt: "Select a role..."
+                )
             case .disableMention:
                 Text("Strips any existing user mentions from the message template.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .sendToChannel:
-                if textChannels.isEmpty {
-                    Text("No text channels discovered for this server.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Target Channel", selection: $action.channelId) {
-                        ForEach(textChannels) { channel in
-                            Text("#\(channel.name)").tag(channel.id)
-                        }
-                    }
-                }
+                SearchableIDPicker(
+                    title: "Target Channel",
+                    selectionID: $action.channelId,
+                    items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
+                    prompt: "Select a channel..."
+                )
             // AI block
             case .generateAIResponse:
                 VStack(alignment: .leading, spacing: 6) {
@@ -1362,6 +1406,115 @@ struct VariablePickerPopover: View {
             }
         }
         .frame(width: 320, height: 340)
+    }
+}
+
+// MARK: - Searchable ID Picker
+
+struct SearchablePickerItem: Identifiable {
+    let id: String
+    let name: String
+}
+
+struct SearchableIDPicker: View {
+    let title: String
+    @Binding var selectionID: String
+    let items: [SearchablePickerItem]
+    let prompt: String
+
+    @State private var showPopover = false
+    @State private var searchText = ""
+
+    private var filteredItems: [SearchablePickerItem] {
+        if searchText.isEmpty {
+            return items
+        }
+        return items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private var selectedName: String {
+        items.first { $0.id == selectionID }?.name ?? (selectionID.isEmpty ? prompt : selectionID)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Button {
+                showPopover = true
+            } label: {
+                HStack {
+                    Text(selectedName)
+                        .font(.subheadline)
+                        .foregroundStyle(selectionID.isEmpty ? .secondary : .primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search...", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(10)
+                .background(.white.opacity(0.05))
+                
+                Divider()
+                
+                if filteredItems.isEmpty {
+                    Text("No results found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(filteredItems) { (item: SearchablePickerItem) in
+                                Button {
+                                    selectionID = item.id
+                                    showPopover = false
+                                } label: {
+                                    HStack {
+                                        Text(item.name)
+                                            .font(.subheadline)
+                                        Spacer()
+                                        if selectionID == item.id {
+                                            Image(systemName: "checkmark")
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(minWidth: 220, maxHeight: 300)
+                }
+            }
+        }
     }
 }
 
