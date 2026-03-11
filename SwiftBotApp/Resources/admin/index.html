@@ -3134,8 +3134,12 @@
               </div>
             `;
           case 'multiline':
+            // Message field only shows when contentSource is 'custom'
+            const isMessageField = field.id === 'message';
+            const msgConditionalAttr = isMessageField ? ' data-show-if-content="custom"' : '';
+            const msgHiddenStyle = isMessageField && block.contentSource !== 'custom' && block.contentSource !== undefined ? ' style="display:none;"' : '';
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${msgConditionalAttr}${msgHiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <textarea class="field-textarea block-field" data-field="${field.id}" placeholder="${placeholder}">${value}</textarea>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px;">Use {variable} syntax for context variables</div>
@@ -3169,11 +3173,34 @@
               options = asOptions(actionsData.voiceChannelsByServer?.[serverID], value);
             } else if (field.optionsSource === 'roles') {
               options = '<option value="">Select role...</option>'; // Roles require server context
+            } else if (field.optionsSource === 'predefined' && field.id === 'contentSource') {
+              // Content source predefined options
+              const sources = [
+                { id: 'custom', name: 'Custom Message' },
+                { id: 'ai.response', name: 'AI Response' },
+                { id: 'ai.summary', name: 'AI Summary' },
+                { id: 'ai.classification', name: 'AI Classification' },
+                { id: 'ai.entities', name: 'AI Entities' },
+                { id: 'ai.rewrite', name: 'AI Rewrite' }
+              ];
+              options = sources.map(s => `<option value="${s.id}" ${s.id === value ? 'selected' : ''}>${s.name}</option>`).join('');
+            } else if (field.optionsSource === 'predefined' && field.id === 'destinationMode') {
+              // Message destination mode predefined options
+              const destinations = [
+                { id: 'replyToTrigger', name: 'Reply to Trigger Message' },
+                { id: 'sameChannel', name: 'Same Channel as Trigger' },
+                { id: 'specificChannel', name: 'Specific Channel' }
+              ];
+              options = destinations.map(d => `<option value="${d.id}" ${d.id === value ? 'selected' : ''}>${d.name}</option>`).join('');
             } else {
               options = `<option value="${value}" selected>${value}</option>`;
             }
+            // Conditional visibility for server/channel fields based on destinationMode
+            const isConditionalField = field.id === 'serverId' || field.id === 'channelId';
+            const conditionalAttr = isConditionalField ? ' data-show-if-destination="specificChannel"' : '';
+            const hiddenStyle = isConditionalField && block.destinationMode !== 'specificChannel' && block.destinationMode !== undefined ? ' style="display:none;"' : '';
             return `
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px;"${conditionalAttr}${hiddenStyle}>
                 <div class="field-label">${field.name}</div>
                 <select class="field-select block-field" data-field="${field.id}">${options}</select>
               </div>
@@ -3246,6 +3273,32 @@
             fieldEl.addEventListener('change', handler);
           } else {
             fieldEl.addEventListener('input', handler);
+          }
+          
+          // Special handling for destinationMode to show/hide server/channel fields
+          if (fieldId === 'destinationMode') {
+            fieldEl.addEventListener('change', (e) => {
+              const showSpecific = e.target.value === 'specificChannel';
+              const parent = blockEl.closest('.block-row');
+              if (parent) {
+                parent.querySelectorAll('[data-show-if-destination]').forEach(el => {
+                  el.style.display = showSpecific ? '' : 'none';
+                });
+              }
+            });
+          }
+          
+          // Special handling for contentSource to show/hide message field
+          if (fieldId === 'contentSource') {
+            fieldEl.addEventListener('change', (e) => {
+              const showCustom = e.target.value === 'custom';
+              const parent = blockEl.closest('.block-row');
+              if (parent) {
+                parent.querySelectorAll('[data-show-if-content]').forEach(el => {
+                  el.style.display = showCustom ? '' : 'none';
+                });
+              }
+            });
           }
         });
       });

@@ -2525,6 +2525,7 @@ struct PipelineContext: CustomStringConvertible {
     var replyToTriggerMessage: Bool = false
     var mentionRole: String?
     var isDirectMessage: Bool = false
+    var sendToDM: Bool = false
     var eventHandled: Bool = false
 
     var description: String {
@@ -3281,6 +3282,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case mentionRole = "Mention Role"
     case disableMention = "Disable User Mentions"
     case sendToChannel = "Send To Channel"
+    case sendToDM = "Send To DM"
     
     // AI Types
     case generateAIResponse = "Generate AI Response"
@@ -3314,6 +3316,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .mentionRole: return "at.badge.plus"
         case .disableMention: return "at.badge.minus"
         case .sendToChannel: return "number.circle.fill"
+        case .sendToDM: return "envelope.fill"
         case .generateAIResponse: return "sparkles"
         case .summariseMessage: return "text.alignleft"
         case .classifyMessage: return "tag.fill"
@@ -3330,7 +3333,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .deleteMessage, .addReaction, .replyToTrigger:
             return [.message, .messageId]
 
-        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser, .disableMention:
+        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser, .disableMention, .sendToDM:
             return [.user, .userId]
         case .sendToChannel:
             return [.channel]
@@ -3355,7 +3358,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
              .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
              .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
-             .mentionUser, .mentionRole, .disableMention, .sendToChannel:
+             .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
             return []
         }
     }
@@ -3363,7 +3366,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
-        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .replyToTrigger, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
+        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM, .replyToTrigger, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return []
         case .deleteMessage:
             return [.manageMessages]
@@ -3387,7 +3390,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Category for block library organization
     var category: BlockCategory {
         switch self {
-        case .replyToTrigger, .disableMention, .sendToChannel, .mentionUser, .mentionRole:
+        case .replyToTrigger, .disableMention, .sendToChannel, .sendToDM, .mentionUser, .mentionRole:
             return .messaging
         case .sendMessage, .sendDM, .addReaction, .deleteMessage, .createChannel, .webhook, 
              .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice:
@@ -3476,6 +3479,12 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var categories: String = ""              // For classifyMessage (comma-separated categories)
     var entityTypes: String = ""             // For extractEntities (comma-separated entity types)
     var rewriteStyle: String = ""            // For rewriteMessage (style description)
+    
+    // Unified Send Message content source (replaces replyWithAI, etc.)
+    var contentSource: ContentSource = .custom
+    
+    // Message destination mode (per UX spec: replyToTrigger, sameChannel, specificChannel)
+    var destinationMode: MessageDestination? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -3505,6 +3514,8 @@ struct RuleAction: Identifiable, Codable, Equatable {
         case categories
         case entityTypes
         case rewriteStyle
+        case contentSource
+        case destinationMode
     }
 
     init() {}
@@ -3538,6 +3549,39 @@ struct RuleAction: Identifiable, Codable, Equatable {
         categories = try container.decodeIfPresent(String.self, forKey: .categories) ?? ""
         entityTypes = try container.decodeIfPresent(String.self, forKey: .entityTypes) ?? ""
         rewriteStyle = try container.decodeIfPresent(String.self, forKey: .rewriteStyle) ?? ""
+        
+        // Decode contentSource with legacy migration
+        let decodedContentSource = try container.decodeIfPresent(ContentSource.self, forKey: .contentSource)
+        let decodedReplyWithAI = try container.decodeIfPresent(Bool.self, forKey: .replyWithAI) ?? false
+        
+        // Migration: replyWithAI true -> contentSource = aiResponse
+        if decodedContentSource == nil && decodedReplyWithAI && type == .sendMessage {
+            contentSource = .aiResponse
+        } else {
+            contentSource = decodedContentSource ?? .custom
+        }
+        
+        // Decode destinationMode with legacy migration
+        let decodedDestinationMode = try container.decodeIfPresent(MessageDestination.self, forKey: .destinationMode)
+        let decodedReplyToTrigger = try container.decodeIfPresent(Bool.self, forKey: .replyToTriggerMessage) ?? false
+        let hasExplicitChannel = !(try container.decodeIfPresent(String.self, forKey: .channelId) ?? "").isEmpty
+        
+        // Migration logic per UX spec:
+        // - Existing destinationMode -> keep it
+        // - Legacy replyToTriggerMessage=true -> replyToTrigger
+        // - Explicit serverId/channelId -> specificChannel
+        // - Message trigger + no explicit IDs -> sameChannel (handled in UI defaults)
+        // - Non-message trigger + no IDs -> specificChannel (conservative default)
+        if let existingMode = decodedDestinationMode {
+            destinationMode = existingMode
+        } else if decodedReplyToTrigger {
+            destinationMode = .replyToTrigger
+        } else if hasExplicitChannel {
+            destinationMode = .specificChannel
+        } else {
+            // Default: nil means conservative behavior (will be set by UI based on trigger type)
+            destinationMode = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -3569,6 +3613,44 @@ struct RuleAction: Identifiable, Codable, Equatable {
         try container.encode(categories, forKey: .categories)
         try container.encode(entityTypes, forKey: .entityTypes)
         try container.encode(rewriteStyle, forKey: .rewriteStyle)
+        try container.encode(contentSource, forKey: .contentSource)
+        try container.encode(destinationMode, forKey: .destinationMode)
+    }
+}
+
+/// Content source options for Send Message action
+enum ContentSource: String, Codable, CaseIterable {
+    case custom = "custom"
+    case aiResponse = "ai.response"
+    case aiSummary = "ai.summary"
+    case aiClassification = "ai.classification"
+    case aiEntities = "ai.entities"
+    case aiRewrite = "ai.rewrite"
+    
+    var displayName: String {
+        switch self {
+        case .custom: return "Custom Message"
+        case .aiResponse: return "AI Response"
+        case .aiSummary: return "AI Summary"
+        case .aiClassification: return "AI Classification"
+        case .aiEntities: return "AI Entities"
+        case .aiRewrite: return "AI Rewrite"
+        }
+    }
+}
+
+/// Destination mode for Send Message action
+enum MessageDestination: String, Codable, CaseIterable {
+    case replyToTrigger = "replyToTrigger"
+    case sameChannel = "sameChannel"
+    case specificChannel = "specificChannel"
+    
+    var displayName: String {
+        switch self {
+        case .replyToTrigger: return "Reply to Trigger"
+        case .sameChannel: return "Same Channel"
+        case .specificChannel: return "Specific Channel"
+        }
     }
 }
 

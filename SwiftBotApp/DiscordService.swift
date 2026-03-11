@@ -2360,6 +2360,8 @@ actor DiscordService {
             context.mentionUser = false
         case .sendToChannel:
             context.targetChannelId = action.channelId
+        case .sendToDM:
+            context.sendToDM = true
         case .replyToTrigger:
             context.replyToTriggerMessage = true
             if let triggerChannelId = event.triggerChannelId {
@@ -2398,29 +2400,71 @@ actor DiscordService {
                 context.aiRewrite = rewrite
             }
         case .sendMessage:
-            let targetChannelId = context.targetChannelId ?? action.channelId
-            guard !targetChannelId.isEmpty || (context.targetChannelId == nil && !event.userId.isEmpty) else { return }
+            // Determine content based on contentSource
+            let messageContent: String
+            switch action.contentSource {
+            case .custom:
+                messageContent = action.message
+            case .aiResponse:
+                messageContent = context.aiResponse ?? "{ai.response} not available"
+            case .aiSummary:
+                messageContent = context.aiSummary ?? "{ai.summary} not available"
+            case .aiClassification:
+                messageContent = context.aiClassification ?? "{ai.classification} not available"
+            case .aiEntities:
+                messageContent = context.aiEntities ?? "{ai.entities} not available"
+            case .aiRewrite:
+                messageContent = context.aiRewrite ?? "{ai.rewrite} not available"
+            }
+            
+            // Determine destination based on destinationMode (per UX spec)
+            let destinationMode = action.destinationMode ?? .specificChannel
+            let targetIsDM = context.sendToDM  // DM modifier takes precedence
+            
+            // Resolve target channel and whether to reply
+            let targetChannelId: String
+            let shouldReply: Bool
+            
+            switch destinationMode {
+            case .replyToTrigger:
+                // Reply to the triggering message in its channel
+                targetChannelId = event.triggerChannelId ?? action.channelId
+                shouldReply = event.triggerMessageId != nil
+            case .sameChannel:
+                // Send in same channel as trigger (no reply reference)
+                targetChannelId = event.triggerChannelId ?? action.channelId
+                shouldReply = false
+            case .specificChannel:
+                // Send to explicitly configured channel
+                targetChannelId = action.channelId
+                // Fallback: if configured channel matches trigger channel, could reply
+                shouldReply = (action.channelId == event.triggerChannelId && event.triggerMessageId != nil)
+            }
+            
+            guard targetIsDM || !targetChannelId.isEmpty else { return }
 
-            let rendered = renderMessage(template: action.message, event: event, context: context)
+            let rendered = renderMessage(template: messageContent, event: event, context: context)
 
-            if context.replyToTriggerMessage,
-               let triggerMessageId = event.triggerMessageId,
-               let replyChannelId = event.triggerChannelId {
+            if targetIsDM && !event.userId.isEmpty {
+                // DM modifier takes precedence
+                _ = try? await sendDM(userId: event.userId, content: rendered)
+                context.eventHandled = true
+            } else if shouldReply,
+                      let triggerMessageId = event.triggerMessageId,
+                      !targetChannelId.isEmpty {
+                // Send as reply to trigger message
                 let payload: [String: Any] = [
                     "content": rendered,
                     "message_reference": [
                         "message_id": triggerMessageId,
-                        "channel_id": replyChannelId,
+                        "channel_id": targetChannelId,
                         "fail_if_not_exists": false
                     ]
                 ]
-                _ = try? await sendMessage(channelId: replyChannelId, payload: payload, token: token)
+                _ = try? await sendMessage(channelId: targetChannelId, payload: payload, token: token)
                 context.eventHandled = true
-            } else if context.targetChannelId == nil && !event.userId.isEmpty {
-                // Send to DM
-                _ = try? await sendDM(userId: event.userId, content: rendered)
-                context.eventHandled = true
-            } else {
+            } else if !targetChannelId.isEmpty {
+                // Send regular message to target channel
                 try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
                 context.eventHandled = true
             }
