@@ -824,8 +824,10 @@ struct ConditionsSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if conditions.isEmpty {
-                Text("No conditions configured. Rules will run for all matching events.")
+                Text("No filters yet. Use the Block Library to add one.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
             } else {
                 ForEach($conditions) { $condition in
                     let isCompat = !incompatibleBlocks.contains(condition.id)
@@ -844,19 +846,6 @@ struct ConditionsSectionView: View {
                     )
                 }
             }
-
-            Menu {
-                ForEach(ConditionType.allCases) { type in
-                    Button {
-                        conditions.append(Condition(type: type))
-                    } label: {
-                        Label(type.rawValue, systemImage: type.symbol)
-                    }
-                }
-            } label: {
-                Label("Add Condition", systemImage: "plus")
-            }
-            .menuStyle(.borderlessButton)
         }
     }
 }
