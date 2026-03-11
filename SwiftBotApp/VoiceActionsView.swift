@@ -131,7 +131,6 @@ struct RuleEditorView: View {
     @EnvironmentObject var app: AppModel
 
     @AppStorage("hasSeenRuleOnboarding") private var hasSeenRuleOnboarding: Bool = false
-    @State private var showOnboardingCard = false
     @State private var guidedStep: GuidedBuildStep = .none
     @State private var scrollToTriggersSignal: Bool = false
 
@@ -161,6 +160,7 @@ struct RuleEditorView: View {
                         onSetTrigger: { type in
                             rule.trigger = type
                             rule.isEditingTrigger = false
+                            hasSeenRuleOnboarding = true
                             applyTriggerDefaults(for: type)
                             if guidedStep == .trigger { guidedStep = .action }
                         },
@@ -214,11 +214,18 @@ struct RuleEditorView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        if rule.trigger == nil {
+                        if rule.trigger == nil && !hasSeenRuleOnboarding {
                             EmptyRuleStateView(
-                                icon: "bolt.fill",
-                                title: "No Trigger Selected",
-                                description: "Choose a trigger from the Block Library to begin building this rule."
+                                icon: "bolt.circle",
+                                title: "Choose a Trigger",
+                                description: "Select a trigger from the Block Library to begin building this rule.",
+                                onShowMe: {
+                                    scrollToTriggersSignal = true
+                                    guidedStep = .trigger
+                                },
+                                onContinue: {
+                                    hasSeenRuleOnboarding = true
+                                }
                             )
                             .padding(.top, 40)
                             .transition(
@@ -313,25 +320,8 @@ struct RuleEditorView: View {
             .background(rulePaneBackground)
         }
         .navigationTitle("")
-        .sheet(isPresented: $showOnboardingCard) {
-            FirstRuleOnboardingCard(
-                onCreateExample: {
-                    showOnboardingCard = false
-                    hasSeenRuleOnboarding = true
-                    applyExampleRule()
-                },
-                onStartEmpty: {
-                    showOnboardingCard = false
-                    hasSeenRuleOnboarding = true
-                    guidedStep = .trigger
-                }
-            )
-        }
         .onAppear {
             initializeRuleDefaultsIfNeeded()
-            if !hasSeenRuleOnboarding && rule.actions.isEmpty {
-                showOnboardingCard = true
-            }
         }
         .onChange(of: rule.actions) { _, newActions in
             if guidedStep == .trigger && !newActions.isEmpty {
@@ -490,7 +480,6 @@ struct RuleBuilderLibraryView: View {
 
     private func tooltipFor(_ reqs: Set<ContextVariable>) -> String? {
         guard !isCompatible(reqs) else { return nil }
-        guard let currentTrigger = currentTrigger else { return "Requires a trigger to be selected." }
         return "Requires \(reqs.friendlyRequirement)."
     }
 
@@ -1014,6 +1003,7 @@ struct ActionSectionView: View {
                 }
 
                 Spacer()
+                
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -1055,7 +1045,7 @@ struct ActionSectionView: View {
                 }
 
                 // UI refinement: show active modifiers that affect this action
-                if category == .messaging {
+                if category == .actions { // Action blocks section
                     VStack(alignment: .leading, spacing: 4) {
                         let activeModifiers = allModifiers.map { $0.type.rawValue }.joined(separator: ", ")
                         if !activeModifiers.isEmpty {
@@ -1079,7 +1069,6 @@ struct ActionSectionView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            // New action types
             case .sendDM:
                 Toggle("Mention user", isOn: $action.mentionUser)
                 VStack(alignment: .leading, spacing: 6) {
@@ -1165,87 +1154,10 @@ struct ActionSectionView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-
-            Text("Type { to insert a variable placeholder")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding(12)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.06), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
+        .padding(10)
+        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
         .opacity(isIncompatible ? 0.6 : 1.0)
-        .onAppear {
-            if action.serverId.isEmpty {
-                action.serverId = serverIds.first ?? ""
-            }
-            if action.channelId.isEmpty {
-                action.channelId = textChannels.first?.id ?? ""
-            }
-        }
-        .onChange(of: action.serverId) {
-            action.channelId = textChannels.first?.id ?? ""
-        }
-    }
-}
-
-// MARK: - Guided Build Step
-
-enum GuidedBuildStep {
-    case none, trigger, action
-}
-
-// MARK: - First Rule Onboarding Card
-
-struct FirstRuleOnboardingCard: View {
-    let onCreateExample: () -> Void
-    let onStartEmpty: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 12) {
-                Image(systemName: "wand.and.stars")
-                    .font(.title)
-                    .foregroundStyle(.yellow)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("First Time Using SwiftBot Rules?")
-                        .font(.headline)
-                    Text("Automations are built from triggers, filters, and actions.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label("**Trigger** — what event starts the rule", systemImage: "bolt.fill")
-                    .font(.subheadline)
-                Label("**Filters** — optional conditions to narrow scope", systemImage: "line.3.horizontal.decrease.circle")
-                    .font(.subheadline)
-                Label("**Actions** — what the bot does when triggered", systemImage: "paperplane.fill")
-                    .font(.subheadline)
-            }
-            .foregroundStyle(.secondary)
-
-            Divider()
-
-            HStack(spacing: 12) {
-                Button(action: onCreateExample) {
-                    Label("Create Example Rule", systemImage: "sparkles")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-
-                Button(action: onStartEmpty) {
-                    Text("Start Empty")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-            }
-        }
-        .padding(28)
-        .frame(width: 440)
     }
 }
 
@@ -1255,9 +1167,11 @@ struct EmptyRuleStateView: View {
     let icon: String
     let title: String
     let description: String
+    var onShowMe: (() -> Void)? = nil
+    var onContinue: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 24) {
             Image(systemName: icon)
                 .font(.system(size: 48))
                 .foregroundStyle(.yellow)
@@ -1270,6 +1184,22 @@ struct EmptyRuleStateView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+            }
+
+            if onShowMe != nil || onContinue != nil {
+                HStack(spacing: 12) {
+                    if let onShowMe = onShowMe {
+                        Button("Show Me", action: onShowMe)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                    }
+                    if let onContinue = onContinue {
+                        Button("Continue", action: onContinue)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                    }
+                }
+                .padding(.top, 8)
             }
         }
         .padding(40)
@@ -1435,4 +1365,8 @@ struct VariablePickerPopover: View {
     }
 }
 
+// MARK: - Guided Build Step
 
+enum GuidedBuildStep {
+    case none, trigger, action
+}
