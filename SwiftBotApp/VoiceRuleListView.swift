@@ -5,6 +5,7 @@ struct RuleListView: View {
     @Binding var selectedRuleID: UUID?
     let onAddNew: () -> Void
     let onDeleteRuleID: (UUID) -> Void
+    var isLoading: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,31 +15,40 @@ struct RuleListView: View {
                 systemImage: "point.3.filled.connected.trianglepath.dotted"
             )
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Button(action: onAddNew) {
-                        Label("New Rule", systemImage: "plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(GlassActionButtonStyle())
+            if isLoading {
+                Spacer()
+                ProgressView()
+                    .padding()
+                Spacer()
+            } else if rules.isEmpty {
+                RuleListEmptyStateView(onCreateRule: onAddNew)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Button(action: onAddNew) {
+                            Label("New Rule", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(GlassActionButtonStyle())
 
-                    LazyVStack(spacing: 10) {
-                        ForEach($rules) { $rule in
-                            RuleRowView(
-                                rule: $rule,
-                                isSelected: selectedRuleID == rule.id,
-                                onSelect: {
-                                    withAnimation(.snappy(duration: 0.12)) {
-                                        selectedRuleID = rule.id
-                                    }
-                                },
-                                onDelete: { onDeleteRuleID(rule.id) }
-                            )
+                        LazyVStack(spacing: 10) {
+                            ForEach($rules) { $rule in
+                                RuleRowView(
+                                    rule: $rule,
+                                    isSelected: selectedRuleID == rule.id,
+                                    onSelect: {
+                                        withAnimation(.snappy(duration: 0.12)) {
+                                            selectedRuleID = rule.id
+                                        }
+                                    },
+                                    onDelete: { onDeleteRuleID(rule.id) }
+                                )
+                            }
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
             }
         }
         .background(rulePaneBackground)
@@ -47,6 +57,41 @@ struct RuleListView: View {
     private var rulePaneBackground: some View {
         Rectangle()
             .fill(.white.opacity(0.04))
+    }
+}
+
+// MARK: - Empty State
+
+private struct RuleListEmptyStateView: View {
+    let onCreateRule: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            VStack(spacing: 16) {
+                Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+
+                VStack(spacing: 6) {
+                    Text("No Rules Yet")
+                        .font(.headline)
+                    Text("SwiftBot automations let you respond to\nevents in your Discord server.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button(action: onCreateRule) {
+                    Label("Create First Rule", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .padding(.top, 4)
+            }
+            .padding(.horizontal, 24)
+            Spacer()
+        }
     }
 }
 

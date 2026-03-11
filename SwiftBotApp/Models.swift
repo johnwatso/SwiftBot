@@ -2406,29 +2406,25 @@ final class RuleStore: ObservableObject {
     @Published var rules: [Rule] = []
     @Published var selectedRuleID: UUID?
     @Published var lastSavedAt: Date?
+    @Published var isLoading: Bool = false
 
     private let store = RuleConfigStore()
     private var autoSaveTask: Task<Void, Never>?
 
     init() {
         Task {
+            isLoading = true
             let loaded = await store.load()
-            if let loaded, !loaded.isEmpty {
-                rules = loaded
-            } else {
-                rules = [Rule(name: "Join Action")]
-            }
+            rules = loaded ?? []
             selectedRuleID = nil
+            isLoading = false
         }
     }
 
     func addNewRule(serverId: String = "", channelId: String = "") {
-        var action = RuleAction()
-        action.serverId = serverId
-        action.channelId = channelId
-        var rule = Rule(name: "New Action")
+        var rule = Rule.empty()
         rule.triggerServerId = serverId
-        rule.actions = [action]
+        // New rules start empty - users add blocks via Block Library
         rules.append(rule)
         selectedRuleID = rule.id
         scheduleAutoSave()
@@ -2465,12 +2461,14 @@ final class RuleStore: ObservableObject {
     }
 
     func reloadFromDisk() async {
-        guard let loaded = await store.load() else { return }
-        rules = loaded.isEmpty ? [Rule(name: "Join Action")] : loaded
+        isLoading = true
+        let loaded = await store.load()
+        rules = loaded ?? []
         if let selected = selectedRuleID,
            !rules.contains(where: { $0.id == selected }) {
             selectedRuleID = nil
         }
+        isLoading = false
     }
 
     func scheduleAutoSave() {
@@ -2510,25 +2508,37 @@ final class RuleStore: ObservableObject {
     }
 }
 
+/// Context maintained during a single rule execution pipeline
+struct PipelineContext {
+    var aiResponse: String?
+    var targetChannelId: String?
+    var targetServerId: String?
+    var mentionUser: Bool = true
+    var replyToTriggerMessage: Bool = false
+    var mentionRole: String?
+    var isDirectMessage: Bool = false
+}
+
 @MainActor
 final class RuleEngine {
     private var cancellable: AnyCancellable?
     private var activeRules: [Rule] = []
 
     init(store: RuleStore) {
+        activeRules = store.rules.filter(\.isEnabled)
         cancellable = store.$rules.sink { [weak self] rules in
             self?.activeRules = rules.filter(\.isEnabled)
         }
     }
 
-    func evaluate(event: VoiceRuleEvent) -> [Action] {
+    func evaluateRules(event: VoiceRuleEvent) -> [Rule] {
         activeRules
             .filter { rule in matchesTrigger(rule: rule, event: event) && matchesConditions(rule: rule, event: event) }
-            .flatMap(\.actions)
     }
 
     private func matchesTrigger(rule: Rule, event: VoiceRuleEvent) -> Bool {
-        switch (rule.trigger, event.kind) {
+        guard let trigger = rule.trigger else { return false }
+        switch (trigger, event.kind) {
         case (.userJoinedVoice, .join):
             return true
         case (.userLeftVoice, .leave):
@@ -2574,6 +2584,12 @@ final class RuleEngine {
             guard let minimum = Int(value), minimum > 0 else { return true }
             guard let durationSeconds = event.durationSeconds else { return false }
             return durationSeconds >= (minimum * 60)
+        case .channelIs:
+            // Channel conditions don't apply to voice events — always pass for now
+            return true
+        case .userHasRole:
+            // Role conditions not yet implemented for voice events — always pass
+            return true
         }
     }
 }
@@ -2806,12 +2822,224 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 // MARK: - Automation Models
 
+// MARK: - Context Variables
+
+/// Variables available in rule templates based on trigger context
+enum ContextVariable: String, CaseIterable, Codable, Hashable {
+    case user = "{user}"
+    case userId = "{user.id}"
+    case username = "{user.name}"
+    case userNickname = "{user.nickname}"
+    case userMention = "{user.mention}"
+    case message = "{message}"
+    case messageId = "{message.id}"
+    case channel = "{channel}"
+    case channelId = "{channel.id}"
+    case channelName = "{channel.name}"
+    case guild = "{guild}"
+    case guildId = "{guild.id}"
+    case guildName = "{guild.name}"
+    case voiceChannel = "{voice.channel}"
+    case voiceChannelId = "{voice.channel.id}"
+    case reaction = "{reaction}"
+    case reactionEmoji = "{reaction.emoji}"
+    case duration = "{duration}"
+    case memberCount = "{memberCount}"
+    case aiResponse = "{ai.response}"
+    
+    var displayName: String {
+        switch self {
+        case .user: return "User"
+        case .userId: return "User ID"
+        case .username: return "Username"
+        case .userNickname: return "Nickname"
+        case .userMention: return "@Mention"
+        case .message: return "Message Content"
+        case .messageId: return "Message ID"
+        case .channel: return "Channel"
+        case .channelId: return "Channel ID"
+        case .channelName: return "Channel Name"
+        case .guild: return "Server"
+        case .guildId: return "Server ID"
+        case .guildName: return "Server Name"
+        case .voiceChannel: return "Voice Channel"
+        case .voiceChannelId: return "Voice Channel ID"
+        case .reaction: return "Reaction"
+        case .reactionEmoji: return "Emoji"
+        case .duration: return "Duration"
+        case .memberCount: return "Member Count"
+        case .aiResponse: return "AI Response"
+        }
+    }
+    
+    var category: String {
+        switch self {
+        case .user, .userId, .username, .userNickname, .userMention:
+            return "User"
+        case .message, .messageId:
+            return "Message"
+        case .channel, .channelId, .channelName:
+            return "Channel"
+        case .guild, .guildId, .guildName:
+            return "Server"
+        case .voiceChannel, .voiceChannelId:
+            return "Voice"
+        case .reaction, .reactionEmoji:
+            return "Reaction"
+        case .duration, .memberCount:
+            return "Other"
+        case .aiResponse:
+            return "AI"
+        }
+    }
+}
+
+// MARK: - Discord Permissions
+
+/// Discord permission flags for validation
+enum DiscordPermission: String, CaseIterable, Codable, Hashable {
+    case createInstantInvite = "CREATE_INSTANT_INVITE"
+    case kickMembers = "KICK_MEMBERS"
+    case banMembers = "BAN_MEMBERS"
+    case administrator = "ADMINISTRATOR"
+    case manageChannels = "MANAGE_CHANNELS"
+    case manageGuild = "MANAGE_GUILD"
+    case addReactions = "ADD_REACTIONS"
+    case viewAuditLog = "VIEW_AUDIT_LOG"
+    case prioritySpeaker = "PRIORITY_SPEAKER"
+    case stream = "STREAM"
+    case viewChannel = "VIEW_CHANNEL"
+    case sendMessages = "SEND_MESSAGES"
+    case sendTTSMessages = "SEND_TTS_MESSAGES"
+    case manageMessages = "MANAGE_MESSAGES"
+    case embedLinks = "EMBED_LINKS"
+    case attachFiles = "ATTACH_FILES"
+    case readMessageHistory = "READ_MESSAGE_HISTORY"
+    case mentionEveryone = "MENTION_EVERYONE"
+    case useExternalEmojis = "USE_EXTERNAL_EMOJIS"
+    case connect = "CONNECT"
+    case speak = "SPEAK"
+    case muteMembers = "MUTE_MEMBERS"
+    case deafenMembers = "DEAFEN_MEMBERS"
+    case moveMembers = "MOVE_MEMBERS"
+    case useVAD = "USE_VAD"
+    case changeNickname = "CHANGE_NICKNAME"
+    case manageNicknames = "MANAGE_NICKNAMES"
+    case manageRoles = "MANAGE_ROLES"
+    case manageWebhooks = "MANAGE_WEBHOOKS"
+    case manageEmojis = "MANAGE_EMOJIS_AND_STICKERS"
+    case useApplicationCommands = "USE_APPLICATION_COMMANDS"
+    case requestToSpeak = "REQUEST_TO_SPEAK"
+    case manageEvents = "MANAGE_EVENTS"
+    case manageThreads = "MANAGE_THREADS"
+    case createPublicThreads = "CREATE_PUBLIC_THREADS"
+    case createPrivateThreads = "CREATE_PRIVATE_THREADS"
+    case useExternalStickers = "USE_EXTERNAL_STICKERS"
+    case sendMessagesInThreads = "SEND_MESSAGES_IN_THREADS"
+    case useEmbeddedActivities = "USE_EMBEDDED_ACTIVITIES"
+    case moderateMembers = "MODERATE_MEMBERS"
+    
+    var displayName: String {
+        switch self {
+        case .createInstantInvite: return "Create Invite"
+        case .kickMembers: return "Kick Members"
+        case .banMembers: return "Ban Members"
+        case .administrator: return "Administrator"
+        case .manageChannels: return "Manage Channels"
+        case .manageGuild: return "Manage Server"
+        case .addReactions: return "Add Reactions"
+        case .viewAuditLog: return "View Audit Log"
+        case .prioritySpeaker: return "Priority Speaker"
+        case .stream: return "Video/Stream"
+        case .viewChannel: return "View Channel"
+        case .sendMessages: return "Send Messages"
+        case .sendTTSMessages: return "Send TTS"
+        case .manageMessages: return "Manage Messages"
+        case .embedLinks: return "Embed Links"
+        case .attachFiles: return "Attach Files"
+        case .readMessageHistory: return "Read History"
+        case .mentionEveryone: return "Mention @everyone"
+        case .useExternalEmojis: return "Use External Emojis"
+        case .connect: return "Connect"
+        case .speak: return "Speak"
+        case .muteMembers: return "Mute Members"
+        case .deafenMembers: return "Deafen Members"
+        case .moveMembers: return "Move Members"
+        case .useVAD: return "Use Voice Activity"
+        case .changeNickname: return "Change Nickname"
+        case .manageNicknames: return "Manage Nicknames"
+        case .manageRoles: return "Manage Roles"
+        case .manageWebhooks: return "Manage Webhooks"
+        case .manageEmojis: return "Manage Emojis"
+        case .useApplicationCommands: return "Use Commands"
+        case .requestToSpeak: return "Request to Speak"
+        case .manageEvents: return "Manage Events"
+        case .manageThreads: return "Manage Threads"
+        case .createPublicThreads: return "Create Public Threads"
+        case .createPrivateThreads: return "Create Private Threads"
+        case .useExternalStickers: return "Use External Stickers"
+        case .sendMessagesInThreads: return "Send in Threads"
+        case .useEmbeddedActivities: return "Use Activities"
+        case .moderateMembers: return "Timeout Members"
+        }
+    }
+    
+    var bitValue: UInt64 {
+        switch self {
+        case .createInstantInvite: return 1 << 0
+        case .kickMembers: return 1 << 1
+        case .banMembers: return 1 << 2
+        case .administrator: return 1 << 3
+        case .manageChannels: return 1 << 4
+        case .manageGuild: return 1 << 5
+        case .addReactions: return 1 << 6
+        case .viewAuditLog: return 1 << 7
+        case .prioritySpeaker: return 1 << 8
+        case .stream: return 1 << 9
+        case .viewChannel: return 1 << 10
+        case .sendMessages: return 1 << 11
+        case .sendTTSMessages: return 1 << 12
+        case .manageMessages: return 1 << 13
+        case .embedLinks: return 1 << 14
+        case .attachFiles: return 1 << 15
+        case .readMessageHistory: return 1 << 16
+        case .mentionEveryone: return 1 << 17
+        case .useExternalEmojis: return 1 << 18
+        case .connect: return 1 << 20
+        case .speak: return 1 << 21
+        case .muteMembers: return 1 << 22
+        case .deafenMembers: return 1 << 23
+        case .moveMembers: return 1 << 24
+        case .useVAD: return 1 << 25
+        case .changeNickname: return 1 << 26
+        case .manageNicknames: return 1 << 27
+        case .manageRoles: return 1 << 28
+        case .manageWebhooks: return 1 << 29
+        case .manageEmojis: return 1 << 30
+        case .useApplicationCommands: return 1 << 31
+        case .requestToSpeak: return 1 << 32
+        case .manageEvents: return 1 << 33
+        case .manageThreads: return 1 << 34
+        case .createPublicThreads: return 1 << 35
+        case .createPrivateThreads: return 1 << 36
+        case .useExternalStickers: return 1 << 37
+        case .sendMessagesInThreads: return 1 << 38
+        case .useEmbeddedActivities: return 1 << 39
+        case .moderateMembers: return 1 << 40
+        }
+    }
+}
+
+// MARK: - Trigger Types
+
 enum TriggerType: String, CaseIterable, Identifiable, Codable {
     case userJoinedVoice = "User Joins Voice"
     case userLeftVoice = "User Leaves Voice"
     case userMovedVoice = "User Moves Voice"
     case messageContains = "Message Contains"
     case memberJoined = "Member Joined"
+    case reactionAdded = "Reaction Added"
+    case slashCommand = "Slash Command"
 
     var id: String { rawValue }
 
@@ -2822,6 +3050,8 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userMovedVoice: return "arrow.left.arrow.right.circle"
         case .messageContains: return "text.bubble"
         case .memberJoined: return "person.badge.plus"
+        case .reactionAdded: return "face.smiling"
+        case .slashCommand: return "slash.circle"
         }
     }
 
@@ -2832,6 +3062,8 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
         case .messageContains: return "nm you?"
         case .memberJoined: return "👋 Welcome to {server}, {username}! You're member #{memberCount}."
+        case .reactionAdded: return "👍 Reaction added!"
+        case .slashCommand: return "Command received!"
         }
     }
 
@@ -2842,6 +3074,24 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userMovedVoice: return "Move Action"
         case .messageContains: return "Message Reply"
         case .memberJoined: return "Member Join Welcome"
+        case .reactionAdded: return "Reaction Handler"
+        case .slashCommand: return "Command Handler"
+        }
+    }
+    
+    /// Variables provided by this trigger type
+    var providedVariables: Set<ContextVariable> {
+        switch self {
+        case .userJoinedVoice, .userLeftVoice, .userMovedVoice:
+            return [.user, .userId, .username, .userMention, .voiceChannel, .voiceChannelId, .guild, .guildId, .guildName, .duration]
+        case .messageContains:
+            return [.user, .userId, .username, .userMention, .message, .messageId, .channel, .channelId, .channelName, .guild, .guildId, .guildName]
+        case .memberJoined:
+            return [.user, .userId, .username, .userMention, .guild, .guildId, .guildName, .memberCount]
+        case .reactionAdded:
+            return [.user, .userId, .username, .userMention, .message, .messageId, .channel, .channelId, .reaction, .reactionEmoji, .guild, .guildId]
+        case .slashCommand:
+            return [.user, .userId, .username, .userMention, .channel, .channelId, .guild, .guildId, .guildName]
         }
     }
 
@@ -2860,6 +3110,8 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
     case voiceChannel = "Voice Channel Is"
     case usernameContains = "Username Contains"
     case minimumDuration = "Duration In Channel"
+    case channelIs = "Channel Is"
+    case userHasRole = "User Has Role"
 
     var id: String { rawValue }
 
@@ -2869,6 +3121,26 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
         case .voiceChannel: return "waveform"
         case .usernameContains: return "text.magnifyingglass"
         case .minimumDuration: return "timer"
+        case .channelIs: return "number"
+        case .userHasRole: return "person.crop.circle.badge.checkmark"
+        }
+    }
+    
+    /// Variables required to evaluate this condition
+    var requiredVariables: Set<ContextVariable> {
+        switch self {
+        case .server:
+            return [.guild, .guildId]
+        case .voiceChannel:
+            return [.voiceChannel, .voiceChannelId]
+        case .usernameContains:
+            return [.user, .username]
+        case .minimumDuration:
+            return [.duration]
+        case .channelIs:
+            return [.channel, .channelId]
+        case .userHasRole:
+            return [.user, .userId]
         }
     }
 }
@@ -2877,6 +3149,30 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case sendMessage = "Send Message"
     case addLogEntry = "Add Log Entry"
     case setStatus = "Set Bot Status"
+    case replyToMessage = "Reply to Message"
+    case sendDM = "Send DM"
+    case deleteMessage = "Delete Message"
+    case addReaction = "Add Reaction"
+    case addRole = "Add Role"
+    case removeRole = "Remove Role"
+    case timeoutMember = "Timeout Member"
+    case kickMember = "Kick Member"
+    case moveMember = "Move Member"
+    case createChannel = "Create Channel"
+    case webhook = "Send Webhook"
+    case delay = "Delay"
+    case setVariable = "Set Variable"
+    case randomChoice = "Random"
+    
+    // New Modifier Types
+    case replyToTrigger = "Reply To Trigger Message"
+    case mentionUser = "Mention User"
+    case mentionRole = "Mention Role"
+    case sendToDM = "Send To DM"
+    case sendToChannel = "Send To Channel"
+    
+    // AI Types
+    case generateAIResponse = "Generate AI Response"
 
     var id: String { rawValue }
 
@@ -2885,10 +3181,139 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .sendMessage: return "paperplane.fill"
         case .addLogEntry: return "list.bullet.clipboard"
         case .setStatus: return "dot.radiowaves.left.and.right"
+        case .replyToMessage: return "arrow.turn.down.left"
+        case .sendDM: return "envelope.fill"
+        case .deleteMessage: return "trash.fill"
+        case .addReaction: return "face.smiling"
+        case .addRole: return "person.crop.circle.badge.plus"
+        case .removeRole: return "person.crop.circle.badge.minus"
+        case .timeoutMember: return "clock.badge.exclamationmark"
+        case .kickMember: return "door.left.hand.open"
+        case .moveMember: return "arrow.right.circle"
+        case .createChannel: return "plus.rectangle"
+        case .webhook: return "link"
+        case .delay: return "clock.arrow.circlepath"
+        case .setVariable: return "character.textbox"
+        case .randomChoice: return "shuffle"
+        case .replyToTrigger: return "arrowshape.turn.up.left.fill"
+        case .mentionUser: return "at"
+        case .mentionRole: return "at.badge.plus"
+        case .sendToDM: return "envelope.fill"
+        case .sendToChannel: return "number.circle.fill"
+        case .generateAIResponse: return "sparkles"
+        }
+    }
+    
+    /// Variables required by this action type
+    var requiredVariables: Set<ContextVariable> {
+        switch self {
+        case .sendMessage, .sendDM, .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .createChannel, .webhook:
+            return []
+        case .replyToMessage, .deleteMessage, .addReaction, .replyToTrigger:
+            return [.message, .messageId]
+        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser:
+            return [.user, .userId]
+        case .sendToChannel:
+            return [.channel]
+        case .generateAIResponse, .mentionRole, .sendToDM:
+            return []
+        }
+    }
+    
+    /// Variables provided/output by this action type
+    var outputVariables: Set<ContextVariable> {
+        switch self {
+        case .generateAIResponse:
+            return [.aiResponse]
+        case .sendMessage, .replyToMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
+             .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
+             .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
+             .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+            return []
+        }
+    }
+    
+    /// Discord permissions required for this action
+    var requiredPermissions: Set<DiscordPermission> {
+        switch self {
+        case .sendMessage, .replyToMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .sendToDM, .sendToChannel, .replyToTrigger:
+            return []
+        case .deleteMessage:
+            return [.manageMessages]
+        case .addReaction:
+            return [.addReactions]
+        case .addRole, .removeRole:
+            return [.manageRoles]
+        case .timeoutMember:
+            return [.moderateMembers]
+        case .kickMember:
+            return [.kickMembers]
+        case .moveMember:
+            return [.moveMembers]
+        case .createChannel:
+            return [.manageChannels]
+        case .webhook:
+            return [.manageWebhooks]
+        }
+    }
+    
+    /// Category for block library organization
+    var category: BlockCategory {
+        switch self {
+        case .sendMessage, .replyToMessage, .sendDM, .deleteMessage, .addReaction:
+            return .messaging
+        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
+            return .moderation
+        case .createChannel:
+            return .channel
+        case .webhook:
+            return .integration
+        case .addLogEntry:
+            return .logging
+        case .setStatus:
+            return .bot
+        case .delay, .setVariable, .randomChoice:
+            return .utility
+        case .replyToTrigger, .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+            return .modifiers
+        case .generateAIResponse:
+            return .ai
         }
     }
 }
 
+/// Block categories for library organization
+enum BlockCategory: String, CaseIterable, Identifiable {
+    case triggers = "Triggers"
+    case filters = "Filters"
+    case modifiers = "Message Modifiers"
+    case ai = "AI Blocks"
+    case messaging = "Actions"
+    case moderation = "Moderation"
+    case channel = "Channel"
+    case integration = "Integration"
+    case logging = "Logging"
+    case bot = "Bot"
+    case utility = "Utilities"
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .triggers: return "bolt.fill"
+        case .filters: return "line.3.horizontal.decrease.circle"
+        case .modifiers: return "slider.horizontal.3"
+        case .ai: return "sparkles"
+        case .messaging: return "paperplane.fill"
+        case .moderation: return "shield.fill"
+        case .channel: return "number"
+        case .integration: return "link"
+        case .logging: return "list.bullet.clipboard"
+        case .bot: return "cpu.fill"
+        case .utility: return "wrench.fill"
+        }
+    }
+}
 struct Condition: Identifiable, Codable, Equatable {
     var id = UUID()
     var type: ConditionType
@@ -2907,6 +3332,22 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var replyWithAI: Bool = false
     var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
     var statusText: String = "Voice notifier active"
+    
+    // New fields for extended action types
+    var dmContent: String = ""              // For sendDM
+    var emoji: String = "👍"                // For addReaction
+    var roleId: String = ""                 // For addRole/removeRole
+    var timeoutDuration: Int = 3600         // For timeoutMember (seconds)
+    var kickReason: String = ""             // For kickMember
+    var targetVoiceChannelId: String = ""   // For moveMember
+    var newChannelName: String = ""         // For createChannel
+    var webhookURL: String = ""             // For webhook
+    var webhookContent: String = ""         // For webhook
+    var delaySeconds: Int = 5               // For delay
+    var variableName: String = ""           // For setVariable
+    var variableValue: String = ""          // For setVariable
+    var randomOptions: [String] = []        // For randomChoice
+    var deleteDelaySeconds: Int = 0         // For deleteMessage (delayed delete)
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -2918,6 +3359,21 @@ struct RuleAction: Identifiable, Codable, Equatable {
         case replyWithAI
         case message
         case statusText
+        // New fields
+        case dmContent
+        case emoji
+        case roleId
+        case timeoutDuration
+        case kickReason
+        case targetVoiceChannelId
+        case newChannelName
+        case webhookURL
+        case webhookContent
+        case delaySeconds
+        case variableName
+        case variableValue
+        case randomOptions
+        case deleteDelaySeconds
     }
 
     init() {}
@@ -2933,6 +3389,21 @@ struct RuleAction: Identifiable, Codable, Equatable {
         replyWithAI = try container.decodeIfPresent(Bool.self, forKey: .replyWithAI) ?? false
         message = try container.decodeIfPresent(String.self, forKey: .message) ?? "🔊 <@{userId}> connected to <#{channelId}>"
         statusText = try container.decodeIfPresent(String.self, forKey: .statusText) ?? "Voice notifier active"
+        // New fields with defaults
+        dmContent = try container.decodeIfPresent(String.self, forKey: .dmContent) ?? ""
+        emoji = try container.decodeIfPresent(String.self, forKey: .emoji) ?? "👍"
+        roleId = try container.decodeIfPresent(String.self, forKey: .roleId) ?? ""
+        timeoutDuration = try container.decodeIfPresent(Int.self, forKey: .timeoutDuration) ?? 3600
+        kickReason = try container.decodeIfPresent(String.self, forKey: .kickReason) ?? ""
+        targetVoiceChannelId = try container.decodeIfPresent(String.self, forKey: .targetVoiceChannelId) ?? ""
+        newChannelName = try container.decodeIfPresent(String.self, forKey: .newChannelName) ?? ""
+        webhookURL = try container.decodeIfPresent(String.self, forKey: .webhookURL) ?? ""
+        webhookContent = try container.decodeIfPresent(String.self, forKey: .webhookContent) ?? ""
+        delaySeconds = try container.decodeIfPresent(Int.self, forKey: .delaySeconds) ?? 5
+        variableName = try container.decodeIfPresent(String.self, forKey: .variableName) ?? ""
+        variableValue = try container.decodeIfPresent(String.self, forKey: .variableValue) ?? ""
+        randomOptions = try container.decodeIfPresent([String].self, forKey: .randomOptions) ?? []
+        deleteDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .deleteDelaySeconds) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -2946,6 +3417,21 @@ struct RuleAction: Identifiable, Codable, Equatable {
         try container.encode(replyWithAI, forKey: .replyWithAI)
         try container.encode(message, forKey: .message)
         try container.encode(statusText, forKey: .statusText)
+        // New fields
+        try container.encode(dmContent, forKey: .dmContent)
+        try container.encode(emoji, forKey: .emoji)
+        try container.encode(roleId, forKey: .roleId)
+        try container.encode(timeoutDuration, forKey: .timeoutDuration)
+        try container.encode(kickReason, forKey: .kickReason)
+        try container.encode(targetVoiceChannelId, forKey: .targetVoiceChannelId)
+        try container.encode(newChannelName, forKey: .newChannelName)
+        try container.encode(webhookURL, forKey: .webhookURL)
+        try container.encode(webhookContent, forKey: .webhookContent)
+        try container.encode(delaySeconds, forKey: .delaySeconds)
+        try container.encode(variableName, forKey: .variableName)
+        try container.encode(variableValue, forKey: .variableValue)
+        try container.encode(randomOptions, forKey: .randomOptions)
+        try container.encode(deleteDelaySeconds, forKey: .deleteDelaySeconds)
     }
 }
 
@@ -2954,9 +3440,10 @@ typealias Action = RuleAction
 struct Rule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String = "New Action"
-    var trigger: TriggerType = .userJoinedVoice
+    var trigger: TriggerType?
     var conditions: [Condition] = []
-    var actions: [RuleAction] = [RuleAction()]
+    var modifiers: [RuleAction] = []
+    var actions: [RuleAction] = []
     var isEnabled: Bool = true
 
     var triggerServerId: String = ""
@@ -2966,7 +3453,52 @@ struct Rule: Identifiable, Codable, Equatable {
 
     var includeStageChannels: Bool = true
 
+    var isEmptyRule: Bool {
+        trigger == nil && conditions.isEmpty && actions.isEmpty && modifiers.isEmpty
+    }
+
+    static func empty() -> Rule {
+        Rule(trigger: nil, conditions: [], modifiers: [], actions: [])
+    }
+
+    /// Provides the full pipeline of blocks for the rule engine, including migrated legacy toggles
+    var processedActions: [RuleAction] {
+        var pipeline: [RuleAction] = []
+        
+        // Add explicit modifiers
+        pipeline.append(contentsOf: modifiers)
+        
+        // Convert legacy toggles from actions into modifier blocks if they aren't already represented
+        for action in actions {
+            var actionWithModifiers = action
+            
+            if action.replyWithAI {
+                var aiBlock = RuleAction()
+                aiBlock.type = .generateAIResponse
+                pipeline.append(aiBlock)
+                actionWithModifiers.replyWithAI = false
+            }
+            
+            if action.replyToTriggerMessage {
+                var replyBlock = RuleAction()
+                replyBlock.type = .replyToTrigger
+                pipeline.append(replyBlock)
+                actionWithModifiers.replyToTriggerMessage = false
+            }
+            
+            if !action.mentionUser { // Default was true in legacy
+                // We'll skip adding a "No Mention" for now to keep it simple, 
+                // or add it if we have a specific block for it.
+            }
+            
+            pipeline.append(actionWithModifiers)
+        }
+        
+        return pipeline
+    }
+
     var triggerSummary: String {
+        guard let trigger = trigger else { return "No trigger set" }
         switch trigger {
         case .userJoinedVoice: return "When someone joins voice"
         case .userLeftVoice: return "When someone leaves voice"
@@ -2974,6 +3506,131 @@ struct Rule: Identifiable, Codable, Equatable {
         case .messageContains:
             return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
         case .memberJoined: return "When a member joins the server"
+        case .reactionAdded: return "When a reaction is added"
+        case .slashCommand: return "When a slash command is used"
         }
+    }
+    
+    /// Validates the rule and returns any issues found
+    var validationIssues: [ValidationIssue] {
+        var issues: [ValidationIssue] = []
+        
+        // Get variables available from trigger
+        let availableVariables = trigger?.providedVariables ?? []
+        
+        // Check conditions for variable availability
+        for condition in conditions where condition.enabled {
+            let requiredVars = condition.type.requiredVariables
+            let missingVars = requiredVars.subtracting(availableVariables)
+            if !missingVars.isEmpty {
+                issues.append(.init(
+                    severity: .error,
+                    message: "Condition '\(condition.type.rawValue)' requires variables not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    blockType: .condition,
+                    blockId: condition.id
+                ))
+            }
+        }
+
+        // Check modifiers for variable availability and permissions
+        for modifier in modifiers {
+            let requiredVars = modifier.type.requiredVariables
+            let missingVars = requiredVars.subtracting(availableVariables)
+            if !missingVars.isEmpty {
+                issues.append(.init(
+                    severity: .error,
+                    message: "Modifier '\(modifier.type.rawValue)' requires context not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    blockType: .modifier,
+                    blockId: modifier.id
+                ))
+            }
+
+            let requiredPerms = modifier.type.requiredPermissions
+            if !requiredPerms.isEmpty {
+                issues.append(.init(
+                    severity: .warning,
+                    message: "Requires permissions: \(requiredPerms.map(\.displayName).joined(separator: ", "))",
+                    blockType: .modifier,
+                    blockId: modifier.id
+                ))
+            }
+        }
+        
+        // Check actions for variable availability and permissions
+        for action in actions {
+            let requiredVars = action.type.requiredVariables
+            let missingVars = requiredVars.subtracting(availableVariables)
+            if !missingVars.isEmpty {
+                issues.append(.init(
+                    severity: .error,
+                    message: "Action '\(action.type.rawValue)' requires context not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    blockType: .action,
+                    blockId: action.id
+                ))
+            }
+            
+            // Check permissions (warnings, not errors - bot may have permissions)
+            let requiredPerms = action.type.requiredPermissions
+            if !requiredPerms.isEmpty {
+                issues.append(.init(
+                    severity: .warning,
+                    message: "Requires permissions: \(requiredPerms.map(\.displayName).joined(separator: ", "))",
+                    blockType: .action,
+                    blockId: action.id
+                ))
+            }
+        }
+        
+        return issues
+    }
+    
+    /// Checks if rule has any blocking errors
+    var hasBlockingErrors: Bool {
+        validationIssues.contains { $0.severity == .error }
+    }
+    
+    /// Returns just the errors (not warnings)
+    var validationErrors: [ValidationIssue] {
+        validationIssues.filter { $0.severity == .error }
+    }
+    
+    /// Returns just the warnings
+    var validationWarnings: [ValidationIssue] {
+        validationIssues.filter { $0.severity == .warning }
+    }
+}
+
+/// Represents a validation issue with a rule
+struct ValidationIssue: Identifiable, Hashable {
+    let id = UUID()
+    let severity: ValidationSeverity
+    let message: String
+    let blockType: BlockType
+    let blockId: UUID
+    
+    enum ValidationSeverity: String, Codable, CaseIterable {
+        case warning = "Warning"
+        case error = "Error"
+        
+        var icon: String {
+            switch self {
+            case .warning: return "exclamationmark.triangle"
+            case .error: return "xmark.octagon"
+            }
+        }
+        
+        var color: String {
+            switch self {
+            case .warning: return "orange"
+            case .error: return "red"
+            }
+        }
+    }
+    
+    enum BlockType: String, Codable, CaseIterable {
+        case trigger = "Trigger"
+        case condition = "Filter"
+        case modifier = "Modifier"
+        case action = "Action"
     }
 }

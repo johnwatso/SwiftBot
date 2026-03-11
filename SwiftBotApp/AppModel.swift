@@ -3397,16 +3397,19 @@ final class AppModel: ObservableObject {
             triggerUserId: userId,
             isDirectMessage: false
         )
-        let matchedActions = ruleEngine.evaluate(event: ruleEvent)
-        for action in matchedActions where action.type == .sendMessage {
-            let ruleMessage = action.message
-                .replacingOccurrences(of: "{username}", with: safeUsername)
-                .replacingOccurrences(of: "{server}", with: serverName)
-                .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
-                .replacingOccurrences(of: "{userId}", with: userId)
-            let targetChannel = action.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !targetChannel.isEmpty else { continue }
-            _ = await send(targetChannel, ruleMessage)
+        let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
+        for rule in matchedRules {
+            var context = PipelineContext()
+            for action in rule.processedActions where action.type == .sendMessage {
+                let ruleMessage = action.message
+                    .replacingOccurrences(of: "{username}", with: safeUsername)
+                    .replacingOccurrences(of: "{server}", with: serverName)
+                    .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
+                    .replacingOccurrences(of: "{userId}", with: userId)
+                let targetChannel = action.channelId.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                guard !targetChannel.isEmpty else { continue }
+                _ = await send(targetChannel, ruleMessage)
+            }
         }
 
         // Log username only — no internal IDs or metadata.

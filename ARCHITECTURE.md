@@ -136,12 +136,17 @@ DiscordService.processRuleActionsIfNeeded()
     ↓
 DiscordService.parseVoiceRuleEvent() / parseMessageRuleEvent()
     ↓
-RuleEngine.evaluate(event) [MainActor]
+RuleEngine.evaluateRules(event) [MainActor]
     ↓
-DiscordService.execute(action)
-    ├→ sendMessage()
+Rule.processedActions (Runtime Migration)
+    ↓
+Pipeline Loop [for action in actions]
+    ↓
+DiscordService.execute(action, context)
+    ├→ Update PipelineContext (Modifiers/AI)
+    ├→ sendMessage(context)
     ├→ updatePresence()
-    └→ addLogEntry (no-op)
+    └→ REST Actions (Roles, Moderation, etc.)
 ```
 
 ### EventBus Flow (Plugins)
