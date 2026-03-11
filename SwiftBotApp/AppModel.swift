@@ -1650,6 +1650,7 @@ final class AppModel: ObservableObject {
             servers: servers,
             textChannelsByServer: textChannelsByServer,
             voiceChannelsByServer: voiceChannelsByServer,
+            builderMetadata: AdminWebBuilderMetadata.generateFromNativeModels(),
             conditionTypes: ConditionType.allCases.map(\.rawValue),
             actionTypes: ActionType.allCases.map(\.rawValue)
         )
@@ -1967,6 +1968,7 @@ final class AppModel: ObservableObject {
                         servers: [],
                         textChannelsByServer: [:],
                         voiceChannelsByServer: [:],
+                        builderMetadata: AdminWebBuilderMetadata.generateFromNativeModels(),
                         conditionTypes: ConditionType.allCases.map(\.rawValue),
                         actionTypes: ActionType.allCases.map(\.rawValue)
                     )
