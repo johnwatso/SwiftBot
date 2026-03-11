@@ -2370,6 +2370,33 @@ actor DiscordService {
             if let aiReply = await generateRuleActionAIReply(prompt: prompt, event: event) {
                 context.aiResponse = aiReply
             }
+        case .summariseMessage:
+            guard let content = event.messageContent, !content.isEmpty else { break }
+            let prompt = "Summarize the following message concisely:\n\n\(content)"
+            if let summary = await generateRuleActionAIReply(prompt: prompt, event: event) {
+                context.aiSummary = summary
+            }
+        case .classifyMessage:
+            guard let content = event.messageContent, !content.isEmpty else { break }
+            let categories = action.categories.isEmpty ? "question, feedback, spam, other" : action.categories
+            let prompt = "Classify the following message into one of these categories [\(categories)]:\n\n\(content)\n\nCategory:"
+            if let classification = await generateRuleActionAIReply(prompt: prompt, event: event) {
+                context.aiClassification = classification.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        case .extractEntities:
+            guard let content = event.messageContent, !content.isEmpty else { break }
+            let entityTypes = action.entityTypes.isEmpty ? "names, dates, locations, organizations" : action.entityTypes
+            let prompt = "Extract \(entityTypes) from the following message as a comma-separated list:\n\n\(content)\n\nEntities:"
+            if let entities = await generateRuleActionAIReply(prompt: prompt, event: event) {
+                context.aiEntities = entities.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        case .rewriteMessage:
+            guard let content = event.messageContent, !content.isEmpty else { break }
+            let style = action.rewriteStyle.isEmpty ? "professional" : action.rewriteStyle
+            let prompt = "Rewrite the following message in a \(style) style:\n\n\(content)\n\nRewritten:"
+            if let rewrite = await generateRuleActionAIReply(prompt: prompt, event: event) {
+                context.aiRewrite = rewrite
+            }
         case .sendMessage:
             let targetChannelId = context.targetChannelId ?? action.channelId
             guard !targetChannelId.isEmpty || (context.targetChannelId == nil && !event.userId.isEmpty) else { return }

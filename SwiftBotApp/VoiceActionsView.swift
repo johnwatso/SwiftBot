@@ -372,9 +372,20 @@ struct RuleEditorView: View {
         // Modifier blocks
         case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
             break
-        // AI block
+        // AI blocks
         case .generateAIResponse:
             action.message = "You are a helpful assistant. {message}"
+        case .summariseMessage:
+            action.message = ""
+        case .classifyMessage:
+            action.message = ""
+            action.categories = "question, feedback, spam, other"
+        case .extractEntities:
+            action.message = ""
+            action.entityTypes = "names, dates, locations, organizations"
+        case .rewriteMessage:
+            action.message = ""
+            action.rewriteStyle = "professional"
         // Other action types
         case .sendDM, .deleteMessage, .addReaction, .addRole, .removeRole,
              .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook, .delay,
@@ -988,9 +999,7 @@ struct ActionsSectionView: View {
                     Text("No blocks yet")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Text(isGuided
-                         ? "Select a block from the Block Library to the left."
-                         : "Use the Block Library to add your first block.")
+                    Text(textForEmptyState(category: category, isGuided: isGuided))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -1023,6 +1032,17 @@ struct ActionsSectionView: View {
         }
         .disabled(!hasTrigger)
         .opacity(hasTrigger ? 1.0 : 0.5)
+    }
+
+    private func textForEmptyState(category: BlockCategory, isGuided: Bool) -> String {
+        switch category {
+        case .ai:
+            return "No AI processing blocks yet. Add one from the Block Library.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
+        default:
+            return isGuided
+                 ? "Select a block from the Block Library to the left."
+                 : "Use the Block Library to add your first block."
+        }
     }
 }
 
@@ -1203,7 +1223,7 @@ struct ActionSectionView: View {
                     items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
                     prompt: "Select a channel..."
                 )
-            // AI block
+            // AI blocks
             case .generateAIResponse:
                 VStack(alignment: .leading, spacing: 6) {
                     Text("AI Prompt")
@@ -1213,11 +1233,58 @@ struct ActionSectionView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            case .summariseMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Summarization Prompt (Optional)")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI summary is available as {ai.summary} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .classifyMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Classification Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI classification is available as {ai.classification} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .extractEntities:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Entity Extraction Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The extracted entities are available as {ai.entities} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case .rewriteMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Rewriting Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The rewritten message is available as {ai.rewrite} in later modifiers and actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(10)
         .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
         .opacity(isIncompatible ? 0.6 : 1.0)
+    }
+
+    private func textForEmptyState(category: BlockCategory, isGuided: Bool) -> String {
+        switch category {
+        case .ai:
+            return "No AI processing blocks yet. Add one from the Block Library.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
+        default:
+            return isGuided
+                 ? "Select a block from the Block Library to the left."
+                 : "Use the Block Library to add your first block."
+        }
     }
 }
 

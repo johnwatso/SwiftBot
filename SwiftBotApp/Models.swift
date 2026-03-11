@@ -2514,6 +2514,10 @@ final class RuleStore: ObservableObject {
 /// Context maintained during a single rule execution pipeline
 struct PipelineContext: CustomStringConvertible {
     var aiResponse: String?
+    var aiSummary: String?
+    var aiClassification: String?
+    var aiEntities: String?
+    var aiRewrite: String?
     var targetChannelId: String?
     var targetServerId: String?
     var mentionUser: Bool = true
@@ -2525,8 +2529,9 @@ struct PipelineContext: CustomStringConvertible {
 
     var description: String {
         let ai = aiResponse != nil ? "AI(\(aiResponse!.count) chars)" : "nil"
+        let summary = aiSummary != nil ? "Summary(\(aiSummary!.count) chars)" : "nil"
         let target = targetChannelId ?? "default"
-        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), handled: \(eventHandled)]"
+        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), summary: \(summary), handled: \(eventHandled)]"
     }
 }
 
@@ -2879,6 +2884,10 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
     case duration = "{duration}"
     case memberCount = "{memberCount}"
     case aiResponse = "{ai.response}"
+    case aiSummary = "{ai.summary}"
+    case aiClassification = "{ai.classification}"
+    case aiEntities = "{ai.entities}"
+    case aiRewrite = "{ai.rewrite}"
     
     var displayName: String {
         switch self {
@@ -2902,6 +2911,10 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
         case .duration: return "Duration"
         case .memberCount: return "Member Count"
         case .aiResponse: return "AI Response"
+        case .aiSummary: return "AI Summary"
+        case .aiClassification: return "AI Classification"
+        case .aiEntities: return "AI Entities"
+        case .aiRewrite: return "AI Rewrite"
         }
     }
     
@@ -2921,7 +2934,7 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
             return "Reaction"
         case .duration, .memberCount:
             return "Other"
-        case .aiResponse:
+        case .aiResponse, .aiSummary, .aiClassification, .aiEntities, .aiRewrite:
             return "AI"
         }
     }
@@ -3271,6 +3284,10 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     
     // AI Types
     case generateAIResponse = "Generate AI Response"
+    case summariseMessage = "Summarise Message"
+    case classifyMessage = "Classify Message"
+    case extractEntities = "Extract Entities"
+    case rewriteMessage = "Rewrite Message"
 
     var id: String { rawValue }
 
@@ -3298,6 +3315,10 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .disableMention: return "at.badge.minus"
         case .sendToChannel: return "number.circle.fill"
         case .generateAIResponse: return "sparkles"
+        case .summariseMessage: return "text.alignleft"
+        case .classifyMessage: return "tag.fill"
+        case .extractEntities: return "list.bullet.clipboard"
+        case .rewriteMessage: return "pencil"
         }
     }
     
@@ -3313,7 +3334,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return [.user, .userId]
         case .sendToChannel:
             return [.channel]
-        case .generateAIResponse, .mentionRole:
+        case .generateAIResponse, .mentionRole, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return []
         }
     }
@@ -3323,6 +3344,14 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .generateAIResponse:
             return [.aiResponse]
+        case .summariseMessage:
+            return [.aiSummary]
+        case .classifyMessage:
+            return [.aiClassification]
+        case .extractEntities:
+            return [.aiEntities]
+        case .rewriteMessage:
+            return [.aiRewrite]
         case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
              .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
              .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
@@ -3334,7 +3363,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
-        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .replyToTrigger:
+        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .replyToTrigger, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return []
         case .deleteMessage:
             return [.manageMessages]
@@ -3362,7 +3391,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return .messaging
         case .addReaction, .deleteMessage:
             return .actions
-        case .generateAIResponse:
+        case .generateAIResponse, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return .ai
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
             return .moderation
@@ -3443,6 +3472,11 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var variableValue: String = ""          // For setVariable
     var randomOptions: [String] = []        // For randomChoice
     var deleteDelaySeconds: Int = 0         // For deleteMessage (delayed delete)
+    
+    // AI Processing block fields
+    var categories: String = ""              // For classifyMessage (comma-separated categories)
+    var entityTypes: String = ""             // For extractEntities (comma-separated entity types)
+    var rewriteStyle: String = ""            // For rewriteMessage (style description)
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -3469,6 +3503,9 @@ struct RuleAction: Identifiable, Codable, Equatable {
         case variableValue
         case randomOptions
         case deleteDelaySeconds
+        case categories
+        case entityTypes
+        case rewriteStyle
     }
 
     init() {}
@@ -3499,6 +3536,9 @@ struct RuleAction: Identifiable, Codable, Equatable {
         variableValue = try container.decodeIfPresent(String.self, forKey: .variableValue) ?? ""
         randomOptions = try container.decodeIfPresent([String].self, forKey: .randomOptions) ?? []
         deleteDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .deleteDelaySeconds) ?? 0
+        categories = try container.decodeIfPresent(String.self, forKey: .categories) ?? ""
+        entityTypes = try container.decodeIfPresent(String.self, forKey: .entityTypes) ?? ""
+        rewriteStyle = try container.decodeIfPresent(String.self, forKey: .rewriteStyle) ?? ""
     }
 
     func encode(to encoder: Encoder) throws {
@@ -3527,6 +3567,9 @@ struct RuleAction: Identifiable, Codable, Equatable {
         try container.encode(variableValue, forKey: .variableValue)
         try container.encode(randomOptions, forKey: .randomOptions)
         try container.encode(deleteDelaySeconds, forKey: .deleteDelaySeconds)
+        try container.encode(categories, forKey: .categories)
+        try container.encode(entityTypes, forKey: .entityTypes)
+        try container.encode(rewriteStyle, forKey: .rewriteStyle)
     }
 }
 
@@ -3595,11 +3638,11 @@ struct Rule: Identifiable, Codable, Equatable {
     
     /// Coding keys for Rule
     enum CodingKeys: String, CodingKey {
-        case id, name, trigger, conditions, modifiers, actions, isEnabled
+        case id, name, trigger, conditions, modifiers, actions, aiBlocks, isEnabled
         case triggerServerId, triggerVoiceChannelId, triggerMessageContains, replyToDMs, includeStageChannels
     }
     
-    /// Custom decoder that migrates legacy trigger properties into filter conditions
+    /// Custom decoder that migrates legacy properties and separates AI blocks from actions
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
@@ -3609,6 +3652,7 @@ struct Rule: Identifiable, Codable, Equatable {
         conditions = try container.decode([Condition].self, forKey: .conditions)
         modifiers = try container.decode([RuleAction].self, forKey: .modifiers)
         actions = try container.decode([RuleAction].self, forKey: .actions)
+        aiBlocks = try container.decodeIfPresent([RuleAction].self, forKey: .aiBlocks) ?? []
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         
         // Legacy properties - keep for backwards compatibility but migrate to conditions
@@ -3641,26 +3685,47 @@ struct Rule: Identifiable, Codable, Equatable {
         if !migratedConditions.isEmpty {
             conditions.append(contentsOf: migratedConditions)
         }
+        
+        // Migration: Move AI blocks from actions to aiBlocks for backwards compatibility
+        let aiBlockTypes: [ActionType] = [.generateAIResponse, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage]
+        let (aiBlocksFromActions, remainingActions) = actions.reduce(into: ([RuleAction](), [RuleAction]())) { result, action in
+            if aiBlockTypes.contains(action.type) {
+                result.0.append(action)
+            } else {
+                result.1.append(action)
+            }
+        }
+        if !aiBlocksFromActions.isEmpty {
+            aiBlocks.append(contentsOf: aiBlocksFromActions)
+            actions = remainingActions
+        }
     }
 
-    /// Provides the full pipeline of blocks for the rule engine, including migrated legacy toggles
+    /// Provides the full pipeline of blocks for the rule engine in execution order:
+    /// AI Processing → Message Modifiers → Actions
     var processedActions: [RuleAction] {
         var pipeline: [RuleAction] = []
         
-        // Add explicit modifiers
+        // 1. AI Processing blocks first
+        pipeline.append(contentsOf: aiBlocks)
+        
+        // 2. Message Modifiers
         pipeline.append(contentsOf: modifiers)
         
-        // Convert legacy toggles from actions into modifier blocks if they aren't already represented
+        // 3. Actions (excluding AI blocks and extracting embedded modifiers)
         for action in actions {
             var actionWithModifiers = action
             
+            // Legacy: replyWithAI toggle creates an AI block
             if action.replyWithAI {
                 var aiBlock = RuleAction()
                 aiBlock.type = .generateAIResponse
-                pipeline.append(aiBlock)
+                // Insert AI block at the beginning (before modifiers)
+                pipeline.insert(aiBlock, at: aiBlocks.count)
                 actionWithModifiers.replyWithAI = false
             }
             
+            // Extract reply-to-trigger as a modifier
             if action.replyToTriggerMessage {
                 var replyBlock = RuleAction()
                 replyBlock.type = .replyToTrigger
@@ -3668,6 +3733,7 @@ struct Rule: Identifiable, Codable, Equatable {
                 actionWithModifiers.replyToTriggerMessage = false
             }
             
+            // Extract mention disable as a modifier
             if !action.mentionUser { // Default was true in legacy
                 var disableMentionBlock = RuleAction()
                 disableMentionBlock.type = .disableMention
