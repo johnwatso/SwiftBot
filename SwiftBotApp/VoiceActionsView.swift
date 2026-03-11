@@ -39,7 +39,8 @@ struct VoiceWorkspaceView: View {
                 },
                 onDeleteRuleID: { ruleID in
                     ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
-                }
+                },
+                isLoading: ruleStore.isLoading
             )
             .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
 
@@ -129,6 +130,11 @@ struct RuleEditorView: View {
     @Binding var rule: Rule
     @EnvironmentObject var app: AppModel
 
+    @AppStorage("hasSeenRuleOnboarding") private var hasSeenRuleOnboarding: Bool = false
+    @State private var showOnboardingCard = false
+    @State private var guidedStep: GuidedBuildStep = .none
+    @State private var scrollToTriggersSignal: Bool = false
+
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
             (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
@@ -148,17 +154,22 @@ struct RuleEditorView: View {
                     systemImage: "square.stack.3d.up.fill"
                 )
 
-                ScrollView {
-                    RuleBuilderLibraryView(
+                RuleBuilderLibraryView(
                         serverIds: serverIds,
                         onAddCondition: addCondition(_:),
                         onAddAction: addAction(_:),
-                        focusTrigger: { applyTriggerDefaults(for: rule.trigger) }
+                        onSetTrigger: { type in
+                            rule.trigger = type
+                            applyTriggerDefaults(for: type)
+                            if guidedStep == .trigger { guidedStep = .action }
+                        },
+                        focusTrigger: {
+                            if let trigger = rule.trigger {
+                                applyTriggerDefaults(for: trigger)
+                            }
+                        },
+                        scrollToTriggersSignal: $scrollToTriggersSignal
                     )
-                    .padding(.horizontal, 18)
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
-                }
             }
             .frame(minWidth: 250, idealWidth: 270, maxWidth: 300)
             .background(rulePaneBackground)
@@ -192,44 +203,94 @@ struct RuleEditorView: View {
                     .padding(.bottom, 16)
                 .background(rulePaneBackground)
 
+                if !rule.validationIssues.isEmpty {
+                    ValidationBannerView(issues: rule.validationIssues)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                }
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow) {
-                            TriggerSectionView(
-                                triggerType: $rule.trigger,
-                                triggerServerId: $rule.triggerServerId,
-                                triggerVoiceChannelId: $rule.triggerVoiceChannelId,
-                                triggerMessageContains: $rule.triggerMessageContains,
-                                replyToDMs: $rule.replyToDMs,
-                                includeStageChannels: $rule.includeStageChannels,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                        if rule.isEmptyRule {
+                            EmptyRuleOnboardingView {
+                                scrollToTriggersSignal = true
+                            }
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                                )
                             )
-                        }
+                        } else {
+                            RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow,
+                                              guidedHighlight: guidedStep == .trigger) {
+                                TriggerSectionView(
+                                    triggerType: $rule.trigger,
+                                    triggerServerId: $rule.triggerServerId,
+                                    triggerVoiceChannelId: $rule.triggerVoiceChannelId,
+                                    triggerMessageContains: $rule.triggerMessageContains,
+                                    replyToDMs: $rule.replyToDMs,
+                                    includeStageChannels: $rule.includeStageChannels,
+                                    serverIds: serverIds,
+                                    serverName: serverName(for:),
+                                    voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                                )
+                                if guidedStep == .trigger {
+                                    Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
+                                        .font(.caption)
+                                        .foregroundStyle(.yellow.opacity(0.8))
+                                        .padding(.top, 4)
+                                }
+                                // Trigger can be replaced but not deleted
+                                Button {
+                                    rule.trigger = nil
+                                    guidedStep = .trigger
+                                } label: {
+                                    Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .padding(.top, 4)
+                            }
 
-                        RuleFlowArrow()
+                            RuleFlowArrow()
 
-                        RuleCanvasSection(title: "Filter Blocks", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
-                            ConditionsSectionView(
-                                conditions: $rule.conditions,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
-                            )
-                        }
+                            RuleCanvasSection(title: "Filter Blocks", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
+                                ConditionsSectionView(
+                                    conditions: $rule.conditions,
+                                    serverIds: serverIds,
+                                    serverName: serverName(for:),
+                                    voiceChannels: app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []
+                                )
+                            }
 
-                        RuleFlowArrow()
+                            RuleFlowArrow()
 
-                        RuleCanvasSection(title: "Action Blocks", systemImage: "paperplane.fill", accent: .mint) {
-                            ActionsSectionView(
-                                actions: $rule.actions,
-                                serverIds: serverIds,
-                                serverName: serverName(for:),
-                                textChannelsByServer: app.availableTextChannelsByServer
-                            )
+                            RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
+                                ActionsSectionView(
+                                    actions: $rule.modifiers,
+                                    serverIds: serverIds,
+                                    serverName: serverName(for:),
+                                    textChannelsByServer: app.availableTextChannelsByServer
+                                )
+                            }
+
+                            RuleFlowArrow()
+
+                            RuleCanvasSection(title: "Action Blocks", systemImage: "paperplane.fill", accent: .mint,
+                                              guidedHighlight: guidedStep == .action) {
+                                ActionsSectionView(
+                                    actions: $rule.actions,
+                                    serverIds: serverIds,
+                                    serverName: serverName(for:),
+                                    textChannelsByServer: app.availableTextChannelsByServer,
+                                    isGuided: guidedStep == .action
+                                )
+                            }
                         }
                     }
+                    .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
                     .frame(maxWidth: 880, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 20)
@@ -238,14 +299,38 @@ struct RuleEditorView: View {
             .background(rulePaneBackground)
         }
         .navigationTitle("")
+        .sheet(isPresented: $showOnboardingCard) {
+            FirstRuleOnboardingCard(
+                onCreateExample: {
+                    showOnboardingCard = false
+                    hasSeenRuleOnboarding = true
+                    applyExampleRule()
+                },
+                onStartEmpty: {
+                    showOnboardingCard = false
+                    hasSeenRuleOnboarding = true
+                    guidedStep = .trigger
+                }
+            )
+        }
         .onAppear {
             initializeRuleDefaultsIfNeeded()
+            if !hasSeenRuleOnboarding && rule.actions.isEmpty {
+                showOnboardingCard = true
+            }
+        }
+        .onChange(of: rule.actions) { _, newActions in
+            if guidedStep == .trigger && !newActions.isEmpty {
+                guidedStep = .none
+            }
         }
         .onChange(of: rule) {
             app.ruleStore.scheduleAutoSave()
         }
         .onChange(of: rule.trigger) { _, newTrigger in
-            applyTriggerDefaults(for: newTrigger)
+            if let newTrigger = newTrigger {
+                applyTriggerDefaults(for: newTrigger)
+            }
         }
     }
 
@@ -259,7 +344,7 @@ struct RuleEditorView: View {
         action.type = type
         action.serverId = serverIds.first ?? ""
         action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
-        action.message = rule.trigger.defaultMessage
+        action.message = rule.trigger?.defaultMessage ?? ""
 
         switch type {
         case .sendMessage:
@@ -267,7 +352,18 @@ struct RuleEditorView: View {
         case .addLogEntry:
             action.message = "Rule fired for {username}"
         case .setStatus:
-            action.statusText = "Handling \(rule.trigger.rawValue.lowercased())"
+            action.statusText = "Handling \(rule.trigger?.rawValue.lowercased() ?? "action")"
+        // Modifier blocks
+        case .replyToTrigger, .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+            break
+        // AI block
+        case .generateAIResponse:
+            action.message = "You are a helpful assistant. {message}"
+        // Other action types
+        case .replyToMessage, .sendDM, .deleteMessage, .addReaction, .addRole, .removeRole,
+             .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook, .delay,
+             .setVariable, .randomChoice:
+            break
         }
 
         rule.actions.append(action)
@@ -282,15 +378,9 @@ struct RuleEditorView: View {
             didChange = true
         }
 
-        if rule.actions.isEmpty {
-            var action = RuleAction()
-            action.serverId = serverIds.first ?? ""
-            let channels = app.availableTextChannelsByServer[action.serverId] ?? []
-            action.channelId = channels.first?.id ?? ""
-            action.message = rule.trigger.defaultMessage
-            rule.actions = [action]
-            didChange = true
-        } else {
+        // Fix missing server/channel IDs on existing actions (legacy rules).
+        // Never pre-populate a default action — empty rules show the empty-state UI.
+        if !rule.actions.isEmpty {
             if rule.actions[0].serverId.isEmpty, let first = serverIds.first {
                 rule.actions[0].serverId = first
                 didChange = true
@@ -307,6 +397,22 @@ struct RuleEditorView: View {
         if didChange {
             app.ruleStore.scheduleAutoSave()
         }
+    }
+
+    private func applyExampleRule() {
+        rule.name = "Hello World"
+        rule.trigger = .messageContains
+        rule.triggerMessageContains = "@swiftbot hello"
+        rule.triggerServerId = serverIds.first ?? ""
+
+        var action = RuleAction()
+        action.type = .sendMessage
+        action.serverId = serverIds.first ?? ""
+        action.channelId = app.availableTextChannelsByServer[action.serverId]?.first?.id ?? ""
+        action.message = "Hello World 👋"
+        rule.actions = [action]
+
+        app.ruleStore.scheduleAutoSave()
     }
 
     private func applyTriggerDefaults(for newTrigger: TriggerType) {
@@ -347,25 +453,39 @@ struct RuleBuilderLibraryView: View {
     let serverIds: [String]
     let onAddCondition: (ConditionType) -> Void
     let onAddAction: (ActionType) -> Void
+    let onSetTrigger: (TriggerType) -> Void
     let focusTrigger: () -> Void
+    @Binding var scrollToTriggersSignal: Bool
+
+    @State private var triggerSectionHighlighted: Bool = false
+    private let triggersSectionID = "library-triggers"
+
+    private func types(for category: BlockCategory) -> [ActionType] {
+        ActionType.allCases.filter { $0.category == category }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RuleLibrarySection(title: "Start") {
-                RuleLibraryButton(
-                    title: "Trigger Block",
-                    subtitle: "Choose the event that starts this rule",
-                    systemImage: "bolt.fill",
-                    accent: .yellow,
-                    action: focusTrigger
-                )
-            }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    RuleLibrarySection(title: "Triggers", highlighted: triggerSectionHighlighted) {
+                        ForEach(TriggerType.allCases) { type in
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Set this as the rule trigger",
+                                systemImage: type.symbol,
+                                accent: .yellow,
+                                action: { onSetTrigger(type); focusTrigger() }
+                            )
+                        }
+                    }
+                    .id(triggersSectionID)
 
             RuleLibrarySection(title: "Filters") {
                 ForEach(ConditionType.allCases) { type in
                     RuleLibraryButton(
                         title: type.rawValue,
-                        subtitle: "Add a reusable filter block",
+                        subtitle: "Add a filter condition",
                         systemImage: type.symbol,
                         accent: .cyan,
                         action: { onAddCondition(type) }
@@ -373,26 +493,105 @@ struct RuleBuilderLibraryView: View {
                 }
             }
 
-            RuleLibrarySection(title: "Actions") {
-                ForEach(ActionType.allCases) { type in
-                    RuleLibraryButton(
-                        title: type.rawValue,
-                        subtitle: "Insert this output block into the flow",
-                        systemImage: type.symbol,
-                        accent: .mint,
-                        action: { onAddAction(type) }
-                    )
+            let modifiers = types(for: .modifiers)
+            if !modifiers.isEmpty {
+                RuleLibrarySection(title: "Message Modifiers") {
+                    ForEach(modifiers) { type in
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Modify message routing or formatting",
+                            systemImage: type.symbol,
+                            accent: .orange,
+                            action: { onAddAction(type) }
+                        )
+                    }
                 }
             }
 
-            if serverIds.isEmpty {
-                Text("Connect the bot to Discord to unlock server and channel pickers in action blocks.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            let aiBlocks = types(for: .ai)
+            if !aiBlocks.isEmpty {
+                RuleLibrarySection(title: "AI") {
+                    ForEach(aiBlocks) { type in
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Generate content using AI",
+                            systemImage: type.symbol,
+                            accent: .indigo,
+                            action: { onAddAction(type) }
+                        )
+                    }
+                }
+            }
+
+            let messagingTypes = types(for: .messaging)
+            if !messagingTypes.isEmpty {
+                RuleLibrarySection(title: "Actions") {
+                    ForEach(messagingTypes) { type in
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Insert action into pipeline",
+                            systemImage: type.symbol,
+                            accent: .mint,
+                            action: { onAddAction(type) }
+                        )
+                    }
+                }
+            }
+
+            let moderationTypes = types(for: .moderation)
+            if !moderationTypes.isEmpty {
+                RuleLibrarySection(title: "Moderation") {
+                    ForEach(moderationTypes) { type in
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Moderation action",
+                            systemImage: type.symbol,
+                            accent: .red,
+                            action: { onAddAction(type) }
+                        )
+                    }
+                }
+            }
+
+            let utilityTypes = types(for: .utility)
+            if !utilityTypes.isEmpty {
+                RuleLibrarySection(title: "Utilities") {
+                    ForEach(utilityTypes) { type in
+                        RuleLibraryButton(
+                            title: type.rawValue,
+                            subtitle: "Insert utility block",
+                            systemImage: type.symbol,
+                            accent: .purple,
+                            action: { onAddAction(type) }
+                        )
+                    }
+                }
+            }
+
+                    if serverIds.isEmpty {
+                        Text("Connect the bot to Discord to unlock server and channel pickers in action blocks.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+            }
+            .onChange(of: scrollToTriggersSignal) { _, newValue in
+                guard newValue else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(triggersSectionID, anchor: .top)
+                }
+                triggerSectionHighlighted = true
+                scrollToTriggersSignal = false
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    await MainActor.run { triggerSectionHighlighted = false }
+                }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .padding(.vertical, 4)
     }
 }
 
@@ -426,17 +625,28 @@ struct RulePaneHeader: View {
 
 struct RuleLibrarySection<Content: View>: View {
     let title: String
+    var highlighted: Bool = false
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(highlighted ? .yellow : .secondary)
             VStack(alignment: .leading, spacing: 8) {
                 content
             }
         }
+        .padding(highlighted ? 8 : 0)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(highlighted ? Color.yellow.opacity(0.12) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(highlighted ? Color.yellow.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.25), value: highlighted)
     }
 }
 
@@ -476,6 +686,7 @@ struct RuleCanvasSection<Content: View>: View {
     let title: String
     let systemImage: String
     let accent: Color
+    var guidedHighlight: Bool = false
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -491,7 +702,8 @@ struct RuleCanvasSection<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: .white.opacity(0.18))
+        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: guidedHighlight ? accent.opacity(0.6) : .white.opacity(0.18))
+        .animation(.easeInOut(duration: 0.3), value: guidedHighlight)
     }
 }
 
@@ -531,7 +743,7 @@ struct RuleGroupSection<Content: View>: View {
 }
 
 struct TriggerSectionView: View {
-    @Binding var triggerType: TriggerType
+    @Binding var triggerType: TriggerType?
     @Binding var triggerServerId: String
     @Binding var triggerVoiceChannelId: String
     @Binding var triggerMessageContains: String
@@ -545,8 +757,9 @@ struct TriggerSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Event", selection: $triggerType) {
+                Text("Select a trigger...").tag(TriggerType?.none)
                 ForEach(TriggerType.allCases) { trigger in
-                    Label(trigger.rawValue, systemImage: trigger.symbol).tag(trigger)
+                    Label(trigger.rawValue, systemImage: trigger.symbol).tag(Optional(trigger))
                 }
             }
 
@@ -556,22 +769,24 @@ struct TriggerSectionView: View {
                 }
             }
 
-            if triggerType != .messageContains, triggerType != .memberJoined, !voiceChannels.isEmpty {
-                Picker("Voice Channel", selection: $triggerVoiceChannelId) {
-                    Text("Any Channel").tag("")
-                    ForEach(voiceChannels) { channel in
-                        Text(channel.name).tag(channel.id)
+            if let type = triggerType {
+                if type != .messageContains, type != .memberJoined, !voiceChannels.isEmpty {
+                    Picker("Voice Channel", selection: $triggerVoiceChannelId) {
+                        Text("Any Channel").tag("")
+                        ForEach(voiceChannels) { channel in
+                            Text(channel.name).tag(channel.id)
+                        }
                     }
                 }
-            }
 
-            if triggerType == .messageContains {
-                TextField("Message contains…", text: $triggerMessageContains)
-                Toggle("Reply to DMs", isOn: $replyToDMs)
-            }
+                if type == .messageContains {
+                    TextField("Message contains…", text: $triggerMessageContains)
+                    Toggle("Reply to DMs", isOn: $replyToDMs)
+                }
 
-            if triggerType == .userJoinedVoice || triggerType == .userMovedVoice {
-                Toggle("Include Stage Channels", isOn: $includeStageChannels)
+                if type == .userJoinedVoice || type == .userMovedVoice {
+                    Toggle("Include Stage Channels", isOn: $includeStageChannels)
+                }
             }
         }
     }
@@ -674,6 +889,13 @@ struct ConditionRowView: View {
                 Text("minutes in channel")
                     .foregroundStyle(.secondary)
             }
+        // New condition types - placeholder UI
+        case .channelIs:
+            TextField("Channel ID", text: $condition.value)
+                .foregroundStyle(.secondary)
+        case .userHasRole:
+            TextField("Role ID", text: $condition.value)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -684,18 +906,27 @@ struct ActionsSectionView: View {
     let serverIds: [String]
     let serverName: (String) -> String
     let textChannelsByServer: [String: [GuildTextChannel]]
+    var isGuided: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if actions.isEmpty {
-                Button {
-                    var action = Action()
-                    action.serverId = serverIds.first ?? ""
-                    action.channelId = textChannelsByServer[action.serverId]?.first?.id ?? ""
-                    actions = [action]
-                } label: {
-                    Label("Add First Action Block", systemImage: "plus")
+                VStack(spacing: 10) {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("No actions yet")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(isGuided
+                         ? "Select an action from the Block Library to the left."
+                         : "Use the Block Library to add your first action.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             } else {
                 ForEach($actions) { $action in
                     ActionSectionView(
@@ -747,17 +978,6 @@ struct ActionSectionView: View {
                             Text(serverName(serverId)).tag(serverId)
                         }
                     }
-                }
-
-                Toggle("Mention user in message", isOn: $action.mentionUser)
-                Toggle("Reply to trigger message", isOn: $action.replyToTriggerMessage)
-                Toggle("Reply with AI", isOn: $action.replyWithAI)
-
-                if action.replyToTriggerMessage {
-                    Text("Reply will be sent in the same channel as the triggering message.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
                     if textChannels.isEmpty {
                         Text("No text channels discovered for this server.")
                             .foregroundStyle(.secondary)
@@ -771,22 +991,9 @@ struct ActionSectionView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(action.replyWithAI ? "AI Prompt" : "Message")
+                    Text("Message")
                         .font(.subheadline.weight(.semibold))
-                    TextEditor(text: $action.message)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 120)
-                        .padding(6)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
-                        )
-                }
-                if action.replyWithAI {
-                    Text("AI will generate the final reply from this prompt template.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VariableAwareTextEditor(text: $action.message)
                 }
             case .addLogEntry:
                 TextField("Log message", text: $action.message)
@@ -798,9 +1005,100 @@ struct ActionSectionView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            // New action types
+            case .replyToMessage:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Reply Message")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                }
+            case .sendDM:
+                Toggle("Mention user", isOn: $action.mentionUser)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("DM Content")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.dmContent)
+                }
+            case .deleteMessage:
+                Text("Delete the triggering message")
+                    .foregroundStyle(.secondary)
+            case .addReaction:
+                TextField("Emoji", text: $action.emoji)
+            case .addRole, .removeRole:
+                TextField("Role ID", text: $action.roleId)
+            case .timeoutMember:
+                HStack {
+                    TextField("Duration (seconds)", value: $action.timeoutDuration, format: .number)
+                    Text("seconds")
+                        .foregroundStyle(.secondary)
+                }
+            case .kickMember:
+                TextField("Reason (optional)", text: $action.kickReason)
+            case .moveMember:
+                TextField("Target Voice Channel ID", text: $action.targetVoiceChannelId)
+            case .createChannel:
+                TextField("Channel Name", text: $action.newChannelName)
+            case .webhook:
+                TextField("Webhook URL", text: $action.webhookURL)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Payload Content")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.webhookContent)
+                }
+            case .delay:
+                HStack {
+                    TextField("Seconds", value: $action.delaySeconds, format: .number)
+                    Text("seconds")
+                        .foregroundStyle(.secondary)
+                }
+            case .setVariable:
+                HStack {
+                    TextField("Variable name", text: $action.variableName)
+                    Text("=")
+                    TextField("Value", text: $action.variableValue)
+                }
+            case .randomChoice:
+                Text("Random options not yet configurable")
+                    .foregroundStyle(.secondary)
+            // Message Modifier blocks
+            case .replyToTrigger:
+                Text("Replies to the message that triggered this rule.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .mentionUser:
+                Text("Prefixes the message with a mention of the triggering user.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .mentionRole:
+                TextField("Role ID to mention", text: $action.roleId)
+            case .sendToDM:
+                Text("Routes the message to the triggering user's DMs.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .sendToChannel:
+                if textChannels.isEmpty {
+                    Text("No text channels discovered for this server.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Target Channel", selection: $action.channelId) {
+                        ForEach(textChannels) { channel in
+                            Text("#\(channel.name)").tag(channel.id)
+                        }
+                    }
+                }
+            // AI block
+            case .generateAIResponse:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AI Prompt")
+                        .font(.subheadline.weight(.semibold))
+                    VariableAwareTextEditor(text: $action.message)
+                    Text("The AI response is available as {ai.response} in subsequent blocks.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
-            Text("Use placeholders in messages: {userId}, {username}, {channelId}, {channelName}, {guildName}, {duration}")
+            Text("Type { to insert a variable placeholder")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -819,3 +1117,226 @@ struct ActionSectionView: View {
         }
     }
 }
+
+// MARK: - Guided Build Step
+
+enum GuidedBuildStep {
+    case none, trigger, action
+}
+
+// MARK: - First Rule Onboarding Card
+
+struct FirstRuleOnboardingCard: View {
+    let onCreateExample: () -> Void
+    let onStartEmpty: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 12) {
+                Image(systemName: "wand.and.stars")
+                    .font(.title)
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("First Time Using SwiftBot Rules?")
+                        .font(.headline)
+                    Text("Automations are built from triggers, filters, and actions.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("**Trigger** — what event starts the rule", systemImage: "bolt.fill")
+                    .font(.subheadline)
+                Label("**Filters** — optional conditions to narrow scope", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.subheadline)
+                Label("**Actions** — what the bot does when triggered", systemImage: "paperplane.fill")
+                    .font(.subheadline)
+            }
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            HStack(spacing: 12) {
+                Button(action: onCreateExample) {
+                    Label("Create Example Rule", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Button(action: onStartEmpty) {
+                    Text("Start Empty")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
+        }
+        .padding(28)
+        .frame(width: 440)
+    }
+}
+
+// MARK: - Validation Banner
+
+struct ValidationBannerView: View {
+    let issues: [ValidationIssue]
+
+    private var errors: [ValidationIssue] { issues.filter { $0.severity == .error } }
+    private var warnings: [ValidationIssue] { issues.filter { $0.severity == .warning } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(errors) { issue in
+                ValidationIssueRow(issue: issue)
+            }
+            ForEach(warnings) { issue in
+                ValidationIssueRow(issue: issue)
+            }
+        }
+    }
+}
+
+private struct ValidationIssueRow: View {
+    let issue: ValidationIssue
+
+    private var accent: Color { issue.severity == .error ? .red : .orange }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: issue.severity.icon)
+                .foregroundStyle(accent)
+                .font(.caption.weight(.semibold))
+            Text(issue.message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer()
+            Text(issue.blockType.rawValue)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(accent.opacity(0.30), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Variable-Aware Text Editor
+
+struct VariableAwareTextEditor: View {
+    @Binding var text: String
+    @State private var showPicker = false
+    @State private var cursorAtEnd = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            TextEditor(text: $text)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 100)
+                .padding(6)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                )
+                .onChange(of: text) { _, newValue in
+                    if newValue.hasSuffix("{") {
+                        showPicker = true
+                    }
+                }
+
+            Button {
+                showPicker = true
+            } label: {
+                Label("Insert Variable", systemImage: "curlybraces")
+                    .font(.caption.weight(.medium))
+                    .labelStyle(.iconOnly)
+                    .padding(6)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+            .popover(isPresented: $showPicker, arrowEdge: .top) {
+                VariablePickerPopover { variable in
+                    // Remove the trailing `{` that triggered the picker if present
+                    if text.hasSuffix("{") {
+                        text.removeLast()
+                    }
+                    text += variable.rawValue
+                    showPicker = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Variable Picker Popover
+
+struct VariablePickerPopover: View {
+    let onSelect: (ContextVariable) -> Void
+
+    private var grouped: [(category: String, variables: [ContextVariable])] {
+        let categories = ["User", "Message", "Channel", "Server", "Voice", "Reaction", "Other"]
+        return categories.compactMap { cat in
+            let vars = ContextVariable.allCases.filter { $0.category == cat }
+            return vars.isEmpty ? nil : (category: cat, variables: vars)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Insert Variable")
+                .font(.headline)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(grouped, id: \.category) { group in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.category.uppercased())
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+
+                            ForEach(group.variables, id: \.self) { variable in
+                                Button {
+                                    onSelect(variable)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Text(variable.rawValue)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.cyan)
+                                            .frame(minWidth: 120, alignment: .leading)
+                                        Text(variable.displayName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .frame(width: 320, height: 340)
+    }
+}
+
+
