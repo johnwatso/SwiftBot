@@ -250,6 +250,12 @@ extension AppModel {
             if settings.localAIDMReplyEnabled {
                 guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: true) else { return }
 
+                // Skip AI reply if message was already handled by rule actions
+                if await service.wasMessageHandledByRules(messageId: messageId) {
+                    logs.append("AI DM reply skipped: message \(messageId) was handled by rule actions")
+                    return
+                }
+
                 let scope = MemoryScope.directMessageUser(userId)
                 let (messages, wikiContext) = await aiMessagesForScope(
                     scope: scope,

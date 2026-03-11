@@ -262,23 +262,27 @@ struct RuleEditorView: View {
                                 .padding(.top, 4)
                             }
 
-                            RuleFlowArrow()
+                            Divider().opacity(0.4)
 
-                            RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
-                                ConditionsSectionView(
-                                    conditions: $rule.conditions,
+                            // AI Processing Section
+                            RuleCanvasSection(title: "AI Processing", systemImage: "sparkles", accent: .purple) {
+                                ActionsSectionView(
+                                    actions: $rule.aiBlocks,
+                                    category: .ai,
+                                    allModifiers: rule.modifiers,
                                     hasTrigger: rule.trigger != nil,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
-                                    voiceChannels: rule.triggerServerId.isEmpty ? [] : (app.availableVoiceChannelsByServer[rule.triggerServerId] ?? []),
-                                    textChannels: rule.triggerServerId.isEmpty ? [] : (app.availableTextChannelsByServer[rule.triggerServerId] ?? []),
-                                    roles: rule.triggerServerId.isEmpty ? [] : (app.availableRolesByServer[rule.triggerServerId] ?? []),
+                                    textChannelsByServer: app.availableTextChannelsByServer,
+                                    voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                                    rolesByServer: app.availableRolesByServer,
+                                    knownUsers: app.knownUsersById,
                                     incompatibleBlocks: rule.incompatibleBlocks,
                                     availableVariables: rule.trigger?.providedVariables ?? []
                                 )
                             }
 
-                            RuleFlowArrow()
+                            Divider().opacity(0.4)
 
                             RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
                                 ActionsSectionView(
@@ -524,9 +528,26 @@ struct RuleBuilderLibraryView: View {
                 }
             }
 
+            let aiTypes = types(for: .ai)
+            if !aiTypes.isEmpty {
+                RuleLibrarySection(title: "AI Blocks") {
+                    ForEach(aiTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Process input with AI",
+                                systemImage: type.symbol,
+                                accent: .purple,
+                                action: { onAddAction(type) }
+                            )
+                        }
+                    }
+                }
+            }
+
             let messageTypes = types(for: .messaging)
             if !messageTypes.isEmpty {
-                RuleLibrarySection(title: "Message") {
+                RuleLibrarySection(title: "Message Modifiers") { // Changed title from "Message"
                     ForEach(messageTypes) { type in
                         if type.isCompatible(with: currentTrigger) {
                             RuleLibraryButton(
@@ -1104,11 +1125,6 @@ struct ActionSectionView: View {
                 }
             case .sendDM:
                 Toggle("Mention user", isOn: $action.mentionUser)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("DM Content")
-                        .font(.subheadline.weight(.semibold))
-                    VariableAwareTextEditor(text: $action.dmContent)
-                }
             case .deleteMessage:
                 Text("Delete the triggering message")
                     .foregroundStyle(.secondary)
@@ -1193,7 +1209,7 @@ struct ActionSectionView: View {
                     Text("AI Prompt")
                         .font(.subheadline.weight(.semibold))
                     VariableAwareTextEditor(text: $action.message)
-                    Text("The AI response is available as {ai.response} in subsequent blocks.")
+                    Text("The AI response is available as {ai.response} in later modifiers and actions.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -391,6 +391,10 @@ actor DiscordService {
     private var localOpenAIModel = "gpt-4o-mini"
     private var localAISystemPrompt = ""
 
+    /// Tracks message IDs that were handled by rule actions to prevent duplicate AI replies
+    private var ruleHandledMessageIds: Set<String> = []
+    private let ruleHandledLock = NSLock()
+
     private let session = URLSession(configuration: .default)
 
     /// Dedicated session for Discord identity probes (/users/@me, /oauth2/applications/@me).
@@ -457,6 +461,26 @@ actor DiscordService {
         localOpenAIAPIKey = openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         localOpenAIModel = openAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
         localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
+    func wasMessageHandledByRules(messageId: String) -> Bool {
+        ruleHandledLock.lock()
+        defer { ruleHandledLock.unlock() }
+        return ruleHandledMessageIds.contains(messageId)
+    }
+
+    /// Marks a message as handled by rule actions
+    func markMessageHandledByRules(messageId: String) {
+        ruleHandledLock.lock()
+        ruleHandledMessageIds.insert(messageId)
+        // Cleanup old entries to prevent memory growth (keep last 1000)
+        if ruleHandledMessageIds.count > 1000 {
+            // Remove oldest entries by converting to array and back
+            let sortedIds = Array(ruleHandledMessageIds)
+            ruleHandledMessageIds = Set(sortedIds.suffix(1000))
+        }
+        ruleHandledLock.unlock()
     }
 
     func detectOllamaModel(baseURL: String) async -> String? {
@@ -2037,6 +2061,12 @@ actor DiscordService {
                 discordLogger.debug("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
             }
             
+            // Mark message as handled if any action produced output
+            if context.eventHandled, let messageId = event.triggerMessageId {
+                markMessageHandledByRules(messageId: messageId)
+                discordLogger.debug("Message \(messageId) handled by rule actions - AI reply will be skipped")
+            }
+            
             discordLogger.debug("Rule pipeline execution complete.")
         }
     }
@@ -2358,11 +2388,14 @@ actor DiscordService {
                     ]
                 ]
                 _ = try? await sendMessage(channelId: replyChannelId, payload: payload, token: token)
+                context.eventHandled = true
             } else if context.targetChannelId == nil && !event.userId.isEmpty {
                 // Send to DM
                 _ = try? await sendDM(userId: event.userId, content: rendered)
+                context.eventHandled = true
             } else {
                 try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
+                context.eventHandled = true
             }
         case .addLogEntry:
             return
@@ -2373,9 +2406,11 @@ actor DiscordService {
         case .sendDM:
             let rendered = renderMessage(template: action.dmContent, event: event, context: context)
             _ = try? await sendDM(userId: event.userId, content: rendered)
+            context.eventHandled = true
         case .addReaction:
             guard let triggerMessageId = event.triggerMessageId, let triggerChannelId = event.triggerChannelId else { return }
             _ = try? await addReaction(channelId: triggerChannelId, messageId: triggerMessageId, emoji: action.emoji, token: token)
+            context.eventHandled = true
         case .deleteMessage:
             guard let triggerMessageId = event.triggerMessageId, let triggerChannelId = event.triggerChannelId else { return }
             if action.deleteDelaySeconds > 0 {
@@ -2386,18 +2421,25 @@ actor DiscordService {
             } else {
                 _ = try? await deleteMessage(channelId: triggerChannelId, messageId: triggerMessageId, token: token)
             }
+            context.eventHandled = true
         case .addRole:
             _ = try? await addRole(guildId: event.guildId, userId: event.userId, roleId: action.roleId, token: token)
+            context.eventHandled = true
         case .removeRole:
             _ = try? await removeRole(guildId: event.guildId, userId: event.userId, roleId: action.roleId, token: token)
+            context.eventHandled = true
         case .timeoutMember:
             _ = try? await timeoutMember(guildId: event.guildId, userId: event.userId, durationSeconds: action.timeoutDuration, token: token)
+            context.eventHandled = true
         case .kickMember:
             _ = try? await kickMember(guildId: event.guildId, userId: event.userId, reason: action.kickReason, token: token)
+            context.eventHandled = true
         case .moveMember:
             _ = try? await moveMember(guildId: event.guildId, userId: event.userId, channelId: action.targetVoiceChannelId, token: token)
+            context.eventHandled = true
         case .createChannel:
             _ = try? await createChannel(guildId: event.guildId, name: action.newChannelName, token: token)
+            context.eventHandled = true
         case .webhook:
             _ = try? await sendWebhook(url: action.webhookURL, content: action.webhookContent)
         case .delay:

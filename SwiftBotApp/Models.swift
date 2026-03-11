@@ -2521,11 +2521,12 @@ struct PipelineContext: CustomStringConvertible {
     var replyToTriggerMessage: Bool = false
     var mentionRole: String?
     var isDirectMessage: Bool = false
+    var eventHandled: Bool = false
 
     var description: String {
         let ai = aiResponse != nil ? "AI(\(aiResponse!.count) chars)" : "nil"
         let target = targetChannelId ?? "default"
-        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai)]"
+        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai), handled: \(eventHandled)]"
     }
 }
 
@@ -3359,8 +3360,10 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .sendMessage, .sendDM, .replyToTrigger, .disableMention:
             return .messaging
-        case .addReaction, .deleteMessage, .generateAIResponse:
+        case .addReaction, .deleteMessage:
             return .actions
+        case .generateAIResponse:
+            return .ai
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
             return .moderation
         case .createChannel, .webhook, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .sendToChannel, .mentionUser, .mentionRole:
@@ -3373,6 +3376,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
 enum BlockCategory: String, CaseIterable, Identifiable {
     case triggers = "Triggers"
     case filters = "Filters"
+    case ai = "AI Blocks"
     case messaging = "Message"
     case actions = "Actions"
     case moderation = "Moderation"
@@ -3383,6 +3387,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         switch self {
         case .triggers: return "bolt.fill"
         case .filters: return "line.3.horizontal.decrease.circle"
+        case .ai: return "sparkles"
         case .messaging: return "text.bubble.fill"
         case .actions: return "paperplane.fill"
         case .moderation: return "shield.fill"
@@ -3534,6 +3539,7 @@ struct Rule: Identifiable, Codable, Equatable {
     var conditions: [Condition] = []
     var modifiers: [RuleAction] = []
     var actions: [RuleAction] = []
+    var aiBlocks: [RuleAction] = []
     var isEnabled: Bool = true
 
     // Legacy trigger properties - preserved for JSON compatibility, migrated to conditions on load
@@ -3792,9 +3798,19 @@ struct Rule: Identifiable, Codable, Equatable {
                     blockId: action.id
                 ))
             }
-        }
-        
-        return issues
+            }
+
+            // Rule must contain at least one Action
+            if actions.isEmpty {
+            issues.append(.init(
+                severity: .warning,
+                message: "This rule has no actions and will not produce any output. Add an Action such as “Send Message”.",
+                blockType: .rule,
+                blockId: id
+            ))
+            }
+
+            return issues
     }
     
     /// Checks if rule has any blocking errors
@@ -3841,6 +3857,7 @@ struct ValidationIssue: Identifiable, Hashable {
     }
     
     enum BlockType: String, Codable, CaseIterable {
+        case rule = "Rule"
         case trigger = "Trigger"
         case condition = "Filter"
         case modifier = "Modifier"
