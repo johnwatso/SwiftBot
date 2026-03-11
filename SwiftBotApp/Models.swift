@@ -3366,7 +3366,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
-        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM, .replyToTrigger, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
+        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return []
         case .deleteMessage:
             return [.manageMessages]

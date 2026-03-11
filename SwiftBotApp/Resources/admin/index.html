@@ -2813,7 +2813,7 @@
         serverId: (actionsData?.servers?.[0]?.id || ''),
         channelId: '',
         mentionUser: true,
-        replyToTriggerMessage: false,
+        replyToTriggerMessage: false,  // Legacy field - migrated to modifier block
         message: '',
         statusText: '',
         // AI block fields
@@ -3184,23 +3184,11 @@
                 { id: 'ai.rewrite', name: 'AI Rewrite' }
               ];
               options = sources.map(s => `<option value="${s.id}" ${s.id === value ? 'selected' : ''}>${s.name}</option>`).join('');
-            } else if (field.optionsSource === 'predefined' && field.id === 'destinationMode') {
-              // Message destination mode predefined options
-              const destinations = [
-                { id: 'replyToTrigger', name: 'Reply to Trigger Message' },
-                { id: 'sameChannel', name: 'Same Channel as Trigger' },
-                { id: 'specificChannel', name: 'Specific Channel' }
-              ];
-              options = destinations.map(d => `<option value="${d.id}" ${d.id === value ? 'selected' : ''}>${d.name}</option>`).join('');
             } else {
               options = `<option value="${value}" selected>${value}</option>`;
             }
-            // Conditional visibility for server/channel fields based on destinationMode
-            const isConditionalField = field.id === 'serverId' || field.id === 'channelId';
-            const conditionalAttr = isConditionalField ? ' data-show-if-destination="specificChannel"' : '';
-            const hiddenStyle = isConditionalField && block.destinationMode !== 'specificChannel' && block.destinationMode !== undefined ? ' style="display:none;"' : '';
             return `
-              <div style="margin-bottom:8px;"${conditionalAttr}${hiddenStyle}>
+              <div style="margin-bottom:8px;">
                 <div class="field-label">${field.name}</div>
                 <select class="field-select block-field" data-field="${field.id}">${options}</select>
               </div>
@@ -3273,19 +3261,6 @@
             fieldEl.addEventListener('change', handler);
           } else {
             fieldEl.addEventListener('input', handler);
-          }
-          
-          // Special handling for destinationMode to show/hide server/channel fields
-          if (fieldId === 'destinationMode') {
-            fieldEl.addEventListener('change', (e) => {
-              const showSpecific = e.target.value === 'specificChannel';
-              const parent = blockEl.closest('.block-row');
-              if (parent) {
-                parent.querySelectorAll('[data-show-if-destination]').forEach(el => {
-                  el.style.display = showSpecific ? '' : 'none';
-                });
-              }
-            });
           }
           
           // Special handling for contentSource to show/hide message field

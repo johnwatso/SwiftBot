@@ -1116,35 +1116,23 @@ struct ActionSectionView: View {
 
             switch action.type {
             case .sendMessage:
-                // Destination Mode picker (per UX spec)
-                Picker("Destination", selection: Binding<MessageDestination>(
-                    get: { action.destinationMode ?? .specificChannel },
-                    set: { action.destinationMode = $0 }
-                )) {
-                    ForEach(MessageDestination.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
+                // Server/Channel selection (used when no routing modifier is active)
+                if serverIds.isEmpty {
+                    Text("No connected servers available yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Server", selection: $action.serverId) {
+                        ForEach(serverIds, id: \.self) { serverId in
+                            Text(serverName(serverId)).tag(serverId)
+                        }
                     }
-                }
-                
-                // Only show server/channel pickers for specificChannel mode
-                if action.destinationMode == .specificChannel || action.destinationMode == nil {
-                    if serverIds.isEmpty {
-                        Text("No connected servers available yet.")
+                    if textChannels.isEmpty {
+                        Text("No text channels discovered for this server.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Server", selection: $action.serverId) {
-                            ForEach(serverIds, id: \.self) { serverId in
-                                Text(serverName(serverId)).tag(serverId)
-                            }
-                        }
-                        if textChannels.isEmpty {
-                            Text("No text channels discovered for this server.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("Text Channel", selection: $action.channelId) {
-                                ForEach(textChannels) { channel in
-                                    Text("#\(channel.name)").tag(channel.id)
-                                }
+                        Picker("Text Channel", selection: $action.channelId) {
+                            ForEach(textChannels) { channel in
+                                Text("#\(channel.name)").tag(channel.id)
                             }
                         }
                     }
