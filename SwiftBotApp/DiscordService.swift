@@ -2030,9 +2030,14 @@ actor DiscordService {
             var context = PipelineContext()
             context.isDirectMessage = ruleResult.isDM
             
-            for action in ruleResult.actions {
+            discordLogger.debug("Executing rule pipeline: \(ruleResult.actions.count) blocks. Initial context: \(context)")
+            
+            for (index, action) in ruleResult.actions.enumerated() {
                 await execute(action: action, for: event, context: &context)
+                discordLogger.debug("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
             }
+            
+            discordLogger.debug("Rule pipeline execution complete.")
         }
     }
 
@@ -2313,11 +2318,11 @@ actor DiscordService {
         
         switch action.type {
         case .mentionUser:
-            context.mentionUser = true
+            context.prependUserMention = true
         case .mentionRole:
             context.mentionRole = action.roleId
-        case .sendToDM:
-            context.targetChannelId = nil // Signifies DM
+        case .disableMention:
+            context.mentionUser = false
         case .sendToChannel:
             context.targetChannelId = action.channelId
         case .replyToTrigger:
@@ -2425,6 +2430,10 @@ actor DiscordService {
 
         if !context.mentionUser {
             output = output.replacingOccurrences(of: "<@\(event.userId)>", with: event.username)
+        }
+
+        if context.prependUserMention {
+            output = "<@\(event.userId)> " + output
         }
 
         if let roleMention = context.mentionRole {
