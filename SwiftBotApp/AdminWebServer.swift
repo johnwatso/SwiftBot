@@ -185,6 +185,13 @@ struct AdminWebActionsPayload: Codable {
     let servers: [AdminWebSimpleOption]
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
     let voiceChannelsByServer: [String: [AdminWebSimpleOption]]
+    
+    /// Server-driven metadata for generic WEBUI rendering
+    /// This replaces hard-coded assumptions with dynamic configuration
+    let builderMetadata: AdminWebBuilderMetadata
+    
+    /// Deprecated: Kept for backwards compatibility with older WEBUI versions
+    /// New WEBUI should use builderMetadata instead
     let conditionTypes: [String]
     let actionTypes: [String]
 }
@@ -1652,5 +1659,791 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
             }
         }
         return 0
+    }
+}
+import Foundation
+
+// MARK: - Server-Driven Metadata for WEBUI Action Builder
+// This file defines the canonical contract exposed by the backend
+// to enable generic, resilient WEBUI rendering without hard-coded assumptions.
+
+/// Complete metadata payload for the WEBUI action builder
+/// This replaces hard-coded assumptions in the WEBUI with server-driven configuration
+struct AdminWebBuilderMetadata: Codable {
+    /// Available trigger types with full metadata
+    let triggers: [AdminWebTriggerMetadata]
+    
+    /// Available condition/filter types with full metadata
+    let conditions: [AdminWebBlockMetadata]
+    
+    /// Available block types organized by category
+    let categories: [AdminWebCategoryMetadata]
+    
+    /// All available action/modifier/AI blocks with full metadata
+    let blocks: [AdminWebBlockMetadata]
+    
+    /// All available context variables for templating
+    let variables: [AdminWebVariableMetadata]
+    
+    /// Version of the metadata schema for forward compatibility
+    let schemaVersion: Int
+}
+
+/// Metadata for a trigger type
+struct AdminWebTriggerMetadata: Codable {
+    let id: String              // Raw value (e.g., "messageCreated")
+    let name: String            // Display name (e.g., "Message Created")
+    let symbol: String          // SF Symbol name
+    let providedVariables: [String]  // Context variables this trigger provides
+    let description: String?    // Optional help text
+}
+
+/// Metadata for a block (AI, Modifier, or Action)
+struct AdminWebBlockMetadata: Codable {
+    let id: String              // Raw value (e.g., "sendMessage")
+    let name: String            // Display name (e.g., "Send Message")
+    let symbol: String          // SF Symbol name
+    let category: String        // Category ID (e.g., "actions", "ai")
+    let description: String?    // Optional help text
+    
+    /// Variables required for this block to function
+    let requiredVariables: [String]
+    
+    /// Variables this block populates in context
+    let outputVariables: [String]
+    
+    /// Field definitions for configuring this block
+    let fields: [AdminWebFieldMetadata]
+    
+    /// Whether this block produces Discord output
+    let producesOutput: Bool
+    
+    /// Whether this block is an AI processing block
+    let isAIBlock: Bool
+    
+    /// Whether this block is a message modifier
+    let isModifier: Bool
+}
+
+/// Metadata for a block category
+struct AdminWebCategoryMetadata: Codable {
+    let id: String              // Raw value (e.g., "actions")
+    let name: String            // Display name (e.g., "Actions")
+    let symbol: String          // SF Symbol name
+    let description: String?    // Optional help text
+    let blockIds: [String]      // IDs of blocks in this category
+    let order: Int              // Display order in UI
+}
+
+/// Metadata for a context variable
+struct AdminWebVariableMetadata: Codable {
+    let id: String              // Raw value (e.g., "{ai.response}")
+    let name: String            // Display name (e.g., "AI Response")
+    let category: String        // Category (e.g., "AI", "User", "Message")
+    let description: String?    // Optional help text
+}
+
+/// Metadata for a configuration field within a block
+struct AdminWebFieldMetadata: Codable {
+    let id: String              // Field identifier (e.g., "message", "channelId")
+    let name: String            // Display name (e.g., "Message Content")
+    let type: AdminWebFieldType // Field type
+    let required: Bool          // Whether field is required
+    let defaultValue: String?   // Optional default value
+    let description: String?    // Optional help text
+    let placeholder: String?    // Optional placeholder text
+    
+    /// For picker/dropdown fields, the source of options
+    let optionsSource: AdminWebOptionsSource?
+}
+
+/// Types of configuration fields
+enum AdminWebFieldType: String, Codable {
+    case text           // Single-line text input
+    case multiline      // Multi-line text editor (with variable support)
+    case number         // Numeric input
+    case boolean        // Toggle/switch
+    case picker         // Single-select dropdown
+    case searchablePicker // Searchable dropdown (for servers, channels, roles)
+    case emoji          // Emoji picker
+    case duration       // Duration input (seconds)
+}
+
+/// Source for dropdown options
+enum AdminWebOptionsSource: String, Codable {
+    case servers        // Available Discord servers
+    case textChannels   // Text channels (requires server context)
+    case voiceChannels  // Voice channels (requires server context)
+    case roles          // Roles (requires server context)
+    case predefined     // Predefined static options
+}
+
+// MARK: - Metadata Generation Helpers
+
+extension AdminWebBuilderMetadata {
+    /// Generate complete metadata from native Swift models
+    static func generateFromNativeModels() -> AdminWebBuilderMetadata {
+        return AdminWebBuilderMetadata(
+            triggers: TriggerType.allCases.map { $0.toMetadata() },
+            conditions: ConditionType.allCases.map { $0.toMetadata() },
+            categories: BlockCategory.allCases.map { $0.toMetadata() },
+            blocks: ActionType.allCases.map { $0.toMetadata() },
+            variables: ContextVariable.allCases.map { $0.toMetadata() },
+            schemaVersion: 2
+        )
+    }
+}
+
+// MARK: - Native Model to Metadata Conversions
+
+extension TriggerType {
+    func toMetadata() -> AdminWebTriggerMetadata {
+        return AdminWebTriggerMetadata(
+            id: self.rawValue,
+            name: self.rawValue,
+            symbol: self.symbol,
+            providedVariables: self.providedVariables.map { $0.rawValue },
+            description: nil
+        )
+    }
+}
+
+extension ConditionType {
+    func toMetadata() -> AdminWebBlockMetadata {
+        return AdminWebBlockMetadata(
+            id: self.rawValue,
+            name: self.rawValue,
+            symbol: self.symbol,
+            category: "filters",
+            description: self.conditionDescription,
+            requiredVariables: self.requiredVariables.map { $0.rawValue },
+            outputVariables: [],
+            fields: self.conditionFieldMetadata,
+            producesOutput: false,
+            isAIBlock: false,
+            isModifier: false
+        )
+    }
+    
+    private var conditionDescription: String? {
+        switch self {
+        case .server: return "Only trigger in a specific server"
+        case .voiceChannel: return "Only trigger in a specific voice channel"
+        case .usernameContains: return "Only trigger if username contains text"
+        case .minimumDuration: return "Only trigger after user has been in channel for X minutes"
+        case .channelIs: return "Only trigger in a specific text channel"
+        case .channelCategory: return "Only trigger in channels of a specific category"
+        case .userHasRole: return "Only trigger if user has a specific role"
+        case .userJoinedRecently: return "Only trigger if user joined within X minutes"
+        case .messageContains: return "Only trigger if message contains text"
+        case .messageStartsWith: return "Only trigger if message starts with text"
+        case .messageRegex: return "Only trigger if message matches regex pattern"
+        case .isDirectMessage: return "Only trigger for direct messages"
+        case .isFromBot: return "Only trigger if message is from a bot"
+        case .isFromUser: return "Only trigger if message is from a user (not bot)"
+        case .channelType: return "Only trigger for specific channel types"
+        }
+    }
+    
+    private var conditionFieldMetadata: [AdminWebFieldMetadata] {
+        switch self {
+        case .server:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Server",
+                type: .searchablePicker,
+                required: true,
+                defaultValue: nil,
+                description: "Select the server",
+                placeholder: "Select a server",
+                optionsSource: .servers
+            )]
+        case .voiceChannel:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Voice Channel",
+                type: .searchablePicker,
+                required: true,
+                defaultValue: nil,
+                description: "Select the voice channel",
+                placeholder: "Select a voice channel",
+                optionsSource: .voiceChannels
+            )]
+        case .usernameContains:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Username Contains",
+                type: .text,
+                required: true,
+                defaultValue: nil,
+                description: "Username must contain this text",
+                placeholder: "Enter text to match...",
+                optionsSource: nil
+            )]
+        case .minimumDuration:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Minimum Duration (minutes)",
+                type: .number,
+                required: true,
+                defaultValue: "5",
+                description: "User must be in channel for at least this many minutes",
+                placeholder: "5",
+                optionsSource: nil
+            )]
+        case .channelIs:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Channel",
+                type: .searchablePicker,
+                required: true,
+                defaultValue: nil,
+                description: "Select the text channel",
+                placeholder: "Select a channel",
+                optionsSource: .textChannels
+            )]
+        case .channelCategory:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Category Name",
+                type: .text,
+                required: true,
+                defaultValue: nil,
+                description: "Channel category name to match",
+                placeholder: "Enter category name...",
+                optionsSource: nil
+            )]
+        case .userHasRole:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Role",
+                type: .searchablePicker,
+                required: true,
+                defaultValue: nil,
+                description: "Select the required role",
+                placeholder: "Select a role",
+                optionsSource: .roles
+            )]
+        case .userJoinedRecently:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Joined Within (minutes)",
+                type: .number,
+                required: true,
+                defaultValue: "60",
+                description: "User must have joined within this many minutes",
+                placeholder: "60",
+                optionsSource: nil
+            )]
+        case .messageContains:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Message Contains",
+                type: .text,
+                required: true,
+                defaultValue: nil,
+                description: "Message must contain this text",
+                placeholder: "Enter text to search for...",
+                optionsSource: nil
+            )]
+        case .messageStartsWith:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Starts With",
+                type: .text,
+                required: true,
+                defaultValue: nil,
+                description: "Message must start with this text",
+                placeholder: "Enter prefix...",
+                optionsSource: nil
+            )]
+        case .messageRegex:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Regex Pattern",
+                type: .text,
+                required: true,
+                defaultValue: nil,
+                description: "Message must match this regular expression",
+                placeholder: "Enter regex pattern...",
+                optionsSource: nil
+            )]
+        case .isDirectMessage, .isFromBot, .isFromUser:
+            // Boolean conditions - no additional fields needed
+            return []
+        case .channelType:
+            return [AdminWebFieldMetadata(
+                id: "value",
+                name: "Channel Type",
+                type: .picker,
+                required: true,
+                defaultValue: "text",
+                description: "Select the channel type",
+                placeholder: nil,
+                optionsSource: .predefined
+            )]
+        }
+    }
+}
+
+extension ActionType {
+    func toMetadata() -> AdminWebBlockMetadata {
+        return AdminWebBlockMetadata(
+            id: self.rawValue,
+            name: self.rawValue,
+            symbol: self.symbol,
+            category: self.category.rawValue,
+            description: self.description,
+            requiredVariables: self.requiredVariables.map { $0.rawValue },
+            outputVariables: self.outputVariables.map { $0.rawValue },
+            fields: self.fieldMetadata,
+            producesOutput: self.producesOutput,
+            isAIBlock: self.isAIBlock,
+            isModifier: self.isModifier
+        )
+    }
+    
+    /// Whether this action type produces Discord output
+    private var producesOutput: Bool {
+        switch self {
+        case .sendMessage, .sendDM, .addReaction, .deleteMessage,
+             .addRole, .removeRole, .timeoutMember, .kickMember, 
+             .moveMember, .createChannel, .webhook, .setStatus, .addLogEntry:
+            return true
+        case .generateAIResponse, .summariseMessage, .classifyMessage, 
+             .extractEntities, .rewriteMessage, .delay, .setVariable, 
+             .randomChoice, .replyToTrigger, .mentionUser, .mentionRole,
+             .disableMention, .sendToChannel, .sendToDM:
+            return false
+        }
+    }
+    
+    /// Whether this is an AI processing block
+    private var isAIBlock: Bool {
+        switch self {
+        case .generateAIResponse, .summariseMessage, .classifyMessage,
+             .extractEntities, .rewriteMessage:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this is a message modifier
+    private var isModifier: Bool {
+        switch self {
+        case .replyToTrigger, .mentionUser, .mentionRole, 
+             .disableMention, .sendToChannel, .sendToDM:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Field metadata for each action type
+    private var fieldMetadata: [AdminWebFieldMetadata] {
+        switch self {
+        case .sendMessage:
+            return [
+                AdminWebFieldMetadata(
+                    id: "destinationMode",
+                    name: "Destination",
+                    type: .picker,
+                    required: true,
+                    defaultValue: "replyToTrigger",
+                    description: "Where the message should be sent by default",
+                    placeholder: nil,
+                    optionsSource: .predefined
+                ),
+                AdminWebFieldMetadata(
+                    id: "serverId",
+                    name: "Server",
+                    type: .searchablePicker,
+                    required: false,
+                    defaultValue: nil,
+                    description: "Only used when Destination is 'Specific Channel'",
+                    placeholder: "Select a server",
+                    optionsSource: .servers
+                ),
+                AdminWebFieldMetadata(
+                    id: "channelId",
+                    name: "Channel",
+                    type: .searchablePicker,
+                    required: false,
+                    defaultValue: nil,
+                    description: "Only used when Destination is 'Specific Channel'",
+                    placeholder: "Select a channel",
+                    optionsSource: .textChannels
+                ),
+                AdminWebFieldMetadata(
+                    id: "contentSource",
+                    name: "Content Source",
+                    type: .picker,
+                    required: true,
+                    defaultValue: "custom",
+                    description: "Source of the message content",
+                    placeholder: nil,
+                    optionsSource: .predefined
+                ),
+                AdminWebFieldMetadata(
+                    id: "message",
+                    name: "Message Content",
+                    type: .multiline,
+                    required: false,
+                    defaultValue: nil,
+                    description: "Message content (only used when Content Source is 'Custom Message')",
+                    placeholder: "Enter message content...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .sendDM:
+            // Send DM is now a routing modifier only - content comes from Send Message action
+            return []
+            
+        case .generateAIResponse:
+            return [
+                AdminWebFieldMetadata(
+                    id: "message",
+                    name: "AI Prompt",
+                    type: .multiline,
+                    required: true,
+                    defaultValue: "You are a helpful assistant. {message}",
+                    description: "Prompt for AI generation. Result available as {ai.response}",
+                    placeholder: "Enter AI prompt...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .summariseMessage:
+            return [
+                AdminWebFieldMetadata(
+                    id: "message",
+                    name: "Context (Optional)",
+                    type: .multiline,
+                    required: false,
+                    defaultValue: nil,
+                    description: "Additional context for summarization. Result available as {ai.summary}",
+                    placeholder: "Enter optional context...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .classifyMessage:
+            return [
+                AdminWebFieldMetadata(
+                    id: "categories",
+                    name: "Categories",
+                    type: .text,
+                    required: false,
+                    defaultValue: "question, feedback, spam, other",
+                    description: "Comma-separated categories. Result available as {ai.classification}",
+                    placeholder: "question, feedback, spam, other",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .extractEntities:
+            return [
+                AdminWebFieldMetadata(
+                    id: "entityTypes",
+                    name: "Entity Types",
+                    type: .text,
+                    required: false,
+                    defaultValue: "names, dates, locations, organizations",
+                    description: "Comma-separated entity types. Result available as {ai.entities}",
+                    placeholder: "names, dates, locations, organizations",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .rewriteMessage:
+            return [
+                AdminWebFieldMetadata(
+                    id: "rewriteStyle",
+                    name: "Style",
+                    type: .text,
+                    required: false,
+                    defaultValue: "professional",
+                    description: "Target style for rewriting. Result available as {ai.rewrite}",
+                    placeholder: "professional, casual, formal...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .addReaction:
+            return [
+                AdminWebFieldMetadata(
+                    id: "emoji",
+                    name: "Emoji",
+                    type: .emoji,
+                    required: true,
+                    defaultValue: "👍",
+                    description: "Emoji to react with",
+                    placeholder: nil,
+                    optionsSource: nil
+                )
+            ]
+            
+        case .addRole, .removeRole:
+            return [
+                AdminWebFieldMetadata(
+                    id: "roleId",
+                    name: "Role",
+                    type: .searchablePicker,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Target role",
+                    placeholder: "Select a role",
+                    optionsSource: .roles
+                )
+            ]
+            
+        case .timeoutMember:
+            return [
+                AdminWebFieldMetadata(
+                    id: "timeoutDuration",
+                    name: "Duration (seconds)",
+                    type: .duration,
+                    required: true,
+                    defaultValue: "3600",
+                    description: "Timeout duration in seconds",
+                    placeholder: "3600",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .kickMember:
+            return [
+                AdminWebFieldMetadata(
+                    id: "kickReason",
+                    name: "Reason (Optional)",
+                    type: .text,
+                    required: false,
+                    defaultValue: nil,
+                    description: "Reason for kicking",
+                    placeholder: "Enter reason...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .moveMember:
+            return [
+                AdminWebFieldMetadata(
+                    id: "targetVoiceChannelId",
+                    name: "Target Voice Channel",
+                    type: .searchablePicker,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Voice channel to move member to",
+                    placeholder: "Select a voice channel",
+                    optionsSource: .voiceChannels
+                )
+            ]
+            
+        case .createChannel:
+            return [
+                AdminWebFieldMetadata(
+                    id: "newChannelName",
+                    name: "Channel Name",
+                    type: .text,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Name for the new channel",
+                    placeholder: "new-channel",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .webhook:
+            return [
+                AdminWebFieldMetadata(
+                    id: "webhookURL",
+                    name: "Webhook URL",
+                    type: .text,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Webhook endpoint URL",
+                    placeholder: "https://...",
+                    optionsSource: nil
+                ),
+                AdminWebFieldMetadata(
+                    id: "webhookContent",
+                    name: "Payload Content",
+                    type: .multiline,
+                    required: true,
+                    defaultValue: nil,
+                    description: "JSON payload content",
+                    placeholder: "{\"content\": \"...\"}",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .delay:
+            return [
+                AdminWebFieldMetadata(
+                    id: "delaySeconds",
+                    name: "Delay (seconds)",
+                    type: .duration,
+                    required: true,
+                    defaultValue: "5",
+                    description: "Delay before next action",
+                    placeholder: "5",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .setVariable:
+            return [
+                AdminWebFieldMetadata(
+                    id: "variableName",
+                    name: "Variable Name",
+                    type: .text,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Name of the variable",
+                    placeholder: "myVariable",
+                    optionsSource: nil
+                ),
+                AdminWebFieldMetadata(
+                    id: "variableValue",
+                    name: "Variable Value",
+                    type: .text,
+                    required: true,
+                    defaultValue: nil,
+                    description: "Value to store",
+                    placeholder: "Enter value...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .setStatus:
+            return [
+                AdminWebFieldMetadata(
+                    id: "statusText",
+                    name: "Status Text",
+                    type: .text,
+                    required: true,
+                    defaultValue: "Bot is active",
+                    description: "Bot presence status",
+                    placeholder: "Enter status...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .addLogEntry:
+            return [
+                AdminWebFieldMetadata(
+                    id: "message",
+                    name: "Log Message",
+                    type: .text,
+                    required: true,
+                    defaultValue: "Rule executed",
+                    description: "Message to log",
+                    placeholder: "Enter log message...",
+                    optionsSource: nil
+                )
+            ]
+            
+        case .deleteMessage:
+            return [
+                AdminWebFieldMetadata(
+                    id: "deleteDelaySeconds",
+                    name: "Delete Delay (seconds)",
+                    type: .duration,
+                    required: false,
+                    defaultValue: "0",
+                    description: "Delay before deleting (0 for immediate)",
+                    placeholder: "0",
+                    optionsSource: nil
+                )
+            ]
+            
+        // Modifiers - no additional fields beyond the toggle
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
+            return []
+            
+        case .randomChoice:
+            // Random choice would need array of options - simplified for now
+            return []
+        }
+    }
+    
+    private var description: String? {
+        switch self {
+        case .sendMessage:
+            return "Sends a message to a channel"
+        case .sendDM:
+            return "Sends a direct message to the triggering user"
+        case .generateAIResponse:
+            return "Generates an AI response. Result: {ai.response}"
+        case .summariseMessage:
+            return "Summarizes the message. Result: {ai.summary}"
+        case .classifyMessage:
+            return "Classifies the message. Result: {ai.classification}"
+        case .extractEntities:
+            return "Extracts entities from the message. Result: {ai.entities}"
+        case .rewriteMessage:
+            return "Rewrites the message in a different style. Result: {ai.rewrite}"
+        default:
+            return nil
+        }
+    }
+}
+
+extension BlockCategory {
+    func toMetadata() -> AdminWebCategoryMetadata {
+        // Get block IDs for this category
+        let blockIds = ActionType.allCases
+            .filter { $0.category == self }
+            .map { $0.rawValue }
+        
+        return AdminWebCategoryMetadata(
+            id: self.rawValue,
+            name: self.rawValue,
+            symbol: self.symbol,
+            description: self.description,
+            blockIds: blockIds,
+            order: self.displayOrder
+        )
+    }
+    
+    private var displayOrder: Int {
+        switch self {
+        case .triggers: return 0
+        case .filters: return 1
+        case .ai: return 2
+        case .messaging: return 3
+        case .actions: return 4
+        case .moderation: return 5
+        }
+    }
+    
+    private var description: String? {
+        switch self {
+        case .triggers:
+            return "Events that start a rule"
+        case .filters:
+            return "Conditions that must be met"
+        case .ai:
+            return "AI processing blocks that generate data"
+        case .messaging:
+            return "Modifiers that control message delivery"
+        case .actions:
+            return "Blocks that produce Discord output"
+        case .moderation:
+            return "Server management actions"
+        }
+    }
+}
+
+extension ContextVariable {
+    func toMetadata() -> AdminWebVariableMetadata {
+        return AdminWebVariableMetadata(
+            id: self.rawValue,
+            name: self.displayName,
+            category: self.category,
+            description: nil
+        )
     }
 }

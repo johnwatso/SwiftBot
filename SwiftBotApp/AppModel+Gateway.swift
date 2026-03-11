@@ -46,6 +46,8 @@ extension AppModel {
             await handleChannelCreate(payload.d)
         case "GUILD_MEMBER_ADD":
             await handleMemberJoin(payload.d)
+        case "GUILD_MEMBER_REMOVE":
+            await handleMemberLeave(payload.d)
         case "GUILD_DELETE":
             await handleGuildDelete(payload.d)
         default:
@@ -247,6 +249,12 @@ extension AppModel {
 
             if settings.localAIDMReplyEnabled {
                 guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: true) else { return }
+
+                // Skip AI reply if message was already handled by rule actions
+                if await service.wasMessageHandledByRules(messageId: messageId) {
+                    logs.append("AI DM reply skipped: message \(messageId) was handled by rule actions")
+                    return
+                }
 
                 let scope = MemoryScope.directMessageUser(userId)
                 let (messages, wikiContext) = await aiMessagesForScope(
