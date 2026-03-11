@@ -3357,42 +3357,25 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Category for block library organization
     var category: BlockCategory {
         switch self {
-        case .sendMessage, .sendDM, .deleteMessage, .addReaction:
+        case .sendMessage, .sendDM, .replyToTrigger, .disableMention:
             return .messaging
-
+        case .addReaction, .deleteMessage, .generateAIResponse:
+            return .actions
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
             return .moderation
-        case .createChannel:
-            return .channel
-        case .webhook:
-            return .integration
-        case .addLogEntry:
-            return .logging
-        case .setStatus:
-            return .bot
-        case .delay, .setVariable, .randomChoice:
-            return .utility
-        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
-            return .modifiers
-        case .generateAIResponse:
-            return .ai
+        case .createChannel, .webhook, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .sendToChannel, .mentionUser, .mentionRole:
+            return .actions
         }
     }
 }
 
-/// Block categories for library organization
+/// Block categories for library organization (Task 5)
 enum BlockCategory: String, CaseIterable, Identifiable {
     case triggers = "Triggers"
     case filters = "Filters"
-    case modifiers = "Message Modifiers"
-    case ai = "AI Blocks"
-    case messaging = "Actions"
+    case messaging = "Message"
+    case actions = "Actions"
     case moderation = "Moderation"
-    case channel = "Channel"
-    case integration = "Integration"
-    case logging = "Logging"
-    case bot = "Bot"
-    case utility = "Utilities"
 
     var id: String { rawValue }
 
@@ -3400,16 +3383,26 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         switch self {
         case .triggers: return "bolt.fill"
         case .filters: return "line.3.horizontal.decrease.circle"
-        case .modifiers: return "slider.horizontal.3"
-        case .ai: return "sparkles"
-        case .messaging: return "paperplane.fill"
+        case .messaging: return "text.bubble.fill"
+        case .actions: return "paperplane.fill"
         case .moderation: return "shield.fill"
-        case .channel: return "number"
-        case .integration: return "link"
-        case .logging: return "list.bullet.clipboard"
-        case .bot: return "cpu.fill"
-        case .utility: return "wrench.fill"
         }
+    }
+}
+
+extension ConditionType {
+    /// Returns true if this condition is compatible with the given trigger (Task 4)
+    func isCompatible(with trigger: TriggerType?) -> Bool {
+        guard let trigger = trigger else { return true } // No trigger means everything is potentially visible
+        return self.requiredVariables.isSubset(of: trigger.providedVariables)
+    }
+}
+
+extension ActionType {
+    /// Returns true if this action is compatible with the given trigger (Task 4)
+    func isCompatible(with trigger: TriggerType?) -> Bool {
+        guard let trigger = trigger else { return true }
+        return self.requiredVariables.isSubset(of: trigger.providedVariables)
     }
 }
 struct Condition: Identifiable, Codable, Equatable {

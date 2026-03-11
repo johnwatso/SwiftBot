@@ -206,11 +206,7 @@ struct RuleEditorView: View {
                     .padding(.bottom, 16)
                 .background(rulePaneBackground)
 
-                if rule.trigger == nil {
-                    NeutralBannerView(message: "No trigger selected. Select a trigger to configure this rule.")
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
-                } else if !rule.isEditingTrigger && !rule.validationIssues.isEmpty {
+                if !rule.isEmptyRule && !rule.isEditingTrigger && !rule.validationIssues.isEmpty {
                     ValidationBannerView(issues: rule.validationIssues)
                         .padding(.horizontal, 20)
                         .padding(.bottom, 8)
@@ -218,10 +214,13 @@ struct RuleEditorView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        if rule.isEmptyRule {
-                            EmptyRuleOnboardingView {
-                                scrollToTriggersSignal = true
-                            }
+                        if rule.trigger == nil {
+                            EmptyRuleStateView(
+                                icon: "bolt.fill",
+                                title: "No Trigger Selected",
+                                description: "Choose a trigger from the Block Library to begin building this rule."
+                            )
+                            .padding(.top, 40)
                             .transition(
                                 .asymmetric(
                                     insertion: .opacity.combined(with: .scale(scale: 0.96)),
@@ -261,6 +260,7 @@ struct RuleEditorView: View {
                             RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
                                 ConditionsSectionView(
                                     conditions: $rule.conditions,
+                                    hasTrigger: rule.trigger != nil,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
@@ -274,8 +274,9 @@ struct RuleEditorView: View {
                             RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
                                 ActionsSectionView(
                                     actions: $rule.modifiers,
-                                    category: .modifiers,
+                                    category: .messaging, // Used to be .modifiers
                                     allModifiers: rule.modifiers,
+                                    hasTrigger: rule.trigger != nil,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer,
@@ -290,8 +291,9 @@ struct RuleEditorView: View {
                                               guidedHighlight: guidedStep == .action) {
                                 ActionsSectionView(
                                     actions: $rule.actions,
-                                    category: .messaging,
+                                    category: .actions, // Used to be .messaging
                                     allModifiers: rule.modifiers,
+                                    hasTrigger: rule.trigger != nil,
                                     serverIds: serverIds,
                                     serverName: serverName(for:),
                                     textChannelsByServer: app.availableTextChannelsByServer,
@@ -379,7 +381,7 @@ struct RuleEditorView: View {
         }
 
         // Fix: Route modifiers to rule.modifiers, actions to rule.actions
-        if type.category == .modifiers {
+        if type.category == .messaging {
             rule.modifiers.append(action)
         } else {
             rule.actions.append(action)
@@ -513,69 +515,48 @@ struct RuleBuilderLibraryView: View {
 
             RuleLibrarySection(title: "Filters") {
                 ForEach(ConditionType.allCases) { type in
-                    RuleLibraryButton(
-                        title: type.rawValue,
-                        subtitle: "Add a filter condition",
-                        systemImage: type.symbol,
-                        accent: .cyan,
-                        isDisabled: !isCompatible(type.requiredVariables),
-                        disabledReason: tooltipFor(type.requiredVariables),
-                        dragItem: "condition:\(type.rawValue)",
-                        action: { onAddCondition(type) }
-                    )
-                }
-            }
-
-            let modifiers = types(for: .modifiers)
-            if !modifiers.isEmpty {
-                RuleLibrarySection(title: "Message Modifiers") {
-                    ForEach(modifiers) { type in
+                    if type.isCompatible(with: currentTrigger) {
                         RuleLibraryButton(
                             title: type.rawValue,
-                            subtitle: "Modify message routing or formatting",
+                            subtitle: "Add a filter condition",
                             systemImage: type.symbol,
-                            accent: .orange,
-                            isDisabled: !isCompatible(type.requiredVariables),
-                            disabledReason: tooltipFor(type.requiredVariables),
-                            dragItem: "action:\(type.rawValue)",
-                            action: { onAddAction(type) }
+                            accent: .cyan,
+                            action: { onAddCondition(type) }
                         )
                     }
                 }
             }
 
-            let aiBlocks = types(for: .ai)
-            if !aiBlocks.isEmpty {
-                RuleLibrarySection(title: "AI") {
-                    ForEach(aiBlocks) { type in
-                        RuleLibraryButton(
-                            title: type.rawValue,
-                            subtitle: "Generate content using AI",
-                            systemImage: type.symbol,
-                            accent: .indigo,
-                            isDisabled: !isCompatible(type.requiredVariables),
-                            disabledReason: tooltipFor(type.requiredVariables),
-                            dragItem: "action:\(type.rawValue)",
-                            action: { onAddAction(type) }
-                        )
+            let messageTypes = types(for: .messaging)
+            if !messageTypes.isEmpty {
+                RuleLibrarySection(title: "Message") {
+                    ForEach(messageTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Formatting and routing modifiers",
+                                systemImage: type.symbol,
+                                accent: .orange,
+                                action: { onAddAction(type) }
+                            )
+                        }
                     }
                 }
             }
 
-            let messagingTypes = types(for: .messaging)
-            if !messagingTypes.isEmpty {
+            let actionTypes = types(for: .actions)
+            if !actionTypes.isEmpty {
                 RuleLibrarySection(title: "Actions") {
-                    ForEach(messagingTypes) { type in
-                        RuleLibraryButton(
-                            title: type.rawValue,
-                            subtitle: "Insert action into pipeline",
-                            systemImage: type.symbol,
-                            accent: .mint,
-                            isDisabled: !isCompatible(type.requiredVariables),
-                            disabledReason: tooltipFor(type.requiredVariables),
-                            dragItem: "action:\(type.rawValue)",
-                            action: { onAddAction(type) }
-                        )
+                    ForEach(actionTypes) { type in
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Output blocks",
+                                systemImage: type.symbol,
+                                accent: .mint,
+                                action: { onAddAction(type) }
+                            )
+                        }
                     }
                 }
             }
@@ -584,34 +565,15 @@ struct RuleBuilderLibraryView: View {
             if !moderationTypes.isEmpty {
                 RuleLibrarySection(title: "Moderation") {
                     ForEach(moderationTypes) { type in
-                        RuleLibraryButton(
-                            title: type.rawValue,
-                            subtitle: "Moderation action",
-                            systemImage: type.symbol,
-                            accent: .red,
-                            isDisabled: !isCompatible(type.requiredVariables),
-                            disabledReason: tooltipFor(type.requiredVariables),
-                            dragItem: "action:\(type.rawValue)",
-                            action: { onAddAction(type) }
-                        )
-                    }
-                }
-            }
-
-            let utilityTypes = types(for: .utility)
-            if !utilityTypes.isEmpty {
-                RuleLibrarySection(title: "Utilities") {
-                    ForEach(utilityTypes) { type in
-                        RuleLibraryButton(
-                            title: type.rawValue,
-                            subtitle: "Insert utility block",
-                            systemImage: type.symbol,
-                            accent: .purple,
-                            isDisabled: !isCompatible(type.requiredVariables),
-                            disabledReason: tooltipFor(type.requiredVariables),
-                            dragItem: "action:\(type.rawValue)",
-                            action: { onAddAction(type) }
-                        )
+                        if type.isCompatible(with: currentTrigger) {
+                            RuleLibraryButton(
+                                title: type.rawValue,
+                                subtitle: "Server management",
+                                systemImage: type.symbol,
+                                accent: .red,
+                                action: { onAddAction(type) }
+                            )
+                        }
                     }
                 }
             }
@@ -814,6 +776,7 @@ struct TriggerSectionView: View {
 
 struct ConditionsSectionView: View {
     @Binding var conditions: [Condition]
+    let hasTrigger: Bool
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -847,6 +810,8 @@ struct ConditionsSectionView: View {
                 }
             }
         }
+        .disabled(!hasTrigger)
+        .opacity(hasTrigger ? 1.0 : 0.5)
     }
 }
 
@@ -967,6 +932,7 @@ struct ActionsSectionView: View {
     @Binding var actions: [Action]
     let category: BlockCategory
     let allModifiers: [Action]
+    let hasTrigger: Bool
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -1015,6 +981,8 @@ struct ActionsSectionView: View {
                 }
             }
         }
+        .disabled(!hasTrigger)
+        .opacity(hasTrigger ? 1.0 : 0.5)
     }
 }
 
@@ -1036,7 +1004,7 @@ struct ActionSectionView: View {
             HStack {
                 Label(action.type.rawValue, systemImage: action.type.symbol)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(category == .modifiers ? .orange : .mint)
+                    .foregroundStyle(category == .messaging ? .orange : .mint)
                 
                 if isIncompatible {
                     Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
@@ -1283,26 +1251,30 @@ struct FirstRuleOnboardingCard: View {
 
 // MARK: - Validation Banner
 
-struct NeutralBannerView: View {
-    let message: String
+struct EmptyRuleStateView: View {
+    let icon: String
+    let title: String
+    let description: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(.blue)
-                .font(.caption.weight(.semibold))
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.primary)
-            Spacer()
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundStyle(.yellow)
+                .symbolEffect(.bounce, value: true)
+            
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                Text(description)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.blue.opacity(0.30), lineWidth: 1)
-        )
+        .padding(40)
+        .frame(maxWidth: .infinity)
+        .glassCard(cornerRadius: 24, tint: .white.opacity(0.05), stroke: .white.opacity(0.1))
     }
 }
 
