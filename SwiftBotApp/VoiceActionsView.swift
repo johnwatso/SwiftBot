@@ -395,7 +395,7 @@ struct RuleEditorView: View {
         case .setStatus:
             action.statusText = "Handling \(rule.trigger?.rawValue.lowercased() ?? "action")"
         // Modifier blocks
-        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
             break
         // AI blocks
         case .generateAIResponse:
@@ -1116,35 +1116,67 @@ struct ActionSectionView: View {
 
             switch action.type {
             case .sendMessage:
-                if serverIds.isEmpty {
-                    Text("No connected servers available yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Server", selection: $action.serverId) {
-                        ForEach(serverIds, id: \.self) { serverId in
-                            Text(serverName(serverId)).tag(serverId)
-                        }
+                // Destination Mode picker (per UX spec)
+                Picker("Destination", selection: Binding<MessageDestination>(
+                    get: { action.destinationMode ?? .specificChannel },
+                    set: { action.destinationMode = $0 }
+                )) {
+                    ForEach(MessageDestination.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                    if textChannels.isEmpty {
-                        Text("No text channels discovered for this server.")
+                }
+                
+                // Only show server/channel pickers for specificChannel mode
+                if action.destinationMode == .specificChannel || action.destinationMode == nil {
+                    if serverIds.isEmpty {
+                        Text("No connected servers available yet.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Picker("Text Channel", selection: $action.channelId) {
-                            ForEach(textChannels) { channel in
-                                Text("#\(channel.name)").tag(channel.id)
+                        Picker("Server", selection: $action.serverId) {
+                            ForEach(serverIds, id: \.self) { serverId in
+                                Text(serverName(serverId)).tag(serverId)
+                            }
+                        }
+                        if textChannels.isEmpty {
+                            Text("No text channels discovered for this server.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Text Channel", selection: $action.channelId) {
+                                ForEach(textChannels) { channel in
+                                    Text("#\(channel.name)").tag(channel.id)
+                                }
                             }
                         }
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Message")
-                        .font(.subheadline.weight(.semibold))
-                    VariableAwareTextEditor(text: $action.message)
-                    if action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Label("Message content is required.", systemImage: "exclamationmark.triangle.fill")
+                
+                // Content Source picker
+                Picker("Content Source", selection: $action.contentSource) {
+                    ForEach(ContentSource.allCases, id: \.self) { source in
+                        Text(source.displayName).tag(source)
+                    }
+                }
+                
+                // Show message editor for custom content, AI source info for AI content
+                if action.contentSource == .custom {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Message")
+                            .font(.subheadline.weight(.semibold))
+                        VariableAwareTextEditor(text: $action.message)
+                        if action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Label("Message content is required.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                } else {
+                    // Show AI content source info
+                    HStack {
+                        Image(systemName: "wand.and.stars")
+                            .foregroundStyle(.indigo)
+                        Text("Uses AI output from \(action.contentSource.displayName)")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -1253,6 +1285,10 @@ struct ActionSectionView: View {
                     items: textChannels.map { .init(id: $0.id, name: "#\($0.name)") },
                     prompt: "Select a channel..."
                 )
+            case .sendToDM:
+                Text("Sends the message as a DM to the triggering user.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             // AI blocks
             case .generateAIResponse:
                 VStack(alignment: .leading, spacing: 6) {

@@ -2013,7 +2013,7 @@ extension ActionType {
         case .generateAIResponse, .summariseMessage, .classifyMessage, 
              .extractEntities, .rewriteMessage, .delay, .setVariable, 
              .randomChoice, .replyToTrigger, .mentionUser, .mentionRole,
-             .disableMention, .sendToChannel:
+             .disableMention, .sendToChannel, .sendToDM:
             return false
         }
     }
@@ -2033,7 +2033,7 @@ extension ActionType {
     private var isModifier: Bool {
         switch self {
         case .replyToTrigger, .mentionUser, .mentionRole, 
-             .disableMention, .sendToChannel:
+             .disableMention, .sendToChannel, .sendToDM:
             return true
         default:
             return false
@@ -2046,12 +2046,22 @@ extension ActionType {
         case .sendMessage:
             return [
                 AdminWebFieldMetadata(
+                    id: "destinationMode",
+                    name: "Destination",
+                    type: .picker,
+                    required: true,
+                    defaultValue: "specificChannel",
+                    description: "Where to send the message (Reply to Trigger requires a message trigger)",
+                    placeholder: nil,
+                    optionsSource: .predefined
+                ),
+                AdminWebFieldMetadata(
                     id: "serverId",
                     name: "Server",
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target server",
+                    description: "Target server (only used when Destination is 'Specific Channel')",
                     placeholder: "Select a server",
                     optionsSource: .servers
                 ),
@@ -2061,17 +2071,27 @@ extension ActionType {
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target channel",
+                    description: "Target channel (only used when Destination is 'Specific Channel', ignored if Send To DM modifier is active)",
                     placeholder: "Select a channel",
                     optionsSource: .textChannels
+                ),
+                AdminWebFieldMetadata(
+                    id: "contentSource",
+                    name: "Content Source",
+                    type: .picker,
+                    required: true,
+                    defaultValue: "custom",
+                    description: "Source of the message content",
+                    placeholder: nil,
+                    optionsSource: .predefined
                 ),
                 AdminWebFieldMetadata(
                     id: "message",
                     name: "Message Content",
                     type: .multiline,
-                    required: true,
+                    required: false,
                     defaultValue: nil,
-                    description: "Message content with variable support",
+                    description: "Message content (only used when Content Source is 'Custom Message')",
                     placeholder: "Enter message content...",
                     optionsSource: nil
                 )
@@ -2340,7 +2360,7 @@ extension ActionType {
             ]
             
         // Modifiers - no additional fields beyond the toggle
-        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
             return []
             
         case .randomChoice:
