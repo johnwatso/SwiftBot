@@ -2068,7 +2068,8 @@ actor DiscordService {
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
                 triggerUserId: userId,
-                isDirectMessage: false
+                isDirectMessage: false,
+                joinedAt: nil
             )
         }
 
@@ -2092,7 +2093,8 @@ actor DiscordService {
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
                 triggerUserId: userId,
-                isDirectMessage: false
+                isDirectMessage: false,
+                joinedAt: nil
             )
         }
 
@@ -2116,7 +2118,8 @@ actor DiscordService {
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
                 triggerUserId: userId,
-                isDirectMessage: false
+                isDirectMessage: false,
+                joinedAt: nil
             )
         }
 
@@ -2159,7 +2162,8 @@ actor DiscordService {
             triggerChannelId: channelId,
             triggerGuildId: guildId,
             triggerUserId: userId,
-            isDirectMessage: isDirectMessage
+            isDirectMessage: isDirectMessage,
+            joinedAt: nil
         )
     }
 
@@ -2304,7 +2308,7 @@ actor DiscordService {
         return "User \(userId.suffix(4))"
     }
 
-    private func execute(action: Action, for event: VoiceRuleEvent, context: inout PipelineContext) async {
+    func execute(action: Action, for event: VoiceRuleEvent, context: inout PipelineContext) async {
         guard let token = botToken else { return }
         
         switch action.type {
@@ -2356,18 +2360,6 @@ actor DiscordService {
             let statusText = renderMessage(template: action.statusText, event: event, context: context)
             guard !statusText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             await updatePresence(text: statusText)
-        case .replyToMessage:
-            guard let triggerMessageId = event.triggerMessageId, let triggerChannelId = event.triggerChannelId else { return }
-            let rendered = renderMessage(template: action.message, event: event, context: context)
-            let payload: [String: Any] = [
-                "content": rendered,
-                "message_reference": [
-                    "message_id": triggerMessageId,
-                    "channel_id": triggerChannelId,
-                    "fail_if_not_exists": false
-                ]
-            ]
-            _ = try? await sendMessage(channelId: triggerChannelId, payload: payload, token: token)
         case .sendDM:
             let rendered = renderMessage(template: action.dmContent, event: event, context: context)
             _ = try? await sendDM(userId: event.userId, content: rendered)

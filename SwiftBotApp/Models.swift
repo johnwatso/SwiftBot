@@ -2382,6 +2382,7 @@ struct VoiceRuleEvent {
         case move
         case message
         case memberJoin
+        case memberLeave
     }
 
     let kind: Kind
@@ -2399,6 +2400,7 @@ struct VoiceRuleEvent {
     let triggerGuildId: String
     let triggerUserId: String
     let isDirectMessage: Bool
+    let joinedAt: Date?
 }
 
 @MainActor
@@ -2539,20 +2541,11 @@ final class RuleEngine {
     private func matchesTrigger(rule: Rule, event: VoiceRuleEvent) -> Bool {
         guard let trigger = rule.trigger else { return false }
         switch (trigger, event.kind) {
-        case (.userJoinedVoice, .join):
-            return true
-        case (.userLeftVoice, .leave):
-            return true
-        case (.userMovedVoice, .move):
-            return true
-        case (.messageContains, .message):
-            let needle = rule.triggerMessageContains.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !needle.isEmpty, let content = event.messageContent else { return false }
-            if event.isDirectMessage {
-                return rule.replyToDMs && content.localizedCaseInsensitiveContains(needle)
-            }
-            return content.localizedCaseInsensitiveContains(needle)
-        case (.memberJoined, .memberJoin):
+        case (.userJoinedVoice, .join),
+             (.userLeftVoice, .leave),
+             (.userMovedVoice, .move),
+             (.messageCreated, .message),
+             (.memberJoined, .memberJoin):
             return true
         default:
             return false
@@ -2572,24 +2565,44 @@ final class RuleEngine {
         case .server:
             return value.isEmpty || event.guildId == value
         case .voiceChannel:
-            // Voice channel conditions don't apply to member join events — always pass.
-            if event.kind == .memberJoin { return true }
+            // Voice channel conditions don't apply to member join/leave events — always pass.
+            if event.kind == .memberJoin || event.kind == .memberLeave { return true }
             return value.isEmpty || event.channelId == value || event.fromChannelId == value || event.toChannelId == value
         case .usernameContains:
             guard !value.isEmpty else { return true }
             return event.username.localizedCaseInsensitiveContains(value)
         case .minimumDuration:
             // Duration conditions don't apply to member join events — always pass.
-            if event.kind == .memberJoin { return true }
+            if event.kind == .memberJoin || event.kind == .memberLeave { return true }
             guard let minimum = Int(value), minimum > 0 else { return true }
             guard let durationSeconds = event.durationSeconds else { return false }
             return durationSeconds >= (minimum * 60)
         case .channelIs:
             // Channel conditions don't apply to voice events — always pass for now
+            return value.isEmpty || event.channelId == value
+        case .channelCategory:
+            // Channel category matching logic: typically we'd need channel metadata
+            // For now, treat as placeholder that always passes if not configured
             return true
         case .userHasRole:
             // Role conditions not yet implemented for voice events — always pass
             return true
+        case .userJoinedRecently:
+            guard let minutes = Int(value), minutes > 0 else { return true }
+            guard let joinedAt = event.joinedAt else { return false }
+            return Date().timeIntervalSince(joinedAt) <= Double(minutes * 60)
+        case .messageContains:
+            guard !value.isEmpty, let content = event.messageContent else { return true }
+            return content.localizedCaseInsensitiveContains(value)
+        case .messageStartsWith:
+            guard !value.isEmpty, let content = event.messageContent else { return true }
+            return content.lowercased().hasPrefix(value.lowercased())
+        case .messageRegex:
+            guard !value.isEmpty, let content = event.messageContent else { return true }
+            // Basic regex matching - returns true on invalid regex to avoid breaking rules
+            guard let regex = try? NSRegularExpression(pattern: value, options: [.caseInsensitive]) else { return true }
+            let range = NSRange(content.startIndex..., in: content)
+            return regex.firstMatch(in: content, options: [], range: range) != nil
         }
     }
 }
@@ -3033,23 +3046,43 @@ enum DiscordPermission: String, CaseIterable, Codable, Hashable {
 // MARK: - Trigger Types
 
 enum TriggerType: String, CaseIterable, Identifiable, Codable {
-    case userJoinedVoice = "User Joins Voice"
-    case userLeftVoice = "User Leaves Voice"
-    case userMovedVoice = "User Moves Voice"
-    case messageContains = "Message Contains"
+    case userJoinedVoice = "Voice Joined"
+    case userLeftVoice = "Voice Left"
+    case userMovedVoice = "Voice Moved"
+    case messageCreated = "Message Created"
     case memberJoined = "Member Joined"
+    case memberLeft = "Member Left"
     case reactionAdded = "Reaction Added"
     case slashCommand = "Slash Command"
 
     var id: String { rawValue }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if let match = TriggerType(rawValue: raw) {
+            self = match
+        } else if raw == "Message Contains" {
+            self = .messageCreated
+        } else if raw == "User Joins Voice" {
+            self = .userJoinedVoice
+        } else if raw == "User Leaves Voice" {
+            self = .userLeftVoice
+        } else if raw == "User Moves Voice" {
+            self = .userMovedVoice
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid TriggerType: \(raw)")
+        }
+    }
 
     var symbol: String {
         switch self {
         case .userJoinedVoice: return "person.crop.circle.badge.plus"
         case .userLeftVoice: return "person.crop.circle.badge.xmark"
         case .userMovedVoice: return "arrow.left.arrow.right.circle"
-        case .messageContains: return "text.bubble"
+        case .messageCreated: return "text.bubble"
         case .memberJoined: return "person.badge.plus"
+        case .memberLeft: return "person.badge.minus"
         case .reactionAdded: return "face.smiling"
         case .slashCommand: return "slash.circle"
         }
@@ -3060,8 +3093,9 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userJoinedVoice: return "🔊 <@{userId}> connected to <#{channelId}>"
         case .userLeftVoice: return "🔌 <@{userId}> disconnected from <#{channelId}> (Online for {duration})"
         case .userMovedVoice: return "🔀 <@{userId}> moved from <#{fromChannelId}> to <#{toChannelId}>"
-        case .messageContains: return "nm you?"
+        case .messageCreated: return "nm you?"
         case .memberJoined: return "👋 Welcome to {server}, {username}! You're member #{memberCount}."
+        case .memberLeft: return "👋 {username} left the server."
         case .reactionAdded: return "👍 Reaction added!"
         case .slashCommand: return "Command received!"
         }
@@ -3072,8 +3106,9 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .userJoinedVoice: return "Join Action"
         case .userLeftVoice: return "Leave Action"
         case .userMovedVoice: return "Move Action"
-        case .messageContains: return "Message Reply"
+        case .messageCreated: return "Message Reply"
         case .memberJoined: return "Member Join Welcome"
+        case .memberLeft: return "Member Leave Log"
         case .reactionAdded: return "Reaction Handler"
         case .slashCommand: return "Command Handler"
         }
@@ -3084,9 +3119,9 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .userJoinedVoice, .userLeftVoice, .userMovedVoice:
             return [.user, .userId, .username, .userMention, .voiceChannel, .voiceChannelId, .guild, .guildId, .guildName, .duration]
-        case .messageContains:
+        case .messageCreated:
             return [.user, .userId, .username, .userMention, .message, .messageId, .channel, .channelId, .channelName, .guild, .guildId, .guildName]
-        case .memberJoined:
+        case .memberJoined, .memberLeft:
             return [.user, .userId, .username, .userMention, .guild, .guildId, .guildName, .memberCount]
         case .reactionAdded:
             return [.user, .userId, .username, .userMention, .message, .messageId, .channel, .channelId, .reaction, .reactionEmoji, .guild, .guildId]
@@ -3111,7 +3146,12 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
     case usernameContains = "Username Contains"
     case minimumDuration = "Duration In Channel"
     case channelIs = "Channel Is"
+    case channelCategory = "Channel Category Is"
     case userHasRole = "User Has Role"
+    case userJoinedRecently = "User Joined Recently"
+    case messageContains = "Message Contains"
+    case messageStartsWith = "Message Starts With"
+    case messageRegex = "Message Matches Regex"
 
     var id: String { rawValue }
 
@@ -3122,7 +3162,12 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
         case .usernameContains: return "text.magnifyingglass"
         case .minimumDuration: return "timer"
         case .channelIs: return "number"
+        case .channelCategory: return "folder"
         case .userHasRole: return "person.crop.circle.badge.checkmark"
+        case .userJoinedRecently: return "clock.arrow.circlepath"
+        case .messageContains: return "text.quote"
+        case .messageStartsWith: return "text.alignleft"
+        case .messageRegex: return "asterisk.circle"
         }
     }
     
@@ -3137,10 +3182,12 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
             return [.user, .username]
         case .minimumDuration:
             return [.duration]
-        case .channelIs:
+        case .channelIs, .channelCategory:
             return [.channel, .channelId]
-        case .userHasRole:
+        case .userHasRole, .userJoinedRecently:
             return [.user, .userId]
+        case .messageContains, .messageStartsWith, .messageRegex:
+            return [.message]
         }
     }
 }
@@ -3149,7 +3196,6 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case sendMessage = "Send Message"
     case addLogEntry = "Add Log Entry"
     case setStatus = "Set Bot Status"
-    case replyToMessage = "Reply to Message"
     case sendDM = "Send DM"
     case deleteMessage = "Delete Message"
     case addReaction = "Add Reaction"
@@ -3181,7 +3227,6 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .sendMessage: return "paperplane.fill"
         case .addLogEntry: return "list.bullet.clipboard"
         case .setStatus: return "dot.radiowaves.left.and.right"
-        case .replyToMessage: return "arrow.turn.down.left"
         case .sendDM: return "envelope.fill"
         case .deleteMessage: return "trash.fill"
         case .addReaction: return "face.smiling"
@@ -3209,8 +3254,9 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .sendMessage, .sendDM, .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .createChannel, .webhook:
             return []
-        case .replyToMessage, .deleteMessage, .addReaction, .replyToTrigger:
+        case .deleteMessage, .addReaction, .replyToTrigger:
             return [.message, .messageId]
+
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser:
             return [.user, .userId]
         case .sendToChannel:
@@ -3225,7 +3271,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .generateAIResponse:
             return [.aiResponse]
-        case .sendMessage, .replyToMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
+        case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
              .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
              .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
              .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
@@ -3236,7 +3282,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
-        case .sendMessage, .replyToMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .sendToDM, .sendToChannel, .replyToTrigger:
+        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .sendToDM, .sendToChannel, .replyToTrigger:
             return []
         case .deleteMessage:
             return [.manageMessages]
@@ -3260,8 +3306,9 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Category for block library organization
     var category: BlockCategory {
         switch self {
-        case .sendMessage, .replyToMessage, .sendDM, .deleteMessage, .addReaction:
+        case .sendMessage, .sendDM, .deleteMessage, .addReaction:
             return .messaging
+
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
             return .moderation
         case .createChannel:
@@ -3446,12 +3493,41 @@ struct Rule: Identifiable, Codable, Equatable {
     var actions: [RuleAction] = []
     var isEnabled: Bool = true
 
+    // Legacy trigger properties - preserved for JSON compatibility, migrated to conditions on load
     var triggerServerId: String = ""
     var triggerVoiceChannelId: String = ""
-    var triggerMessageContains: String = "up to?"
+    var triggerMessageContains: String = ""
     var replyToDMs: Bool = false
-
     var includeStageChannels: Bool = true
+
+    /// Memberwise initializer (explicit due to custom Codable conformance)
+    init(
+        id: UUID = UUID(),
+        name: String = "New Action",
+        trigger: TriggerType? = nil,
+        conditions: [Condition] = [],
+        modifiers: [RuleAction] = [],
+        actions: [RuleAction] = [],
+        isEnabled: Bool = true,
+        triggerServerId: String = "",
+        triggerVoiceChannelId: String = "",
+        triggerMessageContains: String = "",
+        replyToDMs: Bool = false,
+        includeStageChannels: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.trigger = trigger
+        self.conditions = conditions
+        self.modifiers = modifiers
+        self.actions = actions
+        self.isEnabled = isEnabled
+        self.triggerServerId = triggerServerId
+        self.triggerVoiceChannelId = triggerVoiceChannelId
+        self.triggerMessageContains = triggerMessageContains
+        self.replyToDMs = replyToDMs
+        self.includeStageChannels = includeStageChannels
+    }
 
     var isEmptyRule: Bool {
         trigger == nil && conditions.isEmpty && actions.isEmpty && modifiers.isEmpty
@@ -3459,6 +3535,58 @@ struct Rule: Identifiable, Codable, Equatable {
 
     static func empty() -> Rule {
         Rule(trigger: nil, conditions: [], modifiers: [], actions: [])
+    }
+
+    // MARK: - Codable Migration
+    
+    /// Coding keys for Rule
+    enum CodingKeys: String, CodingKey {
+        case id, name, trigger, conditions, modifiers, actions, isEnabled
+        case triggerServerId, triggerVoiceChannelId, triggerMessageContains, replyToDMs, includeStageChannels
+    }
+    
+    /// Custom decoder that migrates legacy trigger properties into filter conditions
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        trigger = try container.decodeIfPresent(TriggerType.self, forKey: .trigger)
+        conditions = try container.decode([Condition].self, forKey: .conditions)
+        modifiers = try container.decode([RuleAction].self, forKey: .modifiers)
+        actions = try container.decode([RuleAction].self, forKey: .actions)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        
+        // Legacy properties - keep for backwards compatibility but migrate to conditions
+        triggerServerId = try container.decodeIfPresent(String.self, forKey: .triggerServerId) ?? ""
+        triggerVoiceChannelId = try container.decodeIfPresent(String.self, forKey: .triggerVoiceChannelId) ?? ""
+        triggerMessageContains = try container.decodeIfPresent(String.self, forKey: .triggerMessageContains) ?? ""
+        replyToDMs = try container.decodeIfPresent(Bool.self, forKey: .replyToDMs) ?? false
+        includeStageChannels = try container.decodeIfPresent(Bool.self, forKey: .includeStageChannels) ?? true
+        
+        // Migration: Convert legacy trigger properties to filter conditions
+        // Only add if not already present to avoid duplicates on repeated saves
+        var migratedConditions: [Condition] = []
+        
+        // Migrate triggerServerId -> Condition.server
+        if !triggerServerId.isEmpty && !conditions.contains(where: { $0.type == .server }) {
+            migratedConditions.append(Condition(type: .server, value: triggerServerId))
+        }
+        
+        // Migrate triggerVoiceChannelId -> Condition.voiceChannel
+        if !triggerVoiceChannelId.isEmpty && !conditions.contains(where: { $0.type == .voiceChannel }) {
+            migratedConditions.append(Condition(type: .voiceChannel, value: triggerVoiceChannelId))
+        }
+        
+        // Migrate triggerMessageContains -> Condition.messageContains
+        if !triggerMessageContains.isEmpty && triggerMessageContains != "up to?" && !conditions.contains(where: { $0.type == .messageContains }) {
+            migratedConditions.append(Condition(type: .messageContains, value: triggerMessageContains))
+        }
+        
+        // Append migrated conditions to existing conditions
+        if !migratedConditions.isEmpty {
+            conditions.append(contentsOf: migratedConditions)
+        }
     }
 
     /// Provides the full pipeline of blocks for the rule engine, including migrated legacy toggles
@@ -3503,9 +3631,9 @@ struct Rule: Identifiable, Codable, Equatable {
         case .userJoinedVoice: return "When someone joins voice"
         case .userLeftVoice: return "When someone leaves voice"
         case .userMovedVoice: return "When someone moves voice"
-        case .messageContains:
-            return triggerMessageContains.isEmpty ? "When message contains text" : "When message contains \"\(triggerMessageContains)\""
+        case .messageCreated: return "When a message is received"
         case .memberJoined: return "When a member joins the server"
+        case .memberLeft: return "When a member leaves the server"
         case .reactionAdded: return "When a reaction is added"
         case .slashCommand: return "When a slash command is used"
         }
@@ -3564,6 +3692,16 @@ struct Rule: Identifiable, Codable, Equatable {
                 issues.append(.init(
                     severity: .error,
                     message: "Action '\(action.type.rawValue)' requires context not available: \(missingVars.map(\.displayName).joined(separator: ", "))",
+                    blockType: .action,
+                    blockId: action.id
+                ))
+            }
+            
+            // Task 5: Prevent empty Send Message actions
+            if action.type == .sendMessage && action.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append(.init(
+                    severity: .error,
+                    message: "Message content is required for 'Send Message' actions.",
                     blockType: .action,
                     blockId: action.id
                 ))

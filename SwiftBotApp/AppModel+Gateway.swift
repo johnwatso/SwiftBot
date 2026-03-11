@@ -46,6 +46,8 @@ extension AppModel {
             await handleChannelCreate(payload.d)
         case "GUILD_MEMBER_ADD":
             await handleMemberJoin(payload.d)
+        case "GUILD_MEMBER_REMOVE":
+            await handleMemberLeave(payload.d)
         case "GUILD_DELETE":
             await handleGuildDelete(payload.d)
         default:
