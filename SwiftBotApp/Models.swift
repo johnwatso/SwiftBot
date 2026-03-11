@@ -2400,6 +2400,7 @@ struct VoiceRuleEvent {
     let triggerGuildId: String
     let triggerUserId: String
     let isDirectMessage: Bool
+    let authorIsBot: Bool?
     let joinedAt: Date?
 }
 
@@ -2560,7 +2561,7 @@ final class RuleEngine {
     }
 
     private func matchesConditions(rule: Rule, event: VoiceRuleEvent) -> Bool {
-        for condition in rule.conditions where condition.enabled {
+        for condition in rule.conditions {
             if !matches(condition: condition, event: event) { return false }
         }
         return true
@@ -2610,6 +2611,17 @@ final class RuleEngine {
             guard let regex = try? NSRegularExpression(pattern: value, options: [.caseInsensitive]) else { return true }
             let range = NSRange(content.startIndex..., in: content)
             return regex.firstMatch(in: content, options: [], range: range) != nil
+        case .isDirectMessage:
+            return event.isDirectMessage
+        case .isFromBot:
+            return event.authorIsBot ?? false
+        case .isFromUser:
+            // Filter out bot messages if value is empty or "true"
+            return !(event.authorIsBot ?? false)
+        case .channelType:
+            // Channel type matching - placeholder for now
+            // Would need channel type metadata from Discord
+            return true
         }
     }
 }
@@ -3159,6 +3171,10 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
     case messageContains = "Message Contains"
     case messageStartsWith = "Message Starts With"
     case messageRegex = "Message Matches Regex"
+    case isDirectMessage = "Message Is DM"
+    case isFromBot = "Message Is From Bot"
+    case isFromUser = "Message Is From User"
+    case channelType = "Channel Type Is"
 
     var id: String { rawValue }
 
@@ -3175,6 +3191,10 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
         case .messageContains: return "text.quote"
         case .messageStartsWith: return "text.alignleft"
         case .messageRegex: return "asterisk.circle"
+        case .isDirectMessage: return "envelope.badge.shield.half.filled"
+        case .isFromBot: return "bot"
+        case .isFromUser: return "person"
+        case .channelType: return "number.square"
         }
     }
     
@@ -3195,6 +3215,10 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
             return [.user, .userId]
         case .messageContains, .messageStartsWith, .messageRegex:
             return [.message]
+        case .isDirectMessage, .isFromBot, .isFromUser:
+            return [.message, .channel]
+        case .channelType:
+            return [.channel, .channelId]
         }
     }
 }
@@ -3373,7 +3397,6 @@ struct Condition: Identifiable, Codable, Equatable {
     var type: ConditionType
     var value: String = ""
     var secondaryValue: String = ""
-    var enabled: Bool = true
 }
 
 struct RuleAction: Identifiable, Codable, Equatable {
@@ -3507,6 +3530,9 @@ struct Rule: Identifiable, Codable, Equatable {
     var replyToDMs: Bool = false
     var includeStageChannels: Bool = true
 
+    /// UI state indicating trigger selection is in progress (Validation suspended)
+    var isEditingTrigger: Bool = false
+
     /// Memberwise initializer (explicit due to custom Codable conformance)
     init(
         id: UUID = UUID(),
@@ -3520,7 +3546,8 @@ struct Rule: Identifiable, Codable, Equatable {
         triggerVoiceChannelId: String = "",
         triggerMessageContains: String = "",
         replyToDMs: Bool = false,
-        includeStageChannels: Bool = true
+        includeStageChannels: Bool = true,
+        isEditingTrigger: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -3534,6 +3561,7 @@ struct Rule: Identifiable, Codable, Equatable {
         self.triggerMessageContains = triggerMessageContains
         self.replyToDMs = replyToDMs
         self.includeStageChannels = includeStageChannels
+        self.isEditingTrigger = isEditingTrigger
     }
 
     var isEmptyRule: Bool {
@@ -3648,15 +3676,40 @@ struct Rule: Identifiable, Codable, Equatable {
         }
     }
     
-    /// Validates the rule and returns any issues found
-    var validationIssues: [ValidationIssue] {
-        var issues: [ValidationIssue] = []
+    /// Returns any blocks that are incompatible with the current trigger
+    var incompatibleBlocks: [UUID] {
+        guard let trigger = trigger else { return [] }
+        let available = trigger.providedVariables
+        var ids: [UUID] = []
         
-        // Get variables available from trigger
-        let availableVariables = trigger?.providedVariables ?? []
+        for condition in conditions {
+            if !condition.type.requiredVariables.isSubset(of: available) {
+                ids.append(condition.id)
+            }
+        }
+        for modifier in modifiers {
+            if !modifier.type.requiredVariables.isSubset(of: available) {
+                ids.append(modifier.id)
+            }
+        }
+        for action in actions {
+            if !action.type.requiredVariables.isSubset(of: available) {
+                ids.append(action.id)
+            }
+        }
+        return ids
+    }
+
+    var validationIssues: [ValidationIssue] {
+        guard let trigger = trigger, !isEditingTrigger else {
+            return []
+        }
+        
+        var issues: [ValidationIssue] = []
+        let availableVariables = trigger.providedVariables
         
         // Check conditions for variable availability
-        for condition in conditions where condition.enabled {
+        for condition in conditions {
             let requiredVars = condition.type.requiredVariables
             let missingVars = requiredVars.subtracting(availableVariables)
             if !missingVars.isEmpty {

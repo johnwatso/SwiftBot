@@ -2074,6 +2074,7 @@ actor DiscordService {
                 triggerGuildId: guildId,
                 triggerUserId: userId,
                 isDirectMessage: false,
+                authorIsBot: nil,
                 joinedAt: nil
             )
         }
@@ -2099,6 +2100,7 @@ actor DiscordService {
                 triggerGuildId: guildId,
                 triggerUserId: userId,
                 isDirectMessage: false,
+                authorIsBot: nil,
                 joinedAt: nil
             )
         }
@@ -2124,6 +2126,7 @@ actor DiscordService {
                 triggerGuildId: guildId,
                 triggerUserId: userId,
                 isDirectMessage: false,
+                authorIsBot: nil,
                 joinedAt: nil
             )
         }
@@ -2141,9 +2144,10 @@ actor DiscordService {
               case let .string(channelId)? = map["channel_id"]
         else { return nil }
 
-        if case let .bool(isBot)? = author["bot"], isBot {
-            return nil
-        }
+        let authorIsBot: Bool = {
+            if case let .bool(isBot)? = author["bot"] { return isBot }
+            return false
+        }()
 
         let guildId: String = {
             if case let .string(gid)? = map["guild_id"] { return gid }
@@ -2168,6 +2172,7 @@ actor DiscordService {
             triggerGuildId: guildId,
             triggerUserId: userId,
             isDirectMessage: isDirectMessage,
+            authorIsBot: authorIsBot,
             joinedAt: nil
         )
     }
