@@ -2417,29 +2417,11 @@ actor DiscordService {
                 messageContent = context.aiRewrite ?? "{ai.rewrite} not available"
             }
             
-            // Determine destination based on destinationMode (per UX spec)
-            let destinationMode = action.destinationMode ?? .specificChannel
-            let targetIsDM = context.sendToDM  // DM modifier takes precedence
-            
-            // Resolve target channel and whether to reply
-            let targetChannelId: String
-            let shouldReply: Bool
-            
-            switch destinationMode {
-            case .replyToTrigger:
-                // Reply to the triggering message in its channel
-                targetChannelId = event.triggerChannelId ?? action.channelId
-                shouldReply = event.triggerMessageId != nil
-            case .sameChannel:
-                // Send in same channel as trigger (no reply reference)
-                targetChannelId = event.triggerChannelId ?? action.channelId
-                shouldReply = false
-            case .specificChannel:
-                // Send to explicitly configured channel
-                targetChannelId = action.channelId
-                // Fallback: if configured channel matches trigger channel, could reply
-                shouldReply = (action.channelId == event.triggerChannelId && event.triggerMessageId != nil)
-            }
+            // Determine destination based on modifiers (pipeline architecture)
+            // Priority: DM modifier > Reply To Trigger modifier > Send To Channel modifier > Action's channelId
+            let targetIsDM = context.sendToDM
+            let shouldReply = context.replyToTriggerMessage
+            let targetChannelId = context.targetChannelId ?? action.channelId
             
             guard targetIsDM || !targetChannelId.isEmpty else { return }
 
@@ -2452,7 +2434,7 @@ actor DiscordService {
             } else if shouldReply,
                       let triggerMessageId = event.triggerMessageId,
                       !targetChannelId.isEmpty {
-                // Send as reply to trigger message
+                // Reply To Trigger modifier - send as reply to trigger message
                 let payload: [String: Any] = [
                     "content": rendered,
                     "message_reference": [

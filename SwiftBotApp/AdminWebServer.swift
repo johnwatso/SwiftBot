@@ -2046,22 +2046,12 @@ extension ActionType {
         case .sendMessage:
             return [
                 AdminWebFieldMetadata(
-                    id: "destinationMode",
-                    name: "Destination",
-                    type: .picker,
-                    required: true,
-                    defaultValue: "specificChannel",
-                    description: "Where to send the message (Reply to Trigger requires a message trigger)",
-                    placeholder: nil,
-                    optionsSource: .predefined
-                ),
-                AdminWebFieldMetadata(
                     id: "serverId",
                     name: "Server",
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target server (only used when Destination is 'Specific Channel')",
+                    description: "Target server (used as fallback when no routing modifier is active)",
                     placeholder: "Select a server",
                     optionsSource: .servers
                 ),
@@ -2071,7 +2061,7 @@ extension ActionType {
                     type: .searchablePicker,
                     required: false,
                     defaultValue: nil,
-                    description: "Target channel (only used when Destination is 'Specific Channel', ignored if Send To DM modifier is active)",
+                    description: "Target channel (used as fallback when no routing modifier is active, ignored if Send To DM modifier is active)",
                     placeholder: "Select a channel",
                     optionsSource: .textChannels
                 ),
