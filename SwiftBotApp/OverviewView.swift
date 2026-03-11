@@ -164,7 +164,7 @@ struct OverviewView: View {
                     title: "Actions",
                     value: "\(enabledActionRuleCount) active",
                     subtitle: "\(actionRuleCount) total rules",
-                    symbol: "point.3.filled.connected.trianglepath.dotted",
+                    symbol: "bolt.circle",
                     detail: helpSummary,
                     color: .red
                 )
@@ -231,7 +231,7 @@ struct OverviewView: View {
                 title: "Actions",
                 value: "\(enabledActionRuleCount) active",
                 subtitle: "\(actionRuleCount) total rules",
-                symbol: "point.3.filled.connected.trianglepath.dotted",
+                symbol: "bolt.circle",
                 detail: "Errors \(app.stats.errors)",
                 color: .indigo
             ),

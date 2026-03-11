@@ -2840,7 +2840,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "square.grid.2x2.fill"
         case .patchy: return "hammer.fill"
-        case .voice: return "point.3.filled.connected.trianglepath.dotted"
+        case .voice: return "bolt.circle"
         case .commands: return "terminal.fill"
         case .commandLog: return "list.bullet.clipboard.fill"
         case .wikiBridge: return "book.pages.fill"
