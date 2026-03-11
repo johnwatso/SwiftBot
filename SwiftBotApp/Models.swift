@@ -2511,14 +2511,21 @@ final class RuleStore: ObservableObject {
 }
 
 /// Context maintained during a single rule execution pipeline
-struct PipelineContext {
+struct PipelineContext: CustomStringConvertible {
     var aiResponse: String?
     var targetChannelId: String?
     var targetServerId: String?
     var mentionUser: Bool = true
+    var prependUserMention: Bool = false
     var replyToTriggerMessage: Bool = false
     var mentionRole: String?
     var isDirectMessage: Bool = false
+
+    var description: String {
+        let ai = aiResponse != nil ? "AI(\(aiResponse!.count) chars)" : "nil"
+        let target = targetChannelId ?? "default"
+        return "[PipelineContext target: \(target), mentionUser: \(mentionUser), prepend: \(prependUserMention), reply: \(replyToTriggerMessage), role: \(mentionRole ?? "nil"), ai: \(ai)]"
+    }
 }
 
 @MainActor
@@ -3214,7 +3221,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case replyToTrigger = "Reply To Trigger Message"
     case mentionUser = "Mention User"
     case mentionRole = "Mention Role"
-    case sendToDM = "Send To DM"
+    case disableMention = "Disable User Mentions"
     case sendToChannel = "Send To Channel"
     
     // AI Types
@@ -3243,7 +3250,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .replyToTrigger: return "arrowshape.turn.up.left.fill"
         case .mentionUser: return "at"
         case .mentionRole: return "at.badge.plus"
-        case .sendToDM: return "envelope.fill"
+        case .disableMention: return "at.badge.minus"
         case .sendToChannel: return "number.circle.fill"
         case .generateAIResponse: return "sparkles"
         }
@@ -3257,11 +3264,11 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .deleteMessage, .addReaction, .replyToTrigger:
             return [.message, .messageId]
 
-        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser:
+        case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember, .mentionUser, .disableMention:
             return [.user, .userId]
         case .sendToChannel:
             return [.channel]
-        case .generateAIResponse, .mentionRole, .sendToDM:
+        case .generateAIResponse, .mentionRole:
             return []
         }
     }
@@ -3274,7 +3281,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
              .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
              .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
-             .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+             .mentionUser, .mentionRole, .disableMention, .sendToChannel:
             return []
         }
     }
@@ -3282,7 +3289,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
-        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .sendToDM, .sendToChannel, .replyToTrigger:
+        case .sendMessage, .sendDM, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .generateAIResponse, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .replyToTrigger:
             return []
         case .deleteMessage:
             return [.manageMessages]
@@ -3321,7 +3328,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return .bot
         case .delay, .setVariable, .randomChoice:
             return .utility
-        case .replyToTrigger, .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
             return .modifiers
         case .generateAIResponse:
             return .ai
@@ -3615,8 +3622,10 @@ struct Rule: Identifiable, Codable, Equatable {
             }
             
             if !action.mentionUser { // Default was true in legacy
-                // We'll skip adding a "No Mention" for now to keep it simple, 
-                // or add it if we have a specific block for it.
+                var disableMentionBlock = RuleAction()
+                disableMentionBlock.type = .disableMention
+                pipeline.append(disableMentionBlock)
+                actionWithModifiers.mentionUser = true // Reset so we don't repeat
             }
             
             pipeline.append(actionWithModifiers)

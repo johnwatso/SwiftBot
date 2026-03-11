@@ -350,7 +350,7 @@ struct RuleEditorView: View {
         case .setStatus:
             action.statusText = "Handling \(rule.trigger?.rawValue.lowercased() ?? "action")"
         // Modifier blocks
-        case .replyToTrigger, .mentionUser, .mentionRole, .sendToDM, .sendToChannel:
+        case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel:
             break
         // AI block
         case .generateAIResponse:
@@ -362,7 +362,12 @@ struct RuleEditorView: View {
             break
         }
 
-        rule.actions.append(action)
+        // Fix: Route modifiers to rule.modifiers, actions to rule.actions
+        if type.category == .modifiers {
+            rule.modifiers.append(action)
+        } else {
+            rule.actions.append(action)
+        }
         app.ruleStore.scheduleAutoSave()
     }
 
@@ -927,12 +932,11 @@ struct ActionSectionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Block header — immutable once created; type is fixed at drop time
             HStack {
-                Picker(category == .modifiers ? "Modifier" : "Action", selection: $action.type) {
-                    ForEach(ActionType.allCases.filter { $0.category == category }) { actionType in
-                        Label(actionType.rawValue, systemImage: actionType.symbol).tag(actionType)
-                    }
-                }
+                Label(action.type.rawValue, systemImage: action.type.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(category == .modifiers ? .orange : .mint)
                 Spacer()
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
@@ -1059,8 +1063,8 @@ struct ActionSectionView: View {
                     .foregroundStyle(.secondary)
             case .mentionRole:
                 TextField("Role ID to mention", text: $action.roleId)
-            case .sendToDM:
-                Text("Routes the message to the triggering user's DMs.")
+            case .disableMention:
+                Text("Strips any existing user mentions from the message template.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .sendToChannel:
