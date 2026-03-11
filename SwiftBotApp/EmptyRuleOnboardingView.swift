@@ -21,19 +21,19 @@ struct EmptyRuleOnboardingView: View {
                     .foregroundStyle(.secondary.opacity(0.6))
 
                 VStack(spacing: 8) {
-                    Text("No blocks yet")
+                    Text("No Trigger Selected")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.primary)
 
-                    Text("Add a trigger to begin building this rule.")
+                    Text("Choose a trigger from the Block Library to begin building this rule.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
 
-                // Primary action button: [ + Add Trigger ]
+                // Primary action button
                 Button(action: onAddTriggerTapped) {
-                    Label("Add Trigger", systemImage: "plus")
+                    Label("Choose Trigger", systemImage: "plus")
                         .font(.body.weight(.medium))
                 }
                 .buttonStyle(.borderedProminent)
@@ -62,7 +62,7 @@ struct EmptyRuleOnboardingView: View {
                         .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
                         value: arrowPulse
                     )
-                Text("Drag a trigger from the Block Library")
+                Text("Select a trigger from the Block Library")
                     .font(.caption)
             }
             .foregroundStyle(.secondary.opacity(0.8))
