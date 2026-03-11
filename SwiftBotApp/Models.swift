@@ -3387,16 +3387,15 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     /// Category for block library organization
     var category: BlockCategory {
         switch self {
-        case .sendMessage, .sendDM, .replyToTrigger, .disableMention:
+        case .replyToTrigger, .disableMention, .sendToChannel, .mentionUser, .mentionRole:
             return .messaging
-        case .addReaction, .deleteMessage:
+        case .sendMessage, .sendDM, .addReaction, .deleteMessage, .createChannel, .webhook, 
+             .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice:
             return .actions
         case .generateAIResponse, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
             return .ai
         case .addRole, .removeRole, .timeoutMember, .kickMember, .moveMember:
             return .moderation
-        case .createChannel, .webhook, .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice, .sendToChannel, .mentionUser, .mentionRole:
-            return .actions
         }
     }
 }
