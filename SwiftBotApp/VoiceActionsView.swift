@@ -134,9 +134,6 @@ struct RuleEditorView: View {
     @State private var showOnboardingCard = false
     @State private var guidedStep: GuidedBuildStep = .none
     @State private var scrollToTriggersSignal: Bool = false
-    
-    @State private var shakeOffset: CGFloat = 0
-    @State private var dropWarningMessage: String? = nil
 
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
@@ -173,7 +170,8 @@ struct RuleEditorView: View {
                             }
                         },
                         scrollToTriggersSignal: $scrollToTriggersSignal,
-                        currentTrigger: rule.trigger
+                        currentTrigger: rule.trigger,
+                        isEditingTrigger: rule.isEditingTrigger
                     )
             }
             .frame(minWidth: 250, idealWidth: 270, maxWidth: 300)
@@ -231,7 +229,7 @@ struct RuleEditorView: View {
                                 )
                             )
                         } else {
-                            RuleCanvasSection(title: "Trigger Block", systemImage: "bolt.fill", accent: .yellow,
+                            RuleCanvasSection(title: "Trigger", systemImage: "bolt.fill", accent: .yellow,
                                               guidedHighlight: guidedStep == .trigger) {
                                 TriggerSectionView(
                                     triggerType: rule.trigger
@@ -245,20 +243,22 @@ struct RuleEditorView: View {
                                 // Trigger can be replaced but not deleted
                                 Button {
                                     rule.isEditingTrigger = true
-                                    rule.trigger = nil
+                                    scrollToTriggersSignal = true
                                     guidedStep = .trigger
                                 } label: {
                                     Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(.subheadline.weight(.medium))
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.bordered)
+                                .tint(.yellow)
                                 .padding(.top, 4)
                             }
 
                             RuleFlowArrow()
 
-                            RuleCanvasSection(title: "Filter Blocks", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
+                            RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .cyan) {
                                 ConditionsSectionView(
                                     conditions: $rule.conditions,
                                     serverIds: serverIds,
@@ -286,7 +286,7 @@ struct RuleEditorView: View {
 
                             RuleFlowArrow()
 
-                            RuleCanvasSection(title: "Action Blocks", systemImage: "paperplane.fill", accent: .mint,
+                            RuleCanvasSection(title: "Actions", systemImage: "paperplane.fill", accent: .mint,
                                               guidedHighlight: guidedStep == .action) {
                                 ActionsSectionView(
                                     actions: $rule.actions,
@@ -306,69 +306,6 @@ struct RuleEditorView: View {
                     .frame(maxWidth: 880, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 20)
-                    .offset(x: shakeOffset)
-                    .overlay(alignment: .top) {
-                        if let warning = dropWarningMessage {
-                            Label(warning, systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.orange.opacity(0.2), in: Capsule())
-                                .overlay(Capsule().strokeBorder(Color.orange.opacity(0.4)))
-                                .foregroundStyle(.orange)
-                                .padding(.top, 10)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
-                }
-                .dropDestination(for: String.self) { items, location in
-                    guard let item = items.first else { return false }
-                    
-                    func rejectDrop(missing: String) -> Bool {
-                        withAnimation(.snappy(duration: 0.3)) {
-                            dropWarningMessage = "Requires \(missing) context"
-                        }
-                        
-                        withAnimation(.linear(duration: 0.05).repeatCount(4, autoreverses: true)) {
-                            shakeOffset = 6
-                        }
-                        
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            shakeOffset = 0
-                        }
-                        
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                            withAnimation(.easeOut) {
-                                dropWarningMessage = nil
-                            }
-                        }
-                        return false
-                    }
-                    
-                    if item.hasPrefix("condition:") {
-                        let typeStr = String(item.dropFirst("condition:".count))
-                        if let type = ConditionType(rawValue: typeStr) {
-                            let available = rule.trigger?.providedVariables ?? []
-                            let missing = type.requiredVariables.subtracting(available)
-                            if !missing.isEmpty {
-                                return rejectDrop(missing: missing.first!.rawValue)
-                            }
-                            addCondition(type)
-                            return true
-                        }
-                    } else if item.hasPrefix("action:") {
-                        let typeStr = String(item.dropFirst("action:".count))
-                        if let type = ActionType(rawValue: typeStr) {
-                            let available = rule.trigger?.providedVariables ?? []
-                            let missing = type.requiredVariables.subtracting(available)
-                            if !missing.isEmpty {
-                                return rejectDrop(missing: missing.first!.rawValue)
-                            }
-                            addAction(type)
-                            return true
-                        }
-                    }
-                    return false
                 }
             }
             .background(rulePaneBackground)
@@ -535,6 +472,7 @@ struct RuleBuilderLibraryView: View {
     let focusTrigger: () -> Void
     @Binding var scrollToTriggersSignal: Bool
     let currentTrigger: TriggerType?
+    let isEditingTrigger: Bool
 
     @State private var triggerSectionHighlighted: Bool = false
     private let triggersSectionID = "library-triggers"
@@ -551,29 +489,27 @@ struct RuleBuilderLibraryView: View {
     private func tooltipFor(_ reqs: Set<ContextVariable>) -> String? {
         guard !isCompatible(reqs) else { return nil }
         guard let currentTrigger = currentTrigger else { return "Requires a trigger to be selected." }
-        let missing = reqs.subtracting(currentTrigger.providedVariables)
-        if let first = missing.first {
-            return "Requires \(first.rawValue) context."
-        }
-        return "Incompatible with current trigger."
+        return "Requires \(reqs.friendlyRequirement)."
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    RuleLibrarySection(title: "Triggers", highlighted: triggerSectionHighlighted) {
-                        ForEach(TriggerType.allCases) { type in
-                            RuleLibraryButton(
-                                title: type.rawValue,
-                                subtitle: "Set this as the rule trigger",
-                                systemImage: type.symbol,
-                                accent: .yellow,
-                                action: { onSetTrigger(type); focusTrigger() }
-                            )
+                    if currentTrigger == nil || isEditingTrigger {
+                        RuleLibrarySection(title: currentTrigger == nil ? "Select a Trigger" : "Triggers", highlighted: triggerSectionHighlighted) {
+                            ForEach(TriggerType.allCases) { type in
+                                RuleLibraryButton(
+                                    title: type.rawValue,
+                                    subtitle: "Set this as the rule trigger",
+                                    systemImage: type.symbol,
+                                    accent: .yellow,
+                                    action: { onSetTrigger(type); focusTrigger() }
+                                )
+                            }
                         }
+                        .id(triggersSectionID)
                     }
-                    .id(triggersSectionID)
 
             RuleLibrarySection(title: "Filters") {
                 ForEach(ConditionType.allCases) { type in
@@ -798,12 +734,6 @@ struct RuleLibraryButton: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .help(isDisabled ? (disabledReason ?? "Incompatible") : "")
-        .background {
-            if let dragItem = dragItem {
-                Color.clear
-                    .draggable(dragItem)
-            }
-        }
     }
 }
 
@@ -904,7 +834,7 @@ struct ConditionsSectionView: View {
                     ConditionRowView(
                         condition: $condition,
                         isIncompatible: !isCompat,
-                        missingContext: missing.first.map { "Requires \($0.rawValue) context" },
+                        missingContext: missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)",
                         serverIds: serverIds,
                         serverName: serverName,
                         voiceChannels: voiceChannels,
@@ -1085,7 +1015,7 @@ struct ActionsSectionView: View {
                         category: category,
                         allModifiers: allModifiers,
                         isIncompatible: !isCompat,
-                        missingContext: missing.first.map { "Requires \($0.rawValue) context" },
+                        missingContext: missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)",
                         serverIds: serverIds,
                         serverName: serverName,
                         textChannels: textChannelsByServer[action.serverId] ?? [],
