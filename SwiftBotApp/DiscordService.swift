@@ -2053,6 +2053,9 @@ actor DiscordService {
         for ruleResult in ruleActions {
             var context = PipelineContext()
             context.isDirectMessage = ruleResult.isDM
+            context.triggerGuildId = event.triggerGuildId
+            context.triggerChannelId = event.triggerChannelId
+            context.triggerMessageId = event.triggerMessageId
             
             discordLogger.debug("Executing rule pipeline: \(ruleResult.actions.count) blocks. Initial context: \(context)")
             
@@ -2417,36 +2420,68 @@ actor DiscordService {
                 messageContent = context.aiRewrite ?? "{ai.rewrite} not available"
             }
             
-            // Determine destination based on modifiers (pipeline architecture)
-            // Priority: DM modifier > Reply To Trigger modifier > Send To Channel modifier > Action's channelId
             let targetIsDM = context.sendToDM
-            let shouldReply = context.replyToTriggerMessage
-            let targetChannelId = context.targetChannelId ?? action.channelId
-            
-            guard targetIsDM || !targetChannelId.isEmpty else { return }
-
             let rendered = renderMessage(template: messageContent, event: event, context: context)
 
             if targetIsDM && !event.userId.isEmpty {
-                // DM modifier takes precedence
                 _ = try? await sendDM(userId: event.userId, content: rendered)
                 context.eventHandled = true
-            } else if shouldReply,
-                      let triggerMessageId = event.triggerMessageId,
-                      !targetChannelId.isEmpty {
-                // Reply To Trigger modifier - send as reply to trigger message
+                return
+            }
+
+            let modifierTargetChannelId = context.targetChannelId
+            let triggerMessageId = context.triggerMessageId ?? event.triggerMessageId
+            let triggerChannelId = context.triggerChannelId ?? event.triggerChannelId
+
+            if context.replyToTriggerMessage,
+               let triggerMessageId,
+               let triggerChannelId,
+               !triggerChannelId.isEmpty {
                 let payload: [String: Any] = [
                     "content": rendered,
                     "message_reference": [
                         "message_id": triggerMessageId,
-                        "channel_id": targetChannelId,
+                        "channel_id": triggerChannelId,
                         "fail_if_not_exists": false
                     ]
                 ]
-                _ = try? await sendMessage(channelId: targetChannelId, payload: payload, token: token)
+                _ = try? await sendMessage(channelId: triggerChannelId, payload: payload, token: token)
                 context.eventHandled = true
-            } else if !targetChannelId.isEmpty {
-                // Send regular message to target channel
+                return
+            }
+
+            let destinationMode = action.destinationMode ?? MessageDestination.defaultMode(for: event, context: context)
+
+            switch destinationMode {
+            case .replyToTrigger:
+                if let triggerMessageId,
+                   let triggerChannelId,
+                   !triggerChannelId.isEmpty {
+                    let payload: [String: Any] = [
+                        "content": rendered,
+                        "message_reference": [
+                            "message_id": triggerMessageId,
+                            "channel_id": triggerChannelId,
+                            "fail_if_not_exists": false
+                        ]
+                    ]
+                    _ = try? await sendMessage(channelId: triggerChannelId, payload: payload, token: token)
+                    context.eventHandled = true
+                } else if let fallbackChannelId = modifierTargetChannelId ?? triggerChannelId, !fallbackChannelId.isEmpty {
+                    try? await sendMessage(channelId: fallbackChannelId, content: rendered, token: token)
+                    context.eventHandled = true
+                } else if !action.channelId.isEmpty {
+                    try? await sendMessage(channelId: action.channelId, content: rendered, token: token)
+                    context.eventHandled = true
+                }
+            case .sameChannel:
+                let targetChannelId = modifierTargetChannelId ?? triggerChannelId ?? event.channelId
+                guard !targetChannelId.isEmpty else { return }
+                try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
+                context.eventHandled = true
+            case .specificChannel:
+                let targetChannelId = modifierTargetChannelId ?? action.channelId
+                guard !targetChannelId.isEmpty else { return }
                 try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
                 context.eventHandled = true
             }
