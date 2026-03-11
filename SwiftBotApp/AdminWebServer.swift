@@ -1679,6 +1679,9 @@ struct AdminWebBuilderMetadata: Codable {
     /// Available block types organized by category
     let categories: [AdminWebCategoryMetadata]
     
+    /// All available action/modifier/AI blocks with full metadata
+    let blocks: [AdminWebBlockMetadata]
+    
     /// All available context variables for templating
     let variables: [AdminWebVariableMetadata]
     
@@ -1784,6 +1787,7 @@ extension AdminWebBuilderMetadata {
             triggers: TriggerType.allCases.map { $0.toMetadata() },
             conditions: ConditionType.allCases.map { $0.toMetadata() },
             categories: BlockCategory.allCases.map { $0.toMetadata() },
+            blocks: ActionType.allCases.map { $0.toMetadata() },
             variables: ContextVariable.allCases.map { $0.toMetadata() },
             schemaVersion: 1
         )
