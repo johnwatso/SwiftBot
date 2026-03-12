@@ -3956,7 +3956,7 @@ final class AppModel: ObservableObject {
     }
 
     func pullConfigFilesFromLeader() async {
-        guard settings.clusterMode == .standby else { return }
+        guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
         guard let data = await cluster.fetchConfigFiles() else { return }
         let imported = await store.importMeshSyncedFiles(
             data,
