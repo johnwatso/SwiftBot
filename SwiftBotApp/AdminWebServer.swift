@@ -1267,6 +1267,8 @@ actor AdminWebServer {
             return handleLogout(request: request)
         case ("GET", "/api/auth/session"):
             return handleSessionInfo(request: request)
+        case ("GET", "/api/server/info"):
+            return await handleServerInfo(request: request)
         default:
             return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
         }
@@ -1446,6 +1448,30 @@ actor AdminWebServer {
             "permissions": ["admin"],
             "sessionToken": session.id,
             "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
+        ])
+    }
+
+    private func handleServerInfo(request: HTTPRequest) async -> Data {
+        guard authenticatedSession(for: request) != nil else {
+            return unauthorizedResponse()
+        }
+        
+        // Get status info for Discord connection state
+        let status = await statusProvider?()
+        let discordConnected = status?.botStatus == "online" || status?.botStatus == "connected"
+        
+        // Get config info for cluster details
+        let config = await configProvider?()
+        let clusterMode = config?.swiftMesh.mode ?? "standalone"
+        let nodeName = config?.swiftMesh.nodeName ?? "SwiftBot"
+        let meshEnabled = config?.general.webUIEnabled ?? false
+        
+        return jsonResponse([
+            "nodeName": nodeName,
+            "version": "1.0",
+            "clusterMode": clusterMode,
+            "meshEnabled": meshEnabled,
+            "discordConnected": discordConnected
         ])
     }
 
