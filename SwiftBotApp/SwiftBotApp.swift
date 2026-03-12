@@ -105,6 +105,21 @@ struct SwiftBotApp: App {
                 }
                 .disabled(!updater.canCheckForUpdates)
             }
+            if appModel.canSwitchDashboardViewMode {
+                CommandMenu("View") {
+                    Button("Local Dashboard") {
+                        appModel.viewMode = .local
+                    }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
+                    .disabled(appModel.viewMode == .local)
+
+                    Button("Remote Dashboard") {
+                        appModel.viewMode = .remote
+                    }
+                    .keyboardShortcut("2", modifiers: [.command, .option])
+                    .disabled(appModel.viewMode == .remote)
+                }
+            }
         }
 
         Settings {
