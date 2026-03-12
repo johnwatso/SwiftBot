@@ -786,6 +786,7 @@ private struct AdminWebStatusRow: View {
 
 struct AdminWebAuthenticationSection: View {
     @EnvironmentObject var app: AppModel
+    @State private var didCopyRemoteAccessToken = false
 
     private var hostname: String {
         app.settings.adminWebUI.normalizedHostname
@@ -863,6 +864,40 @@ struct AdminWebAuthenticationSection: View {
                     }
                 }
             }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Remote App Access Token")
+                    .font(.headline.weight(.semibold))
+
+                Text("Use this bearer token to connect a SwiftBot desktop client without the browser-based sign-in flow.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    Text(app.settings.remoteAccessToken)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(app.settings.remoteAccessToken, forType: .string)
+                        didCopyRemoteAccessToken = true
+                    } label: {
+                        Label(didCopyRemoteAccessToken ? "Copied" : "Copy", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .onChange(of: app.settings.remoteAccessToken) { _, _ in
+            didCopyRemoteAccessToken = false
         }
     }
 }

@@ -5,6 +5,17 @@ import NIOCore
 import NIOPosix
 @preconcurrency import NIOSSL
 
+// MARK: - Architecture Note
+//
+// AdminWebServer intentionally exposes only stateless HTTP endpoints.
+// No WebSocket endpoints exist for the admin UI.
+// Real-time events are handled internally via the Discord gateway WebSocket
+// inside DiscordService.swift (outbound connection to Discord only).
+//
+// Authentication supports both:
+// - Cookie-based: swiftbot_admin_session (for browser WebUI)
+// - Bearer token: Authorization: Bearer <session-id> (for remote clients)
+
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
     let botUsername: String
@@ -297,6 +308,7 @@ actor AdminWebServer {
         var discordOAuth: OAuthProviderSettings
         var redirectPath: String
         var allowedUserIDs: [String]
+        var remoteAccessToken: String
     }
 
     private struct HTTPRequest {
@@ -321,6 +333,7 @@ actor AdminWebServer {
     private struct PendingState {
         let value: String
         let expiresAt: Date
+        let appRedirectURL: String?
     }
 
     private struct DiscordUser {
@@ -347,7 +360,8 @@ actor AdminWebServer {
         https: nil,
         discordOAuth: OAuthProviderSettings(),
         redirectPath: "/auth/discord/callback",
-        allowedUserIDs: []
+        allowedUserIDs: [],
+        remoteAccessToken: ""
     )
     private var listener: NWListener?
     private var nioChannel: Channel?
@@ -356,6 +370,12 @@ actor AdminWebServer {
     private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
+    private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
+    private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
+    private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
+    private var remoteEventsProvider: (@Sendable () async -> RemoteEventsPayload)?
+    private var remoteSettingsProvider: (@Sendable () async -> AdminWebConfigPayload)?
+    private var updateRemoteSettings: (@Sendable (AdminWebConfigPatch) async -> Bool)?
     private var connectedGuildIDsProvider: (@Sendable () async -> Set<String>)?
     private var currentPrefixProvider: (@Sendable () async -> String)?
     private var updatePrefix: (@Sendable (String) async -> Bool)?
@@ -397,6 +417,12 @@ actor AdminWebServer {
     func configure(
         config: Configuration,
         statusProvider: @escaping @Sendable () async -> AdminWebStatusPayload,
+        remoteStatusProvider: @escaping @Sendable () async -> RemoteStatusPayload,
+        remoteRulesProvider: @escaping @Sendable () async -> RemoteRulesPayload,
+        updateRemoteRule: @escaping @Sendable (Rule) async -> Bool,
+        remoteEventsProvider: @escaping @Sendable () async -> RemoteEventsPayload,
+        remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
+        updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
@@ -431,6 +457,12 @@ actor AdminWebServer {
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
+        self.remoteStatusProvider = remoteStatusProvider
+        self.remoteRulesProvider = remoteRulesProvider
+        self.updateRemoteRule = updateRemoteRule
+        self.remoteEventsProvider = remoteEventsProvider
+        self.remoteSettingsProvider = remoteSettingsProvider
+        self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
@@ -762,6 +794,62 @@ actor AdminWebServer {
             return serveAsset(named: "AppIcon", ext: "png")
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
+        case ("GET", "/api/remote/status"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteStatusProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "status_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/remote/rules"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteRulesProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "rules_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/remote/rules/update"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let patch = try? decoder.decode(RemoteRuleUpsertRequest.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateRemoteRule?(patch.rule) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Remote API updated rule \(patch.rule.name)")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/remote/events"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteEventsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "events_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/remote/settings"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteSettingsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "settings_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/remote/settings/update"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let patch = try? decoder.decode(AdminWebConfigPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateRemoteSettings?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Remote API updated settings")
+            return jsonResponse(["ok": true])
         case ("GET", "/api/status"):
             let payload = await statusProvider?() ?? AdminWebStatusPayload(
                 botStatus: "stopped",
@@ -1144,10 +1232,44 @@ actor AdminWebServer {
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
             return jsonResponse(["ok": true])
+            
+        // MARK: - OAuth Authentication
+        //
+        // The Discord OAuth routes are currently used for SwiftBot Remote
+        // and WebUI authentication.
+        //
+        // Flow:
+        //
+        // Remote Client → /auth/discord/login
+        //               → Discord OAuth
+        //               → /auth/discord/callback
+        //               → session created
+        //               → /api/auth/session returns token
+        //
+        // Remote clients then authenticate API requests using:
+        //
+        // Authorization: Bearer <session-id>
+        //
+        // NOTE FOR FUTURE SWIFTMESH WORK:
+        //
+        // SwiftMesh nodes currently authenticate using mesh tokens.
+        // However, this OAuth identity system may later be reused for:
+        //
+        // • administrative access to cluster nodes
+        // • remote mesh management
+        // • node approval flows
+        //
+        // SwiftMesh authentication should remain separate from user OAuth
+        // unless explicitly designed to share the same identity layer.
+        //
         case ("GET", "/auth/discord/login"):
-            return await handleDiscordLogin()
+            return await handleDiscordLogin(request: request)
         case ("POST", "/auth/logout"):
             return handleLogout(request: request)
+        case ("GET", "/api/auth/session"):
+            return handleSessionInfo(request: request)
+        case ("GET", "/api/server/info"):
+            return await handleServerInfo(request: request)
         default:
             return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
         }
@@ -1232,7 +1354,7 @@ actor AdminWebServer {
         return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
     }
 
-    private func handleDiscordLogin() async -> Data {
+    private func handleDiscordLogin(request: HTTPRequest) async -> Data {
         let clientID = config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let clientSecret = config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty, !clientSecret.isEmpty else {
@@ -1240,7 +1362,12 @@ actor AdminWebServer {
         }
 
         let state = randomToken()
-        pendingStates[state] = PendingState(value: state, expiresAt: Date().addingTimeInterval(stateTTL))
+        let appRedirectURL = validatedAppRedirectURL(from: request.query["return_to"])
+        pendingStates[state] = PendingState(
+            value: state,
+            expiresAt: Date().addingTimeInterval(stateTTL),
+            appRedirectURL: appRedirectURL?.absoluteString
+        )
 
         let uri = redirectURI()
         await logger?("[OAuth] Redirect URI: \(uri)")
@@ -1266,7 +1393,7 @@ actor AdminWebServer {
         guard let code = request.query["code"], let state = request.query["state"] else {
             return httpResponse(status: "400 Bad Request", body: Data("Missing code or state.".utf8))
         }
-        guard pendingStates.removeValue(forKey: state) != nil else {
+        guard let pendingState = pendingStates.removeValue(forKey: state) else {
             return httpResponse(status: "400 Bad Request", body: Data("State expired or invalid.".utf8))
         }
 
@@ -1291,8 +1418,12 @@ actor AdminWebServer {
             sessions[session.id] = session
             persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
+            let redirectTarget = remoteAuthRedirectURL(
+                from: pendingState.appRedirectURL,
+                sessionID: session.id
+            ) ?? "/"
             return redirectResponse(
-                to: "/",
+                to: redirectTarget,
                 headers: ["Set-Cookie": sessionCookie(for: session.id)]
             )
         } catch {
@@ -1313,13 +1444,106 @@ actor AdminWebServer {
         )
     }
 
+    private func handleSessionInfo(request: HTTPRequest) -> Data {
+        guard let session = authenticatedSession(for: request) else {
+            return unauthorizedResponse()
+        }
+        
+        return jsonResponse([
+            "user": session.username,
+            "discordUserID": session.userID,
+            "globalName": session.globalName ?? "",
+            "discriminator": session.discriminator ?? "",
+            "avatar": session.avatar ?? "",
+            "permissions": ["admin"],
+            "sessionToken": session.id,
+            "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
+        ])
+    }
+
+    private func handleServerInfo(request: HTTPRequest) async -> Data {
+        guard authenticatedSession(for: request) != nil else {
+            return unauthorizedResponse()
+        }
+        
+        // Get status info for Discord connection state
+        let status = await statusProvider?()
+        let discordConnected = status?.botStatus == "online" || status?.botStatus == "connected"
+        
+        // Get config info for cluster details
+        let config = await configProvider?()
+        let clusterMode = config?.swiftMesh.mode ?? "standalone"
+        let nodeName = config?.swiftMesh.nodeName ?? "SwiftBot"
+        let meshEnabled = config?.general.webUIEnabled ?? false
+        
+        return jsonResponse([
+            "nodeName": nodeName,
+            "version": "1.0",
+            "clusterMode": clusterMode,
+            "meshEnabled": meshEnabled,
+            "discordConnected": discordConnected
+        ])
+    }
+
     private func authenticatedSession(for request: HTTPRequest) -> Session? {
-        guard let sessionID = cookie(named: "swiftbot_admin_session", request: request),
-              let session = sessions[sessionID],
-              session.expiresAt > Date() else {
+        // First try cookie-based session (WebUI)
+        if let sessionID = cookie(named: "swiftbot_admin_session", request: request),
+           let session = sessions[sessionID],
+           session.expiresAt > Date() {
+            return session
+        }
+        
+        // Then try Bearer token (Remote client)
+        if let authorization = request.headers["authorization"],
+           authorization.hasPrefix("Bearer ") {
+            let sessionID = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespaces)
+            if let session = sessions[sessionID],
+               session.expiresAt > Date() {
+                return session
+            }
+        }
+        
+        return nil
+    }
+
+    private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
+        if authenticatedSession(for: request) != nil {
+            return true
+        }
+
+        let expectedToken = config.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expectedToken.isEmpty,
+              let authorization = request.headers["authorization"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              authorization.hasPrefix("Bearer ") else {
+            return false
+        }
+
+        let providedToken = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return !providedToken.isEmpty && providedToken == expectedToken
+    }
+
+    private func validatedAppRedirectURL(from rawValue: String?) -> URL? {
+        guard let rawValue,
+              let url = URL(string: rawValue),
+              url.scheme?.lowercased() == "swiftbot",
+              url.host?.lowercased() == "auth" else {
             return nil
         }
-        return session
+        return url
+    }
+
+    private func remoteAuthRedirectURL(from rawValue: String?, sessionID: String) -> String? {
+        guard let rawValue,
+              let url = URL(string: rawValue),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "session" }
+        queryItems.append(URLQueryItem(name: "session", value: sessionID))
+        components.queryItems = queryItems
+        return components.url?.absoluteString
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {

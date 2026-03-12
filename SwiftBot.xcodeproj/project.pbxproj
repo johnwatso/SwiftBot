@@ -41,6 +41,14 @@
 		A1B2C3D40111223344556A04 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556904 /* NIOCore */; };
 		A1B2C3D40111223344556A05 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556905 /* NIOPosix */; };
 		A1B2C3D40111223344556A06 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556906 /* NIOSSL */; };
+		A01010101010101010101001 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101001 /* RemoteModeRootView.swift */; };
+		A01010101010101010101002 /* Services/RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101002 /* Services/RemoteModels.swift */; };
+		A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101003 /* Services/RemoteAPI.swift */; };
+		A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101004 /* Services/RemoteControlService.swift */; };
+		A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101005 /* Services/BotDataProvider.swift */; };
+		A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101006 /* Services/LocalBotProvider.swift */; };
+		A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101007 /* Services/RemoteBotProvider.swift */; };
+
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
 		AA1000011122334455667701 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667701 /* PreferencesView.swift */; };
@@ -53,6 +61,12 @@
 		B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708001122A3 /* CommandsView.swift */; };
 		B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6C2021122334455667788 /* SchemaSettings.swift */; };
 		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
+		5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */; };
+		3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D6839427040358B4FBA90 /* ModeSelectionView.swift */; };
+		45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */; };
+		EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */; };
+		49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199651172D924276B1B7FA3B /* RemoteSetupView.swift */; };
+		222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* OnboardingStyles.swift */; };
 		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
 		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
 		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
@@ -92,6 +106,14 @@
 		A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareTunnelClient.swift; sourceTree = "<group>"; };
 		A1B2C3D40111223344556705 /* Security/TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/TunnelManager.swift; sourceTree = "<group>"; };
+		B01010101010101010101001 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
+		B01010101010101010101002 /* Services/RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteModels.swift; sourceTree = "<group>"; };
+		B01010101010101010101003 /* Services/RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteAPI.swift; sourceTree = "<group>"; };
+		B01010101010101010101004 /* Services/RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteControlService.swift; sourceTree = "<group>"; };
+		B01010101010101010101005 /* Services/BotDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/BotDataProvider.swift; sourceTree = "<group>"; };
+		B01010101010101010101006 /* Services/LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalBotProvider.swift; sourceTree = "<group>"; };
+		B01010101010101010101007 /* Services/RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteBotProvider.swift; sourceTree = "<group>"; };
+
 		A1B2C3D4E5F60708001122A3 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
@@ -104,6 +126,12 @@
 		AA2000011122334455667707 /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
 		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingRootView.swift; sourceTree = "<group>"; };
+		142D6839427040358B4FBA90 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
+		DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/StandaloneSetupView.swift; sourceTree = "<group>"; };
+		2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
+		199651172D924276B1B7FA3B /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
+		F2206311680E46EFA928E726 /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
 		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
 		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
@@ -158,6 +186,12 @@
 			children = (
 				6337960E98AEBC0A19A67531 /* AppModel.swift */,
 				11C22D661122334455667788 /* AdminWebServer.swift */,
+				B01010101010101010101002 /* Services/RemoteModels.swift */,
+				B01010101010101010101003 /* Services/RemoteAPI.swift */,
+				B01010101010101010101004 /* Services/RemoteControlService.swift */,
+				B01010101010101010101005 /* Services/BotDataProvider.swift */,
+				B01010101010101010101006 /* Services/LocalBotProvider.swift */,
+				B01010101010101010101007 /* Services/RemoteBotProvider.swift */,
 				A1B2C3D40111223344556701 /* Security/CertificateManager.swift */,
 				A1B2C3D40111223344556702 /* Security/ACMEClient.swift */,
 				A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */,
@@ -187,6 +221,7 @@
 				5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */,
 				0A6B7D201122334455667788 /* Resources */,
 				35480F12EB2C7DFB546BD550 /* RootView.swift */,
+				B01010101010101010101001 /* RemoteModeRootView.swift */,
 				C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */,
 				D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */,
 				F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */,
@@ -289,7 +324,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
+								5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */,
+				3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */,
+				45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */,
+				EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */,
+				49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */,
+				222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */,
+259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
 				11C22D551122334455667788 /* AdminWebServer.swift in Sources */,
 				A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */,
 				A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */,
@@ -314,9 +355,16 @@
 				B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */,
 				C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */,
 				538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */,
+				A01010101010101010101001 /* RemoteModeRootView.swift in Sources */,
 				C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */,
 				D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */,
 				D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */,
+				A01010101010101010101002 /* Services/RemoteModels.swift in Sources */,
+				A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */,
+				A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */,
+				A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */,
+				A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */,
+				A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */,
 				F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */,
 				B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */,
 				D4E5F607080011223344556B /* LogsView.swift in Sources */,

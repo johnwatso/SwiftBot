@@ -319,14 +319,7 @@ struct GeneralSettingsView: View {
 
     @ViewBuilder
     private func sectionTitle(_ title: String, symbol: String) -> some View {
-        Label {
-            Text(title)
-                .font(.headline)
-        } icon: {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
+        SettingsSectionHeader(title: title, systemImage: symbol)
     }
 
     @ViewBuilder
@@ -633,8 +626,7 @@ struct GeneralSettingsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Label(title, systemImage: symbol)
-                    .font(.headline)
+                SettingsSectionHeader(title: title, systemImage: symbol)
 
                 Text(subtitle)
                     .font(.subheadline)
