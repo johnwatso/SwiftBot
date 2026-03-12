@@ -2,8 +2,13 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Overview view that works with any BotDataProvider (local or remote).
+/// Uses the provider protocol to access bot data, enabling a unified UI shell.
 struct OverviewView: View {
+    /// The bot data provider (injected via environment from unified shell)
+    @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
+    
     var onOpenSwiftMesh: (() -> Void)?
     @AppStorage("overview.metric.order.v1") private var metricOrderStorage = ""
     @AppStorage("overview.metric.hidden.v1") private var metricHiddenStorage = ""
@@ -28,28 +33,42 @@ struct OverviewView: View {
         let members: [VoiceMemberPresence]
     }
 
+    // MARK: - Data Access via Provider
+    
+    private var settings: BotSettings { provider.settings }
+    private var status: BotStatus { provider.status }
+    private var stats: StatCounter { provider.stats }
+    private var voiceLog: [VoiceEventLogEntry] { provider.voiceLog }
+    private var commandLog: [CommandLogEntry] { provider.commandLog }
+    private var activeVoice: [VoiceMemberPresence] { provider.activeVoice }
+    private var uptime: UptimeInfo? { provider.uptime }
+    private var connectedServers: [String: String] { provider.connectedServers }
+    private var clusterSnapshot: ClusterSnapshot { provider.clusterSnapshot }
+    private var clusterNodes: [ClusterNodeStatus] { provider.clusterNodes }
+    private var rules: [Rule] { provider.rules }
+
     private var recentVoice: [VoiceEventLogEntry] {
-        Array(app.voiceLog.prefix(5))
+        Array(voiceLog.prefix(5))
     }
 
     private var recentCommands: [CommandLogEntry] {
-        Array(app.commandLog.prefix(5))
+        Array(commandLog.prefix(5))
     }
 
     private var workerJobCount: Int {
-        app.commandLog.filter { $0.executionRoute == "Worker" || $0.executionRoute == "Remote" }.count
+        commandLog.filter { $0.executionRoute == "Worker" || $0.executionRoute == "Remote" }.count
     }
 
     private var aiProviderSummary: String {
-        app.settings.preferredAIProvider.rawValue
+        settings.preferredAIProvider.rawValue
     }
 
     private var enabledWikiSourceCount: Int {
-        app.settings.wikiBot.sources.filter(\.enabled).count
+        settings.wikiBot.sources.filter(\.enabled).count
     }
 
     private var enabledWikiCommandCount: Int {
-        app.settings.wikiBot.sources
+        settings.wikiBot.sources
             .filter(\.enabled)
             .reduce(into: 0) { count, source in
                 count += source.commands.filter(\.enabled).count
@@ -57,33 +76,29 @@ struct OverviewView: View {
     }
 
     private var patchyTargetCount: Int {
-        app.settings.patchy.sourceTargets.count
+        settings.patchy.sourceTargets.count
     }
 
     private var patchyEnabledTargetCount: Int {
-        app.settings.patchy.sourceTargets.filter(\.isEnabled).count
-    }
-
-    private var actionRuleCount: Int {
-        app.ruleStore.rules.count
+        settings.patchy.sourceTargets.filter(\.isEnabled).count
     }
 
     private var enabledActionRuleCount: Int {
-        app.ruleStore.rules.filter(\.isEnabled).count
+        rules.filter(\.isEnabled).count
     }
 
     private var helpSummary: String {
-        "\(app.settings.help.mode.rawValue) · \(app.settings.help.tone.rawValue)"
+        "\(settings.help.mode.rawValue) · \(settings.help.tone.rawValue)"
     }
 
     private var groupedActiveVoice: [VoiceChannelGroup] {
-        let grouped = Dictionary(grouping: app.activeVoice) { member in
+        let grouped = Dictionary(grouping: activeVoice) { member in
             "\(member.guildId):\(member.channelId)"
         }
 
         return grouped.map { key, members in
             let first = members.first
-            let serverName = first.map { app.connectedServers[$0.guildId] ?? $0.guildId } ?? "Unknown Server"
+            let serverName = first.map { connectedServers[$0.guildId] ?? $0.guildId } ?? "Unknown Server"
             let channelName = first?.channelName ?? "Voice Channel"
             let orderedMembers = members.sorted { lhs, rhs in
                 lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
@@ -103,39 +118,39 @@ struct OverviewView: View {
     }
 
     private var availableMetricWidgets: [MetricWidget] {
-        if app.settings.clusterMode == .worker {
+        if settings.clusterMode == .worker {
             return [
                 MetricWidget(
                     id: "status",
                     title: "Status",
                     value: app.primaryServiceStatusText,
-                    subtitle: app.clusterSnapshot.serverStatusText,
+                    subtitle: clusterSnapshot.serverStatusText,
                     symbol: "bolt.horizontal.circle.fill",
-                    detail: "Auto Start \(app.settings.autoStart ? "On" : "Off")",
+                    detail: "Auto Start \(settings.autoStart ? "On" : "Off")",
                     color: .green
                 ),
                 MetricWidget(
                     id: "meshMode",
                     title: "Mesh Mode",
-                    value: app.settings.clusterMode.displayName,
-                    subtitle: app.settings.clusterNodeName,
+                    value: settings.clusterMode.displayName,
+                    subtitle: settings.clusterNodeName,
                     symbol: "point.3.connected.trianglepath.dotted",
-                    detail: "Primary \(app.settings.clusterLeaderAddress.isEmpty ? "Not set" : "Configured")",
+                    detail: "Primary \(settings.clusterLeaderAddress.isEmpty ? "Not set" : "Configured")",
                     color: .purple
                 ),
                 MetricWidget(
                     id: "listenPort",
                     title: "Listen Port",
-                    value: "\(app.clusterSnapshot.listenPort)",
+                    value: "\(clusterSnapshot.listenPort)",
                     subtitle: "worker HTTP service",
                     symbol: "antenna.radiowaves.left.and.right",
-                    detail: "Node \(app.settings.clusterNodeName.isEmpty ? "Unnamed" : app.settings.clusterNodeName)",
+                    detail: "Node \(settings.clusterNodeName.isEmpty ? "Unnamed" : settings.clusterNodeName)",
                     color: .blue
                 ),
                 MetricWidget(
                     id: "inVoice",
                     title: "In Voice",
-                    value: "\(app.activeVoice.count)",
+                    value: "\(activeVoice.count)",
                     subtitle: "users right now",
                     symbol: "person.3.sequence.fill",
                     detail: "Live presence",
@@ -144,7 +159,7 @@ struct OverviewView: View {
                 MetricWidget(
                     id: "wikibridge",
                     title: "WikiBridge",
-                    value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                    value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
                     subtitle: "\(enabledWikiSourceCount) sources",
                     symbol: "book.pages.fill",
                     detail: "\(enabledWikiCommandCount) commands",
@@ -153,7 +168,7 @@ struct OverviewView: View {
                 MetricWidget(
                     id: "patchy",
                     title: "Patchy",
-                    value: app.settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                    value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
                     subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
                     symbol: "hammer.fill",
                     detail: "Jobs \(workerJobCount)",
@@ -163,7 +178,7 @@ struct OverviewView: View {
                     id: "actions",
                     title: "Actions",
                     value: "\(enabledActionRuleCount) active",
-                    subtitle: "\(actionRuleCount) total rules",
+                    subtitle: "\(rules.count) total rules",
                     symbol: "bolt.circle",
                     detail: helpSummary,
                     color: .red
@@ -175,34 +190,34 @@ struct OverviewView: View {
             MetricWidget(
                 id: "status",
                 title: "Status",
-                value: app.status.rawValue.capitalized,
-                subtitle: app.uptime?.text ?? "--",
+                value: status.rawValue.capitalized,
+                subtitle: uptime?.text ?? "--",
                 symbol: "bolt.horizontal.circle.fill",
-                detail: "Auto Start \(app.settings.autoStart ? "On" : "Off")",
+                detail: "Auto Start \(settings.autoStart ? "On" : "Off")",
                 color: .green
             ),
             MetricWidget(
                 id: "servers",
                 title: "Servers",
-                value: "\(app.connectedServers.count)",
+                value: "\(connectedServers.count)",
                 subtitle: "servers connected",
                 symbol: "server.rack",
-                detail: app.settings.clusterMode == .standalone ? "Standalone" : app.settings.clusterMode.displayName,
+                detail: settings.clusterMode == .standalone ? "Standalone" : settings.clusterMode.displayName,
                 color: .blue
             ),
             MetricWidget(
                 id: "inVoice",
                 title: "In Voice",
-                value: "\(app.activeVoice.count)",
+                value: "\(activeVoice.count)",
                 subtitle: "users right now",
                 symbol: "person.3.sequence.fill",
-                detail: "Route \(app.clusterSnapshot.lastJobRoute.rawValue.capitalized)",
+                detail: "Route \(clusterSnapshot.lastJobRoute.rawValue.capitalized)",
                 color: .orange
             ),
             MetricWidget(
                 id: "commandsRun",
                 title: "Commands Run",
-                value: "\(app.stats.commandsRun)",
+                value: "\(stats.commandsRun)",
                 subtitle: "this session",
                 symbol: "terminal.fill",
                 detail: "Recent commands activity",
@@ -211,7 +226,7 @@ struct OverviewView: View {
             MetricWidget(
                 id: "wikibridge",
                 title: "WikiBridge",
-                value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
                 subtitle: "\(enabledWikiSourceCount) sources",
                 symbol: "book.pages.fill",
                 detail: "\(enabledWikiCommandCount) commands",
@@ -220,7 +235,7 @@ struct OverviewView: View {
             MetricWidget(
                 id: "patchy",
                 title: "Patchy",
-                value: app.settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
                 subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
                 symbol: "hammer.fill",
                 detail: "Help \(helpSummary)",
@@ -230,18 +245,18 @@ struct OverviewView: View {
                 id: "actions",
                 title: "Actions",
                 value: "\(enabledActionRuleCount) active",
-                subtitle: "\(actionRuleCount) total rules",
+                subtitle: "\(rules.count) total rules",
                 symbol: "bolt.circle",
-                detail: "Errors \(app.stats.errors)",
+                detail: "Errors \(stats.errors)",
                 color: .indigo
             ),
             MetricWidget(
                 id: "aiBots",
                 title: "AI Bots",
                 value: aiProviderSummary,
-                subtitle: app.settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled",
+                subtitle: settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled",
                 symbol: "sparkles",
-                detail: "Guild AI \(app.settings.behavior.useAIInGuildChannels ? "On" : "Off")",
+                detail: "Guild AI \(settings.behavior.useAIInGuildChannels ? "On" : "Off")",
                 color: .purple
             )
         ]
@@ -320,7 +335,7 @@ struct OverviewView: View {
                                 symbol: widget.symbol,
                                 detail: widget.detail,
                                 color: widget.color,
-                                appleIntelligenceGlowEnabled: widget.id == "aiBots" && app.settings.preferredAIProvider == .apple
+                                appleIntelligenceGlowEnabled: widget.id == "aiBots" && settings.preferredAIProvider == .apple
                             )
                             .rotationEffect(.degrees(isEditingDashboard ? wiggleAmplitude(for: widget.id) : 0))
                             .animation(
@@ -362,9 +377,9 @@ struct OverviewView: View {
                     }
                 }
 
-                if app.settings.clusterMode != .standalone {
+                if settings.clusterMode != .standalone {
                     OverviewClusterSummaryCard(
-                        nodes: app.clusterNodes,
+                        nodes: clusterNodes,
                         onOpenSwiftMesh: onOpenSwiftMesh
                     )
                 }
@@ -400,13 +415,13 @@ struct OverviewView: View {
                 }
 
                 HStack(spacing: 12) {
-                    DashboardPanel(title: app.settings.clusterMode == .worker ? "Worker Activity" : "Currently In Voice") {
-                        if app.settings.clusterMode == .worker {
-                            InfoRow(label: "Server", value: app.clusterSnapshot.serverStatusText)
-                            InfoRow(label: "Last Job", value: app.clusterSnapshot.lastJobSummary)
-                            InfoRow(label: "Last Node", value: app.clusterSnapshot.lastJobNode)
-                            InfoRow(label: "Diagnostics", value: app.clusterSnapshot.diagnostics)
-                        } else if app.activeVoice.isEmpty {
+                    DashboardPanel(title: settings.clusterMode == .worker ? "Worker Activity" : "Currently In Voice") {
+                        if settings.clusterMode == .worker {
+                            InfoRow(label: "Server", value: clusterSnapshot.serverStatusText)
+                            InfoRow(label: "Last Job", value: clusterSnapshot.lastJobSummary)
+                            InfoRow(label: "Last Node", value: clusterSnapshot.lastJobNode)
+                            InfoRow(label: "Diagnostics", value: clusterSnapshot.diagnostics)
+                        } else if activeVoice.isEmpty {
                             PlaceholderPanelLine(text: "No one is in voice right now")
                         } else {
                             ForEach(groupedActiveVoice) { group in
@@ -420,7 +435,7 @@ struct OverviewView: View {
                                         ForEach(group.members) { member in
                                             VoicePresenceMemberRow(
                                                 member: member,
-                                                avatarURL: app.avatarURL(forUserId: member.userId, guildId: member.guildId) ?? app.fallbackAvatarURL(forUserId: member.userId)
+                                                avatarURL: provider.avatarURL(forUserId: member.userId, guildId: member.guildId)
                                             )
                                         }
                                     }
@@ -433,11 +448,11 @@ struct OverviewView: View {
                     }
 
                     DashboardPanel(title: "Bot Info") {
-                        InfoRow(label: "Uptime", value: app.settings.clusterMode == .worker ? "--" : (app.uptime?.text ?? "--"))
-                        InfoRow(label: "Errors", value: "\(app.stats.errors)")
-                        InfoRow(label: "State", value: app.settings.clusterMode == .worker ? app.primaryServiceStatusText : app.status.rawValue.capitalized)
-                        if app.settings.clusterMode != .standalone {
-                            InfoRow(label: "Cluster", value: app.clusterSnapshot.mode.rawValue)
+                        InfoRow(label: "Uptime", value: settings.clusterMode == .worker ? "--" : (uptime?.text ?? "--"))
+                        InfoRow(label: "Errors", value: "\(stats.errors)")
+                        InfoRow(label: "State", value: settings.clusterMode == .worker ? app.primaryServiceStatusText : status.rawValue.capitalized)
+                        if settings.clusterMode != .standalone {
+                            InfoRow(label: "Cluster", value: clusterSnapshot.mode.rawValue)
                         }
                     }
                 }
@@ -450,7 +465,7 @@ struct OverviewView: View {
         .onAppear {
             syncDashboardPreferences()
         }
-        .onChange(of: app.settings.clusterMode) { _, _ in
+        .onChange(of: settings.clusterMode) { _, _ in
             syncDashboardPreferences()
         }
         .onChange(of: isEditingDashboard) { _, isEditing in
@@ -538,6 +553,7 @@ private struct OverviewMetricDropDelegate: DropDelegate {
 }
 
 struct OverviewClusterSummaryCard: View {
+    @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
     let nodes: [ClusterNodeStatus]
     var onOpenSwiftMesh: (() -> Void)?
@@ -586,8 +602,8 @@ struct OverviewClusterSummaryCard: View {
                 .strokeBorder(.white.opacity(0.20), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
-        .task(id: app.settings.clusterMode) {
-            guard app.settings.clusterMode != .standalone else { return }
+        .task(id: provider.settings.clusterMode) {
+            guard provider.settings.clusterMode != .standalone else { return }
             await app.pollClusterStatus()
         }
     }

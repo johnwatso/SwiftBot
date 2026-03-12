@@ -2,6 +2,9 @@ import AppKit
 import Charts
 import SwiftUI
 
+/// Unified root view that works with both local and remote providers.
+/// The provider-based shell allows the same UI components to be used
+/// regardless of whether the bot is running locally or remotely.
 struct RootView: View {
     @EnvironmentObject var app: AppModel
     @State private var selection: SidebarItem = .overview
@@ -11,53 +14,80 @@ struct RootView: View {
             OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
-        } else if shouldShowRemoteDashboard {
+        } else if let provider = app.provider {
+            UnifiedRootView(selection: $selection)
+                .environmentObject(provider)
+                .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
+        } else {
+            fallbackView
+        }
+    }
+    
+    @ViewBuilder
+    private var fallbackView: some View {
+        if shouldShowRemoteDashboard {
             RemoteModeRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
         } else {
-            HSplitView {
-                DashboardSidebar(selection: $selection)
-                    .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
-
-                Group {
-                    switch selection {
-                    case .overview:
-                        OverviewView(onOpenSwiftMesh: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selection = .swiftMesh
-                            }
-                        })
-                    case .patchy: PatchyView()
-                    case .voice: VoiceView()
-                    case .commands: CommandsView()
-                    case .commandLog: CommandLogView()
-                    case .wikiBridge: WikiBridgeView()
-                    case .logs: LogsView()
-                    case .aiBots: AIBotsView()
-                    case .diagnostics: DiagnosticsView()
-                    case .swiftMesh: SwiftMeshView()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(SwiftBotGlassBackground())
-            }
-            .padding(.top, -30)
-            .ignoresSafeArea(.container, edges: .top)
-            .background(SwiftBotGlassBackground())
-            .toggleStyle(.switch)
-            .overlay(alignment: .topTrailing) {
-                if app.isBetaBuild {
-                    BetaBadgeView()
-                        .padding(.top, 14)
-                        .padding(.trailing, 18)
-                }
-            }
-        } // end else isOnboardingComplete
+            ProgressView("Loading dashboard...")
+                .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
+        }
     }
 
     private var shouldShowRemoteDashboard: Bool {
         app.isRemoteLaunchMode || (app.canSwitchDashboardViewMode && app.viewMode == .remote)
+    }
+}
+
+// MARK: - Unified Shell
+
+/// Unified shell that uses BotDataProvider for both local and remote modes.
+/// This view receives the provider via environment and renders the appropriate UI.
+struct UnifiedRootView: View {
+    @Binding var selection: SidebarItem
+    @EnvironmentObject var provider: AnyBotDataProvider
+    @EnvironmentObject var app: AppModel
+
+    var body: some View {
+        HSplitView {
+            DashboardSidebar(selection: $selection)
+                .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
+
+            Group {
+                switch selection {
+                case .overview:
+                    OverviewView(onOpenSwiftMesh: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = .swiftMesh
+                        }
+                    })
+                case .patchy: PatchyView()
+                case .voice: VoiceView()
+                case .commands: CommandsView()
+                case .commandLog: CommandLogView()
+                case .wikiBridge: WikiBridgeView()
+                case .logs: LogsView()
+                case .aiBots: AIBotsView()
+                case .diagnostics: DiagnosticsView()
+                case .swiftMesh: SwiftMeshView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(SwiftBotGlassBackground())
+        }
+        .padding(.top, -30)
+        .ignoresSafeArea(.container, edges: .top)
+        .background(SwiftBotGlassBackground())
+        .overlay(alignment: .topTrailing) {
+            if app.isBetaBuild {
+                BetaBadgeView()
+                    .padding(.top, 14)
+                    .padding(.trailing, 18)
+            }
+        }
     }
 }
 
