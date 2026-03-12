@@ -197,9 +197,8 @@ final class AppModel: ObservableObject {
     
     var viewMode: ViewMode {
         get { ViewMode(rawValue: viewModeRaw) ?? .local }
-        set { 
+        set {
             viewModeRaw = newValue.rawValue
-            // Update provider when view mode changes
             updateProvider()
         }
     }
@@ -210,50 +209,15 @@ final class AppModel: ObservableObject {
     @Published var provider: AnyBotDataProvider?
     
     private var localProvider: LocalBotProvider?
-    private var remoteProvider: RemoteBotProvider?
     private var localProviderBox: AnyBotDataProvider?
-    private var remoteProviderBox: AnyBotDataProvider?
     
     private func updateProvider() {
-        switch viewMode {
-        case .local:
-            if localProvider == nil {
-                let localProvider = LocalBotProvider(app: self)
-                self.localProvider = localProvider
-                self.localProviderBox = AnyBotDataProvider(localProvider)
-            }
-            provider = localProviderBox
-        case .remote:
-            // Remote provider is created when connection is configured
-            if remoteProvider == nil && settings.remoteMode.isConfigured {
-                try? createRemoteProvider()
-            }
-            provider = remoteProviderBox
+        if localProvider == nil {
+            let localProvider = LocalBotProvider(app: self)
+            self.localProvider = localProvider
+            self.localProviderBox = AnyBotDataProvider(localProvider)
         }
-    }
-    
-    func createRemoteProvider(baseURL: String? = nil, token: String? = nil) throws {
-        let url = baseURL ?? settings.remoteMode.normalizedPrimaryNodeAddress
-        let accessToken = token ?? settings.remoteMode.normalizedAccessToken
-        
-        guard !url.isEmpty, !accessToken.isEmpty else {
-            throw RemoteBotProviderError.missingConfiguration
-        }
-        
-        let remoteProvider = try RemoteBotProvider(baseURL: url, token: accessToken)
-        self.remoteProvider = remoteProvider
-        self.remoteProviderBox = AnyBotDataProvider(remoteProvider)
-        if viewMode == .remote {
-            provider = remoteProviderBox
-        }
-    }
-    
-    func clearRemoteProvider() {
-        remoteProvider = nil
-        remoteProviderBox = nil
-        if viewMode == .remote {
-            provider = nil
-        }
+        provider = localProviderBox
     }
     
     /// OAuth2 client ID resolved from a validated token; used to build the invite URL.
@@ -361,8 +325,16 @@ final class AppModel: ObservableObject {
         settings.launchMode == .remoteControl
     }
 
+    var remoteControlFeatureEnabled: Bool {
+        isBetaBuild && settings.devFeaturesEnabled
+    }
+
     var canSwitchDashboardViewMode: Bool {
         !isRemoteLaunchMode && !isFailoverManagedNode
+    }
+
+    var canOpenRemoteDashboardFromLocalApp: Bool {
+        remoteControlFeatureEnabled && canSwitchDashboardViewMode
     }
 
     var usesLocalRuntime: Bool {
@@ -1268,6 +1240,7 @@ final class AppModel: ObservableObject {
     /// Persists settings through the Keychain path, then flips `isOnboardingComplete`.
     /// Must only be called after a successful `validateAndOnboard()`.
     func completeOnboarding() {
+        viewMode = .local
         saveSettings()
         isOnboardingComplete = true
     }
@@ -1279,6 +1252,7 @@ final class AppModel: ObservableObject {
             accessToken: accessToken
         )
         settings.remoteMode.normalize()
+        viewMode = .remote
         saveSettings()
         isOnboardingComplete = true
     }
@@ -1346,6 +1320,7 @@ final class AppModel: ObservableObject {
     func runInitialSetup() {
         resolvedClientID = nil
         lastTokenValidationResult = nil
+        viewMode = .local
         isOnboardingComplete = false
     }
 

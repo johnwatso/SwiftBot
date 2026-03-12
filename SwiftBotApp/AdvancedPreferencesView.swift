@@ -21,7 +21,7 @@ struct AdvancedPreferencesView: View {
                     ))
                     .toggleStyle(.switch)
 
-                    Text("Unlock experimental SwiftBot features including Bug Auto-Fix and Codex automation. These tools are under active development.")
+                    Text("Unlock experimental SwiftBot features including SwiftBot Remote beta, Bug Auto-Fix, and Codex automation. These tools are under active development.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -32,8 +32,8 @@ struct AdvancedPreferencesView: View {
             PreferencesCard("Experimental Tools", systemImage: "wrench") {
                 Text(
                     app.settings.devFeaturesEnabled
-                    ? "Developer Mode is active. Bug Auto-Fix and other experimental tools are available below."
-                    : "Enable Developer Mode above to configure Bug Auto-Fix and other experimental tools."
+                    ? "Developer Mode is active. SwiftBot Remote beta, Bug Auto-Fix, and other experimental tools are available below."
+                    : "Enable Developer Mode above to configure SwiftBot Remote beta, Bug Auto-Fix, and other experimental tools."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

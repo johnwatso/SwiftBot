@@ -18,65 +18,100 @@ struct SwiftBotApp: App {
         NSApp.applicationIconImage = image
     }
 
-    private func applyWindowChromeIfAvailable() {
-        DispatchQueue.main.async {
-            guard let window = NSApp.windows.first else { return }
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = false
-            window.styleMask.insert(.fullSizeContentView)
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.hasShadow = true
-            window.titlebarSeparatorStyle = .none
-            window.setContentBorderThickness(0, for: .minY)
-            window.setContentBorderThickness(0, for: .maxY)
-            window.collectionBehavior.remove([.fullScreenPrimary, .fullScreenAuxiliary])
+    private func applyMainWindowChrome(to window: NSWindow) {
+        guard window.identifier != .settingsWindow else { return }
+        guard !(window.titleVisibility == .hidden && window.backgroundColor == .clear && window.isOpaque == false) else { return }
 
-            let cornerRadius: CGFloat = 12
+        window.identifier = .mainWindow
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = false
+        window.styleMask.insert(.fullSizeContentView)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.titlebarSeparatorStyle = .none
+        window.setContentBorderThickness(0, for: .minY)
+        window.setContentBorderThickness(0, for: .maxY)
+        window.collectionBehavior.remove([.fullScreenPrimary, .fullScreenAuxiliary])
 
-            if let contentView = window.contentView {
-                contentView.wantsLayer = true
-                contentView.layer?.cornerRadius = 0
-                contentView.layer?.masksToBounds = false
-                contentView.layer?.borderWidth = 0
-                contentView.layer?.backgroundColor = NSColor.clear.cgColor
-            }
+        let cornerRadius: CGFloat = 12
 
-            if let frameView = window.contentView?.superview {
-                frameView.wantsLayer = true
-                frameView.layer?.cornerRadius = cornerRadius
-                frameView.layer?.cornerCurve = .continuous
-                frameView.layer?.masksToBounds = true
-                frameView.layer?.borderWidth = 0
-                frameView.layer?.borderColor = NSColor.clear.cgColor
-                frameView.layer?.backgroundColor = NSColor.clear.cgColor
-            }
+        if let contentView = window.contentView {
+            contentView.wantsLayer = true
+            contentView.layer?.cornerRadius = 0
+            contentView.layer?.masksToBounds = false
+            contentView.layer?.borderWidth = 0
+            contentView.layer?.backgroundColor = NSColor.clear.cgColor
+        }
 
-            if let chromeView = window.contentView?.superview?.superview {
-                chromeView.wantsLayer = true
-                chromeView.layer?.cornerRadius = cornerRadius
-                chromeView.layer?.cornerCurve = .continuous
-                chromeView.layer?.borderWidth = 0
-                chromeView.layer?.borderColor = NSColor.clear.cgColor
-                chromeView.layer?.backgroundColor = NSColor.clear.cgColor
-            }
+        if let frameView = window.contentView?.superview {
+            frameView.wantsLayer = true
+            frameView.layer?.cornerRadius = cornerRadius
+            frameView.layer?.cornerCurve = .continuous
+            frameView.layer?.masksToBounds = true
+            frameView.layer?.borderWidth = 0
+            frameView.layer?.borderColor = NSColor.clear.cgColor
+            frameView.layer?.backgroundColor = NSColor.clear.cgColor
+        }
 
-            let trafficLightButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-            for type in trafficLightButtons {
-                guard let button = window.standardWindowButton(type) else { continue }
-                var origin = button.frame.origin
-                origin.x += 14
-                origin.y -= 10
-                button.setFrameOrigin(origin)
-            }
+        if let chromeView = window.contentView?.superview?.superview {
+            chromeView.wantsLayer = true
+            chromeView.layer?.cornerRadius = cornerRadius
+            chromeView.layer?.cornerCurve = .continuous
+            chromeView.layer?.borderWidth = 0
+            chromeView.layer?.borderColor = NSColor.clear.cgColor
+            chromeView.layer?.backgroundColor = NSColor.clear.cgColor
+        }
 
-            if let zoomButton = window.standardWindowButton(.zoomButton) {
-                zoomButton.action = #selector(NSWindow.performZoom(_:))
-                zoomButton.target = window
-            }
+        let trafficLightButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        for type in trafficLightButtons {
+            guard let button = window.standardWindowButton(type) else { continue }
+            var origin = button.frame.origin
+            origin.x += 14
+            origin.y -= 10
+            button.setFrameOrigin(origin)
+        }
 
-            window.invalidateShadow()
+        if let zoomButton = window.standardWindowButton(.zoomButton) {
+            zoomButton.action = #selector(NSWindow.performZoom(_:))
+            zoomButton.target = window
+        }
+
+        window.invalidateShadow()
+    }
+
+    private func restoreSettingsWindowChrome(_ window: NSWindow) {
+        window.identifier = .settingsWindow
+        window.ignoresMouseEvents = false
+        window.level = .normal
+        window.hasShadow = true
+        window.isMovableByWindowBackground = false
+        window.titlebarAppearsTransparent = false
+        window.styleMask.remove(.fullSizeContentView)
+        window.isOpaque = true
+        window.backgroundColor = .windowBackgroundColor
+        window.titlebarSeparatorStyle = .automatic
+        window.setContentBorderThickness(0, for: .minY)
+        window.setContentBorderThickness(0, for: .maxY)
+
+        if let contentView = window.contentView {
+            contentView.wantsLayer = false
+            contentView.layer?.backgroundColor = nil
+        }
+
+        if let frameView = window.contentView?.superview {
+            frameView.wantsLayer = false
+            frameView.layer?.cornerRadius = 0
+            frameView.layer?.borderWidth = 0
+            frameView.layer?.backgroundColor = nil
+        }
+
+        if let chromeView = window.contentView?.superview?.superview {
+            chromeView.wantsLayer = false
+            chromeView.layer?.cornerRadius = 0
+            chromeView.layer?.borderWidth = 0
+            chromeView.layer?.backgroundColor = nil
         }
     }
 
@@ -88,12 +123,14 @@ struct SwiftBotApp: App {
                 .frame(minWidth: 1200, minHeight: 760)
                 .onAppear {
                     applyAppIconIfAvailable()
-                    applyWindowChromeIfAvailable()
                     updater.checkForUpdatesInBackground()
                 }
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }
+                .background(WindowAccessor { window in
+                    applyMainWindowChrome(to: window)
+                })
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -105,7 +142,7 @@ struct SwiftBotApp: App {
                 }
                 .disabled(!updater.canCheckForUpdates)
             }
-            if appModel.canSwitchDashboardViewMode {
+            if appModel.canOpenRemoteDashboardFromLocalApp {
                 CommandMenu("View") {
                     Button("Local Dashboard") {
                         appModel.viewMode = .local
@@ -126,6 +163,9 @@ struct SwiftBotApp: App {
             PreferencesView()
                 .environmentObject(appModel)
                 .environmentObject(updater)
+                .background(WindowAccessor { window in
+                    restoreSettingsWindowChrome(window)
+                })
         }
         .windowResizability(.contentSize)
     }
@@ -150,6 +190,33 @@ struct SwiftBotApp: App {
            !sessionToken.isEmpty {
             // Store session token for remote authentication
             appModel.handleRemoteAuthSession(sessionToken)
+        }
+    }
+}
+
+private extension NSUserInterfaceItemIdentifier {
+    static let mainWindow = NSUserInterfaceItemIdentifier("SwiftBotMainWindow")
+    static let settingsWindow = NSUserInterfaceItemIdentifier("SwiftBotSettingsWindow")
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                onResolve(window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let window = nsView.window {
+                onResolve(window)
+            }
         }
     }
 }
