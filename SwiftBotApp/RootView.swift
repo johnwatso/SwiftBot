@@ -11,7 +11,7 @@ struct RootView: View {
             OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
-        } else if app.viewMode == .remote || app.isRemoteLaunchMode {
+        } else if shouldShowRemoteDashboard {
             RemoteModeRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
@@ -54,6 +54,10 @@ struct RootView: View {
                 }
             }
         } // end else isOnboardingComplete
+    }
+
+    private var shouldShowRemoteDashboard: Bool {
+        app.isRemoteLaunchMode || (app.canSwitchDashboardViewMode && app.viewMode == .remote)
     }
 }
 
@@ -202,23 +206,6 @@ struct DashboardSidebar: View {
                 .padding(6)
             }
 
-            // View Mode Switcher
-            VStack(spacing: 8) {
-                Text("View Mode")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                
-                Picker("View Mode", selection: $app.viewMode) {
-                    ForEach(ViewMode.allCases) { mode in
-                        Label(mode.displayName, systemImage: mode.icon)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 12)
-            
             Group {
                 if !isPrimaryServiceRunning {
                     Button {

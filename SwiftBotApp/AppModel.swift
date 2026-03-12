@@ -305,6 +305,10 @@ final class AppModel: ObservableObject {
         settings.launchMode == .remoteControl
     }
 
+    var canSwitchDashboardViewMode: Bool {
+        !isRemoteLaunchMode && !isFailoverManagedNode
+    }
+
     var usesLocalRuntime: Bool {
         settings.launchMode != .remoteControl
     }
