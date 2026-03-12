@@ -365,8 +365,15 @@ struct AdminWebUISettings: Codable, Hashable {
     }
 }
 
+func generatedRemoteAccessToken() -> String {
+    UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+}
+
 struct BotSettings: Codable, Hashable {
     var token: String = ""
+    var launchMode: AppLaunchMode = .standaloneBot
+    var remoteMode = RemoteModeSettings()
+    var remoteAccessToken: String = generatedRemoteAccessToken()
     var prefix: String = "/"
     var commandsEnabled: Bool = true
     var prefixCommandsEnabled: Bool = true
@@ -447,6 +454,9 @@ struct BotSettings: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case token
+        case launchMode
+        case remoteMode
+        case remoteAccessToken
         case prefix
         case commandsEnabled
         case prefixCommandsEnabled
@@ -507,6 +517,9 @@ struct BotSettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
+        launchMode = try container.decodeIfPresent(AppLaunchMode.self, forKey: .launchMode) ?? .standaloneBot
+        remoteMode = try container.decodeIfPresent(RemoteModeSettings.self, forKey: .remoteMode) ?? RemoteModeSettings()
+        remoteAccessToken = try container.decodeIfPresent(String.self, forKey: .remoteAccessToken) ?? generatedRemoteAccessToken()
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? "/"
         commandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .commandsEnabled) ?? true
         prefixCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .prefixCommandsEnabled) ?? true
@@ -563,11 +576,19 @@ struct BotSettings: Codable, Hashable {
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
+        remoteMode.normalize()
+        remoteAccessToken = remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if remoteAccessToken.isEmpty {
+            remoteAccessToken = generatedRemoteAccessToken()
+        }
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(token, forKey: .token)
+        try container.encode(launchMode, forKey: .launchMode)
+        try container.encode(remoteMode, forKey: .remoteMode)
+        try container.encode(remoteAccessToken, forKey: .remoteAccessToken)
         try container.encode(prefix, forKey: .prefix)
         try container.encode(commandsEnabled, forKey: .commandsEnabled)
         try container.encode(prefixCommandsEnabled, forKey: .prefixCommandsEnabled)

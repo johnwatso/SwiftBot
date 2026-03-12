@@ -266,6 +266,23 @@ final class AppModel: ObservableObject {
         return URL(string: "https://cdn.discordapp.com/embed/avatars/\(index).png")
     }
 
+    var isRemoteLaunchMode: Bool {
+        settings.launchMode == .remoteControl
+    }
+
+    var usesLocalRuntime: Bool {
+        settings.launchMode != .remoteControl
+    }
+
+    private func onboardingCompleted(for settings: BotSettings) -> Bool {
+        switch settings.launchMode {
+        case .remoteControl:
+            return settings.remoteMode.isConfigured
+        case .standaloneBot, .swiftMeshClusterNode:
+            return !settings.token.isEmpty
+        }
+    }
+
     init() {
         self.ruleEngine = RuleEngine(store: ruleStore)
         self.pluginManager = PluginManager(bus: eventBus)
@@ -308,9 +325,14 @@ final class AppModel: ObservableObject {
                 workerModeMigrated = true
                 migrated = true
             }
+            loadedSettings.remoteMode.normalize()
+            if loadedSettings.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                loadedSettings.remoteAccessToken = generatedRemoteAccessToken()
+                migrated = true
+            }
 
             settings = loadedSettings
-            isOnboardingComplete = !loadedSettings.token.isEmpty
+            isOnboardingComplete = onboardingCompleted(for: loadedSettings)
             if let cachedDiscord = await discordCacheStore.load() {
                 await discordCache.replace(with: cachedDiscord)
                 await syncPublishedDiscordCacheFromService()
@@ -327,6 +349,13 @@ final class AppModel: ObservableObject {
             if migrated {
                 try? await store.save(loadedSettings)
                 try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
+            }
+
+            guard loadedSettings.launchMode != .remoteControl else {
+                await cluster.stopAll()
+                await adminWebServer.stop()
+                await service.setOutputAllowed(false)
+                return
             }
 
             await service.setRuleEngine(ruleEngine)
@@ -467,28 +496,44 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.importedCertificateChainFile = settings.adminWebUI.normalizedImportedCertificateChainFile
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
+        settings.remoteMode.normalize()
+        settings.remoteAccessToken = settings.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if settings.remoteAccessToken.isEmpty {
+            settings.remoteAccessToken = generatedRemoteAccessToken()
+        }
+        isOnboardingComplete = onboardingCompleted(for: settings)
 
         Task {
-            await service.configureLocalAIDMReplies(
-                enabled: settings.localAIDMReplyEnabled,
-                provider: settings.localAIProvider,
-                preferredProvider: settings.preferredAIProvider,
-                endpoint: localAIEndpointForService(),
-                model: settings.localAIModel,
-                openAIAPIKey: effectiveOpenAIAPIKey(),
-                openAIModel: settings.openAIModel,
-                systemPrompt: settings.localAISystemPrompt
-            )
-            await applyClusterSettingsRuntime(
-                mode: settings.clusterMode,
-                nodeName: settings.clusterNodeName,
-                leaderAddress: settings.clusterLeaderAddress,
-                leaderPort: settings.clusterLeaderPort,
-                listenPort: settings.clusterListenPort,
-                sharedSecret: settings.clusterSharedSecret
-            )
-            await configureAdminWebServer()
-            configurePatchyMonitoring()
+            if self.usesLocalRuntime {
+                await service.configureLocalAIDMReplies(
+                    enabled: settings.localAIDMReplyEnabled,
+                    provider: settings.localAIProvider,
+                    preferredProvider: settings.preferredAIProvider,
+                    endpoint: localAIEndpointForService(),
+                    model: settings.localAIModel,
+                    openAIAPIKey: effectiveOpenAIAPIKey(),
+                    openAIModel: settings.openAIModel,
+                    systemPrompt: settings.localAISystemPrompt
+                )
+                await applyClusterSettingsRuntime(
+                    mode: settings.clusterMode,
+                    nodeName: settings.clusterNodeName,
+                    leaderAddress: settings.clusterLeaderAddress,
+                    leaderPort: settings.clusterLeaderPort,
+                    listenPort: settings.clusterListenPort,
+                    sharedSecret: settings.clusterSharedSecret
+                )
+                await configureAdminWebServer()
+                configurePatchyMonitoring()
+            } else {
+                patchyMonitorTask?.cancel()
+                patchyMonitorTask = nil
+                await cluster.stopAll()
+                await adminWebServer.stop()
+                await service.setOutputAllowed(false)
+                adminWebResolvedBaseURL = ""
+                adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
+            }
 
             do {
                 try await store.save(settings)
@@ -961,6 +1006,13 @@ final class AppModel: ObservableObject {
     }
 
     func startBot() async {
+        if isRemoteLaunchMode {
+            await MainActor.run {
+                logs.append("⚠️ Remote Control Mode does not start a local Discord bot.")
+            }
+            return
+        }
+
         // Worker mode is temporarily disabled pending UX redesign.
         // The underlying code is preserved; re-enable by removing this guard when ready.
         if settings.clusterMode == .worker {
@@ -1101,6 +1153,7 @@ final class AppModel: ObservableObject {
     /// call `completeOnboarding()` after the user gives explicit confirmation.
     @discardableResult
     func validateAndOnboard() async -> Bool {
+        settings.launchMode = .standaloneBot
         let token = normalizedDiscordToken(from: settings.token)
         guard !token.isEmpty else { return false }
         let result = await service.validateBotTokenRich(token)
@@ -1117,6 +1170,26 @@ final class AppModel: ObservableObject {
     func completeOnboarding() {
         saveSettings()
         isOnboardingComplete = true
+    }
+
+    func completeRemoteModeOnboarding(primaryNodeAddress: String, accessToken: String) {
+        settings.launchMode = .remoteControl
+        settings.remoteMode = RemoteModeSettings(
+            primaryNodeAddress: primaryNodeAddress,
+            accessToken: accessToken
+        )
+        settings.remoteMode.normalize()
+        saveSettings()
+        isOnboardingComplete = true
+    }
+
+    func updateRemoteModeConnection(primaryNodeAddress: String, accessToken: String) {
+        settings.remoteMode = RemoteModeSettings(
+            primaryNodeAddress: primaryNodeAddress,
+            accessToken: accessToken
+        )
+        settings.remoteMode.normalize()
+        saveSettings()
     }
 
     /// Performs a safe API key reset with deterministic ordering:
@@ -1397,6 +1470,69 @@ final class AppModel: ObservableObject {
                 state: status.rawValue.capitalized,
                 cluster: settings.clusterMode != .standalone ? clusterSnapshot.mode.rawValue : nil
             )
+        )
+    }
+
+    func remoteStatusSnapshot() -> RemoteStatusPayload {
+        let leaderName = clusterNodes.first(where: { $0.role == .leader })?.displayName
+            ?? clusterNodes.first?.displayName
+            ?? (settings.clusterMode == .standalone ? "Standalone" : "Unavailable")
+
+        return RemoteStatusPayload(
+            botStatus: status.rawValue,
+            botUsername: botUsername,
+            connectedServerCount: connectedServers.count,
+            gatewayEventCount: gatewayEventCount,
+            uptimeText: uptime?.text,
+            webUIBaseURL: adminWebBaseURL(),
+            clusterMode: settings.clusterMode.rawValue,
+            nodeRole: clusterSnapshot.mode.rawValue,
+            leaderName: leaderName,
+            generatedAt: Date()
+        )
+    }
+
+    func remoteRulesSnapshot() -> RemoteRulesPayload {
+        let serverIDs = connectedServers.keys.sorted {
+            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
+        }
+        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
+        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableTextChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+        let voiceChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+            let channels = (availableVoiceChannelsByServer[serverID] ?? [])
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+            return (serverID, channels)
+        })
+
+        return RemoteRulesPayload(
+            rules: ruleStore.rules,
+            servers: servers,
+            textChannelsByServer: textChannelsByServer,
+            voiceChannelsByServer: voiceChannelsByServer,
+            fetchedAt: Date()
+        )
+    }
+
+    func remoteEventsSnapshot() -> RemoteEventsPayload {
+        let recentActivity = Array(events.suffix(40).reversed()).map { event in
+            RemoteActivityEventPayload(
+                id: event.id,
+                timestamp: event.timestamp,
+                kind: event.kind.rawValue,
+                message: event.message
+            )
+        }
+
+        return RemoteEventsPayload(
+            activity: recentActivity,
+            logs: Array(logs.lines.suffix(120).reversed()),
+            fetchedAt: Date()
         )
     }
 
@@ -1873,9 +2009,9 @@ final class AppModel: ObservableObject {
     }
 
     func configureAdminWebServer() async {
-        let httpsConfiguration = await resolveAdminWebHTTPSConfiguration()
+        let httpsConfiguration = usesLocalRuntime ? await resolveAdminWebHTTPSConfiguration() : nil
         let config = AdminWebServer.Configuration(
-            enabled: settings.adminWebUI.enabled,
+            enabled: usesLocalRuntime && settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
             publicBaseURL: oauthPublicBaseURL(),
@@ -1884,7 +2020,8 @@ final class AppModel: ObservableObject {
             redirectPath: settings.adminWebUI.redirectPath,
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
-                : []
+                : [],
+            remoteAccessToken: settings.remoteAccessToken
         )
 
         let runtimeState = await adminWebServer.configure(
@@ -1902,6 +2039,62 @@ final class AppModel: ObservableObject {
                     )
                 }
                 return await MainActor.run { model.adminWebStatusSnapshot() }
+            },
+            remoteStatusProvider: { [weak self] in
+                guard let model = self else {
+                    return RemoteStatusPayload(
+                        botStatus: "stopped",
+                        botUsername: "SwiftBot",
+                        connectedServerCount: 0,
+                        gatewayEventCount: 0,
+                        uptimeText: nil,
+                        webUIBaseURL: "",
+                        clusterMode: ClusterMode.standalone.rawValue,
+                        nodeRole: ClusterMode.standalone.rawValue,
+                        leaderName: "Unavailable",
+                        generatedAt: Date()
+                    )
+                }
+                return await MainActor.run { model.remoteStatusSnapshot() }
+            },
+            remoteRulesProvider: { [weak self] in
+                guard let model = self else {
+                    return RemoteRulesPayload(
+                        rules: [],
+                        servers: [],
+                        textChannelsByServer: [:],
+                        voiceChannelsByServer: [:],
+                        fetchedAt: Date()
+                    )
+                }
+                return await MainActor.run { model.remoteRulesSnapshot() }
+            },
+            updateRemoteRule: { [weak self] rule in
+                guard let model = self else { return false }
+                return await MainActor.run { model.upsertAdminWebActionRule(rule) }
+            },
+            remoteEventsProvider: { [weak self] in
+                guard let model = self else {
+                    return RemoteEventsPayload(activity: [], logs: [], fetchedAt: Date())
+                }
+                return await MainActor.run { model.remoteEventsSnapshot() }
+            },
+            remoteSettingsProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebConfigPayload(
+                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
+                        wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
+                        patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
+                        swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: false, offloadWikiLookups: false),
+                        general: .init(autoStart: false, webUIEnabled: false, webUIBaseURL: "")
+                    )
+                }
+                return await MainActor.run { model.adminWebConfigSnapshot() }
+            },
+            updateRemoteSettings: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run { model.applyAdminWebConfigPatch(patch) }
             },
             overviewProvider: { [weak self] in
                 guard let model = self else {

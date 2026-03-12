@@ -297,6 +297,7 @@ actor AdminWebServer {
         var discordOAuth: OAuthProviderSettings
         var redirectPath: String
         var allowedUserIDs: [String]
+        var remoteAccessToken: String
     }
 
     private struct HTTPRequest {
@@ -347,7 +348,8 @@ actor AdminWebServer {
         https: nil,
         discordOAuth: OAuthProviderSettings(),
         redirectPath: "/auth/discord/callback",
-        allowedUserIDs: []
+        allowedUserIDs: [],
+        remoteAccessToken: ""
     )
     private var listener: NWListener?
     private var nioChannel: Channel?
@@ -356,6 +358,12 @@ actor AdminWebServer {
     private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
+    private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
+    private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
+    private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
+    private var remoteEventsProvider: (@Sendable () async -> RemoteEventsPayload)?
+    private var remoteSettingsProvider: (@Sendable () async -> AdminWebConfigPayload)?
+    private var updateRemoteSettings: (@Sendable (AdminWebConfigPatch) async -> Bool)?
     private var connectedGuildIDsProvider: (@Sendable () async -> Set<String>)?
     private var currentPrefixProvider: (@Sendable () async -> String)?
     private var updatePrefix: (@Sendable (String) async -> Bool)?
@@ -397,6 +405,12 @@ actor AdminWebServer {
     func configure(
         config: Configuration,
         statusProvider: @escaping @Sendable () async -> AdminWebStatusPayload,
+        remoteStatusProvider: @escaping @Sendable () async -> RemoteStatusPayload,
+        remoteRulesProvider: @escaping @Sendable () async -> RemoteRulesPayload,
+        updateRemoteRule: @escaping @Sendable (Rule) async -> Bool,
+        remoteEventsProvider: @escaping @Sendable () async -> RemoteEventsPayload,
+        remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
+        updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
@@ -431,6 +445,12 @@ actor AdminWebServer {
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
+        self.remoteStatusProvider = remoteStatusProvider
+        self.remoteRulesProvider = remoteRulesProvider
+        self.updateRemoteRule = updateRemoteRule
+        self.remoteEventsProvider = remoteEventsProvider
+        self.remoteSettingsProvider = remoteSettingsProvider
+        self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
@@ -762,6 +782,62 @@ actor AdminWebServer {
             return serveAsset(named: "AppIcon", ext: "png")
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
+        case ("GET", "/api/remote/status"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteStatusProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "status_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/remote/rules"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteRulesProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "rules_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/remote/rules/update"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let patch = try? decoder.decode(RemoteRuleUpsertRequest.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateRemoteRule?(patch.rule) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Remote API updated rule \(patch.rule.name)")
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/remote/events"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteEventsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "events_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/remote/settings"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            if let payload = await remoteSettingsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "settings_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/remote/settings/update"):
+            guard isRemoteRequestAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let patch = try? decoder.decode(AdminWebConfigPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateRemoteSettings?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            await logger?("Remote API updated settings")
+            return jsonResponse(["ok": true])
         case ("GET", "/api/status"):
             let payload = await statusProvider?() ?? AdminWebStatusPayload(
                 botStatus: "stopped",
@@ -1320,6 +1396,18 @@ actor AdminWebServer {
             return nil
         }
         return session
+    }
+
+    private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
+        let expectedToken = config.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expectedToken.isEmpty,
+              let authorization = request.headers["authorization"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              authorization.hasPrefix("Bearer ") else {
+            return false
+        }
+
+        let providedToken = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return !providedToken.isEmpty && providedToken == expectedToken
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {
