@@ -190,10 +190,35 @@ actor MediaThumbnailCache {
         return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: ["Cache-Control": "public, max-age=300"], body: jpeg)
     }
 
+    func frameResponse(for item: MediaLibraryItem, atSeconds: Double) async -> BinaryHTTPResponse? {
+        let cacheURL = cachedFrameURL(for: item, atSeconds: atSeconds)
+        if let data = try? Data(contentsOf: cacheURL) {
+            return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: ["Cache-Control": "public, max-age=120"], body: data)
+        }
+
+        guard let image = await generateFrame(for: item, atSeconds: atSeconds) else { return nil }
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.72]) else {
+            return nil
+        }
+        try? jpeg.write(to: cacheURL, options: .atomic)
+        return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: ["Cache-Control": "public, max-age=120"], body: jpeg)
+    }
+
     private func cachedThumbnailURL(for item: MediaLibraryItem) -> URL {
         let fingerprint = "\(item.absolutePath)|\(item.modifiedAt.timeIntervalSince1970)|\(item.sizeBytes)"
         let digest = SHA256.hash(data: Data(fingerprint.utf8)).map { String(format: "%02x", $0) }.joined()
         return cacheDirectoryURL().appendingPathComponent("\(digest).jpg")
+    }
+
+    private func cachedFrameURL(for item: MediaLibraryItem, atSeconds: Double) -> URL {
+        let rounded = String(format: "%.1f", max(0, atSeconds))
+        let fingerprint = "\(item.absolutePath)|\(item.modifiedAt.timeIntervalSince1970)|\(item.sizeBytes)|frame|\(rounded)"
+        let digest = SHA256.hash(data: Data(fingerprint.utf8)).map { String(format: "%02x", $0) }.joined()
+        let folder = cacheDirectoryURL().appendingPathComponent("frames", isDirectory: true)
+        try? fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent("\(digest).jpg")
     }
 
     private func generateThumbnail(for item: MediaLibraryItem) async -> NSImage? {
@@ -204,6 +229,25 @@ actor MediaThumbnailCache {
         generator.maximumSize = CGSize(width: 640, height: 360)
 
         let time = CMTime(seconds: 2, preferredTimescale: 600)
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: time) { cgImage, _, error in
+                guard let cgImage, error == nil else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+            }
+        }
+    }
+
+    private func generateFrame(for item: MediaLibraryItem, atSeconds: Double) async -> NSImage? {
+        let url = URL(fileURLWithPath: item.absolutePath)
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 420, height: 240)
+
+        let time = CMTime(seconds: max(0, atSeconds), preferredTimescale: 600)
         return await withCheckedContinuation { continuation in
             generator.generateCGImageAsynchronously(for: time) { cgImage, _, error in
                 guard let cgImage, error == nil else {
@@ -395,6 +439,7 @@ final class AppModel: ObservableObject {
     let meshCursorStore = MeshCursorStore()
     let mediaLibraryIndexer = MediaLibraryIndexer()
     let mediaThumbnailCache = MediaThumbnailCache()
+    let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
     let service = DiscordService()
     let cluster = ClusterCoordinator()
@@ -420,6 +465,7 @@ final class AppModel: ObservableObject {
     /// Burst-guard: recent join timestamps per guild (keyed by guildId). Used to detect member raids.
     var guildJoinTimestamps: [String: [Date]] = [:]
     let commandCooldown: TimeInterval = 3.0
+    let maxMediaClipDurationSeconds: Double = 15 * 60
     let aiMemoryStopwords: Set<String> = [
         "a","an","and","are","as","at","be","but","by","for","from","hey","how",
         "i","if","in","into","is","it","its","me","my","of","on","or","our","so",
@@ -451,6 +497,7 @@ final class AppModel: ObservableObject {
     @Published var userAvatarHashById: [String: String] = [:]
     @Published var guildAvatarHashByMemberKey: [String: String] = [:]
     @Published var mediaLibrarySettings = MediaLibrarySettings()
+    @Published var mediaExportJobs: [MediaExportJob] = []
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
@@ -525,6 +572,11 @@ final class AppModel: ObservableObject {
         }
         self.ruleStore.onPersisted = { [weak self] in
             await self?.handleRuleStorePersisted()
+        }
+        Task { [weak self] in
+            await self?.mediaExportCoordinator.setOnJobFinished { [weak self] (_: MediaExportJob) in
+                await self?.mediaLibraryIndexer.invalidate()
+            }
         }
 
         Task {
@@ -657,6 +709,18 @@ final class AppModel: ObservableObject {
                     guard let self else { return nil }
                     return await self.localMediaThumbnailResponse(itemID: itemID)
                 },
+                mediaClipHandler: { [weak self] request in
+                    guard let self else { return nil }
+                    return await self.localMediaClipExport(request: request)
+                },
+            mediaMultiViewHandler: { [weak self] request in
+                guard let self else { return nil }
+                return await self.localMediaMultiViewExport(request: request)
+            },
+            mediaFrameHandler: { [weak self] itemID, seconds in
+                guard let self else { return nil }
+                return await self.localMediaFrameResponse(itemID: itemID, atSeconds: seconds)
+            },
                 conversationFetcher: { [weak self] fromRecordID, limit in
                     guard let self else { return ([], false) }
                     return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
@@ -827,12 +891,13 @@ final class AppModel: ObservableObject {
     }
 
     func localMediaLibrarySnapshot(ownerBaseURL: String? = nil) async -> MediaLibraryPayload {
+        await ensureExportSourceConfigured()
         let configURL = await mediaLibraryConfigStore.fileURL()
         let ownerNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName
         let payload = await mediaLibraryIndexer.snapshot(
-            sources: mediaLibrarySettings.sources,
+            sources: effectiveMediaSources(),
             ownerNodeName: ownerNodeName,
             ownerBaseURL: ownerBaseURL,
             configFilePath: configURL.path
@@ -842,6 +907,63 @@ final class AppModel: ObservableObject {
             recentMediaCount24h = payload.items.filter { $0.modifiedAt >= cutoff }.count
         }
         return payload
+    }
+
+    private func effectiveMediaSources() -> [MediaLibrarySource] {
+        var sources = mediaLibrarySettings.sources
+        guard mediaLibrarySettings.exportIncludeInLibrary else { return sources }
+        let exportPath = mediaExportRootURL().path
+        if exportPath.isEmpty { return sources }
+        let exportID = mediaLibrarySettings.exportSourceID ?? UUID()
+        if !sources.contains(where: { $0.id == exportID }) {
+            let exportSource = MediaLibrarySource(
+                id: exportID,
+                name: "Exports",
+                rootPath: exportPath,
+                isEnabled: true,
+                allowedExtensions: ["mp4", "mov", "m4v"]
+            )
+            sources.append(exportSource)
+        }
+        return sources
+    }
+
+    private func ensureExportSourceConfigured() async {
+        guard mediaLibrarySettings.exportIncludeInLibrary else { return }
+        let exportPath = mediaExportRootURL().path
+        guard !exportPath.isEmpty else { return }
+        if mediaLibrarySettings.exportSourceID == nil {
+            mediaLibrarySettings.exportSourceID = UUID()
+        }
+        let exportID = mediaLibrarySettings.exportSourceID!
+        if !mediaLibrarySettings.sources.contains(where: { $0.id == exportID }) {
+            mediaLibrarySettings.sources.append(
+                MediaLibrarySource(
+                    id: exportID,
+                    name: "Exports",
+                    rootPath: exportPath,
+                    isEnabled: true,
+                    allowedExtensions: ["mp4", "mov", "m4v"]
+                )
+            )
+            try? await mediaLibraryConfigStore.save(mediaLibrarySettings)
+        } else if let index = mediaLibrarySettings.sources.firstIndex(where: { $0.id == exportID }) {
+            if mediaLibrarySettings.sources[index].rootPath != exportPath {
+                mediaLibrarySettings.sources[index].rootPath = exportPath
+                try? await mediaLibraryConfigStore.save(mediaLibrarySettings)
+            }
+        }
+    }
+
+    private func mediaExportRootURL() -> URL {
+        let trimmed = mediaLibrarySettings.exportRootPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return SwiftBotStorage.folderURL()
+                .appendingPathComponent("recordings", isDirectory: true)
+                .appendingPathComponent("exports", isDirectory: true)
+        }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded, isDirectory: true)
     }
 
     private func encodedMediaStreamToken(itemID: String, ownerNodeName: String, ownerBaseURL: String?) -> String {
@@ -964,6 +1086,11 @@ final class AppModel: ObservableObject {
     private func localMediaThumbnailResponse(itemID: String) async -> BinaryHTTPResponse? {
         guard let item = await localMediaItem(for: itemID) else { return nil }
         return await mediaThumbnailCache.thumbnailResponse(for: item)
+    }
+
+    private func localMediaFrameResponse(itemID: String, atSeconds: Double) async -> BinaryHTTPResponse? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
+        return await mediaThumbnailCache.frameResponse(for: item, atSeconds: atSeconds)
     }
 
     private func parsedPositiveInt(_ value: String?, default defaultValue: Int, max: Int) -> Int {
@@ -1205,6 +1332,206 @@ final class AppModel: ObservableObject {
         }
 
         return await localMediaThumbnailResponse(itemID: descriptor.itemID)
+    }
+
+    func adminWebMediaFrameResponse(token: String, atSeconds: Double) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL,
+           !ownerBaseURL.isEmpty {
+            return await cluster.fetchRemoteMediaFrame(from: ownerBaseURL, itemID: descriptor.itemID, seconds: atSeconds)
+        }
+
+        return await localMediaFrameResponse(itemID: descriptor.itemID, atSeconds: atSeconds)
+    }
+
+    func adminWebMediaExportStatus() async -> MediaExportStatus {
+        await mediaExportCoordinator.ffmpegStatus()
+    }
+
+    func adminWebMediaExportJobs() async -> MediaExportJobsPayload {
+        let jobs = await mediaExportCoordinator.listJobs()
+        await MainActor.run { self.mediaExportJobs = jobs }
+        return MediaExportJobsPayload(jobs: jobs)
+    }
+
+    func adminWebStartMediaClipExport(request: MediaExportClipRequest) async -> MediaExportJobResponse {
+        guard request.endSeconds > request.startSeconds else {
+            return MediaExportJobResponse(job: nil, error: "End time must be after start time.")
+        }
+        guard request.endSeconds - request.startSeconds <= maxMediaClipDurationSeconds else {
+            return MediaExportJobResponse(job: nil, error: "Clip length exceeds 15 minutes.")
+        }
+        guard let descriptor = decodedMediaStreamToken(request.token) else {
+            return MediaExportJobResponse(job: nil, error: "Invalid media token.")
+        }
+
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL,
+           !ownerBaseURL.isEmpty {
+            let meshRequest = MeshMediaClipRequest(
+                itemID: descriptor.itemID,
+                startSeconds: request.startSeconds,
+                endSeconds: request.endSeconds,
+                name: request.name
+            )
+            if let job = await cluster.startRemoteMediaClip(from: ownerBaseURL, request: meshRequest) {
+                await mediaExportCoordinator.recordExternalJob(job)
+                return MediaExportJobResponse(job: job, error: nil)
+            }
+            return MediaExportJobResponse(job: nil, error: "Failed to start export on remote node.")
+        }
+
+        let status = await mediaExportCoordinator.ffmpegStatus()
+        guard status.installed else {
+            return MediaExportJobResponse(job: nil, error: "FFmpeg is not installed on this node.")
+        }
+
+        guard let item = await localMediaItem(for: descriptor.itemID) else {
+            return MediaExportJobResponse(job: nil, error: "Media item not found.")
+        }
+
+        let exportRoot = mediaExportRootURL()
+        try? FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
+        let job = await mediaExportCoordinator.startClip(
+            item: item,
+            request: request,
+            exportRoot: exportRoot,
+            nodeName: localNodeName
+        )
+        await mediaLibraryIndexer.invalidate()
+        return MediaExportJobResponse(job: job, error: nil)
+    }
+
+    func adminWebStartMediaMultiViewExport(request: MediaExportMultiViewRequest) async -> MediaExportJobResponse {
+        guard let primaryDescriptor = decodedMediaStreamToken(request.primaryToken),
+              let secondaryDescriptor = decodedMediaStreamToken(request.secondaryToken) else {
+            return MediaExportJobResponse(job: nil, error: "Invalid media token.")
+        }
+
+        if primaryDescriptor.ownerNodeName != secondaryDescriptor.ownerNodeName ||
+            primaryDescriptor.ownerBaseURL != secondaryDescriptor.ownerBaseURL {
+            return MediaExportJobResponse(job: nil, error: "Multiview clips must be on the same node.")
+        }
+        if let start = request.startSeconds, let end = request.endSeconds {
+            guard end > start else {
+                return MediaExportJobResponse(job: nil, error: "End time must be after start time.")
+            }
+            guard end - start <= maxMediaClipDurationSeconds else {
+                return MediaExportJobResponse(job: nil, error: "Clip length exceeds 15 minutes.")
+            }
+        }
+
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+
+        if primaryDescriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = primaryDescriptor.ownerBaseURL,
+           !ownerBaseURL.isEmpty {
+            let meshRequest = MeshMediaMultiViewRequest(
+                primaryID: primaryDescriptor.itemID,
+                secondaryID: secondaryDescriptor.itemID,
+                layout: request.layout,
+                audioSource: request.audioSource,
+                startSeconds: request.startSeconds,
+                endSeconds: request.endSeconds,
+                name: request.name
+            )
+            if let job = await cluster.startRemoteMediaMultiView(from: ownerBaseURL, request: meshRequest) {
+                await mediaExportCoordinator.recordExternalJob(job)
+                return MediaExportJobResponse(job: job, error: nil)
+            }
+            return MediaExportJobResponse(job: nil, error: "Failed to start multiview export on remote node.")
+        }
+
+        let status = await mediaExportCoordinator.ffmpegStatus()
+        guard status.installed else {
+            return MediaExportJobResponse(job: nil, error: "FFmpeg is not installed on this node.")
+        }
+
+        guard let primary = await localMediaItem(for: primaryDescriptor.itemID),
+              let secondary = await localMediaItem(for: secondaryDescriptor.itemID) else {
+            return MediaExportJobResponse(job: nil, error: "Media item not found.")
+        }
+
+        let exportRoot = mediaExportRootURL()
+        try? FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
+        let job = await mediaExportCoordinator.startMultiView(
+            primary: primary,
+            secondary: secondary,
+            request: request,
+            exportRoot: exportRoot,
+            nodeName: localNodeName
+        )
+        await mediaLibraryIndexer.invalidate()
+        return MediaExportJobResponse(job: job, error: nil)
+    }
+
+    func localMediaClipExport(request: MeshMediaClipRequest) async -> MediaExportJob? {
+        guard request.endSeconds > request.startSeconds else { return nil }
+        guard request.endSeconds - request.startSeconds <= maxMediaClipDurationSeconds else { return nil }
+        let status = await mediaExportCoordinator.ffmpegStatus()
+        guard status.installed else { return nil }
+        guard let item = await localMediaItem(for: request.itemID) else { return nil }
+        let exportRoot = mediaExportRootURL()
+        try? FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+        let job = await mediaExportCoordinator.startClip(
+            item: item,
+            request: MediaExportClipRequest(
+                token: "",
+                startSeconds: request.startSeconds,
+                endSeconds: request.endSeconds,
+                name: request.name
+            ),
+            exportRoot: exportRoot,
+            nodeName: localNodeName
+        )
+        await mediaLibraryIndexer.invalidate()
+        return job
+    }
+
+    func localMediaMultiViewExport(request: MeshMediaMultiViewRequest) async -> MediaExportJob? {
+        let status = await mediaExportCoordinator.ffmpegStatus()
+        guard status.installed else { return nil }
+        if let start = request.startSeconds, let end = request.endSeconds {
+            guard end > start, end - start <= maxMediaClipDurationSeconds else { return nil }
+        }
+        guard let primary = await localMediaItem(for: request.primaryID),
+              let secondary = await localMediaItem(for: request.secondaryID) else { return nil }
+        let exportRoot = mediaExportRootURL()
+        try? FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+        let job = await mediaExportCoordinator.startMultiView(
+            primary: primary,
+            secondary: secondary,
+            request: MediaExportMultiViewRequest(
+                primaryToken: "",
+                secondaryToken: "",
+                layout: request.layout,
+                audioSource: request.audioSource,
+                startSeconds: request.startSeconds,
+                endSeconds: request.endSeconds,
+                name: request.name
+            ),
+            exportRoot: exportRoot,
+            nodeName: localNodeName
+        )
+        await mediaLibraryIndexer.invalidate()
+        return job
     }
 
     private func startMediaMonitor() {
@@ -3073,6 +3400,26 @@ final class AppModel: ObservableObject {
             mediaThumbnailProvider: { [weak self] token in
                 guard let model = self else { return nil }
                 return await model.adminWebMediaThumbnailResponse(token: token)
+            },
+            mediaFrameProvider: { [weak self] token, seconds in
+                guard let model = self else { return nil }
+                return await model.adminWebMediaFrameResponse(token: token, atSeconds: seconds)
+            },
+            mediaExportStatusProvider: { [weak self] in
+                guard let model = self else { return MediaExportStatus(installed: false, version: nil, path: nil) }
+                return await model.adminWebMediaExportStatus()
+            },
+            mediaExportJobsProvider: { [weak self] in
+                guard let model = self else { return MediaExportJobsPayload(jobs: []) }
+                return await model.adminWebMediaExportJobs()
+            },
+            mediaClipExportStarter: { [weak self] request in
+                guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
+                return await model.adminWebStartMediaClipExport(request: request)
+            },
+            mediaMultiViewExportStarter: { [weak self] request in
+                guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
+                return await model.adminWebStartMediaMultiViewExport(request: request)
             },
             startBot: { [weak self] in
                 guard let model = self else { return false }
