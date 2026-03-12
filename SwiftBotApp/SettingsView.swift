@@ -5,6 +5,7 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var updater: AppUpdater
     @Binding var showToken: Bool
     @AppStorage("settings.swiftmesh.expanded.v1") private var isSwiftMeshExpanded = false
+    @AppStorage("settings.media.expanded.v1") private var isMediaExpanded = false
     @AppStorage("settings.webui.expanded.v1") private var isWebUIExpanded = false
     @State private var settingsSnapshot = GeneralSettingsSnapshot()
     @State private var transientToastMessage: String?
@@ -46,8 +47,13 @@ struct GeneralSettingsView: View {
             clusterMode: app.settings.clusterMode,
             clusterNodeName: app.settings.clusterNodeName,
             clusterLeaderAddress: app.settings.clusterLeaderAddress,
+            clusterLeaderPort: app.settings.clusterLeaderPort,
             clusterListenPort: app.settings.clusterListenPort,
             clusterSharedSecret: app.settings.clusterSharedSecret,
+            clusterWorkerOffloadEnabled: app.settings.clusterWorkerOffloadEnabled,
+            clusterOffloadAIReplies: app.settings.clusterOffloadAIReplies,
+            clusterOffloadWikiLookups: app.settings.clusterOffloadWikiLookups,
+            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
             adminWebEnabled: app.settings.adminWebUI.enabled,
             adminWebHost: app.settings.adminWebUI.bindHost,
             adminWebPort: app.settings.adminWebUI.port,
@@ -60,6 +66,9 @@ struct GeneralSettingsView: View {
             adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
             adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
             adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
+            adminLocalAuthEnabled: app.settings.adminWebUI.localAuthEnabled,
+            adminLocalAuthUsername: app.settings.adminWebUI.localAuthUsername,
+            adminLocalAuthPassword: app.settings.adminWebUI.localAuthPassword,
             adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
@@ -104,6 +113,15 @@ struct GeneralSettingsView: View {
             lines.append(hostname.isEmpty ? "Public Access setup pending" : "Public Access via Cloudflare Tunnel for \(hostname)")
         }
         return lines
+    }
+
+    private var mediaLibrarySummaryLines: [String] {
+        let sources = app.mediaLibrarySettings.sources
+        let enabledCount = sources.filter(\.isEnabled).count
+        return [
+            "\(enabledCount)/\(sources.count) sources enabled",
+            sources.isEmpty ? "No recording libraries configured" : "Node-local NAS/library paths"
+        ]
     }
 
     var body: some View {
@@ -233,6 +251,14 @@ struct GeneralSettingsView: View {
                 }
 
                 SettingsDisclosureCard(
+                    title: "Recordings",
+                    summaryLines: mediaLibrarySummaryLines,
+                    isExpanded: $isMediaExpanded
+                ) {
+                    mediaLibraryContent
+                }
+
+                SettingsDisclosureCard(
                     title: "Web UI",
                     summaryLines: webUISummaryLines,
                     isExpanded: $isWebUIExpanded,
@@ -303,7 +329,7 @@ struct GeneralSettingsView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges && !isFailoverManagedNode {
+            if hasUnsavedChanges {
                 StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
                     app.saveSettings()
                     settingsSnapshot = currentSettingsSnapshot
@@ -617,6 +643,71 @@ struct GeneralSettingsView: View {
         }
     }
 
+    private var mediaLibraryContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Configure the recording folders available on this node. These paths stay local to this Mac and are not synced over SwiftMesh.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ForEach($app.mediaLibrarySettings.sources) { $source in
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        TextField("Source Name", text: $source.name)
+                            .textFieldStyle(.roundedBorder)
+                        Toggle("", isOn: $source.isEnabled)
+                            .labelsHidden()
+                        Button(role: .destructive) {
+                            if let index = app.mediaLibrarySettings.sources.firstIndex(where: { $0.id == source.id }) {
+                                app.mediaLibrarySettings.sources.remove(at: index)
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Root Path")
+                            .font(.subheadline.weight(.medium))
+                        TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Allowed Extensions")
+                            .font(.subheadline.weight(.medium))
+                        TextField(
+                            "mp4, mov, m4v",
+                            text: Binding(
+                                get: { source.allowedExtensions.joined(separator: ", ") },
+                                set: { rawValue in
+                                    source.allowedExtensions = rawValue
+                                        .split(separator: ",")
+                                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                        .filter { !$0.isEmpty }
+                                }
+                            )
+                        )
+                        .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(14)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                )
+            }
+
+            Button {
+                app.mediaLibrarySettings.sources.append(MediaLibrarySource())
+            } label: {
+                Label("Add Source", systemImage: "plus")
+            }
+            .buttonStyle(GlassActionButtonStyle())
+        }
+    }
+
     @ViewBuilder
     private func adminWebSettingsCard<Content: View>(
         title: String,
@@ -703,6 +794,14 @@ struct GeneralSettingsView: View {
             }
         }
     }
+
+    private func mediaSourcesSnapshotJSON() -> String {
+        guard let data = try? JSONEncoder().encode(app.mediaLibrarySettings.sources),
+              let text = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return text
+    }
 }
 
 private struct GeneralSettingsSnapshot: Equatable {
@@ -711,8 +810,13 @@ private struct GeneralSettingsSnapshot: Equatable {
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName = ""
     var clusterLeaderAddress = ""
+    var clusterLeaderPort = 38787
     var clusterListenPort = 38787
     var clusterSharedSecret = ""
+    var clusterWorkerOffloadEnabled = false
+    var clusterOffloadAIReplies = false
+    var clusterOffloadWikiLookups = false
+    var mediaSourcesJSON = ""
     var adminWebEnabled = false
     var adminWebHost = ""
     var adminWebPort = 38888
@@ -725,6 +829,9 @@ private struct GeneralSettingsSnapshot: Equatable {
     var adminWebImportedCertificateFile = ""
     var adminWebImportedPrivateKeyFile = ""
     var adminWebImportedCertificateChainFile = ""
+    var adminLocalAuthEnabled = false
+    var adminLocalAuthUsername = ""
+    var adminLocalAuthPassword = ""
     var adminRestrictSpecificUsers = false
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""

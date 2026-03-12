@@ -810,6 +810,53 @@ struct AdminWebAuthenticationSection: View {
                 redirectURL: redirectURL(for: "discord")
             )
 
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.shield")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Local Fallback")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Use a local username/password when Discord auth is unavailable during testing.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $app.settings.adminWebUI.localAuthEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+
+                if app.settings.adminWebUI.localAuthEnabled {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Username")
+                            .font(.caption.weight(.medium))
+                        TextField("admin", text: $app.settings.adminWebUI.localAuthUsername)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Password")
+                            .font(.caption.weight(.medium))
+                        SecureField("Enter local fallback password", text: $app.settings.adminWebUI.localAuthPassword)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Text("Stored securely in your macOS Keychain.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
             if app.settings.devFeaturesEnabled {
                 OAuthProviderCard(
                     name: "Apple",

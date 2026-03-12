@@ -207,6 +207,9 @@ struct AdminWebUISettings: Codable, Hashable {
     var appleOAuth = OAuthProviderSettings()
     var steamOAuth = OAuthProviderSettings()
     var githubOAuth = OAuthProviderSettings()
+    var localAuthEnabled: Bool = false
+    var localAuthUsername: String = "admin"
+    var localAuthPassword: String = ""
     
     // Legacy compatibility - migrated to oauth providers
     var discordClientID: String { discordOAuth.clientID }
@@ -239,6 +242,9 @@ struct AdminWebUISettings: Codable, Hashable {
         case appleOAuth
         case steamOAuth
         case githubOAuth
+        case localAuthEnabled
+        case localAuthUsername
+        case localAuthPassword
         case redirectPath
         case restrictAccessToSpecificUsers
         case allowedUserIDs
@@ -293,7 +299,10 @@ struct AdminWebUISettings: Codable, Hashable {
         appleOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .appleOAuth) ?? OAuthProviderSettings()
         steamOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .steamOAuth) ?? OAuthProviderSettings()
         githubOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .githubOAuth) ?? OAuthProviderSettings()
-        
+        localAuthEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAuthEnabled) ?? false
+        localAuthUsername = try container.decodeIfPresent(String.self, forKey: .localAuthUsername) ?? "admin"
+        localAuthPassword = try container.decodeIfPresent(String.self, forKey: .localAuthPassword) ?? ""
+
         redirectPath = try container.decodeIfPresent(String.self, forKey: .redirectPath) ?? "/auth/discord/callback"
         allowedUserIDs = try container.decodeIfPresent([String].self, forKey: .allowedUserIDs) ?? []
         restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
@@ -321,6 +330,9 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(appleOAuth, forKey: .appleOAuth)
         try container.encode(steamOAuth, forKey: .steamOAuth)
         try container.encode(githubOAuth, forKey: .githubOAuth)
+        try container.encode(localAuthEnabled, forKey: .localAuthEnabled)
+        try container.encode(localAuthUsername, forKey: .localAuthUsername)
+        try container.encode(localAuthPassword, forKey: .localAuthPassword)
         try container.encode(redirectPath, forKey: .redirectPath)
         try container.encode(restrictAccessToSpecificUsers, forKey: .restrictAccessToSpecificUsers)
         try container.encode(allowedUserIDs, forKey: .allowedUserIDs)
@@ -1680,6 +1692,10 @@ struct MeshWorkerRegistryPayload: Codable, Sendable {
 struct MeshSyncPayload: Codable, Sendable {
     let conversations: [MemoryRecord]
     let imageUsage: [String: Int]?
+    let commandLog: [CommandLogEntry]?
+    let voiceLog: [VoiceEventLogEntry]?
+    let activeVoice: [VoiceMemberPresence]?
+    let configFilesChanged: Bool
     let leaderTerm: Int
     /// ID of the last record in this batch — standby stores as its new cursor.
     let cursorRecordID: String?
@@ -1689,9 +1705,24 @@ struct MeshSyncPayload: Codable, Sendable {
     /// Node compares against its own lastMergedRecordID to detect gaps.
     let fromCursorRecordID: String?
 
-    init(conversations: [MemoryRecord], imageUsage: [String: Int]? = nil, leaderTerm: Int, cursorRecordID: String? = nil, hasMore: Bool = false, fromCursorRecordID: String? = nil) {
+    init(
+        conversations: [MemoryRecord],
+        imageUsage: [String: Int]? = nil,
+        commandLog: [CommandLogEntry]? = nil,
+        voiceLog: [VoiceEventLogEntry]? = nil,
+        activeVoice: [VoiceMemberPresence]? = nil,
+        configFilesChanged: Bool = false,
+        leaderTerm: Int,
+        cursorRecordID: String? = nil,
+        hasMore: Bool = false,
+        fromCursorRecordID: String? = nil
+    ) {
         self.conversations = conversations
         self.imageUsage = imageUsage
+        self.commandLog = commandLog
+        self.voiceLog = voiceLog
+        self.activeVoice = activeVoice
+        self.configFilesChanged = configFilesChanged
         self.leaderTerm = leaderTerm
         self.cursorRecordID = cursorRecordID
         self.hasMore = hasMore
@@ -1977,7 +2008,7 @@ struct StatCounter {
 }
 
 struct ActivityEvent: Identifiable, Hashable {
-    enum Kind: String {
+    enum Kind: String, Codable {
         case voiceJoin
         case voiceLeave
         case voiceMove
@@ -1993,8 +2024,8 @@ struct ActivityEvent: Identifiable, Hashable {
     let message: String
 }
 
-struct CommandLogEntry: Identifiable, Hashable {
-    let id = UUID()
+struct CommandLogEntry: Identifiable, Hashable, Codable {
+    let id: UUID
     let time: Date
     let user: String
     let server: String
@@ -2003,6 +2034,28 @@ struct CommandLogEntry: Identifiable, Hashable {
     let executionRoute: String
     let executionNode: String
     let ok: Bool
+
+    init(
+        id: UUID = UUID(),
+        time: Date,
+        user: String,
+        server: String,
+        command: String,
+        channel: String,
+        executionRoute: String,
+        executionNode: String,
+        ok: Bool
+    ) {
+        self.id = id
+        self.time = time
+        self.user = user
+        self.server = server
+        self.command = command
+        self.channel = channel
+        self.executionRoute = executionRoute
+        self.executionNode = executionNode
+        self.ok = ok
+    }
 }
 
 enum BugStatus: String, Codable, Hashable {
@@ -2039,7 +2092,7 @@ struct BugEntry: Hashable, Codable {
     var timestamp: Date
 }
 
-struct VoiceMemberPresence: Identifiable, Hashable {
+struct VoiceMemberPresence: Identifiable, Hashable, Codable {
     let id: String
     let userId: String
     let username: String
@@ -2049,10 +2102,16 @@ struct VoiceMemberPresence: Identifiable, Hashable {
     let joinedAt: Date
 }
 
-struct VoiceEventLogEntry: Identifiable, Hashable {
-    let id = UUID()
+struct VoiceEventLogEntry: Identifiable, Hashable, Codable {
+    let id: UUID
     let time: Date
     let description: String
+
+    init(id: UUID = UUID(), time: Date, description: String) {
+        self.id = id
+        self.time = time
+        self.description = description
+    }
 }
 
 struct FinalsWikiLookupResult: Codable, Hashable {
@@ -2404,6 +2463,7 @@ struct VoiceRuleEvent {
         case message
         case memberJoin
         case memberLeave
+        case mediaAdded
     }
 
     let kind: Kind
@@ -2416,6 +2476,10 @@ struct VoiceRuleEvent {
     let durationSeconds: Int?
     let messageContent: String?
     let messageId: String?
+    let mediaFileName: String?
+    let mediaRelativePath: String?
+    let mediaSourceName: String?
+    let mediaNodeName: String?
     let triggerMessageId: String?
     let triggerChannelId: String?
     let triggerGuildId: String
@@ -2434,6 +2498,7 @@ final class RuleStore: ObservableObject {
 
     private let store = RuleConfigStore()
     private var autoSaveTask: Task<Void, Never>?
+    var onPersisted: (@Sendable () async -> Void)?
 
     init() {
         Task {
@@ -2481,6 +2546,7 @@ final class RuleStore: ObservableObject {
         Task {
             try? await store.save(snapshot)
             lastSavedAt = Date()
+            await onPersisted?()
         }
     }
 
@@ -2585,7 +2651,8 @@ final class RuleEngine {
              (.userLeftVoice, .leave),
              (.userMovedVoice, .move),
              (.messageCreated, .message),
-             (.memberJoined, .memberJoin):
+             (.memberJoined, .memberJoin),
+             (.mediaAdded, .mediaAdded):
             return true
         default:
             return false
@@ -2914,6 +2981,10 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
     case aiClassification = "{ai.classification}"
     case aiEntities = "{ai.entities}"
     case aiRewrite = "{ai.rewrite}"
+    case mediaFile = "{media.file}"
+    case mediaPath = "{media.path}"
+    case mediaSource = "{media.source}"
+    case mediaNode = "{media.node}"
     
     var displayName: String {
         switch self {
@@ -2941,6 +3012,10 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
         case .aiClassification: return "AI Classification"
         case .aiEntities: return "AI Entities"
         case .aiRewrite: return "AI Rewrite"
+        case .mediaFile: return "Media File"
+        case .mediaPath: return "Media Path"
+        case .mediaSource: return "Media Source"
+        case .mediaNode: return "Media Node"
         }
     }
     
@@ -2962,6 +3037,8 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
             return "Other"
         case .aiResponse, .aiSummary, .aiClassification, .aiEntities, .aiRewrite:
             return "AI"
+        case .mediaFile, .mediaPath, .mediaSource, .mediaNode:
+            return "Media"
         }
     }
 }
@@ -3133,6 +3210,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
     case memberLeft = "Member Left"
     case reactionAdded = "Reaction Added"
     case slashCommand = "Slash Command"
+    case mediaAdded = "New Media Added"
 
     var id: String { rawValue }
 
@@ -3164,6 +3242,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .memberLeft: return "person.badge.minus"
         case .reactionAdded: return "face.smiling"
         case .slashCommand: return "slash.circle"
+        case .mediaAdded: return "video"
         }
     }
 
@@ -3177,6 +3256,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .memberLeft: return "👋 {username} left the server."
         case .reactionAdded: return "👍 Reaction added!"
         case .slashCommand: return "Command received!"
+        case .mediaAdded: return "🎬 New media detected: {media.file}"
         }
     }
 
@@ -3190,6 +3270,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .memberLeft: return "Member Leave Log"
         case .reactionAdded: return "Reaction Handler"
         case .slashCommand: return "Command Handler"
+        case .mediaAdded: return "Media Added"
         }
     }
     
@@ -3206,6 +3287,8 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
             return [.user, .userId, .username, .userMention, .message, .messageId, .channel, .channelId, .reaction, .reactionEmoji, .guild, .guildId]
         case .slashCommand:
             return [.user, .userId, .username, .userMention, .channel, .channelId, .guild, .guildId, .guildName]
+        case .mediaAdded:
+            return [.mediaFile, .mediaPath, .mediaSource, .mediaNode]
         }
     }
 
@@ -3688,7 +3771,7 @@ extension MessageDestination {
             return .replyToTrigger
         case .slashCommand:
             return .sameChannel
-        case .userJoinedVoice, .userLeftVoice, .userMovedVoice, .memberJoined, .memberLeft, .none:
+        case .userJoinedVoice, .userLeftVoice, .userMovedVoice, .memberJoined, .memberLeft, .mediaAdded, .none:
             return .specificChannel
         }
     }
@@ -3902,6 +3985,7 @@ struct Rule: Identifiable, Codable, Equatable {
         case .memberLeft: return "When a member leaves the server"
         case .reactionAdded: return "When a reaction is added"
         case .slashCommand: return "When a slash command is used"
+        case .mediaAdded: return "When new media is detected"
         }
     }
     

@@ -1,4 +1,6 @@
 import AppKit
+import AVFoundation
+import CryptoKit
 import Foundation
 import SwiftUI
 import UpdateEngine
@@ -56,6 +58,162 @@ private struct AdminWebCertificateRenewalConfiguration: Equatable {
     let enabled: Bool
     let domain: String
     let cloudflareToken: String
+}
+
+actor MediaLibraryIndexer {
+    private struct CacheEntry {
+        let signature: String
+        let payload: MediaLibraryPayload
+        let createdAt: Date
+    }
+
+    private var cachedEntry: CacheEntry?
+    private let cacheTTL: TimeInterval = 30
+    
+    func cachedItem(for id: String) -> MediaLibraryItem? {
+        cachedEntry?.payload.items.first(where: { $0.id == id })
+    }
+
+    func invalidate() {
+        cachedEntry = nil
+    }
+
+    func snapshot(
+        sources: [MediaLibrarySource],
+        ownerNodeName: String,
+        ownerBaseURL: String?,
+        configFilePath: String
+    ) -> MediaLibraryPayload {
+        let signature = makeSignature(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL, configFilePath: configFilePath)
+        if let cachedEntry, cachedEntry.signature == signature, Date().timeIntervalSince(cachedEntry.createdAt) < cacheTTL {
+            return cachedEntry.payload
+        }
+
+        let payload = MediaLibraryPayload(
+            nodeName: ownerNodeName,
+            configFilePath: configFilePath,
+            sources: sources,
+            items: scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL),
+            generatedAt: Date()
+        )
+        cachedEntry = CacheEntry(signature: signature, payload: payload, createdAt: Date())
+        return payload
+    }
+
+    private func makeSignature(
+        sources: [MediaLibrarySource],
+        ownerNodeName: String,
+        ownerBaseURL: String?,
+        configFilePath: String
+    ) -> String {
+        let sourceSignature = sources.map {
+            "\($0.id.uuidString)|\($0.name)|\($0.normalizedRootPath)|\($0.isEnabled)|\($0.normalizedExtensions.joined(separator: ","))"
+        }.joined(separator: "||")
+        return "\(ownerNodeName)|\(ownerBaseURL ?? "")|\(configFilePath)|\(sourceSignature)"
+    }
+
+    private func scanItems(
+        sources: [MediaLibrarySource],
+        ownerNodeName: String,
+        ownerBaseURL: String?
+    ) -> [MediaLibraryItem] {
+        let fileManager = FileManager.default
+        var items: [MediaLibraryItem] = []
+
+        for source in sources where source.isEnabled {
+            let root = source.normalizedRootPath
+            guard !root.isEmpty else { continue }
+
+            let rootURL = URL(fileURLWithPath: root, isDirectory: true)
+            guard let enumerator = fileManager.enumerator(
+                at: rootURL,
+                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+
+            let allowedExtensions = Set(source.normalizedExtensions)
+            for case let fileURL as URL in enumerator {
+                let ext = fileURL.pathExtension.lowercased()
+                guard allowedExtensions.isEmpty || allowedExtensions.contains(ext) else { continue }
+                guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+                      values.isRegularFile == true else { continue }
+
+                let relativePath = fileURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+                let id = "\(source.id.uuidString)|\(relativePath)"
+                items.append(
+                    MediaLibraryItem(
+                        id: id,
+                        sourceID: source.id,
+                        sourceName: source.name,
+                        fileName: fileURL.lastPathComponent,
+                        relativePath: relativePath,
+                        absolutePath: fileURL.path,
+                        fileExtension: ext,
+                        sizeBytes: Int64(values.fileSize ?? 0),
+                        modifiedAt: values.contentModificationDate ?? .distantPast,
+                        ownerNodeName: ownerNodeName,
+                        ownerBaseURL: ownerBaseURL
+                    )
+                )
+            }
+        }
+
+        return items.sorted {
+            if $0.modifiedAt != $1.modifiedAt { return $0.modifiedAt > $1.modifiedAt }
+            return $0.fileName.localizedCaseInsensitiveCompare($1.fileName) == .orderedAscending
+        }
+    }
+}
+
+actor MediaThumbnailCache {
+    private let fileManager = FileManager.default
+
+    private func cacheDirectoryURL() -> URL {
+        let url = SwiftBotStorage.folderURL().appendingPathComponent("media-thumbnails", isDirectory: true)
+        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    func thumbnailResponse(for item: MediaLibraryItem) async -> BinaryHTTPResponse? {
+        let cacheURL = cachedThumbnailURL(for: item)
+        if let data = try? Data(contentsOf: cacheURL) {
+            return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: ["Cache-Control": "public, max-age=300"], body: data)
+        }
+
+        guard let image = await generateThumbnail(for: item) else { return nil }
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.78]) else {
+            return nil
+        }
+        try? jpeg.write(to: cacheURL, options: .atomic)
+        return BinaryHTTPResponse(status: "200 OK", contentType: "image/jpeg", headers: ["Cache-Control": "public, max-age=300"], body: jpeg)
+    }
+
+    private func cachedThumbnailURL(for item: MediaLibraryItem) -> URL {
+        let fingerprint = "\(item.absolutePath)|\(item.modifiedAt.timeIntervalSince1970)|\(item.sizeBytes)"
+        let digest = SHA256.hash(data: Data(fingerprint.utf8)).map { String(format: "%02x", $0) }.joined()
+        return cacheDirectoryURL().appendingPathComponent("\(digest).jpg")
+    }
+
+    private func generateThumbnail(for item: MediaLibraryItem) async -> NSImage? {
+        let url = URL(fileURLWithPath: item.absolutePath)
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 640, height: 360)
+
+        let time = CMTime(seconds: 2, preferredTimescale: 600)
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: time) { cgImage, _, error in
+                guard let cgImage, error == nil else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+            }
+        }
+    }
 }
 
 enum AdminWebAutomaticHTTPSSetupEvent: Sendable, Equatable {
@@ -171,6 +329,7 @@ final class AppModel: ObservableObject {
     @Published var appleIntelligenceOnline = false
     @Published var ollamaOnline = false
     @Published var openAIOnline = false
+    @Published var recentMediaCount24h = 0
     @Published var ollamaDetectedModel: String?
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
@@ -231,8 +390,11 @@ final class AppModel: ObservableObject {
 
     let store = ConfigStore()
     let swiftMeshConfigStore = SwiftMeshConfigStore()
+    let mediaLibraryConfigStore = MediaLibraryConfigStore()
     let discordCacheStore = DiscordCacheStore()
     let meshCursorStore = MeshCursorStore()
+    let mediaLibraryIndexer = MediaLibraryIndexer()
+    let mediaThumbnailCache = MediaThumbnailCache()
     let discordCache = DiscordCache()
     let service = DiscordService()
     let cluster = ClusterCoordinator()
@@ -272,6 +434,8 @@ final class AppModel: ObservableObject {
     var patchyMonitorTask: Task<Void, Never>?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
     private var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
+    var mediaMonitorTask: Task<Void, Never>?
+    var lastSeenMediaItemIDs: Set<String> = []
     var botUserId: String?
     let launchedAt = Date()
     var clusterNodesRefreshTask: Task<Void, Never>?
@@ -286,6 +450,7 @@ final class AppModel: ObservableObject {
     @Published var botAvatarHash: String?
     @Published var userAvatarHashById: [String: String] = [:]
     @Published var guildAvatarHashByMemberKey: [String: String] = [:]
+    @Published var mediaLibrarySettings = MediaLibrarySettings()
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
@@ -358,18 +523,23 @@ final class AppModel: ObservableObject {
         } else {
             self.patchyChecker = nil
         }
+        self.ruleStore.onPersisted = { [weak self] in
+            await self?.handleRuleStorePersisted()
+        }
 
         Task {
             await startRateLimitCleanupTask()
 
             var loadedSettings = await store.load()
             let loadedMeshSettings = await swiftMeshConfigStore.load()
+            let loadedMediaSettings = await mediaLibraryConfigStore.load()
             if let loadedMeshSettings {
                 loadedSettings.swiftMeshSettings = loadedMeshSettings
             } else {
                 // Seed dedicated mesh config once so later synced settings imports can't drift mesh identity.
                 try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
             }
+            mediaLibrarySettings = loadedMediaSettings
             var migrated = false
 
             if loadedSettings.localAIEndpoint.contains("mac-studio.local") {
@@ -475,6 +645,18 @@ final class AppModel: ObservableObject {
                     guard let self else { return nil }
                     return await self.handleMeshRequest(type: type)
                 },
+                mediaLibraryProvider: { [weak self] in
+                    guard let self else { return MediaLibraryPayload(nodeName: "SwiftBot", configFilePath: "", sources: [], items: [], generatedAt: Date()) }
+                    return await self.localMediaLibrarySnapshot()
+                },
+                mediaStreamHandler: { [weak self] itemID, rangeHeader in
+                    guard let self else { return nil }
+                    return await self.localMediaStreamResponse(itemID: itemID, rangeHeader: rangeHeader)
+                },
+                mediaThumbnailHandler: { [weak self] itemID, _ in
+                    guard let self else { return nil }
+                    return await self.localMediaThumbnailResponse(itemID: itemID)
+                },
                 conversationFetcher: { [weak self] fromRecordID, limit in
                     guard let self else { return ([], false) }
                     return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
@@ -559,6 +741,11 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.redirectPath = normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
         settings.adminWebUI.discordOAuth.clientID = settings.adminWebUI.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.discordOAuth.clientSecret = settings.adminWebUI.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.localAuthUsername = settings.adminWebUI.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if settings.adminWebUI.localAuthUsername.isEmpty {
+            settings.adminWebUI.localAuthUsername = "admin"
+        }
+        settings.adminWebUI.localAuthPassword = settings.adminWebUI.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
@@ -576,6 +763,19 @@ final class AppModel: ObservableObject {
         isOnboardingComplete = onboardingCompleted(for: settings)
 
         Task {
+            do {
+                try await store.save(settings)
+                try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
+                try await mediaLibraryConfigStore.save(mediaLibrarySettings)
+                await mediaLibraryIndexer.invalidate()
+                logs.append("✅ Settings saved")
+                await refreshAIStatus()
+            } catch {
+                stats.errors += 1
+                logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+                return
+            }
+
             if self.usesLocalRuntime {
                 await service.configureLocalAIDMReplies(
                     enabled: settings.localAIDMReplyEnabled,
@@ -607,14 +807,515 @@ final class AppModel: ObservableObject {
                 adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
             }
 
+            await notifyConfigFilesChangedIfLeader()
+        }
+    }
+
+    func handleRuleStorePersisted() async {
+        await notifyConfigFilesChangedIfLeader()
+    }
+
+    func notifyConfigFilesChangedIfLeader() async {
+        guard settings.clusterMode == .leader else { return }
+        let currentTerm = await cluster.currentLeaderTerm()
+        let payload = MeshSyncPayload(
+            conversations: [],
+            configFilesChanged: true,
+            leaderTerm: currentTerm
+        )
+        await cluster.pushSyncPayloadToNodes(payload)
+    }
+
+    func localMediaLibrarySnapshot(ownerBaseURL: String? = nil) async -> MediaLibraryPayload {
+        let configURL = await mediaLibraryConfigStore.fileURL()
+        let ownerNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+        let payload = await mediaLibraryIndexer.snapshot(
+            sources: mediaLibrarySettings.sources,
+            ownerNodeName: ownerNodeName,
+            ownerBaseURL: ownerBaseURL,
+            configFilePath: configURL.path
+        )
+        if ownerBaseURL == nil {
+            let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+            recentMediaCount24h = payload.items.filter { $0.modifiedAt >= cutoff }.count
+        }
+        return payload
+    }
+
+    private func encodedMediaStreamToken(itemID: String, ownerNodeName: String, ownerBaseURL: String?) -> String {
+        let descriptor = MediaStreamDescriptor(itemID: itemID, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL)
+        guard let data = try? JSONEncoder().encode(descriptor) else { return "" }
+        return data
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func decodedMediaStreamToken(_ token: String) -> MediaStreamDescriptor? {
+        var base64 = token
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - base64.count % 4) % 4
+        if padding > 0 {
+            base64 += String(repeating: "=", count: padding)
+        }
+        guard let data = Data(base64Encoded: base64) else { return nil }
+        return try? JSONDecoder().decode(MediaStreamDescriptor.self, from: data)
+    }
+
+    private func mediaContentType(for path: String) -> String {
+        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
+        case "mp4": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "m4v": return "video/x-m4v"
+        case "webm": return "video/webm"
+        case "mkv": return "video/x-matroska"
+        default: return "application/octet-stream"
+        }
+    }
+
+    private func parseByteRange(_ header: String?, fileSize: UInt64) -> (offset: UInt64, length: UInt64)? {
+        guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines),
+              header.lowercased().hasPrefix("bytes="),
+              fileSize > 0 else { return nil }
+
+        let rawRange = String(header.dropFirst("bytes=".count))
+        let parts = rawRange.split(separator: "-", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+
+        if parts[0].isEmpty, let suffixLength = UInt64(parts[1]) {
+            let length = min(suffixLength, fileSize)
+            return (offset: fileSize - length, length: length)
+        }
+
+        guard let start = UInt64(parts[0]), start < fileSize else { return nil }
+        let end: UInt64
+        if parts[1].isEmpty {
+            end = fileSize - 1
+        } else if let parsedEnd = UInt64(parts[1]) {
+            end = min(parsedEnd, fileSize - 1)
+        } else {
+            return nil
+        }
+
+        guard end >= start else { return nil }
+        return (offset: start, length: end - start + 1)
+    }
+
+    private func localMediaItem(for itemID: String) async -> MediaLibraryItem? {
+        if let cached = await mediaLibraryIndexer.cachedItem(for: itemID) {
+            return cached
+        }
+        let snapshot = await localMediaLibrarySnapshot()
+        return snapshot.items.first(where: { $0.id == itemID })
+    }
+
+    private func localMediaStreamResponse(itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
+
+        let fileURL = URL(fileURLWithPath: item.absolutePath)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSizeNumber = attributes[.size] as? NSNumber else {
+            return nil
+        }
+
+        let fileSize = fileSizeNumber.uint64Value
+        let contentType = mediaContentType(for: fileURL.path)
+        let requestedRange = parseByteRange(rangeHeader, fileSize: fileSize)
+        let initialChunkLength = min(fileSize, 5 * 1024 * 1024)
+        let effectiveRange: (offset: UInt64, length: UInt64)
+        if let requestedRange {
+            effectiveRange = (offset: requestedRange.offset, length: min(requestedRange.length, initialChunkLength))
+        } else {
+            effectiveRange = (offset: 0, length: initialChunkLength)
+        }
+
+        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType] in
             do {
-                try await store.save(settings)
-                try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
-                logs.append("✅ Settings saved")
-                await refreshAIStatus()
+                let handle = try FileHandle(forReadingFrom: fileURL)
+                defer { try? handle.close() }
+
+                try handle.seek(toOffset: effectiveRange.offset)
+                let data = try handle.read(upToCount: Int(effectiveRange.length)) ?? Data()
+                let end = effectiveRange.offset + UInt64(data.count) - 1
+                return BinaryHTTPResponse(
+                    status: "206 Partial Content",
+                    contentType: contentType,
+                    headers: [
+                        "Accept-Ranges": "bytes",
+                        "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)"
+                    ],
+                    body: data
+                )
             } catch {
-                stats.errors += 1
-                logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+                return BinaryHTTPResponse(
+                    status: "500 Internal Server Error",
+                    contentType: "application/json",
+                    headers: [:],
+                    body: Data("{\"error\":\"media read failed\"}".utf8)
+                )
+            }
+        }.value
+    }
+
+    private func localMediaThumbnailResponse(itemID: String) async -> BinaryHTTPResponse? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
+        return await mediaThumbnailCache.thumbnailResponse(for: item)
+    }
+
+    private func parsedPositiveInt(_ value: String?, default defaultValue: Int, max: Int) -> Int {
+        guard let value,
+              let parsed = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parsed > 0 else {
+            return defaultValue
+        }
+        return min(parsed, max)
+    }
+
+    private func filteredMediaItemPayloads(
+        from payloads: [MediaLibraryPayload],
+        selectedSourceID: String?,
+        selectedDateRange: String,
+        selectedGame: String?
+    ) -> [AdminWebMediaItemPayload] {
+        let normalizedSelectedGame = selectedGame?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let minimumModifiedDate: Date? = {
+            switch selectedDateRange {
+            case "7d":
+                return Calendar.current.date(byAdding: .day, value: -7, to: Date())
+            case "30d":
+                return Calendar.current.date(byAdding: .day, value: -30, to: Date())
+            case "90d":
+                return Calendar.current.date(byAdding: .day, value: -90, to: Date())
+            default:
+                return nil
+            }
+        }()
+
+        return payloads
+            .flatMap { payload in
+                payload.items.compactMap { item in
+                    let sourceToken = "\(payload.nodeName)|\(item.sourceID.uuidString)"
+                    if let selectedSourceID, !selectedSourceID.isEmpty, sourceToken != selectedSourceID {
+                        return nil
+                    }
+                    if let minimumModifiedDate, item.modifiedAt < minimumModifiedDate {
+                        return nil
+                    }
+
+                    let gameName = mediaGameName(for: item.fileName)
+                    if let normalizedSelectedGame, !normalizedSelectedGame.isEmpty, normalizedGameKey(gameName) != normalizedSelectedGame {
+                        return nil
+                    }
+
+                    let token = encodedMediaStreamToken(
+                        itemID: item.id,
+                        ownerNodeName: payload.nodeName,
+                        ownerBaseURL: item.ownerBaseURL
+                    )
+                    return AdminWebMediaItemPayload(
+                        id: "\(payload.nodeName)|\(item.id)",
+                        nodeName: payload.nodeName,
+                        sourceName: item.sourceName,
+                        gameName: gameName,
+                        fileName: item.fileName,
+                        relativePath: item.relativePath,
+                        fileExtension: item.fileExtension,
+                        sizeBytes: item.sizeBytes,
+                        modifiedAt: item.modifiedAt,
+                        thumbnailURL: "/api/media/thumbnail?id=\(token)",
+                        streamURL: "/api/media/stream?id=\(token)"
+                    )
+                }
+            }
+            .sorted {
+                if $0.modifiedAt != $1.modifiedAt { return $0.modifiedAt > $1.modifiedAt }
+                return $0.fileName.localizedCaseInsensitiveCompare($1.fileName) == .orderedAscending
+            }
+    }
+
+    private func mediaGameName(for fileName: String) -> String {
+        let baseName = (fileName as NSString).deletingPathExtension
+        let normalized = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty { return "Unlabeled" }
+
+        let upper = normalized.uppercased()
+        if upper.hasPrefix("THE_FINALS_") {
+            return "THE FINALS"
+        }
+
+        if let range = normalized.range(of: "_replay_", options: [.caseInsensitive]) {
+            let rawGame = String(normalized[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if rawGame.isEmpty {
+                return "Unknown"
+            }
+            if rawGame.lowercased() == "unknown" {
+                return "Unknown"
+            }
+            return rawGame.replacingOccurrences(of: "_", with: " ")
+        }
+
+        if normalized.lowercased().hasPrefix("replay_") {
+            return "Unknown"
+        }
+
+        return "Unlabeled"
+    }
+
+    private func normalizedGameKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    func adminWebMediaLibrarySnapshot(query: [String: String] = [:]) async -> AdminWebMediaLibraryPayload {
+        let local = await localMediaLibrarySnapshot()
+        var payloads: [MediaLibraryPayload] = [local]
+
+        if settings.clusterMode == .leader {
+            let workers = await cluster.registeredNodeInfo()
+            for (_, baseURL) in workers {
+                if let remote = await cluster.fetchRemoteMediaLibrary(from: baseURL) {
+                    payloads.append(
+                        MediaLibraryPayload(
+                            nodeName: remote.nodeName,
+                            configFilePath: remote.configFilePath,
+                            sources: remote.sources,
+                            items: remote.items.map { item in
+                                var copy = item
+                                if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
+                                    copy.ownerBaseURL = baseURL
+                                }
+                                return copy
+                            },
+                            generatedAt: remote.generatedAt
+                        )
+                    )
+                }
+            }
+        } else if settings.clusterMode == .standby,
+                  let leaderBaseURL = await cluster.normalizedBaseURL(settings.clusterLeaderAddress, defaultPort: settings.clusterLeaderPort),
+                  !leaderBaseURL.isEmpty,
+                  let remote = await cluster.fetchRemoteMediaLibrary(from: leaderBaseURL) {
+            payloads.append(
+                MediaLibraryPayload(
+                    nodeName: remote.nodeName,
+                    configFilePath: remote.configFilePath,
+                    sources: remote.sources,
+                    items: remote.items.map { item in
+                        var copy = item
+                        if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
+                            copy.ownerBaseURL = leaderBaseURL
+                        }
+                        return copy
+                    },
+                    generatedAt: remote.generatedAt
+                )
+            )
+        }
+
+        let sourcePayloads: [AdminWebMediaSourcePayload] = payloads.flatMap { payload in
+            payload.sources.map { source in
+                AdminWebMediaSourcePayload(
+                    id: "\(payload.nodeName)|\(source.id.uuidString)",
+                    nodeName: payload.nodeName,
+                    sourceName: source.name,
+                    itemCount: payload.items.filter { $0.sourceID == source.id }.count
+                )
+            }
+        }
+
+        let rawSelectedSourceID = query["source"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let selectedSourceID = rawSelectedSourceID.isEmpty ? nil : rawSelectedSourceID
+        let rawSelectedDateRange = query["dateRange"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let selectedDateRange = rawSelectedDateRange.isEmpty ? "all" : rawSelectedDateRange
+        let rawSelectedGame = query["game"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let selectedGame = rawSelectedGame.isEmpty ? nil : rawSelectedGame
+        let pageSize = parsedPositiveInt(query["pageSize"], default: 24, max: 96)
+        let page = parsedPositiveInt(query["page"], default: 1, max: 10_000)
+
+        let unfilteredForGames = filteredMediaItemPayloads(
+            from: payloads,
+            selectedSourceID: selectedSourceID,
+            selectedDateRange: selectedDateRange,
+            selectedGame: nil
+        )
+        let availableGames = Array(Set(unfilteredForGames.map { $0.gameName }))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+        let filteredItems = filteredMediaItemPayloads(
+            from: payloads,
+            selectedSourceID: selectedSourceID,
+            selectedDateRange: selectedDateRange,
+            selectedGame: selectedGame
+        )
+        let totalItems = filteredItems.count
+        let totalPages = max(1, Int(ceil(Double(max(totalItems, 1)) / Double(pageSize))))
+        let clampedPage = min(page, totalPages)
+        let startIndex = max(0, (clampedPage - 1) * pageSize)
+        let endIndex = min(filteredItems.count, startIndex + pageSize)
+        let pagedItems = Array(filteredItems[startIndex..<endIndex])
+
+        return AdminWebMediaLibraryPayload(
+            generatedAt: Date(),
+            sources: sourcePayloads.sorted { lhs, rhs in
+                if lhs.nodeName != rhs.nodeName {
+                    return lhs.nodeName.localizedCaseInsensitiveCompare(rhs.nodeName) == .orderedAscending
+                }
+                return lhs.sourceName.localizedCaseInsensitiveCompare(rhs.sourceName) == .orderedAscending
+            },
+            items: pagedItems,
+            games: availableGames,
+            selectedSourceID: selectedSourceID,
+            selectedDateRange: selectedDateRange,
+            selectedGame: selectedGame,
+            page: clampedPage,
+            pageSize: pageSize,
+            totalItems: totalItems,
+            totalPages: totalPages
+        )
+    }
+
+    func adminWebMediaStreamResponse(token: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL,
+           !ownerBaseURL.isEmpty {
+            return await cluster.fetchRemoteMediaStream(from: ownerBaseURL, itemID: descriptor.itemID, rangeHeader: rangeHeader)
+        }
+
+        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader)
+    }
+
+    func adminWebMediaThumbnailResponse(token: String) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL,
+           !ownerBaseURL.isEmpty {
+            return await cluster.fetchRemoteMediaThumbnail(from: ownerBaseURL, itemID: descriptor.itemID)
+        }
+
+        return await localMediaThumbnailResponse(itemID: descriptor.itemID)
+    }
+
+    private func startMediaMonitor() {
+        guard mediaMonitorTask == nil else { return }
+        mediaMonitorTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                await self.scanMediaForNewItems()
+                do {
+                    try await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    private func stopMediaMonitor() {
+        mediaMonitorTask?.cancel()
+        mediaMonitorTask = nil
+        lastSeenMediaItemIDs.removeAll()
+    }
+
+    private func scanMediaForNewItems() async {
+        guard settings.clusterMode != .standby else { return }
+        let shouldScan = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .mediaAdded }
+        guard shouldScan else {
+            lastSeenMediaItemIDs.removeAll()
+            return
+        }
+        let hasLocalSources = mediaLibrarySettings.sources.contains { $0.isEnabled && !$0.normalizedRootPath.isEmpty }
+        if !hasLocalSources && settings.clusterMode != .leader {
+            return
+        }
+        let payloads = await mediaPayloadsForTriggers()
+
+        let allItems: [(payload: MediaLibraryPayload, item: MediaLibraryItem)] = payloads.flatMap { payload in
+            payload.items.map { (payload, $0) }
+        }
+        let currentIDs = Set(allItems.map { "\($0.payload.nodeName)|\($0.item.id)" })
+
+        if lastSeenMediaItemIDs.isEmpty {
+            lastSeenMediaItemIDs = currentIDs
+            return
+        }
+
+        let newItems = allItems.filter { !lastSeenMediaItemIDs.contains("\($0.payload.nodeName)|\($0.item.id)") }
+        lastSeenMediaItemIDs = currentIDs
+
+        guard !newItems.isEmpty else { return }
+        for entry in newItems {
+            await handleMediaAddedEvent(item: entry.item, nodeName: entry.payload.nodeName)
+        }
+    }
+
+    private func mediaPayloadsForTriggers() async -> [MediaLibraryPayload] {
+        var payloads: [MediaLibraryPayload] = [await localMediaLibrarySnapshot()]
+        guard settings.clusterMode == .leader else { return payloads }
+
+        let workers = await cluster.registeredNodeInfo()
+        for (_, baseURL) in workers {
+            if let remote = await cluster.fetchRemoteMediaLibrary(from: baseURL) {
+                payloads.append(
+                    MediaLibraryPayload(
+                        nodeName: remote.nodeName,
+                        configFilePath: remote.configFilePath,
+                        sources: remote.sources,
+                        items: remote.items.map { item in
+                            var copy = item
+                            if copy.ownerBaseURL == nil || copy.ownerBaseURL?.isEmpty == true {
+                                copy.ownerBaseURL = baseURL
+                            }
+                            return copy
+                        },
+                        generatedAt: remote.generatedAt
+                    )
+                )
+            }
+        }
+        return payloads
+    }
+
+    private func handleMediaAddedEvent(item: MediaLibraryItem, nodeName: String) async {
+        let event = VoiceRuleEvent(
+            kind: .mediaAdded,
+            guildId: nodeName,
+            userId: botUserId ?? "0",
+            username: nodeName,
+            channelId: "",
+            fromChannelId: nil,
+            toChannelId: nil,
+            durationSeconds: nil,
+            messageContent: item.fileName,
+            messageId: item.id,
+            mediaFileName: item.fileName,
+            mediaRelativePath: item.relativePath,
+            mediaSourceName: item.sourceName,
+            mediaNodeName: nodeName,
+            triggerMessageId: nil,
+            triggerChannelId: nil,
+            triggerGuildId: nodeName,
+            triggerUserId: botUserId ?? "0",
+            isDirectMessage: false,
+            authorIsBot: nil,
+            joinedAt: nil
+        )
+
+        let matchedRules = ruleEngine.evaluateRules(event: event)
+        for rule in matchedRules {
+            var context = PipelineContext()
+            for action in rule.processedActions {
+                await service.execute(action: action, for: event, context: &context)
             }
         }
     }
@@ -1111,20 +1812,7 @@ final class AppModel: ObservableObject {
 
         let runtimeMode = await cluster.currentSnapshot().mode
         if runtimeMode == .standby {
-            let token = normalizedDiscordToken(from: settings.token)
-            if !token.isEmpty {
-                let tokenValidation = await service.validateBotTokenRich(token)
-                lastTokenValidationResult = tokenValidation
-                if tokenValidation.isValid {
-                    applyBotIdentity(from: tokenValidation)
-                    resolvedClientID = await service.resolveClientID(token: token, fallbackUserID: tokenValidation.userId)
-                } else {
-                    logs.append("⚠️ Fail Over identity probe failed: \(tokenValidation.errorMessage)")
-                }
-            }
-            status = .running
-            logs.append("Fail Over mode active. Monitoring Primary; Discord connection deferred until promotion.")
-            return
+            logs.append("Fail Over mode active. Connecting to Discord in passive mode; live work remains delegated/primary-only.")
         }
 
         let normalizedToken = normalizedDiscordToken(from: settings.token)
@@ -1138,6 +1826,7 @@ final class AppModel: ObservableObject {
         }
 
         await connectDiscordInternal()
+        startMediaMonitor()
     }
 
     func connectDiscordAfterPromotion() async {
@@ -1477,6 +2166,11 @@ final class AppModel: ObservableObject {
                 title: "Commands Run",
                 value: "\(stats.commandsRun)",
                 subtitle: "this session"
+            ),
+            AdminWebMetricPayload(
+                title: "New Recordings",
+                value: "\(recentMediaCount24h)",
+                subtitle: "last 24 hours"
             ),
             AdminWebMetricPayload(
                 title: "WikiBridge Status",
@@ -2108,6 +2802,9 @@ final class AppModel: ObservableObject {
             publicBaseURL: oauthPublicBaseURL(),
             https: httpsConfiguration,
             discordOAuth: settings.adminWebUI.discordOAuth,
+            localAuthEnabled: settings.adminWebUI.localAuthEnabled,
+            localAuthUsername: settings.adminWebUI.localAuthUsername,
+            localAuthPassword: settings.adminWebUI.localAuthPassword,
             redirectPath: settings.adminWebUI.redirectPath,
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
@@ -2350,6 +3047,32 @@ final class AppModel: ObservableObject {
             deleteWikiSource: { [weak self] sourceID in
                 guard let model = self else { return false }
                 return await MainActor.run { model.deleteAdminWebWikiSource(sourceID) }
+            },
+            mediaLibraryProvider: { [weak self] query in
+                guard let model = self else {
+                    return AdminWebMediaLibraryPayload(
+                        generatedAt: Date(),
+                        sources: [],
+                        items: [],
+                        games: [],
+                        selectedSourceID: nil,
+                        selectedDateRange: "all",
+                        selectedGame: nil,
+                        page: 1,
+                        pageSize: 24,
+                        totalItems: 0,
+                        totalPages: 1
+                    )
+                }
+                return await model.adminWebMediaLibrarySnapshot(query: query)
+            },
+            mediaStreamProvider: { [weak self] token, rangeHeader in
+                guard let model = self else { return nil }
+                return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader)
+            },
+            mediaThumbnailProvider: { [weak self] token in
+                guard let model = self else { return nil }
+                return await model.adminWebMediaThumbnailResponse(token: token)
             },
             startBot: { [weak self] in
                 guard let model = self else { return false }
@@ -3048,6 +3771,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopBot() async {
+        stopMediaMonitor()
         await service.disconnect()
         await cluster.stopAll()
         meshSyncTask?.cancel()
@@ -3203,17 +3927,19 @@ final class AppModel: ObservableObject {
             let cursor = await cluster.currentReplicationCursor(for: nodeName)
             let fromID = cursor?.lastSentRecordID
             let (records, hasMore) = await conversationStore.recordsSince(fromRecordID: fromID, limit: 500)
-            guard !records.isEmpty else { continue }
             let lastID = records.last?.id
             let payload = MeshSyncPayload(
                 conversations: records,
+                commandLog: Array(commandLog.prefix(200)),
+                voiceLog: Array(voiceLog.prefix(200)),
+                activeVoice: activeVoice,
                 leaderTerm: currentTerm,
                 cursorRecordID: lastID,
                 hasMore: hasMore,
                 fromCursorRecordID: fromID
             )
             let ok = await cluster.pushConversationsToSingleNode(baseURL, payload)
-            if ok {
+            if ok, lastID != nil {
                 await cluster.updateReplicationCursor(for: nodeName, lastSentRecordID: lastID, term: currentTerm)
             }
         }
@@ -3248,6 +3974,9 @@ final class AppModel: ObservableObject {
     func reloadSyncedConfigFromDisk() async {
         // Keep local mesh identity authoritative on this node.
         let currentLocalMesh = settings.swiftMeshSettings
+        let currentLocalMedia = mediaLibrarySettings
+        let currentLocalAdminWebUI = settings.adminWebUI
+        let currentLocalRemoteAccessToken = settings.remoteAccessToken
         var reloaded = await store.load()
         let meshFromFile = await swiftMeshConfigStore.load()
         let effectiveLocalMesh = meshFromFile ?? currentLocalMesh
@@ -3256,8 +3985,14 @@ final class AppModel: ObservableObject {
             // Self-heal missing mesh file so future reloads remain stable.
             try? await swiftMeshConfigStore.save(effectiveLocalMesh)
         }
+        if effectiveLocalMesh.mode == .standby || effectiveLocalMesh.mode == .worker {
+            reloaded.adminWebUI = currentLocalAdminWebUI
+            reloaded.remoteAccessToken = currentLocalRemoteAccessToken
+        }
         reloaded.wikiBot.normalizeSources()
         settings = reloaded
+        mediaLibrarySettings = currentLocalMedia
+        await mediaLibraryIndexer.invalidate()
         await ruleStore.reloadFromDisk()
         await service.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled,
@@ -3270,6 +4005,7 @@ final class AppModel: ObservableObject {
             systemPrompt: settings.localAISystemPrompt
         )
         configurePatchyMonitoring()
+        await configureAdminWebServer()
         await refreshAIStatus()
     }
 
@@ -3538,6 +4274,10 @@ final class AppModel: ObservableObject {
         settings.clusterMode == .worker || settings.clusterMode == .standby
     }
 
+    var shouldProcessPrimaryGatewayActions: Bool {
+        settings.clusterMode == .standalone || settings.clusterMode == .leader
+    }
+
     func configureServiceCallbacks() async {
         if serviceCallbacksConfigured { return }
 
@@ -3686,6 +4426,10 @@ final class AppModel: ObservableObject {
             durationSeconds: nil,
             messageContent: nil,
             messageId: nil,
+            mediaFileName: nil,
+            mediaRelativePath: nil,
+            mediaSourceName: nil,
+            mediaNodeName: nil,
             triggerMessageId: nil,
             triggerChannelId: nil,
             triggerGuildId: guildId,
@@ -3696,7 +4440,7 @@ final class AppModel: ObservableObject {
         )
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
-            var context = PipelineContext()
+            _ = PipelineContext()
             for action in rule.processedActions where action.type == .sendMessage {
                 let ruleMessage = action.message
                     .replacingOccurrences(of: "{username}", with: safeUsername)
@@ -3744,6 +4488,10 @@ final class AppModel: ObservableObject {
             durationSeconds: nil,
             messageContent: nil,
             messageId: nil,
+            mediaFileName: nil,
+            mediaRelativePath: nil,
+            mediaSourceName: nil,
+            mediaNodeName: nil,
             triggerMessageId: nil,
             triggerChannelId: nil,
             triggerGuildId: guildId,

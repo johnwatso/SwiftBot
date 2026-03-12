@@ -20,11 +20,13 @@ struct PreferencesView: View {
             clusterMode: app.settings.clusterMode,
             clusterNodeName: app.settings.clusterNodeName,
             clusterLeaderAddress: app.settings.clusterLeaderAddress,
+            clusterLeaderPort: app.settings.clusterLeaderPort,
             clusterListenPort: app.settings.clusterListenPort,
             clusterSharedSecret: app.settings.clusterSharedSecret,
             clusterWorkerOffloadEnabled: app.settings.clusterWorkerOffloadEnabled,
             clusterOffloadAIReplies: app.settings.clusterOffloadAIReplies,
             clusterOffloadWikiLookups: app.settings.clusterOffloadWikiLookups,
+            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
             adminWebEnabled: app.settings.adminWebUI.enabled,
             adminWebHost: app.settings.adminWebUI.bindHost,
             adminWebPort: app.settings.adminWebUI.port,
@@ -37,6 +39,9 @@ struct PreferencesView: View {
             adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
             adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
             adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
+            adminLocalAuthEnabled: app.settings.adminWebUI.localAuthEnabled,
+            adminLocalAuthUsername: app.settings.adminWebUI.localAuthUsername,
+            adminLocalAuthPassword: app.settings.adminWebUI.localAuthPassword,
             adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
             adminDiscordClientID: app.settings.adminWebUI.discordClientID,
             adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
@@ -102,13 +107,18 @@ struct PreferencesView: View {
                         .tag(4)
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if hasUnsavedChanges && !app.isFailoverManagedNode {
+                    if hasUnsavedChanges {
                         StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
                             app.saveSettings()
                             settingsSnapshot = currentSettingsSnapshot
                         }
                         .padding(.trailing, 20)
                         .padding(.bottom, 18)
+                    }
+                }
+                .onChange(of: currentSettingsSnapshot) { _, newSnapshot in
+                    if !hasUnsavedChanges {
+                        settingsSnapshot = newSnapshot
                     }
                 }
             }
@@ -121,6 +131,14 @@ struct PreferencesView: View {
             // Hidden view that observes onboarding state and closes window when complete
             PreferencesWindowCloser()
         )
+    }
+
+    private func mediaSourcesSnapshotJSON() -> String {
+        guard let data = try? JSONEncoder().encode(app.mediaLibrarySettings.sources),
+              let text = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return text
     }
 }
 
@@ -149,11 +167,13 @@ private struct PreferencesSnapshot: Equatable {
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName = ""
     var clusterLeaderAddress = ""
+    var clusterLeaderPort = 38787
     var clusterListenPort = 38787
     var clusterSharedSecret = ""
     var clusterWorkerOffloadEnabled = false
     var clusterOffloadAIReplies = false
     var clusterOffloadWikiLookups = false
+    var mediaSourcesJSON = ""
     var adminWebEnabled = false
     var adminWebHost = ""
     var adminWebPort = 38888
@@ -166,6 +186,9 @@ private struct PreferencesSnapshot: Equatable {
     var adminWebImportedCertificateFile = ""
     var adminWebImportedPrivateKeyFile = ""
     var adminWebImportedCertificateChainFile = ""
+    var adminLocalAuthEnabled = false
+    var adminLocalAuthUsername = ""
+    var adminLocalAuthPassword = ""
     var adminRestrictSpecificUsers = false
     var adminDiscordClientID = ""
     var adminDiscordClientSecret = ""
