@@ -23,7 +23,7 @@ struct GeneralPreferencesView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
             }
 
-            PreferencesCard("General", systemImage: "gear") {
+            PreferencesCard("General", systemImage: "gearshape") {
                 Toggle("Start Bot Automatically", isOn: $app.settings.autoStart)
                     .toggleStyle(.switch)
             }

@@ -11,6 +11,10 @@ struct RootView: View {
             OnboardingGateView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
+        } else if app.isRemoteLaunchMode {
+            RemoteModeRootView()
+                .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
         } else {
             HSplitView {
                 DashboardSidebar(selection: $selection)

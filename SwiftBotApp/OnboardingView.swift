@@ -13,6 +13,8 @@ struct OnboardingGateView: View {
         case entry, validating, confirmed, failed
         // SwiftMesh path
         case meshSetup, meshTesting, meshConfirmed, meshFailed
+        // Remote control path
+        case remoteSetup, remoteTesting, remoteConfirmed, remoteFailed
     }
 
     @State private var step: Step = .choosePath
@@ -23,6 +25,10 @@ struct OnboardingGateView: View {
     @State private var isLoadingInviteURL: Bool = false
     @State private var inviteLoadFailed: Bool = false
     @State private var movesForward: Bool = true
+    @State private var remoteAddressInput: String = ""
+    @State private var remoteAccessTokenInput: String = ""
+    @State private var showRemoteToken: Bool = false
+    @StateObject private var remoteTester = RemoteControlService()
 
     var body: some View {
         ZStack {
@@ -57,6 +63,9 @@ struct OnboardingGateView: View {
                     case .meshSetup, .meshTesting, .meshConfirmed, .meshFailed:
                         meshFlow
                             .id("meshFlow")
+                    case .remoteSetup, .remoteTesting, .remoteConfirmed, .remoteFailed:
+                        remoteFlow
+                            .id("remoteFlow")
                     }
                 }
                 .transition(
@@ -70,7 +79,12 @@ struct OnboardingGateView: View {
             .padding(48)
         }
         .ignoresSafeArea()
-        .onAppear { tokenInput = app.settings.token }
+        .onAppear {
+            tokenInput = app.settings.token
+            remoteAddressInput = app.settings.remoteMode.primaryNodeAddress
+            remoteAccessTokenInput = app.settings.remoteMode.accessToken
+            remoteTester.updateConfiguration(app.settings.remoteMode)
+        }
         .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
             guard step == .meshTesting, !inProgress else { return }
             step = app.workerConnectionTestIsSuccess ? .meshConfirmed : .meshFailed
@@ -92,6 +106,10 @@ struct OnboardingGateView: View {
         case .meshTesting:     return "Testing connection to the SwiftMesh leader…"
         case .meshConfirmed:   return "SwiftMesh connection successful."
         case .meshFailed:      return "Could not reach the SwiftMesh leader."
+        case .remoteSetup:     return "Connect to a primary SwiftBot node over HTTPS."
+        case .remoteTesting:   return "Testing the remote control connection…"
+        case .remoteConfirmed: return "Remote control connection successful."
+        case .remoteFailed:    return "SwiftBot could not authenticate with that primary node."
         }
     }
 
@@ -113,6 +131,7 @@ struct OnboardingGateView: View {
             .controlSize(.large)
 
             Button {
+                app.settings.launchMode = .swiftMeshClusterNode
                 app.settings.clusterMode = .leader
                 step = .meshSetup
             } label: {
@@ -120,6 +139,22 @@ struct OnboardingGateView: View {
                     Image(systemName: "point.3.connected.trianglepath.dotted").font(.title2)
                     Text("Set Up SwiftMesh Node").font(.headline)
                     Text("Join or create a multi-node SwiftMesh cluster.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 360)
+                .padding(20)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
+            Button {
+                app.settings.launchMode = .remoteControl
+                step = .remoteSetup
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.title2)
+                    Text("Set Up Remote Control").font(.headline)
+                    Text("Manage a primary SwiftBot node without running Discord locally.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: 360)
@@ -175,6 +210,7 @@ struct OnboardingGateView: View {
                     .buttonStyle(.bordered).controlSize(.large)
 
                     Button {
+                        app.settings.launchMode = .standaloneBot
                         app.settings.token = tokenInput
                         step = .validating
                         Task {
@@ -406,6 +442,144 @@ struct OnboardingGateView: View {
         .frame(maxWidth: 560)
     }
 
+    // MARK: - Remote flow
+
+    @ViewBuilder
+    private var remoteFlow: some View {
+        switch step {
+        case .remoteSetup:
+            remoteSetupFields
+        case .remoteTesting:
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Testing connection…").foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Testing remote connection, please wait")
+        case .remoteConfirmed:
+            VStack(spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.title2)
+                        .accessibilityHidden(true)
+                    Text("Connected to \(remoteTester.status?.botUsername ?? "SwiftBot")")
+                        .font(.body)
+                }
+
+                if let latency = remoteTester.lastLatencyMs {
+                    Text("Round-trip latency \(latency.formatted(.number.precision(.fractionLength(0)))) ms")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button {
+                    app.completeRemoteModeOnboarding(
+                        primaryNodeAddress: remoteAddressInput,
+                        accessToken: remoteAccessTokenInput
+                    )
+                } label: {
+                    Label("Open Remote Dashboard", systemImage: "arrow.right.circle.fill")
+                        .frame(minWidth: 220)
+                }
+                .onboardingGlassButton()
+            }
+        case .remoteFailed:
+            VStack(spacing: 16) {
+                if let error = remoteTester.lastError, !error.isEmpty {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 560)
+                }
+
+                HStack(spacing: 12) {
+                    Button { step = .remoteSetup } label: {
+                        Label("Try Again", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+
+                    Button { step = .choosePath } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                }
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    private var remoteSetupFields: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("https://mybot.example.com", text: $remoteAddressInput)
+                .onboardingTextFieldStyle()
+                .frame(maxWidth: 560)
+
+            HStack(spacing: 10) {
+                Group {
+                    if showRemoteToken {
+                        TextField("Access Token", text: $remoteAccessTokenInput)
+                    } else {
+                        SecureField("Access Token", text: $remoteAccessTokenInput)
+                    }
+                }
+                .onboardingTextFieldStyle()
+                .font(.system(.body, design: .monospaced))
+
+                Button {
+                    showRemoteToken.toggle()
+                } label: {
+                    Image(systemName: showRemoteToken ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showRemoteToken ? "Hide access token" : "Show access token")
+            }
+            .frame(maxWidth: 560)
+
+            if let error = remoteTester.lastError, !error.isEmpty {
+                Text(error)
+                    .font(.callout)
+                    .foregroundStyle(step == .remoteConfirmed ? Color.secondary : Color.red)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: 560, alignment: .leading)
+            }
+
+            HStack(spacing: 12) {
+                Button { step = .choosePath } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Button {
+                    let config = RemoteModeSettings(
+                        primaryNodeAddress: remoteAddressInput,
+                        accessToken: remoteAccessTokenInput
+                    )
+                    remoteTester.updateConfiguration(config)
+                    step = .remoteTesting
+
+                    Task {
+                        let ok = await remoteTester.testConnection()
+                        step = ok ? .remoteConfirmed : .remoteFailed
+                    }
+                } label: {
+                    Label("Test Connection", systemImage: "antenna.radiowaves.left.and.right")
+                        .frame(minWidth: 220)
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .controlSize(.large)
+                .disabled(remoteAddressInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || remoteAccessTokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .frame(maxWidth: 560)
+    }
+
     private func stepOrder(_ step: Step) -> Int {
         switch step {
         case .choosePath: return 0
@@ -415,6 +589,9 @@ struct OnboardingGateView: View {
         case .meshSetup: return 4
         case .meshTesting: return 5
         case .meshConfirmed, .meshFailed: return 6
+        case .remoteSetup: return 7
+        case .remoteTesting: return 8
+        case .remoteConfirmed, .remoteFailed: return 9
         }
     }
 }

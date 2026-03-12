@@ -52,43 +52,59 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        TabView {
-            GeneralPreferencesView()
-                .tabItem {
-                    Label("General", systemImage: "gear")
+        Group {
+            if app.isRemoteLaunchMode {
+                PreferencesTabContainer {
+                    PreferencesCard(
+                        "Remote Control Mode",
+                        systemImage: "dot.radiowaves.left.and.right",
+                        subtitle: "Local Discord, SwiftMesh, and Web UI runtime settings are inactive while this Mac is acting as a remote management client."
+                    ) {
+                        Text("Use the Remote dashboard to update the primary node connection, inspect status, edit rules, and change runtime settings on the primary.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+            } else {
+                TabView {
+                    GeneralPreferencesView()
+                        .tabItem {
+                            Label("General", systemImage: "gear")
+                        }
 
-            MeshPreferencesView()
-                .tabItem {
-                    Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
-                }
+                    MeshPreferencesView()
+                        .tabItem {
+                            Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
 
-            WebUIPreferencesView()
-                .tabItem {
-                    Label("Web UI", systemImage: "globe")
-                }
+                    WebUIPreferencesView()
+                        .tabItem {
+                            Label("Web UI", systemImage: "globe")
+                        }
 
-            UpdatesPreferencesView()
-                .tabItem {
-                    Label("Updates", systemImage: "arrow.clockwise")
-                }
+                    UpdatesPreferencesView()
+                        .tabItem {
+                            Label("Updates", systemImage: "arrow.clockwise")
+                        }
 
-            AdvancedPreferencesView()
-                .tabItem {
-                    Label("Developer", systemImage: "wrench")
+                    AdvancedPreferencesView()
+                        .tabItem {
+                            Label("Developer", systemImage: "wrench")
+                        }
                 }
-        }
-        .frame(width: 720, height: 480)
-        .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges && !app.isFailoverManagedNode {
-                StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
-                    app.saveSettings()
-                    settingsSnapshot = currentSettingsSnapshot
+                .overlay(alignment: .bottomTrailing) {
+                    if hasUnsavedChanges && !app.isFailoverManagedNode {
+                        StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
+                            app.saveSettings()
+                            settingsSnapshot = currentSettingsSnapshot
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 18)
+                    }
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 18)
             }
         }
+        .frame(width: 720, height: 480)
         .onAppear {
             settingsSnapshot = currentSettingsSnapshot
         }
