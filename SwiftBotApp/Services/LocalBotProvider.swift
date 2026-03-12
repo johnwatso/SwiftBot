@@ -4,11 +4,11 @@ import Combine
 /// A BotDataProvider implementation that wraps the local AppModel.
 /// This allows the same UI to be used for both local and remote bot instances.
 @MainActor
-final class LocalBotProvider: BotDataProvider {
+final class LocalBotProvider: ObservableObject, BotDataProvider {
     private let app: AppModel
     private var appChangeCancellable: AnyCancellable?
 
-    let objectWillChange = ObservableObjectPublisher()
+    nonisolated(unsafe) let objectWillChange = ObservableObjectPublisher()
 
     var changePublisher: AnyPublisher<Void, Never> {
         objectWillChange.eraseToAnyPublisher()

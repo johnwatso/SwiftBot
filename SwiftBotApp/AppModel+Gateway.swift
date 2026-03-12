@@ -9,10 +9,13 @@ extension AppModel {
 
         switch eventName {
         case "MESSAGE_CREATE":
+            guard shouldProcessPrimaryGatewayActions else { return }
             await handleMessageCreate(payload.d)
         case "MESSAGE_REACTION_ADD":
+            guard shouldProcessPrimaryGatewayActions else { return }
             await handleMessageReactionAdd(payload.d)
         case "INTERACTION_CREATE":
+            guard shouldProcessPrimaryGatewayActions else { return }
             await handleInteractionCreate(payload.d)
         case "VOICE_STATE_UPDATE":
             voiceStateEventCount += 1
@@ -38,15 +41,19 @@ extension AppModel {
             }
             await handleReady(payload.d)
             logs.append("READY received")
-            await registerSlashCommandsIfNeeded()
+            if shouldProcessPrimaryGatewayActions {
+                await registerSlashCommandsIfNeeded()
+            }
         case "GUILD_CREATE":
             guildCreateEventCount += 1
             await handleGuildCreate(payload.d)
         case "CHANNEL_CREATE":
             await handleChannelCreate(payload.d)
         case "GUILD_MEMBER_ADD":
+            guard shouldProcessPrimaryGatewayActions else { return }
             await handleMemberJoin(payload.d)
         case "GUILD_MEMBER_REMOVE":
+            guard shouldProcessPrimaryGatewayActions else { return }
             await handleMemberLeave(payload.d)
         case "GUILD_DELETE":
             await handleGuildDelete(payload.d)
@@ -89,8 +96,22 @@ extension AppModel {
         if let lastID = payload.conversations.last?.id {
             localLastMergedRecordID = lastID
         }
+        if let remoteCommandLog = payload.commandLog {
+            commandLog = Array(remoteCommandLog.prefix(200))
+        }
+        if let remoteVoiceLog = payload.voiceLog {
+            voiceLog = Array(remoteVoiceLog.prefix(200))
+        }
+        if let remoteActiveVoice = payload.activeVoice {
+            activeVoice = remoteActiveVoice
+        }
+        if payload.configFilesChanged, settings.clusterMode == .standby {
+            await pullConfigFilesFromLeader()
+        }
         if !payload.conversations.isEmpty {
             logs.append("SwiftMesh: merged \(payload.conversations.count) record(s) (term \(payload.leaderTerm))")
+        } else if payload.configFilesChanged {
+            logs.append("SwiftMesh: config updated on Primary — pulled latest config files")
         }
         // Fetch next page immediately if more records exist.
         if payload.hasMore {
@@ -857,6 +878,8 @@ extension AppModel {
               case let .string(guildId)? = map["guild_id"]
         else { return }
 
+        let allowPrimarySideEffects = shouldProcessPrimaryGatewayActions
+
         let key = "\(guildId)-\(userId)"
         let now = Date()
         let previous = activeVoice.first(where: { $0.userId == userId && $0.guildId == guildId })
@@ -895,7 +918,8 @@ extension AppModel {
                     addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
                     voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
 
-                    if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
+                    if allowPrimarySideEffects,
+                       (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel)) {
                         let message = renderNotificationTemplate(
                             settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
                             username: displayName,
@@ -917,7 +941,8 @@ extension AppModel {
                 addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
                 voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
 
-                if shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
+                if allowPrimarySideEffects,
+                   shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
                     let message = renderNotificationTemplate(
                         settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
                         username: displayName,
@@ -929,7 +954,9 @@ extension AppModel {
                     _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
                         displayName: displayName, channelName: next.channelName)
                 }
-                await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
+                if allowPrimarySideEffects {
+                    await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
+                }
             }
 
             activeVoice.append(next)
@@ -943,7 +970,8 @@ extension AppModel {
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
 
-            if shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
+            if allowPrimarySideEffects,
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.leaveNotificationTemplate ?? GuildSettings().leaveNotificationTemplate,
                     username: displayName,
@@ -956,7 +984,9 @@ extension AppModel {
                     displayName: previous.username, channelName: previous.channelName, duration: elapsed)
             }
             let elapsedSec = Int(now.timeIntervalSince(joinTimes[key] ?? previous.joinedAt))
-            await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
+            if allowPrimarySideEffects {
+                await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
+            }
         }
 
         if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }

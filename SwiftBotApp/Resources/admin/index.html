@@ -337,6 +337,46 @@
       color: var(--muted);
     }
 
+    .auth-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--glass-stroke);
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .auth-feedback {
+      min-height: 18px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .auth-feedback.error {
+      color: #ff8f8f;
+    }
+
     .primary-action {
       appearance: none;
       display: inline-flex;
@@ -1354,6 +1394,19 @@
       margin-bottom: 7px;
     }
 
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text);
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
     .library-list {
       display: grid;
       gap: 8px;
@@ -1654,8 +1707,17 @@
           Sign in with Discord to access the local SwiftBot admin surface. Controls stay hidden until your session is authenticated.
         </p>
         <div class="auth-card glass">
-          <p>Authenticate with Discord to continue.</p>
-          <a class="primary-action" href="/auth/discord/login" style="width:100%;">Sign in with Discord</a>
+          <div class="auth-stack">
+            <p>Authenticate with Discord or use the local fallback for testing.</p>
+            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width:100%;">Sign in with Discord</a>
+            <div id="authDivider" class="auth-divider">or</div>
+            <form id="localAuthForm" class="auth-form">
+              <input id="localAuthUsername" class="field-input" autocomplete="username" placeholder="Local username">
+              <input id="localAuthPassword" class="field-input" type="password" autocomplete="current-password" placeholder="Local password">
+              <button id="localAuthSubmit" class="secondary-action" type="submit" style="width:100%;">Sign in locally</button>
+            </form>
+            <div id="authFeedback" class="auth-feedback"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -1690,6 +1752,7 @@
             <div class="nav-section">
               <div class="nav-heading">System</div>
               <button class="nav-link" data-view="aibots" type="button"><span class="nav-icon"><span class="ms">smart_toy</span></span><span class="nav-text">AI Bots</span></button>
+              <button class="nav-link" data-view="media" type="button"><span class="nav-icon"><span class="ms">video_library</span></span><span class="nav-text">Recordings</span></button>
               <button class="nav-link" data-view="settings" type="button"><span class="nav-icon"><span class="ms">settings</span></span><span class="nav-text">Settings</span></button>
               <button class="nav-link" data-view="diagnostics" type="button"><span class="nav-icon"><span class="ms">monitoring</span></span><span class="nav-text">Diagnostics</span></button>
               <button class="nav-link" data-view="logs" type="button"><span class="nav-icon"><span class="ms">history</span></span><span class="nav-text">Logs</span></button>
@@ -1850,6 +1913,15 @@
           </div>
         </section>
 
+        <section id="mediaView" class="view hidden">
+          <div class="section-sticky">
+            <div id="mediaHeader" class="section-sticky-row"></div>
+          </div>
+          <div class="settings-shell">
+            <section id="mediaPanels" class="settings-panels"></section>
+          </div>
+        </section>
+
         <section id="logsView" class="view hidden">
           <div class="section-sticky">
             <div class="section-mini-title"><span class="ms">history</span> Logs</div>
@@ -1938,6 +2010,7 @@
   <script>
     let csrfToken = null;
     let currentUser = null;
+    let authOptions = { discordEnabled: true, localEnabled: false };
     let userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
     let currentView = 'overview';
     let dashboardStatus = null;
@@ -1948,7 +2021,11 @@
     let actionsData = null;
     let patchyData = null;
     let wikiBridgeData = null;
+    let mediaLibraryData = null;
     let selectedActionRuleID = null;
+    let selectedMediaItemID = null;
+    let mediaViewMode = 'library';
+    let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
     let actionSaveTimer = null;
     let patchySaveTimers = {};
     let wikiSaveTimers = {};
@@ -2173,6 +2250,29 @@
     function showAuthScreen() {
       document.getElementById('appShell').classList.remove('active');
       document.getElementById('authScreen').classList.remove('hidden');
+      applyAuthOptions();
+    }
+
+    function setAuthFeedback(message = '', kind = '') {
+      const node = document.getElementById('authFeedback');
+      if (!node) return;
+      node.textContent = message;
+      node.className = `auth-feedback${kind ? ` ${kind}` : ''}`;
+    }
+
+    function applyAuthOptions() {
+      const discordButton = document.getElementById('discordAuthButton');
+      const localForm = document.getElementById('localAuthForm');
+      const divider = document.getElementById('authDivider');
+      if (discordButton) {
+        discordButton.style.display = authOptions.discordEnabled ? '' : 'none';
+      }
+      if (localForm) {
+        localForm.style.display = authOptions.localEnabled ? '' : 'none';
+      }
+      if (divider) {
+        divider.style.display = authOptions.discordEnabled && authOptions.localEnabled ? '' : 'none';
+      }
     }
 
     function renderStats(metrics) {
@@ -2566,6 +2666,58 @@
       return data;
     }
 
+    async function loadAuthOptions() {
+      const response = await fetch('/api/auth/options');
+      if (!response.ok) return;
+      const data = await response.json();
+      authOptions.discordEnabled = !!data.discordEnabled;
+      authOptions.localEnabled = !!data.localEnabled;
+      applyAuthOptions();
+    }
+
+    async function loginLocal(event) {
+      event?.preventDefault?.();
+      const username = document.getElementById('localAuthUsername')?.value?.trim() || '';
+      const password = document.getElementById('localAuthPassword')?.value || '';
+      if (!username || !password) {
+        setAuthFeedback('Enter the local username and password.', 'error');
+        return;
+      }
+
+      const submit = document.getElementById('localAuthSubmit');
+      if (submit) submit.disabled = true;
+      setAuthFeedback('Signing in locally...');
+
+      try {
+        const response = await fetch('/auth/local/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Local username or password is incorrect.');
+          }
+          if (response.status === 403 && payload.error === 'local_auth_disabled') {
+            throw new Error('Local fallback auth is disabled in SwiftBot settings.');
+          }
+          throw new Error('Local sign-in failed.');
+        }
+
+        document.getElementById('localAuthPassword').value = '';
+        setAuthFeedback('');
+        await bootstrap();
+      } catch (error) {
+        setAuthFeedback(error.message || 'Local sign-in failed.', 'error');
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    }
+
     async function loadSettings() {
       const response = await fetch('/api/settings');
       if (!response.ok) throw new Error('Settings unavailable');
@@ -2631,6 +2783,31 @@
       return data;
     }
 
+    async function loadMediaLibrary() {
+      const params = new URLSearchParams();
+      if (mediaFilterState.source) params.set('source', mediaFilterState.source);
+      if (mediaFilterState.dateRange) params.set('dateRange', mediaFilterState.dateRange);
+      if (mediaFilterState.game) params.set('game', mediaFilterState.game);
+      params.set('page', String(mediaFilterState.page || 1));
+      params.set('pageSize', String(mediaFilterState.pageSize || 24));
+      const response = await fetch(`/api/media?${params.toString()}`);
+      if (!response.ok) throw new Error('Media library unavailable');
+      const data = await response.json();
+      mediaLibraryData = data;
+      mediaFilterState.source = data.selectedSourceID || '';
+      mediaFilterState.dateRange = data.selectedDateRange || 'all';
+      mediaFilterState.page = data.page || 1;
+      mediaFilterState.pageSize = data.pageSize || 24;
+      mediaFilterState.game = data.selectedGame || '';
+      if (!selectedMediaItemID && data.items && data.items.length > 0) {
+        selectedMediaItemID = data.items[0].id;
+      }
+      if (selectedMediaItemID && !(data.items || []).some(item => item.id === selectedMediaItemID)) {
+        selectedMediaItemID = data.items?.[0]?.id || null;
+      }
+      return data;
+    }
+
     async function postJSON(path, payload) {
       const response = await fetch(path, {
         method: 'POST',
@@ -2653,13 +2830,13 @@
 
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
-      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
       refreshCurrentView();
     }
 
     async function toggleCommand(name, surface, enabled) {
       await postJSON('/api/commands/toggle', { name, surface, enabled });
-      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
       renderCommandsView();
     }
 
@@ -2687,6 +2864,10 @@
       }
       if (currentView === 'aibots') {
         renderAIBotsView();
+        return;
+      }
+      if (currentView === 'media') {
+        renderMediaView();
         return;
       }
       if (currentView === 'logs') {
@@ -3435,6 +3616,72 @@
       return date.toLocaleString();
     }
 
+    function formatMediaTime(value) {
+      if (!value) return 'Unknown';
+      const raw = typeof value === 'number' ? value : value;
+      const date = typeof raw === 'number'
+        ? new Date(raw < 1e12 ? raw * 1000 : raw)
+        : new Date(raw);
+      if (Number.isNaN(date.getTime())) return 'Unknown';
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    }
+
+    function gameInitials(name) {
+      const cleaned = String(name || '').trim();
+      if (!cleaned) return '?';
+      const parts = cleaned.split(/\s+/).filter(Boolean);
+      if (!parts.length) return cleaned.slice(0, 2).toUpperCase();
+      const initials = parts.map(part => part[0]).slice(0, 2).join('');
+      return initials.toUpperCase();
+    }
+
+    function gameColor(name) {
+      const text = String(name || '');
+      let hash = 0;
+      for (let i = 0; i < text.length; i += 1) {
+        hash = (hash << 5) - hash + text.charCodeAt(i);
+        hash |= 0;
+      }
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 62%, 52%)`;
+    }
+
+    const gameLogoMap = {
+      'THE FINALS': '/assets/games/the-finals.png',
+      'Minecraft': '/assets/games/minecraft.png',
+      'Call of Duty': '/assets/games/call-of-duty.png',
+      'Unknown': '/assets/games/unknown.png'
+    };
+
+    function gamePillHTML(name) {
+      const gameName = String(name || 'Unknown');
+      const logoURL = gameLogoMap[gameName] || '';
+      const iconHTML = logoURL
+        ? `<img src="${logoURL}" alt="${gameName}" style="width:22px;height:22px;border-radius:999px;object-fit:cover;">`
+        : `<span style="width:22px;height:22px;border-radius:999px;background:${gameColor(gameName)};display:inline-flex;align-items:center;justify-content:center;color:#0b0d12;font-weight:800;font-size:10px;">${gameInitials(gameName)}</span>`;
+      return `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${iconHTML}<span>${gameName}</span></span>`;
+    }
+
+    function formatFileSize(value) {
+      const size = Number(value || 0);
+      if (!Number.isFinite(size) || size <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let current = size;
+      let unitIndex = 0;
+      while (current >= 1024 && unitIndex < units.length - 1) {
+        current /= 1024;
+        unitIndex += 1;
+      }
+      const precision = current >= 100 || unitIndex === 0 ? 0 : 1;
+      return `${current.toFixed(precision)} ${units[unitIndex]}`;
+    }
+
     function asRoleNames(serverID, roleIDs) {
       const roles = patchyData?.rolesByServer?.[serverID] || [];
       const names = (roleIDs || []).map(roleID => roles.find(role => role.id === roleID)?.name || roleID);
@@ -3867,7 +4114,7 @@
 
       panels.querySelector('#diagMeshRefresh')?.addEventListener('click', async () => {
         await postJSON('/api/swiftmesh/refresh', {});
-        await Promise.all([loadOverview(), loadStatus(), loadConfig()]);
+        await Promise.all([loadOverview(), loadStatus(), loadConfig(), loadMediaLibrary()]);
         renderDiagnosticsView();
       });
     }
@@ -3971,6 +4218,187 @@
           <div class="event-time">${item.timeText}</div>
         </div>
       `);
+    }
+
+    function renderMediaView() {
+      if (!mediaLibraryData) return;
+      const header = document.getElementById('mediaHeader');
+      const panels = document.getElementById('mediaPanels');
+      if (!header || !panels) return;
+
+      const items = mediaLibraryData.items || [];
+      const sources = mediaLibraryData.sources || [];
+      const selected = items.find(item => item.id === selectedMediaItemID) || items[0] || null;
+      if (selected && selectedMediaItemID !== selected.id) selectedMediaItemID = selected.id;
+
+      if (mediaViewMode === 'player') {
+        header.innerHTML = `
+          <div class="section-mini-title"><span class="ms">video_library</span> Recordings</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div style="font-size:12px;color:var(--muted);">Now playing</div>
+            <button id="mediaBackToLibrary" class="mini-btn" type="button"><span class="ms">arrow_back</span> Back to Library</button>
+          </div>
+        `;
+
+        panels.innerHTML = `
+          <section class="settings-panel glass full-span">
+            ${selected ? `
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+                  <div style="min-width:240px;display:flex;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                      ${gamePillHTML(selected.gameName)}
+                      <span class="chip">${formatMediaTime(selected.modifiedAt)}</span>
+                      <span class="chip">${formatFileSize(selected.sizeBytes)}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--muted);">${selected.nodeName} · ${selected.sourceName}</div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <span class="chip">${selected.fileExtension.toUpperCase()}</span>
+                  </div>
+                </div>
+                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}"></video>
+                <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
+              </div>
+            ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
+          </section>
+        `;
+
+        header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
+          mediaViewMode = 'library';
+          renderMediaView();
+        });
+        return;
+      }
+
+      const sourceOptions = [`<option value="">All sources</option>`].concat(
+        sources.map(source => `<option value="${source.id}" ${mediaFilterState.source === source.id ? 'selected' : ''}>${source.nodeName} · ${source.sourceName}</option>`)
+      ).join('');
+      const games = mediaLibraryData.games || [];
+      const gameOptions = [`<option value="">All games</option>`].concat(
+        games.map(game => `<option value="${game}" ${mediaFilterState.game === game ? 'selected' : ''}>${game}</option>`)
+      ).join('');
+      const dateOptions = [
+        ['all', 'Any time'],
+        ['7d', 'Last 7 days'],
+        ['30d', 'Last 30 days'],
+        ['90d', 'Last 90 days']
+      ].map(([value, label]) => `<option value="${value}" ${mediaFilterState.dateRange === value ? 'selected' : ''}>${label}</option>`).join('');
+
+      header.innerHTML = `
+        <div class="section-mini-title"><span class="ms">video_library</span> Recordings</div>
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">filter_alt</span> Source</div>
+            <select id="mediaSourceFilter" class="field-select" style="min-width:220px;">${sourceOptions}</select>
+          </div>
+          <div>
+            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">sports_esports</span> Game</div>
+            <select id="mediaGameFilter" class="field-select" style="min-width:200px;">${gameOptions}</select>
+          </div>
+          <div>
+            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">calendar_month</span> Date</div>
+            <select id="mediaDateFilter" class="field-select" style="min-width:180px;">${dateOptions}</select>
+          </div>
+          <button id="mediaApplyFilters" class="mini-btn" type="button"><span class="ms">filter_alt</span> Filter</button>
+          <div style="min-width:180px;text-align:right;">
+            <div class="field-label" style="margin-bottom:4px;">Results</div>
+            <div style="font-size:13px;color:var(--muted);">${mediaLibraryData.totalItems || 0} items · page ${mediaLibraryData.page || 1} of ${mediaLibraryData.totalPages || 1}</div>
+          </div>
+        </div>
+      `;
+
+      const now = Date.now();
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const itemCards = items.map(item => {
+        const gameName = item.gameName || 'Unknown';
+        const modifiedMs = new Date(item.modifiedAt).getTime();
+        const isRecent = Number.isFinite(modifiedMs) && (now - modifiedMs) < oneDayMs;
+        return `
+        <article class="glass ${selected && selected.id === item.id ? 'ok' : ''}" data-media-id="${item.id}" title="${item.fileName}" style="cursor:pointer;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;gap:0;min-height:248px;">
+          <div style="aspect-ratio:16 / 9;background:rgba(10,14,22,0.35);display:flex;align-items:center;justify-content:center;position:relative;">
+            <img src="${item.thumbnailURL}" alt="${item.fileName}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><span class="ms" style="font-size:34px;">movie</span></div>
+            <video class="hover-preview" muted playsinline loop preload="none" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+          </div>
+          <div style="padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              ${gamePillHTML(gameName)}
+              <span class="chip">${formatMediaTime(item.modifiedAt)}</span>
+              ${isRecent ? `<span class="chip" style="background:rgba(71, 220, 150, 0.18);color:#7ce9b0;">New</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;">
+              <span>${item.nodeName} · ${item.sourceName}</span>
+              <span>· ${formatFileSize(item.sizeBytes)}</span>
+            </div>
+          </div>
+        </article>
+      `;
+      }).join('');
+
+      panels.innerHTML = `
+        <section class="settings-panel glass full-span">
+          ${items.length ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:16px;">
+              ${itemCards}
+            </div>
+          ` : '<div class="placeholder">No recordings matched the current filters.</div>'}
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;">
+            <div style="font-size:12px;color:var(--muted);">Latest scan ${formatTime(mediaLibraryData.generatedAt)}</div>
+            <div style="display:flex;gap:8px;">
+              <button id="mediaPrevPage" class="mini-btn" type="button" ${mediaLibraryData.page <= 1 ? 'disabled' : ''}><span class="ms">chevron_left</span> Prev</button>
+              <button id="mediaNextPage" class="mini-btn" type="button" ${mediaLibraryData.page >= mediaLibraryData.totalPages ? 'disabled' : ''}>Next <span class="ms">chevron_right</span></button>
+            </div>
+          </div>
+        </section>
+      `;
+
+      panels.querySelectorAll('[data-media-id]').forEach(node => {
+        node.addEventListener('click', () => {
+          selectedMediaItemID = node.dataset.mediaId;
+          mediaViewMode = 'player';
+          renderMediaView();
+        });
+        node.addEventListener('mouseenter', () => {
+          const video = node.querySelector('.hover-preview');
+          if (!video || video.dataset.active === 'true') return;
+          const item = items.find(entry => entry.id === node.dataset.mediaId);
+          if (!item) return;
+          video.dataset.active = 'true';
+          video.style.display = 'block';
+          video.src = item.streamURL;
+          video.play().catch(() => {});
+        });
+        node.addEventListener('mouseleave', () => {
+          const video = node.querySelector('.hover-preview');
+          if (!video) return;
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+          video.style.display = 'none';
+          video.dataset.active = 'false';
+        });
+      });
+      header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {
+        mediaFilterState.source = header.querySelector('#mediaSourceFilter')?.value || '';
+        mediaFilterState.game = header.querySelector('#mediaGameFilter')?.value || '';
+        mediaFilterState.dateRange = header.querySelector('#mediaDateFilter')?.value || 'all';
+        mediaFilterState.page = 1;
+        await loadMediaLibrary();
+        renderMediaView();
+      });
+      panels.querySelector('#mediaPrevPage')?.addEventListener('click', async () => {
+        if ((mediaLibraryData.page || 1) <= 1) return;
+        mediaFilterState.page = Math.max(1, (mediaLibraryData.page || 1) - 1);
+        await loadMediaLibrary();
+        renderMediaView();
+      });
+      panels.querySelector('#mediaNextPage')?.addEventListener('click', async () => {
+        if ((mediaLibraryData.page || 1) >= (mediaLibraryData.totalPages || 1)) return;
+        mediaFilterState.page = (mediaLibraryData.page || 1) + 1;
+        await loadMediaLibrary();
+        renderMediaView();
+      });
     }
 
     function meshStatusColor(status) {
@@ -4202,7 +4630,7 @@
       });
       panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
         await postJSON('/api/swiftmesh/refresh', {});
-        await Promise.all([loadOverview(), loadConfig(), loadStatus()]);
+        await Promise.all([loadOverview(), loadConfig(), loadStatus(), loadMediaLibrary()]);
         renderSwiftMeshView();
       });
 
@@ -4351,6 +4779,14 @@
         primaryTitle: 'AI Runtime',
         secondaryTitle: 'Provider',
         eventsTitle: 'Recent Commands'
+      },
+      media: {
+        title: 'Recordings',
+        icon: 'video_library',
+        copy: 'Unified gameplay library across connected SwiftMesh nodes.',
+        primaryTitle: 'Libraries',
+        secondaryTitle: 'Preview',
+        eventsTitle: 'Latest Recordings'
       },
       settings: {
         title: 'Settings',
@@ -4630,7 +5066,7 @@
         eventsNode.prepend(controls);
         controls.querySelector('#meshRefresh')?.addEventListener('click', async () => {
           await postJSON('/api/swiftmesh/refresh', {});
-          await Promise.all([loadConfig(), loadOverview(), loadStatus()]);
+          await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadMediaLibrary()]);
           renderSectionView('swiftmesh');
         });
       } else if (view === 'aibots') {
@@ -4662,6 +5098,7 @@
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
       const aibots = document.getElementById('aibotsView');
+      const media = document.getElementById('mediaView');
       const logs = document.getElementById('logsView');
       const swiftmesh = document.getElementById('swiftmeshView');
       const userprefs = document.getElementById('userPrefsView');
@@ -4678,6 +5115,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4699,6 +5137,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4714,6 +5153,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4730,6 +5170,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4762,6 +5203,7 @@
         settings.classList.remove('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4778,6 +5220,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.remove('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4794,6 +5237,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.remove('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4801,6 +5245,23 @@
         section.classList.add('hidden');
         renderAIBotsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
+        setMessage('', '');
+      } else if (view === 'media') {
+        overview.classList.add('hidden');
+        commands.classList.add('hidden');
+        patchy.classList.add('hidden');
+        wikibridge.classList.add('hidden');
+        settings.classList.add('hidden');
+        diagnostics.classList.add('hidden');
+        aibots.classList.add('hidden');
+        media.classList.remove('hidden');
+        logs.classList.add('hidden');
+        swiftmesh.classList.add('hidden');
+        userprefs.classList.add('hidden');
+        actions.classList.add('hidden');
+        section.classList.add('hidden');
+        renderMediaView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Recordings';
         setMessage('', '');
       } else if (view === 'logs') {
         overview.classList.add('hidden');
@@ -4810,6 +5271,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.remove('hidden');
         swiftmesh.classList.add('hidden');
         actions.classList.add('hidden');
@@ -4825,6 +5287,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.remove('hidden');
         userprefs.classList.add('hidden');
@@ -4841,6 +5304,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.remove('hidden');
@@ -4873,6 +5337,7 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
+        media.classList.add('hidden');
         logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
@@ -4894,6 +5359,7 @@
 
     async function bootstrap() {
       buildAnimatedBackground();
+      await loadAuthOptions();
       const me = await loadMe();
       if (!me) {
         showAuthScreen();
@@ -4902,9 +5368,9 @@
       loadOverviewLayout();
 
       showDashboard();
-      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
+      const allowed = new Set(['overview', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'media', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
     }
 
@@ -4919,6 +5385,8 @@
     document.getElementById('sidebarUserSettings')?.addEventListener('click', () => {
       selectView('userprefs');
     });
+
+    document.getElementById('localAuthForm')?.addEventListener('submit', loginLocal);
 
     document.getElementById('swiftMeshButton').addEventListener('click', () => {
       selectView('swiftmesh');
@@ -4965,7 +5433,7 @@
         const runningStates = ['running', 'connecting', 'reconnecting'];
         const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
         await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
-        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge()]);
+        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
         refreshCurrentView();
         setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
       } catch (error) {

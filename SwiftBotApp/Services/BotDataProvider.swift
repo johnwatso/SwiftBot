@@ -4,6 +4,7 @@ import Combine
 
 /// A protocol that abstracts the data source for the SwiftBot dashboard.
 /// This allows the same UI to be used for both local and remote bot instances.
+@MainActor
 protocol BotDataProvider: ObservableObject {
     var changePublisher: AnyPublisher<Void, Never> { get }
 
@@ -66,7 +67,7 @@ final class AnyBotDataProvider: ObservableObject, BotDataProvider {
     private let _base: any BotDataProvider
     private var changeCancellable: AnyCancellable?
 
-    let objectWillChange = ObservableObjectPublisher()
+    nonisolated(unsafe) let objectWillChange = ObservableObjectPublisher()
     
     // MARK: - BotDataProvider Properties (forwarded)
     

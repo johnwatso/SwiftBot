@@ -264,6 +264,41 @@ struct AdminWebWikiSourceIDPatch: Codable {
     let sourceID: UUID
 }
 
+struct AdminWebMediaSourcePayload: Codable {
+    let id: String
+    let nodeName: String
+    let sourceName: String
+    let itemCount: Int
+}
+
+struct AdminWebMediaItemPayload: Codable {
+    let id: String
+    let nodeName: String
+    let sourceName: String
+    let gameName: String
+    let fileName: String
+    let relativePath: String
+    let fileExtension: String
+    let sizeBytes: Int64
+    let modifiedAt: Date
+    let thumbnailURL: String
+    let streamURL: String
+}
+
+struct AdminWebMediaLibraryPayload: Codable {
+    let generatedAt: Date
+    let sources: [AdminWebMediaSourcePayload]
+    let items: [AdminWebMediaItemPayload]
+    let games: [String]
+    let selectedSourceID: String?
+    let selectedDateRange: String
+    let selectedGame: String?
+    let page: Int
+    let pageSize: Int
+    let totalItems: Int
+    let totalPages: Int
+}
+
 actor AdminWebServer {
     struct RuntimeState: Equatable {
         var isEnabled: Bool
@@ -306,6 +341,9 @@ actor AdminWebServer {
         var publicBaseURL: String
         var https: HTTPSConfiguration?
         var discordOAuth: OAuthProviderSettings
+        var localAuthEnabled: Bool
+        var localAuthUsername: String
+        var localAuthPassword: String
         var redirectPath: String
         var allowedUserIDs: [String]
         var remoteAccessToken: String
@@ -351,6 +389,11 @@ actor AdminWebServer {
     }
 
     private let encoder = JSONEncoder()
+    private let apiEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
     private let decoder = JSONDecoder()
     private var config = Configuration(
         enabled: false,
@@ -359,6 +402,9 @@ actor AdminWebServer {
         publicBaseURL: "",
         https: nil,
         discordOAuth: OAuthProviderSettings(),
+        localAuthEnabled: false,
+        localAuthUsername: "admin",
+        localAuthPassword: "",
         redirectPath: "/auth/discord/callback",
         allowedUserIDs: [],
         remoteAccessToken: ""
@@ -403,6 +449,9 @@ actor AdminWebServer {
     private var setWikiSourcePrimary: (@Sendable (UUID) async -> Bool)?
     private var testWikiSource: (@Sendable (UUID) async -> Bool)?
     private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
+    private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
+    private var mediaStreamProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
+    private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
@@ -451,6 +500,9 @@ actor AdminWebServer {
         setWikiSourcePrimary: @escaping @Sendable (UUID) async -> Bool,
         testWikiSource: @escaping @Sendable (UUID) async -> Bool,
         deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
+        mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
+        mediaStreamProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
+        mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
@@ -491,6 +543,9 @@ actor AdminWebServer {
         self.setWikiSourcePrimary = setWikiSourcePrimary
         self.testWikiSource = testWikiSource
         self.deleteWikiSource = deleteWikiSource
+        self.mediaLibraryProvider = mediaLibraryProvider
+        self.mediaStreamProvider = mediaStreamProvider
+        self.mediaThumbnailProvider = mediaThumbnailProvider
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
@@ -792,6 +847,13 @@ actor AdminWebServer {
             return serveIndex()
         case ("GET", "/assets/AppIcon.png"):
             return serveAsset(named: "AppIcon", ext: "png")
+        case ("GET", let path) where path.hasPrefix("/assets/games/"):
+            let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
+            let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else {
+                return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
+            }
+            return serveAsset(named: parts[0], ext: parts[1], subdirectories: ["admin/games", "Resources/admin/games"])
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
         case ("GET", "/api/remote/status"):
@@ -1107,6 +1169,47 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "wikibridge_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/media"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await mediaLibraryProvider?(request.query) {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/media/thumbnail"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            guard let response = await mediaThumbnailProvider?(token) else {
+                return jsonResponse(["error": "thumbnail_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("GET", "/api/media/stream"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            let rangeHeader = request.headers["range"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+                return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
         case ("POST", "/api/wikibridge/state"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -1264,8 +1367,12 @@ actor AdminWebServer {
         //
         case ("GET", "/auth/discord/login"):
             return await handleDiscordLogin(request: request)
+        case ("POST", "/auth/local/login"):
+            return handleLocalLogin(request: request)
         case ("POST", "/auth/logout"):
             return handleLogout(request: request)
+        case ("GET", "/api/auth/options"):
+            return handleAuthOptions()
         case ("GET", "/api/auth/session"):
             return handleSessionInfo(request: request)
         case ("GET", "/api/server/info"):
@@ -1332,12 +1439,9 @@ actor AdminWebServer {
         return httpResponse(status: "200 OK", body: Data(fallback.utf8), contentType: "text/html; charset=utf-8")
     }
 
-    private func serveAsset(named name: String, ext: String) -> Data {
-        let candidates: [(Bundle, String)] = [
-            (.main, "Resources"),
-            (.main, "admin"),
-            (.main, "Resources/admin")
-        ]
+    private func serveAsset(named name: String, ext: String, subdirectories: [String] = []) -> Data {
+        let baseDirectories = ["Resources", "admin", "Resources/admin"]
+        let candidates: [(Bundle, String)] = (subdirectories + baseDirectories).map { (.main, $0) }
 
         for (bundle, subdirectory) in candidates {
             if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory),
@@ -1387,6 +1491,48 @@ actor AdminWebServer {
         }
 
         return redirectResponse(to: url.absoluteString)
+    }
+
+    private func handleLocalLogin(request: HTTPRequest) -> Data {
+        guard config.localAuthEnabled else {
+            return jsonResponse(["error": "local_auth_disabled"], status: "403 Forbidden")
+        }
+
+        guard
+            let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
+            let username = (object["username"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let password = (object["password"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else {
+            return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+        }
+
+        let expectedUsername = config.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let expectedPassword = config.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            !expectedUsername.isEmpty,
+            !expectedPassword.isEmpty,
+            username == expectedUsername,
+            password == expectedPassword
+        else {
+            return jsonResponse(["error": "invalid_credentials"], status: "401 Unauthorized")
+        }
+
+        let session = makeSession(
+            userID: "local:\(expectedUsername)",
+            username: expectedUsername,
+            globalName: "Local Admin",
+            discriminator: nil,
+            avatar: nil
+        )
+        sessions[session.id] = session
+        persistSessions()
+        return jsonResponse(
+            [
+                "ok": true,
+                "user": expectedUsername
+            ],
+            headers: ["Set-Cookie": sessionCookie(for: session.id)]
+        )
     }
 
     private func handleDiscordCallback(request: HTTPRequest) async -> Data {
@@ -1458,6 +1604,21 @@ actor AdminWebServer {
             "permissions": ["admin"],
             "sessionToken": session.id,
             "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
+        ])
+    }
+
+    private func handleAuthOptions() -> Data {
+        let discordConfigured =
+            !config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let localEnabled =
+            config.localAuthEnabled &&
+            !config.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !config.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return jsonResponse([
+            "discordEnabled": discordConfigured,
+            "localEnabled": localEnabled
         ])
     }
 
@@ -1714,6 +1875,25 @@ actor AdminWebServer {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    private func makeSession(
+        userID: String,
+        username: String,
+        globalName: String?,
+        discriminator: String?,
+        avatar: String?
+    ) -> Session {
+        Session(
+            id: randomToken(),
+            userID: userID,
+            username: username,
+            globalName: globalName,
+            discriminator: discriminator,
+            avatar: avatar,
+            csrfToken: randomToken(),
+            expiresAt: Date().addingTimeInterval(sessionTTL)
+        )
+    }
+
     private func sessionCookie(for sessionID: String) -> String {
         "swiftbot_admin_session=\(sessionID); Path=/; HttpOnly; SameSite=Lax; Max-Age=\(Int(sessionTTL))"
     }
@@ -1752,7 +1932,7 @@ actor AdminWebServer {
     }
 
     private func codableResponse<T: Encodable>(_ value: T) -> Data {
-        let body = (try? encoder.encode(value)) ?? Data("{}".utf8)
+        let body = (try? apiEncoder.encode(value)) ?? Data("{}".utf8)
         return httpResponse(status: "200 OK", body: body, contentType: "application/json; charset=utf-8")
     }
 

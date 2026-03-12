@@ -5,33 +5,42 @@ struct MeshPreferencesView: View {
     @State private var showWorkerOffloadWarning = false
     @State private var showDiagnostics = false
 
-    // Draft state — only written to app.settings on Apply
-    @State private var draftMode: ClusterMode = .standalone
-    @State private var draftNodeName: String = ""
-    @State private var draftLeaderAddress: String = ""
-    @State private var draftLeaderPortText: String = "38787"
-    @State private var draftPortText: String = "38787"
-    @State private var draftSharedSecret: String = ""
-
     private static let defaultListenPort = 38787
 
-    private var parsedPort: Int? {
-        guard let p = Int(draftPortText), (1...65535).contains(p) else { return nil }
-        return p
+    private var leaderPortBinding: Binding<String> {
+        Binding(
+            get: { "\(app.settings.clusterLeaderPort)" },
+            set: { newValue in
+                let filtered = String(newValue.filter(\.isNumber).prefix(5))
+                if let port = Int(filtered), (1...65535).contains(port) {
+                    app.settings.clusterLeaderPort = port
+                } else if filtered.isEmpty {
+                    app.settings.clusterLeaderPort = Self.defaultListenPort
+                }
+            }
+        )
     }
 
-    private var parsedLeaderPort: Int? {
-        guard let p = Int(draftLeaderPortText), (1...65535).contains(p) else { return nil }
-        return p
+    private var listenPortBinding: Binding<String> {
+        Binding(
+            get: { "\(app.settings.clusterListenPort)" },
+            set: { newValue in
+                let filtered = String(newValue.filter(\.isNumber).prefix(5))
+                if let port = Int(filtered), (1...65535).contains(port) {
+                    app.settings.clusterListenPort = port
+                } else if filtered.isEmpty {
+                    app.settings.clusterListenPort = Self.defaultListenPort
+                }
+            }
+        )
     }
 
-    private var hasChanges: Bool {
-        draftMode != app.settings.clusterMode
-            || draftNodeName != app.settings.clusterNodeName
-            || draftLeaderAddress != app.settings.clusterLeaderAddress
-            || draftLeaderPortText != "\(app.settings.clusterLeaderPort)"
-            || draftPortText != "\(app.settings.clusterListenPort)"
-            || draftSharedSecret != app.settings.clusterSharedSecret
+    private var hasInvalidPort: Bool {
+        !(1...65535).contains(app.settings.clusterListenPort)
+    }
+
+    private var hasInvalidLeaderPort: Bool {
+        app.settings.clusterMode == .standby && !(1...65535).contains(app.settings.clusterLeaderPort)
     }
 
     private var canEditOffloadPolicy: Bool {
@@ -62,13 +71,13 @@ struct MeshPreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Role")
                         .font(.subheadline.weight(.medium))
-                    Picker("Role", selection: $draftMode) {
+                    Picker("Role", selection: $app.settings.clusterMode) {
                         ForEach(ClusterMode.selectableCases) { mode in
                             Text(mode.displayName).tag(mode)
                         }
                     }
                     .pickerStyle(.menu)
-                    Text(draftMode.description)
+                    Text(app.settings.clusterMode.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -76,16 +85,16 @@ struct MeshPreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Node Name")
                         .font(.subheadline.weight(.medium))
-                    TextField("SwiftBot Node", text: $draftNodeName)
+                    TextField("SwiftBot Node", text: $app.settings.clusterNodeName)
                         .textFieldStyle(.roundedBorder)
                 }
 
-                if draftMode == .standby {
+                if app.settings.clusterMode == .standby {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Primary Host")
                                 .font(.subheadline.weight(.medium))
-                            TextField("192.168.1.100", text: $draftLeaderAddress)
+                            TextField("192.168.1.100", text: $app.settings.clusterLeaderAddress)
                                 .textFieldStyle(.roundedBorder)
                         }
                         .frame(maxWidth: .infinity)
@@ -93,13 +102,9 @@ struct MeshPreferencesView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Port")
                                 .font(.subheadline.weight(.medium))
-                            TextField("38787", text: $draftLeaderPortText)
+                            TextField("38787", text: leaderPortBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
-                                .onChange(of: draftLeaderPortText) { newValue in
-                                    let filtered = String(newValue.filter(\.isNumber).prefix(5))
-                                    if filtered != newValue { draftLeaderPortText = filtered }
-                                }
                         }
                     }
                 }
@@ -107,14 +112,9 @@ struct MeshPreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Listen Port")
                         .font(.subheadline.weight(.medium))
-                    TextField("38787", text: $draftPortText)
+                    TextField("38787", text: listenPortBinding)
                         .textFieldStyle(.roundedBorder)
-                        .onChange(of: draftPortText) { newValue in
-                            // Strip non-numeric characters and cap to 5 digits
-                            let filtered = String(newValue.filter(\.isNumber).prefix(5))
-                            if filtered != newValue { draftPortText = filtered }
-                        }
-                    if parsedPort == nil, !draftPortText.isEmpty {
+                    if hasInvalidPort {
                         Text("Port must be between 1 and 65535.")
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -124,33 +124,9 @@ struct MeshPreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Shared Secret")
                         .font(.subheadline.weight(.medium))
-                    SecureField("Required for clustered mode", text: $draftSharedSecret)
+                    SecureField("Required for clustered mode", text: $app.settings.clusterSharedSecret)
                         .textFieldStyle(.roundedBorder)
                 }
-
-                Divider()
-
-                HStack {
-                    Button("Restore Defaults") {
-                        restoreDefaults()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Spacer()
-
-                    Button("Cancel") {
-                        loadFromSettings()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!hasChanges)
-
-                    Button("Apply") {
-                        applyMeshSettings()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!hasChanges || parsedPort == nil || (draftMode == .standby && parsedLeaderPort == nil))
-                }
-                .padding(.top, 4)
             }
 
             PreferencesCard("Worker Offload", systemImage: "point.3.connected.trianglepath.dotted") {
@@ -271,7 +247,10 @@ struct MeshPreferencesView: View {
 
                     HStack(spacing: 10) {
                         Button("Test Connection") {
-                            app.testWorkerLeaderConnection(leaderAddress: draftLeaderAddress, leaderPort: parsedLeaderPort)
+                            app.testWorkerLeaderConnection(
+                                leaderAddress: app.settings.clusterLeaderAddress,
+                                leaderPort: app.settings.clusterLeaderPort
+                            )
                         }
                         .buttonStyle(.bordered)
                         .disabled(app.workerConnectionTestInProgress)
@@ -285,29 +264,6 @@ struct MeshPreferencesView: View {
                 }
             }
         }
-        .onAppear {
-            loadFromSettings()
-        }
-    }
-
-    // MARK: - Draft helpers
-
-    private func loadFromSettings() {
-        draftMode = app.settings.clusterMode
-        draftNodeName = app.settings.clusterNodeName
-        draftLeaderAddress = app.settings.clusterLeaderAddress
-        draftLeaderPortText = "\(app.settings.clusterLeaderPort)"
-        draftPortText = "\(app.settings.clusterListenPort)"
-        draftSharedSecret = app.settings.clusterSharedSecret
-    }
-
-    private func restoreDefaults() {
-        draftMode = .standalone
-        draftNodeName = Host.current().localizedName ?? "SwiftBot Node"
-        draftLeaderAddress = ""
-        draftLeaderPortText = "\(Self.defaultListenPort)"
-        draftPortText = "\(Self.defaultListenPort)"
-        draftSharedSecret = ""
     }
 
     private func latencyLabel(_ ms: Int) -> String {
@@ -326,16 +282,5 @@ struct MeshPreferencesView: View {
         case 80..<200: return .orange
         default: return .red
         }
-    }
-
-    private func applyMeshSettings() {
-        guard let port = parsedPort, let leaderPort = parsedLeaderPort else { return }
-        app.settings.clusterMode = draftMode
-        app.settings.clusterNodeName = draftNodeName
-        app.settings.clusterLeaderAddress = draftLeaderAddress
-        app.settings.clusterLeaderPort = leaderPort
-        app.settings.clusterListenPort = port
-        app.settings.clusterSharedSecret = draftSharedSecret
-        app.saveSettings()
     }
 }

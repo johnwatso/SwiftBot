@@ -14,14 +14,19 @@
 		11C22D551122334455667788 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D661122334455667788 /* AdminWebServer.swift */; };
 		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
 		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
+		222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */; };
 		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
 		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
 		2D93A1C4B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */; };
 		2E1AB44CA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */; };
 		2FB770B8A11D22E33F44C550 /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */; };
+		3B969F2C6A7C429B9E9392E0 /* SwiftBotApp/ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */; };
+		45BDC95CDE8D4005A5A70F85 /* SwiftBotApp/StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */; };
+		49AEED7B963B4B6F842F7A10 /* SwiftBotApp/RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */; };
 		538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35480F12EB2C7DFB546BD550 /* RootView.swift */; };
-		5B2FA002B2C3D4E5F6071901 /* EmptyRuleOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */; };
+		5AEC748EA501439CBE3442FC /* SwiftBotApp/OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */; };
 		5B1E9801A1B2C3D4E5F60718 /* VoiceRuleListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */; };
+		5B2FA002B2C3D4E5F6071901 /* EmptyRuleOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */; };
 		6F1B40D1A2B3C4D5E6F70819 /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D0A2B3C4D5E6F70819 /* AppModel+Gateway.swift */; };
 		6F1B40D3A2B3C4D5E6F70819 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D2A2B3C4D5E6F70819 /* AppModel+Commands.swift */; };
 		6F1B40D5A2B3C4D5E6F70819 /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D4A2B3C4D5E6F70819 /* AppModel+AI.swift */; };
@@ -30,6 +35,13 @@
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
 		8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */; };
 		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
+		A01010101010101010101001 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101001 /* RemoteModeRootView.swift */; };
+		A01010101010101010101002 /* Services/RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101002 /* Services/RemoteModels.swift */; };
+		A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101003 /* Services/RemoteAPI.swift */; };
+		A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101004 /* Services/RemoteControlService.swift */; };
+		A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101005 /* Services/BotDataProvider.swift */; };
+		A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101006 /* Services/LocalBotProvider.swift */; };
+		A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101007 /* Services/RemoteBotProvider.swift */; };
 		A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556701 /* Security/CertificateManager.swift */; };
 		A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556702 /* Security/ACMEClient.swift */; };
 		A1B2C3D40111223344556603 /* Security/CloudflareDNSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */; };
@@ -41,14 +53,6 @@
 		A1B2C3D40111223344556A04 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556904 /* NIOCore */; };
 		A1B2C3D40111223344556A05 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556905 /* NIOPosix */; };
 		A1B2C3D40111223344556A06 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556906 /* NIOSSL */; };
-		A01010101010101010101001 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101001 /* RemoteModeRootView.swift */; };
-		A01010101010101010101002 /* Services/RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101002 /* Services/RemoteModels.swift */; };
-		A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101003 /* Services/RemoteAPI.swift */; };
-		A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101004 /* Services/RemoteControlService.swift */; };
-		A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101005 /* Services/BotDataProvider.swift */; };
-		A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101006 /* Services/LocalBotProvider.swift */; };
-		A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101007 /* Services/RemoteBotProvider.swift */; };
-
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
 		AA1000011122334455667701 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667701 /* PreferencesView.swift */; };
@@ -61,18 +65,13 @@
 		B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708001122A3 /* CommandsView.swift */; };
 		B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6C2021122334455667788 /* SchemaSettings.swift */; };
 		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
-		5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */; };
-		3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D6839427040358B4FBA90 /* ModeSelectionView.swift */; };
-		45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */; };
-		EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */; };
-		49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199651172D924276B1B7FA3B /* RemoteSetupView.swift */; };
-		222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* OnboardingStyles.swift */; };
 		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
 		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
 		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
 		D4E5F607080011223344556B /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6070800112233445C /* LogsView.swift */; };
 		D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */; };
 		E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C1A9010102030405060708 /* WikiBridgeView.swift */; };
+		EBEDA37ACA12477FB8096E6D /* SwiftBotApp/SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */; };
 		F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9564766EDA4C18D06A84BCB /* Persistence.swift */; };
 		F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */; };
 		F607080011223344556677AD /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607080011223344556677 /* AIBotsView.swift */; };
@@ -86,6 +85,9 @@
 		0B3205CAA1A44F7E79578277 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
 		11C22D441122334455667788 /* ClusterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterCoordinator.swift; sourceTree = "<group>"; };
 		11C22D661122334455667788 /* AdminWebServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebServer.swift; sourceTree = "<group>"; };
+		142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
+		199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
+		2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
 		2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SlashCommandHelpers.swift"; sourceTree = "<group>"; };
 		2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
 		2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTypes.swift; sourceTree = "<group>"; };
@@ -93,8 +95,8 @@
 		44A31413B04848EB75D50EFA /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5015DDB02F554EF200618C6D /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SwiftBot.icon; sourceTree = SOURCE_ROOT; };
 		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
-		5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
 		5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleListView.swift; sourceTree = "<group>"; };
+		5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
 		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		6F1B40D0A2B3C4D5E6F70819 /* AppModel+Gateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Gateway.swift"; sourceTree = "<group>"; };
 		6F1B40D2A2B3C4D5E6F70819 /* AppModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Commands.swift"; sourceTree = "<group>"; };
@@ -106,14 +108,6 @@
 		A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareTunnelClient.swift; sourceTree = "<group>"; };
 		A1B2C3D40111223344556705 /* Security/TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/TunnelManager.swift; sourceTree = "<group>"; };
-		B01010101010101010101001 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
-		B01010101010101010101002 /* Services/RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteModels.swift; sourceTree = "<group>"; };
-		B01010101010101010101003 /* Services/RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteAPI.swift; sourceTree = "<group>"; };
-		B01010101010101010101004 /* Services/RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteControlService.swift; sourceTree = "<group>"; };
-		B01010101010101010101005 /* Services/BotDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/BotDataProvider.swift; sourceTree = "<group>"; };
-		B01010101010101010101006 /* Services/LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalBotProvider.swift; sourceTree = "<group>"; };
-		B01010101010101010101007 /* Services/RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteBotProvider.swift; sourceTree = "<group>"; };
-
 		A1B2C3D4E5F60708001122A3 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
@@ -124,22 +118,26 @@
 		AA2000011122334455667705 /* WebUIPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebUIPreferencesView.swift; sourceTree = "<group>"; };
 		AA2000011122334455667706 /* UpdatesPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesPreferencesView.swift; sourceTree = "<group>"; };
 		AA2000011122334455667707 /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
+		B01010101010101010101001 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
+		B01010101010101010101002 /* Services/RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteModels.swift; sourceTree = "<group>"; };
+		B01010101010101010101003 /* Services/RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteAPI.swift; sourceTree = "<group>"; };
+		B01010101010101010101004 /* Services/RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteControlService.swift; sourceTree = "<group>"; };
+		B01010101010101010101005 /* Services/BotDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/BotDataProvider.swift; sourceTree = "<group>"; };
+		B01010101010101010101006 /* Services/LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalBotProvider.swift; sourceTree = "<group>"; };
+		B01010101010101010101007 /* Services/RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteBotProvider.swift; sourceTree = "<group>"; };
 		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingRootView.swift; sourceTree = "<group>"; };
-		142D6839427040358B4FBA90 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
-		DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/StandaloneSetupView.swift; sourceTree = "<group>"; };
-		2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
-		199651172D924276B1B7FA3B /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
-		F2206311680E46EFA928E726 /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
 		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
 		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
+		DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/StandaloneSetupView.swift; sourceTree = "<group>"; };
 		E4C1A9010102030405060708 /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
 		E5F607080011223344556677 /* AIBotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBotsView.swift; sourceTree = "<group>"; };
 		EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp.swift; sourceTree = "<group>"; };
+		EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingRootView.swift; sourceTree = "<group>"; };
+		F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
 		F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
 		F9564766EDA4C18D06A84BCB /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -170,7 +168,21 @@
 				5015DDB02F554EF200618C6D /* SwiftBot.icon */,
 				B1576087F628D0A5598994F5 /* SwiftBotApp */,
 				94552BCD00E80365B7E02046 /* Products */,
+				50F7585F2F6294510052287C /* Recovered References */,
 			);
+			sourceTree = "<group>";
+		};
+		50F7585F2F6294510052287C /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */,
+				142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */,
+				DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */,
+				2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */,
+				199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */,
+				F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		94552BCD00E80365B7E02046 /* Products */ = {
@@ -324,13 +336,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-								5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */,
-				3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */,
-				45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */,
-				EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */,
-				49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */,
-				222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */,
-259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
+				5AEC748EA501439CBE3442FC /* SwiftBotApp/OnboardingRootView.swift in Sources */,
+				3B969F2C6A7C429B9E9392E0 /* SwiftBotApp/ModeSelectionView.swift in Sources */,
+				45BDC95CDE8D4005A5A70F85 /* SwiftBotApp/StandaloneSetupView.swift in Sources */,
+				EBEDA37ACA12477FB8096E6D /* SwiftBotApp/SwiftMeshSetupView.swift in Sources */,
+				49AEED7B963B4B6F842F7A10 /* SwiftBotApp/RemoteSetupView.swift in Sources */,
+				222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */,
+				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
 				11C22D551122334455667788 /* AdminWebServer.swift in Sources */,
 				A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */,
 				A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */,
@@ -525,7 +537,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1910000;
+				CURRENT_PROJECT_VERSION = 1920000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -551,7 +563,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.1;
+				MARKETING_VERSION = 1.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -573,7 +585,7 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1910000;
+				CURRENT_PROJECT_VERSION = 1920000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -599,7 +611,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.1;
+				MARKETING_VERSION = 1.9.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

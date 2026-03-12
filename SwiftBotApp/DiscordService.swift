@@ -2102,6 +2102,10 @@ actor DiscordService {
                 durationSeconds: nil,
                 messageContent: nil,
                 messageId: nil,
+                mediaFileName: nil,
+                mediaRelativePath: nil,
+                mediaSourceName: nil,
+                mediaNodeName: nil,
                 triggerMessageId: nil,
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
@@ -2128,6 +2132,10 @@ actor DiscordService {
                 durationSeconds: durationSeconds,
                 messageContent: nil,
                 messageId: nil,
+                mediaFileName: nil,
+                mediaRelativePath: nil,
+                mediaSourceName: nil,
+                mediaNodeName: nil,
                 triggerMessageId: nil,
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
@@ -2154,6 +2162,10 @@ actor DiscordService {
                 durationSeconds: durationSeconds,
                 messageContent: nil,
                 messageId: nil,
+                mediaFileName: nil,
+                mediaRelativePath: nil,
+                mediaSourceName: nil,
+                mediaNodeName: nil,
                 triggerMessageId: nil,
                 triggerChannelId: nil,
                 triggerGuildId: guildId,
@@ -2200,6 +2212,10 @@ actor DiscordService {
             durationSeconds: nil,
             messageContent: content,
             messageId: messageId,
+            mediaFileName: nil,
+            mediaRelativePath: nil,
+            mediaSourceName: nil,
+            mediaNodeName: nil,
             triggerMessageId: messageId,
             triggerChannelId: channelId,
             triggerGuildId: guildId,
@@ -2561,6 +2577,12 @@ actor DiscordService {
             .replacingOccurrences(of: "{fromChannelId}", with: fromChannelId)
             .replacingOccurrences(of: "{toChannelId}", with: toChannelId)
             .replacingOccurrences(of: "{duration}", with: formatDuration(seconds: event.durationSeconds))
+            .replacingOccurrences(of: "{message}", with: event.messageContent ?? "")
+            .replacingOccurrences(of: "{messageId}", with: event.messageId ?? "")
+            .replacingOccurrences(of: "{media.file}", with: event.mediaFileName ?? "")
+            .replacingOccurrences(of: "{media.path}", with: event.mediaRelativePath ?? "")
+            .replacingOccurrences(of: "{media.source}", with: event.mediaSourceName ?? "")
+            .replacingOccurrences(of: "{media.node}", with: event.mediaNodeName ?? "")
             .replacingOccurrences(of: "{ai.response}", with: context.aiResponse ?? "")
 
         if !context.mentionUser {

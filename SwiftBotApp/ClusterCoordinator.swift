@@ -41,6 +41,8 @@ actor ClusterCoordinator {
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
     typealias SyncHandler = @Sendable (MeshSyncPayload) async -> Void
     typealias MeshHandler = @Sendable (String) async -> Data?
+    typealias MediaLibraryProvider = @Sendable () async -> MediaLibraryPayload
+    typealias MediaStreamHandler = @Sendable (String, String?) async -> BinaryHTTPResponse?
     /// Returns (records, hasMore) for the given cursor position and batch limit.
     typealias ConversationFetcher = @Sendable (String?, Int) async -> (records: [MemoryRecord], hasMore: Bool)
 
@@ -92,6 +94,9 @@ actor ClusterCoordinator {
     private var onJobLog: JobLogHandler?
     private var onSync: SyncHandler?
     private var meshHandler: MeshHandler?
+    private var mediaLibraryProvider: MediaLibraryProvider?
+    private var mediaStreamHandler: MediaStreamHandler?
+    private var mediaThumbnailHandler: MediaStreamHandler?
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
     var snapshot = ClusterSnapshot()
@@ -103,6 +108,9 @@ actor ClusterCoordinator {
         onJobLog: @escaping JobLogHandler,
         onSync: @escaping SyncHandler,
         meshHandler: @escaping MeshHandler,
+        mediaLibraryProvider: @escaping MediaLibraryProvider,
+        mediaStreamHandler: @escaping MediaStreamHandler,
+        mediaThumbnailHandler: @escaping MediaStreamHandler,
         conversationFetcher: @escaping ConversationFetcher,
         onPromotion: @escaping @Sendable () async -> Void
     ) {
@@ -112,6 +120,9 @@ actor ClusterCoordinator {
         self.onJobLog = onJobLog
         self.onSync = onSync
         self.meshHandler = meshHandler
+        self.mediaLibraryProvider = mediaLibraryProvider
+        self.mediaStreamHandler = mediaStreamHandler
+        self.mediaThumbnailHandler = mediaThumbnailHandler
         self.conversationFetcher = conversationFetcher
         self.onPromotion = onPromotion
     }
@@ -931,6 +942,18 @@ actor ClusterCoordinator {
             return await handleMeshWikiCacheSync()
         case ("GET", "/v1/mesh/sync/config-files"):
             return await handleMeshConfigFilesSync()
+        case ("GET", "/v1/media/library"):
+            return await handleMediaLibraryRequest()
+        case ("GET", "/v1/media/stream"):
+            guard let itemID = request.query["id"], !itemID.isEmpty else {
+                return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"missing_id"}"#.utf8))
+            }
+            return await handleMediaStreamRequest(itemID: itemID, rangeHeader: request.headers["range"])
+        case ("GET", "/v1/media/thumbnail"):
+            guard let itemID = request.query["id"], !itemID.isEmpty else {
+                return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"missing_id"}"#.utf8))
+            }
+            return await handleMediaThumbnailRequest(itemID: itemID)
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -948,6 +971,14 @@ actor ClusterCoordinator {
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else { return nil }
 
+        let rawTarget = String(parts[1])
+        let components = URLComponents(string: "http://localhost\(rawTarget)")
+        let path = components?.path.isEmpty == false ? components?.path ?? "/" : "/"
+        var query: [String: String] = [:]
+        components?.queryItems?.forEach { item in
+            query[item.name] = item.value ?? ""
+        }
+
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
             guard let colonIdx = line.firstIndex(of: ":") else { continue }
@@ -956,12 +987,18 @@ actor ClusterCoordinator {
             headers[name] = value
         }
 
-        return HTTPRequest(method: String(parts[0]), path: String(parts[1]), headers: headers, body: body)
+        return HTTPRequest(method: String(parts[0]), path: path, query: query, headers: headers, body: body)
     }
 
-    private func httpResponse(status: String, body: Data) -> Data {
+    private func httpResponse(
+        status: String,
+        body: Data,
+        contentType: String = "application/json",
+        headers: [String: String] = [:]
+    ) -> Data {
         let header = "HTTP/1.1 \(status)\r\n" +
-            "Content-Type: application/json\r\n" +
+            "Content-Type: \(contentType)\r\n" +
+            headers.map { "\($0.key): \($0.value)\r\n" }.joined() +
             "Content-Length: \(body.count)\r\n" +
             "Connection: close\r\n" +
             "\r\n"
@@ -1957,6 +1994,40 @@ actor ClusterCoordinator {
         return httpResponse(status: "404 Not Found", body: Data(#"{"error":"config_unavailable"}"#.utf8))
     }
 
+    private func handleMediaLibraryRequest() async -> Data {
+        guard let provider = mediaLibraryProvider else {
+            return httpResponse(status: "404 Not Found", body: Data(#"{"error":"media_unavailable"}"#.utf8))
+        }
+        guard let body = try? encoder.encode(await provider()) else {
+            return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"encode_failed"}"#.utf8))
+        }
+        return httpResponse(status: "200 OK", body: body)
+    }
+
+    private func handleMediaStreamRequest(itemID: String, rangeHeader: String?) async -> Data {
+        guard let response = await mediaStreamHandler?(itemID, rangeHeader) else {
+            return httpResponse(status: "404 Not Found", body: Data(#"{"error":"media_not_found"}"#.utf8))
+        }
+        return httpResponse(
+            status: response.status,
+            body: response.body,
+            contentType: response.contentType,
+            headers: response.headers
+        )
+    }
+
+    private func handleMediaThumbnailRequest(itemID: String) async -> Data {
+        guard let response = await mediaThumbnailHandler?(itemID, nil) else {
+            return httpResponse(status: "404 Not Found", body: Data(#"{"error":"thumbnail_not_found"}"#.utf8))
+        }
+        return httpResponse(
+            status: response.status,
+            body: response.body,
+            contentType: response.contentType,
+            headers: response.headers
+        )
+    }
+
     /// Standby: fetch one page of conversation records from the leader using correct HMAC auth.
     func fetchResyncPage(fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
         guard mode == .standby,
@@ -1975,6 +2046,81 @@ actor ClusterCoordinator {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return try? decoder.decode(MeshSyncPayload.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchRemoteMediaLibrary(from baseURL: String) async -> MediaLibraryPayload? {
+        guard let url = URL(string: baseURL + "/v1/media/library") else { return nil }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMeshAuth(to: &request, path: "/v1/media/library")
+            request.timeoutInterval = 8
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            return try? decoder.decode(MediaLibraryPayload.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchRemoteMediaStream(from baseURL: String, itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+        guard var components = URLComponents(string: baseURL + "/v1/media/stream") else { return nil }
+        components.queryItems = [URLQueryItem(name: "id", value: itemID)]
+        guard let url = components.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            if let rangeHeader, !rangeHeader.isEmpty {
+                request.setValue(rangeHeader, forHTTPHeaderField: "Range")
+            }
+            applyMeshAuth(to: &request, path: "/v1/media/stream")
+            request.timeoutInterval = 30
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return nil }
+            guard [200, 206].contains(http.statusCode) else { return nil }
+            let headers = http.allHeaderFields.reduce(into: [String: String]()) { partial, entry in
+                guard let key = entry.key as? String, let value = entry.value as? String else { return }
+                let lower = key.lowercased()
+                guard lower != "content-length", lower != "content-type", lower != "connection" else { return }
+                partial[key] = value
+            }
+            return BinaryHTTPResponse(
+                status: http.statusCode == 206 ? "206 Partial Content" : "200 OK",
+                contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream",
+                headers: headers,
+                body: data
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchRemoteMediaThumbnail(from baseURL: String, itemID: String) async -> BinaryHTTPResponse? {
+        guard var components = URLComponents(string: baseURL + "/v1/media/thumbnail") else { return nil }
+        components.queryItems = [URLQueryItem(name: "id", value: itemID)]
+        guard let url = components.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMeshAuth(to: &request, path: "/v1/media/thumbnail")
+            request.timeoutInterval = 15
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+            return BinaryHTTPResponse(
+                status: "200 OK",
+                contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "image/jpeg",
+                headers: [:],
+                body: data
+            )
         } catch {
             return nil
         }
@@ -2047,6 +2193,7 @@ private struct WorkerRegistrationResponse: Codable {
 private struct HTTPRequest {
     let method: String
     let path: String
+    let query: [String: String]
     let headers: [String: String]
     let body: Data
 }

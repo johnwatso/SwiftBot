@@ -175,6 +175,15 @@ struct OverviewView: View {
                     color: .red
                 ),
                 MetricWidget(
+                    id: "recentMedia",
+                    title: "New Recordings",
+                    value: "\(app.recentMediaCount24h)",
+                    subtitle: "last 24 hours",
+                    symbol: "film.fill",
+                    detail: "Across media sources",
+                    color: .teal
+                ),
+                MetricWidget(
                     id: "actions",
                     title: "Actions",
                     value: "\(enabledActionRuleCount) active",
@@ -222,6 +231,15 @@ struct OverviewView: View {
                 symbol: "terminal.fill",
                 detail: "Recent commands activity",
                 color: .red
+            ),
+            MetricWidget(
+                id: "recentMedia",
+                title: "New Recordings",
+                value: "\(app.recentMediaCount24h)",
+                subtitle: "last 24 hours",
+                symbol: "film.fill",
+                detail: "Across media sources",
+                color: .teal
             ),
             MetricWidget(
                 id: "wikibridge",

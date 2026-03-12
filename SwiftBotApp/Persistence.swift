@@ -8,6 +8,7 @@ enum SwiftBotStorage {
     static let meshCursorsFileName = "mesh-cursors.json"
     static let swiftMeshConfigFileName = "swiftmesh-config.json"
     static let clusterStateFileName = "cluster_state.json"
+    static let mediaLibraryConfigFileName = "media-library.json"
 
     static func folderURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -21,6 +22,7 @@ actor ConfigStore {
     private let adminDiscordClientSecretAccount = "admin-discord-client-secret"
     private let adminWebCloudflareTokenAccount = "admin-web-cloudflare-token"
     private let adminWebPublicAccessTunnelTokenAccount = "admin-web-public-access-tunnel-token"
+    private let adminWebLocalAuthPasswordAccount = "admin-web-local-auth-password"
     private let openAIAPIKeyAccount = "openai-api-key"
     private let url: URL
     private let encoder = JSONEncoder()
@@ -29,6 +31,7 @@ actor ConfigStore {
     private var lastOpenAIAPIKey: String?
     private var lastAdminWebCloudflareToken: String?
     private var lastAdminWebPublicAccessTunnelToken: String?
+    private var lastAdminWebLocalAuthPassword: String?
 
     init(filename: String = SwiftBotStorage.settingsFileName) {
         let folder = SwiftBotStorage.folderURL()
@@ -67,6 +70,16 @@ actor ConfigStore {
                 settings.adminWebUI.discordOAuth.clientSecret = secretToMigrate
             }
         }
+
+        if let localAuthPassword = KeychainHelper.load(account: adminWebLocalAuthPasswordAccount) {
+            settings.adminWebUI.localAuthPassword = localAuthPassword
+        } else if !settings.adminWebUI.localAuthPassword.isEmpty {
+            let passwordToMigrate = settings.adminWebUI.localAuthPassword
+            if KeychainHelper.save(passwordToMigrate, account: adminWebLocalAuthPasswordAccount) {
+                settings.adminWebUI.localAuthPassword = passwordToMigrate
+            }
+        }
+        lastAdminWebLocalAuthPassword = settings.adminWebUI.localAuthPassword
 
         if let cloudflareToken = KeychainHelper.load(account: adminWebCloudflareTokenAccount) {
             settings.adminWebUI.cloudflareAPIToken = cloudflareToken
@@ -118,6 +131,16 @@ actor ConfigStore {
             KeychainHelper.save(trimmedAdminSecret, account: adminDiscordClientSecretAccount)
         }
 
+        let trimmedLocalAuthPassword = settings.adminWebUI.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedLocalAuthPassword != lastAdminWebLocalAuthPassword {
+            if trimmedLocalAuthPassword.isEmpty {
+                KeychainHelper.delete(account: adminWebLocalAuthPasswordAccount)
+            } else {
+                KeychainHelper.save(trimmedLocalAuthPassword, account: adminWebLocalAuthPasswordAccount)
+            }
+            lastAdminWebLocalAuthPassword = trimmedLocalAuthPassword
+        }
+
         let trimmedCloudflareToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedCloudflareToken != lastAdminWebCloudflareToken {
             if trimmedCloudflareToken.isEmpty {
@@ -151,6 +174,7 @@ actor ConfigStore {
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordOAuth.clientSecret = ""
+        settingsToSave.adminWebUI.localAuthPassword = ""
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
         settingsToSave.openAIAPIKey = ""
@@ -277,6 +301,35 @@ actor RuleConfigStore {
     func save(_ rules: [Rule]) throws {
         let data = try encoder.encode(rules)
         try data.write(to: url, options: .atomic)
+    }
+}
+
+actor MediaLibraryConfigStore {
+    private let url: URL
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(filename: String = SwiftBotStorage.mediaLibraryConfigFileName) {
+        let folder = SwiftBotStorage.folderURL()
+        self.url = folder.appendingPathComponent(filename)
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
+    func load() -> MediaLibrarySettings {
+        guard let data = try? Data(contentsOf: url),
+              let settings = try? decoder.decode(MediaLibrarySettings.self, from: data) else {
+            return MediaLibrarySettings()
+        }
+        return settings
+    }
+
+    func save(_ settings: MediaLibrarySettings) throws {
+        let data = try encoder.encode(settings)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func fileURL() -> URL {
+        url
     }
 }
 

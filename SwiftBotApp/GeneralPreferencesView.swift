@@ -17,6 +17,14 @@ struct GeneralPreferencesView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var mediaSummaryText: String {
+        let sources = app.mediaLibrarySettings.sources
+        let enabled = sources.filter(\.isEnabled).count
+        return sources.isEmpty
+            ? "No recording libraries configured on this node yet."
+            : "\(enabled)/\(sources.count) recording sources enabled on this node."
+    }
+
     var body: some View {
         PreferencesTabContainer {
             if app.isFailoverManagedNode {
@@ -141,6 +149,66 @@ struct GeneralPreferencesView: View {
                 Text("Reopen the guided setup flow if you need to reconfigure Discord or SwiftMesh.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+
+            PreferencesCard("Recordings", systemImage: "video") {
+                Text("Configure node-local recording folders that appear in the shared WebUI media browser.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(mediaSummaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach($app.mediaLibrarySettings.sources) { $source in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 10) {
+                                TextField("Source Name", text: $source.name)
+                                    .textFieldStyle(.roundedBorder)
+                                Toggle("", isOn: $source.isEnabled)
+                                    .toggleStyle(.switch)
+                                    .labelsHidden()
+                                Button(role: .destructive) {
+                                    if let index = app.mediaLibrarySettings.sources.firstIndex(where: { $0.id == source.id }) {
+                                        app.mediaLibrarySettings.sources.remove(at: index)
+                                    }
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
+                                .textFieldStyle(.roundedBorder)
+
+                            TextField(
+                                "mp4, mov, m4v",
+                                text: Binding(
+                                    get: { source.allowedExtensions.joined(separator: ", ") },
+                                    set: { rawValue in
+                                        source.allowedExtensions = rawValue
+                                            .split(separator: ",")
+                                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                            .filter { !$0.isEmpty }
+                                    }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                        }
+                        .padding(12)
+                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    Button {
+                        app.mediaLibrarySettings.sources.append(MediaLibrarySource())
+                    } label: {
+                        Label("Add Source", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
