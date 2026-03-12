@@ -333,6 +333,7 @@ actor AdminWebServer {
     private struct PendingState {
         let value: String
         let expiresAt: Date
+        let appRedirectURL: String?
     }
 
     private struct DiscordUser {
@@ -1262,7 +1263,7 @@ actor AdminWebServer {
         // unless explicitly designed to share the same identity layer.
         //
         case ("GET", "/auth/discord/login"):
-            return await handleDiscordLogin()
+            return await handleDiscordLogin(request: request)
         case ("POST", "/auth/logout"):
             return handleLogout(request: request)
         case ("GET", "/api/auth/session"):
@@ -1353,7 +1354,7 @@ actor AdminWebServer {
         return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
     }
 
-    private func handleDiscordLogin() async -> Data {
+    private func handleDiscordLogin(request: HTTPRequest) async -> Data {
         let clientID = config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let clientSecret = config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty, !clientSecret.isEmpty else {
@@ -1361,7 +1362,12 @@ actor AdminWebServer {
         }
 
         let state = randomToken()
-        pendingStates[state] = PendingState(value: state, expiresAt: Date().addingTimeInterval(stateTTL))
+        let appRedirectURL = validatedAppRedirectURL(from: request.query["return_to"])
+        pendingStates[state] = PendingState(
+            value: state,
+            expiresAt: Date().addingTimeInterval(stateTTL),
+            appRedirectURL: appRedirectURL?.absoluteString
+        )
 
         let uri = redirectURI()
         await logger?("[OAuth] Redirect URI: \(uri)")
@@ -1387,7 +1393,7 @@ actor AdminWebServer {
         guard let code = request.query["code"], let state = request.query["state"] else {
             return httpResponse(status: "400 Bad Request", body: Data("Missing code or state.".utf8))
         }
-        guard pendingStates.removeValue(forKey: state) != nil else {
+        guard let pendingState = pendingStates.removeValue(forKey: state) else {
             return httpResponse(status: "400 Bad Request", body: Data("State expired or invalid.".utf8))
         }
 
@@ -1412,8 +1418,12 @@ actor AdminWebServer {
             sessions[session.id] = session
             persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
+            let redirectTarget = remoteAuthRedirectURL(
+                from: pendingState.appRedirectURL,
+                sessionID: session.id
+            ) ?? "/"
             return redirectResponse(
-                to: "/",
+                to: redirectTarget,
                 headers: ["Set-Cookie": sessionCookie(for: session.id)]
             )
         } catch {
@@ -1497,6 +1507,10 @@ actor AdminWebServer {
     }
 
     private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
+        if authenticatedSession(for: request) != nil {
+            return true
+        }
+
         let expectedToken = config.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !expectedToken.isEmpty,
               let authorization = request.headers["authorization"]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1506,6 +1520,30 @@ actor AdminWebServer {
 
         let providedToken = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
         return !providedToken.isEmpty && providedToken == expectedToken
+    }
+
+    private func validatedAppRedirectURL(from rawValue: String?) -> URL? {
+        guard let rawValue,
+              let url = URL(string: rawValue),
+              url.scheme?.lowercased() == "swiftbot",
+              url.host?.lowercased() == "auth" else {
+            return nil
+        }
+        return url
+    }
+
+    private func remoteAuthRedirectURL(from rawValue: String?, sessionID: String) -> String? {
+        guard let rawValue,
+              let url = URL(string: rawValue),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "session" }
+        queryItems.append(URLQueryItem(name: "session", value: sessionID))
+        components.queryItems = queryItems
+        return components.url?.absoluteString
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {
