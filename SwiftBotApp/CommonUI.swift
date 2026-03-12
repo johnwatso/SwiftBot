@@ -192,13 +192,28 @@ struct ViewSectionHeader: View {
     let symbol: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.secondary)
+        SettingsSectionHeader(
+            title: title,
+            systemImage: symbol,
+            titleFont: .title2.weight(.semibold)
+        )
+    }
+}
+
+struct SettingsSectionHeader: View {
+    let title: String
+    let systemImage: String
+    var titleFont: Font = .headline
+
+    var body: some View {
+        Label {
             Text(title)
-                .font(.title2.weight(.semibold))
+                .font(titleFont)
+        } icon: {
+            Image(systemName: systemImage)
+                .imageScale(.medium)
         }
+        .labelStyle(.titleAndIcon)
     }
 }
 
@@ -244,8 +259,7 @@ struct PreferencesCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 if let systemImage {
-                    Label(title, systemImage: systemImage)
-                        .font(.headline)
+                    SettingsSectionHeader(title: title, systemImage: systemImage)
                 } else {
                     Text(title)
                         .font(.headline)
