@@ -1239,7 +1239,7 @@ actor AdminWebServer {
         //
         // Flow:
         //
-        // Remote Client → /auth/discord
+        // Remote Client → /auth/discord/login
         //               → Discord OAuth
         //               → /auth/discord/callback
         //               → session created

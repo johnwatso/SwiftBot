@@ -4,6 +4,29 @@ import SwiftUI
 import UpdateEngine
 import Darwin
 
+// MARK: - View Mode
+
+enum ViewMode: String, Codable, CaseIterable, Identifiable {
+    case local
+    case remote
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .local: return "Local Dashboard"
+        case .remote: return "Remote Dashboard"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .local: return "desktopcomputer"
+        case .remote: return "dot.radiowaves.left.and.right"
+        }
+    }
+}
+
 struct BugAutoFixPendingApproval {
     let bugMessageID: String
     let channelID: String
@@ -165,6 +188,18 @@ final class AppModel: ObservableObject {
 
     /// `true` once a valid token has been confirmed — gates the main dashboard.
     @Published var isOnboardingComplete: Bool = false
+    
+    // MARK: - View Mode
+    
+    /// The current view mode (local or remote dashboard). Persisted across launches.
+    @AppStorage("swiftbot.viewMode")
+    private var viewModeRaw: String = ViewMode.local.rawValue
+    
+    var viewMode: ViewMode {
+        get { ViewMode(rawValue: viewModeRaw) ?? .local }
+        set { viewModeRaw = newValue.rawValue }
+    }
+    
     /// OAuth2 client ID resolved from a validated token; used to build the invite URL.
     @Published var resolvedClientID: String? = nil
     /// Result from the most recent rich token validation; exposed for onboarding UI error display.

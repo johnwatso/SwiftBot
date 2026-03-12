@@ -2,6 +2,10 @@ import SwiftUI
 
 struct PreferencesView: View {
     @EnvironmentObject var app: AppModel
+    
+    // Persist selected tab to fix toolbar rendering issues
+    @AppStorage("swiftbot.preferences.selectedTab")
+    private var selectedTab = 0
 
     @State private var settingsSnapshot = PreferencesSnapshot()
 
@@ -66,31 +70,36 @@ struct PreferencesView: View {
                     }
                 }
             } else {
-                TabView {
+                TabView(selection: $selectedTab) {
                     GeneralPreferencesView()
                         .tabItem {
                             Label("General", systemImage: "gear")
                         }
+                        .tag(0)
 
                     MeshPreferencesView()
                         .tabItem {
                             Label("SwiftMesh", systemImage: "point.3.connected.trianglepath.dotted")
                         }
+                        .tag(1)
 
                     WebUIPreferencesView()
                         .tabItem {
                             Label("Web UI", systemImage: "globe")
                         }
+                        .tag(2)
 
                     UpdatesPreferencesView()
                         .tabItem {
                             Label("Updates", systemImage: "arrow.clockwise")
                         }
+                        .tag(3)
 
                     AdvancedPreferencesView()
                         .tabItem {
                             Label("Developer", systemImage: "wrench")
                         }
+                        .tag(4)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if hasUnsavedChanges && !app.isFailoverManagedNode {
@@ -108,6 +117,29 @@ struct PreferencesView: View {
         .onAppear {
             settingsSnapshot = currentSettingsSnapshot
         }
+        .background(
+            // Hidden view that observes onboarding state and closes window when complete
+            PreferencesWindowCloser()
+        )
+    }
+}
+
+// Separate view to handle window closing without affecting PreferencesView identity
+private struct PreferencesWindowCloser: View {
+    @EnvironmentObject var app: AppModel
+    
+    var body: some View {
+        EmptyView()
+            .onChange(of: app.isOnboardingComplete) { oldValue, newValue in
+                // Only close when transitioning TO complete (finishing setup)
+                // NOT when transitioning FROM complete (starting setup)
+                if newValue && !oldValue {
+                    // Close the Preferences window
+                    DispatchQueue.main.async {
+                        NSApp.keyWindow?.close()
+                    }
+                }
+            }
     }
 }
 
