@@ -41,7 +41,10 @@ struct MediaLibrarySource: Codable, Hashable, Identifiable {
     var allowedExtensions: [String] = ["mp4", "mov", "m4v"]
 
     var normalizedRootPath: String {
-        rootPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = rootPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unquoted = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        let unescaped = unquoted.replacingOccurrences(of: "\\ ", with: " ")
+        return (unescaped as NSString).expandingTildeInPath
     }
 
     var normalizedExtensions: [String] {

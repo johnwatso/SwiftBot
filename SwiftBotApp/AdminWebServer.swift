@@ -1178,7 +1178,7 @@ actor AdminWebServer {
             }
             return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
         case ("GET", "/api/media/thumbnail"):
-            guard authenticatedSession(for: request) != nil else {
+            guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
             }
             guard let token = request.query["id"], !token.isEmpty else {
@@ -1194,13 +1194,30 @@ actor AdminWebServer {
                 headers: response.headers
             )
         case ("GET", "/api/media/stream"):
-            guard authenticatedSession(for: request) != nil else {
+            guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
             }
             guard let token = request.query["id"], !token.isEmpty else {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             let rangeHeader = request.headers["range"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+                return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("HEAD", "/api/media/stream"):
+            guard mediaAccessAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            let rangeHeader = request.headers["range"] ?? "bytes=0-0"
             guard let response = await mediaStreamProvider?(token, rangeHeader) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
             }
@@ -1665,6 +1682,13 @@ actor AdminWebServer {
         }
         
         return nil
+    }
+
+    private func mediaAccessAuthorized(_ request: HTTPRequest) -> Bool {
+        if authenticatedSession(for: request) != nil { return true }
+        guard let access = request.query["access"], !access.isEmpty else { return false }
+        let now = Date()
+        return sessions.values.contains { $0.csrfToken == access && $0.expiresAt > now }
     }
 
     private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
