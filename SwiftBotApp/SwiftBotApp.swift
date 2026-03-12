@@ -91,6 +91,9 @@ struct SwiftBotApp: App {
                     applyWindowChromeIfAvailable()
                     updater.checkForUpdatesInBackground()
                 }
+                .onOpenURL { url in
+                    handleDeepLink(url)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -110,5 +113,28 @@ struct SwiftBotApp: App {
                 .environmentObject(updater)
         }
         .windowResizability(.contentSize)
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "swiftbot" else { return }
+        
+        switch url.host {
+        case "auth":
+            handleAuthDeepLink(url)
+        default:
+            break
+        }
+    }
+
+    private func handleAuthDeepLink(_ url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else { return }
+        
+        // Extract session token from deep link: swiftbot://auth?session=<token>
+        if let sessionToken = queryItems.first(where: { $0.name == "session" })?.value,
+           !sessionToken.isEmpty {
+            // Store session token for remote authentication
+            appModel.handleRemoteAuthSession(sessionToken)
+        }
     }
 }

@@ -57,6 +57,12 @@
 		B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708001122A3 /* CommandsView.swift */; };
 		B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6C2021122334455667788 /* SchemaSettings.swift */; };
 		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
+		5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */; };
+		3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D6839427040358B4FBA90 /* ModeSelectionView.swift */; };
+		45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */; };
+		EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */; };
+		49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199651172D924276B1B7FA3B /* RemoteSetupView.swift */; };
+		222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* OnboardingStyles.swift */; };
 		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
 		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
 		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
@@ -112,6 +118,12 @@
 		AA2000011122334455667707 /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
 		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		EA77BCA23D894E4E98F5B874 /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingRootView.swift; sourceTree = "<group>"; };
+		142D6839427040358B4FBA90 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
+		DE30A3D04296486A87AFEC73 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/StandaloneSetupView.swift; sourceTree = "<group>"; };
+		2338A77A835B45B3963A71D7 /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
+		199651172D924276B1B7FA3B /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
+		F2206311680E46EFA928E726 /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
 		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
 		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
@@ -301,7 +313,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
+								5AEC748EA501439CBE3442FC /* OnboardingRootView.swift in Sources */,
+				3B969F2C6A7C429B9E9392E0 /* ModeSelectionView.swift in Sources */,
+				45BDC95CDE8D4005A5A70F85 /* StandaloneSetupView.swift in Sources */,
+				EBEDA37ACA12477FB8096E6D /* SwiftMeshSetupView.swift in Sources */,
+				49AEED7B963B4B6F842F7A10 /* RemoteSetupView.swift in Sources */,
+				222494946C4E49E09016F964 /* OnboardingStyles.swift in Sources */,
+259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
 				11C22D551122334455667788 /* AdminWebServer.swift in Sources */,
 				A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */,
 				A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */,
