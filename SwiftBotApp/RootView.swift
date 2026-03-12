@@ -14,6 +14,10 @@ struct RootView: View {
             OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
+        } else if shouldShowRemoteDashboard {
+            RemoteModeRootView()
+                .frame(minWidth: 1200, minHeight: 760)
+                .toggleStyle(.switch)
         } else if let provider = app.provider {
             UnifiedRootView(selection: $selection)
                 .environmentObject(provider)
@@ -26,19 +30,13 @@ struct RootView: View {
     
     @ViewBuilder
     private var fallbackView: some View {
-        if shouldShowRemoteDashboard {
-            RemoteModeRootView()
-                .frame(minWidth: 1200, minHeight: 760)
-                .toggleStyle(.switch)
-        } else {
-            ProgressView("Loading dashboard...")
-                .frame(minWidth: 1200, minHeight: 760)
-                .toggleStyle(.switch)
-        }
+        ProgressView("Loading dashboard...")
+            .frame(minWidth: 1200, minHeight: 760)
+            .toggleStyle(.switch)
     }
 
     private var shouldShowRemoteDashboard: Bool {
-        app.isRemoteLaunchMode || (app.canSwitchDashboardViewMode && app.viewMode == .remote)
+        app.isRemoteLaunchMode || (app.canOpenRemoteDashboardFromLocalApp && app.viewMode == .remote)
     }
 }
 

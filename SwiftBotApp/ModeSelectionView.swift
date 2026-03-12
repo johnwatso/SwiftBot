@@ -3,11 +3,18 @@ import SwiftUI
 // MARK: - Mode Selection View
 
 struct ModeSelectionView: View {
+    @EnvironmentObject var app: AppModel
     @Binding var mode: SetupMode?
+
+    private var availableModes: [SetupMode] {
+        SetupMode.allCases.filter { setupMode in
+            setupMode != .remote || app.remoteControlFeatureEnabled
+        }
+    }
     
     var body: some View {
         VStack(spacing: 16) {
-            ForEach(SetupMode.allCases) { setupMode in
+            ForEach(availableModes) { setupMode in
                 ModeSelectionButton(mode: setupMode) {
                     mode = setupMode
                 }
@@ -52,4 +59,5 @@ private struct ModeSelectionButton: View {
     ModeSelectionView(mode: $selectedMode)
         .padding()
         .frame(width: 500, height: 400)
+        .environmentObject(AppModel())
 }

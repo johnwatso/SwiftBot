@@ -73,7 +73,6 @@ struct RemoteSetupView: View {
         .frame(maxWidth: 560)
         .onAppear {
             remoteAddressInput = app.settings.remoteMode.primaryNodeAddress
-            app.settings.launchMode = .remoteControl
         }
     }
     

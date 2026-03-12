@@ -13,7 +13,7 @@ enum SetupMode: String, CaseIterable, Identifiable {
         switch self {
         case .standalone: return "Set Up Standalone Bot"
         case .mesh: return "Set Up SwiftMesh"
-        case .remote: return "Connect to SwiftBot"
+        case .remote: return "Connect to SwiftBot Remote"
         }
     }
     
@@ -21,7 +21,7 @@ enum SetupMode: String, CaseIterable, Identifiable {
         switch self {
         case .standalone: return "Run SwiftBot locally on this Mac."
         case .mesh: return "Join a SwiftMesh cluster."
-        case .remote: return "Control an existing SwiftBot node remotely."
+        case .remote: return "Control an existing SwiftBot node remotely. Beta feature."
         }
     }
     
