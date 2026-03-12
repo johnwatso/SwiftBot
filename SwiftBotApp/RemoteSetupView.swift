@@ -15,17 +15,22 @@ struct RemoteSetupView: View {
     }
     
     var body: some View {
-        switch step {
-        case .setup:
-            remoteSetupFields
-        case .authenticating:
-            authenticatingView
-        case .testing:
-            testingView
-        case .confirmed:
-            confirmedView
-        case .failed:
-            failedView
+        Group {
+            switch step {
+            case .setup:
+                remoteSetupFields
+            case .authenticating:
+                authenticatingView
+            case .testing:
+                testingView
+            case .confirmed:
+                confirmedView
+            case .failed:
+                failedView
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .remoteAuthSessionReceived)) { _ in
+            handleAuthCompleted()
         }
     }
     
@@ -69,15 +74,6 @@ struct RemoteSetupView: View {
         .onAppear {
             remoteAddressInput = app.settings.remoteMode.primaryNodeAddress
             app.settings.launchMode = .remoteControl
-            
-            // Listen for auth session received via deep link
-            NotificationCenter.default.addObserver(
-                forName: .remoteAuthSessionReceived,
-                object: nil,
-                queue: .main
-            ) { _ in
-                handleAuthCompleted()
-            }
         }
     }
     
@@ -85,16 +81,24 @@ struct RemoteSetupView: View {
     
     private func startOAuthFlow() {
         let normalizedAddress = RemoteModeSettings.normalizeBaseURL(remoteAddressInput)
-        guard let authURL = URL(string: "\(normalizedAddress)/auth/discord/login") else {
+        guard var components = URLComponents(string: "\(normalizedAddress)/auth/discord/login") else {
+            remoteTester.lastError = "Invalid server URL"
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "return_to", value: "swiftbot://auth")
+        ]
+        guard let authURL = components.url else {
             remoteTester.lastError = "Invalid server URL"
             return
         }
         
         // Store the server address for later use
-        app.settings.remoteMode = RemoteModeSettings(
+        app.updateRemoteModeConnection(
             primaryNodeAddress: normalizedAddress,
             accessToken: ""
         )
+        remoteTester.lastError = nil
         
         // Open OAuth URL in browser
         NSWorkspace.shared.open(authURL)
