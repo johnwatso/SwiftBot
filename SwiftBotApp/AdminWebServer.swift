@@ -5,6 +5,17 @@ import NIOCore
 import NIOPosix
 @preconcurrency import NIOSSL
 
+// MARK: - Architecture Note
+//
+// AdminWebServer intentionally exposes only stateless HTTP endpoints.
+// No WebSocket endpoints exist for the admin UI.
+// Real-time events are handled internally via the Discord gateway WebSocket
+// inside DiscordService.swift (outbound connection to Discord only).
+//
+// Authentication supports both:
+// - Cookie-based: swiftbot_admin_session (for browser WebUI)
+// - Bearer token: Authorization: Bearer <session-id> (for remote clients)
+
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
     let botUsername: String
@@ -1220,10 +1231,42 @@ actor AdminWebServer {
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
             return jsonResponse(["ok": true])
+            
+        // MARK: - OAuth Authentication
+        //
+        // The Discord OAuth routes are currently used for SwiftBot Remote
+        // and WebUI authentication.
+        //
+        // Flow:
+        //
+        // Remote Client → /auth/discord
+        //               → Discord OAuth
+        //               → /auth/discord/callback
+        //               → session created
+        //               → /api/auth/session returns token
+        //
+        // Remote clients then authenticate API requests using:
+        //
+        // Authorization: Bearer <session-id>
+        //
+        // NOTE FOR FUTURE SWIFTMESH WORK:
+        //
+        // SwiftMesh nodes currently authenticate using mesh tokens.
+        // However, this OAuth identity system may later be reused for:
+        //
+        // • administrative access to cluster nodes
+        // • remote mesh management
+        // • node approval flows
+        //
+        // SwiftMesh authentication should remain separate from user OAuth
+        // unless explicitly designed to share the same identity layer.
+        //
         case ("GET", "/auth/discord/login"):
             return await handleDiscordLogin()
         case ("POST", "/auth/logout"):
             return handleLogout(request: request)
+        case ("GET", "/api/auth/session"):
+            return handleSessionInfo(request: request)
         default:
             return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
         }
@@ -1389,13 +1432,42 @@ actor AdminWebServer {
         )
     }
 
-    private func authenticatedSession(for request: HTTPRequest) -> Session? {
-        guard let sessionID = cookie(named: "swiftbot_admin_session", request: request),
-              let session = sessions[sessionID],
-              session.expiresAt > Date() else {
-            return nil
+    private func handleSessionInfo(request: HTTPRequest) -> Data {
+        guard let session = authenticatedSession(for: request) else {
+            return unauthorizedResponse()
         }
-        return session
+        
+        return jsonResponse([
+            "user": session.username,
+            "discordUserID": session.userID,
+            "globalName": session.globalName ?? "",
+            "discriminator": session.discriminator ?? "",
+            "avatar": session.avatar ?? "",
+            "permissions": ["admin"],
+            "sessionToken": session.id,
+            "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
+        ])
+    }
+
+    private func authenticatedSession(for request: HTTPRequest) -> Session? {
+        // First try cookie-based session (WebUI)
+        if let sessionID = cookie(named: "swiftbot_admin_session", request: request),
+           let session = sessions[sessionID],
+           session.expiresAt > Date() {
+            return session
+        }
+        
+        // Then try Bearer token (Remote client)
+        if let authorization = request.headers["authorization"],
+           authorization.hasPrefix("Bearer ") {
+            let sessionID = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespaces)
+            if let session = sessions[sessionID],
+               session.expiresAt > Date() {
+                return session
+            }
+        }
+        
+        return nil
     }
 
     private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {

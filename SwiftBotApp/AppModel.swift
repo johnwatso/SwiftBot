@@ -1183,6 +1183,22 @@ final class AppModel: ObservableObject {
         isOnboardingComplete = true
     }
 
+    /// Handles OAuth session token received via deep link for remote authentication.
+    /// Stores the session token in Keychain and updates remote mode settings.
+    func handleRemoteAuthSession(_ sessionToken: String) {
+        // Store session token in Keychain for secure persistence
+        KeychainHelper.save(sessionToken, account: "remote-session-token")
+        
+        // Update the remote mode settings with the session token
+        var currentMode = settings.remoteMode
+        currentMode.accessToken = sessionToken
+        settings.remoteMode = currentMode
+        saveSettings()
+        
+        // Post notification so UI can react to successful auth
+        NotificationCenter.default.post(name: .remoteAuthSessionReceived, object: sessionToken)
+    }
+
     func updateRemoteModeConnection(primaryNodeAddress: String, accessToken: String) {
         settings.remoteMode = RemoteModeSettings(
             primaryNodeAddress: primaryNodeAddress,
@@ -4083,4 +4099,12 @@ actor ClusterStatusPollingService {
             return nil
         }
     }
+}
+
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    /// Posted when a remote authentication session token is received via deep link.
+    static let remoteAuthSessionReceived = Notification.Name("remoteAuthSessionReceived")
 }

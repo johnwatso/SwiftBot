@@ -8,7 +8,7 @@ struct RootView: View {
 
     var body: some View {
         if !app.isOnboardingComplete {
-            OnboardingGateView()
+            OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
                 .toggleStyle(.switch)
         } else if app.isRemoteLaunchMode {
