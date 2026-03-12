@@ -85,7 +85,7 @@ struct RemoteSetupView: View {
     
     private func startOAuthFlow() {
         let normalizedAddress = RemoteModeSettings.normalizeBaseURL(remoteAddressInput)
-        guard let authURL = URL(string: "\(normalizedAddress)/auth/discord") else {
+        guard let authURL = URL(string: "\(normalizedAddress)/auth/discord/login") else {
             remoteTester.lastError = "Invalid server URL"
             return
         }
