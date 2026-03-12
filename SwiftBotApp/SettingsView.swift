@@ -699,6 +699,26 @@ struct GeneralSettingsView: View {
                 )
             }
 
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Exports")
+                    .font(.subheadline.weight(.medium))
+                Text("Clipped and multiview videos will be saved here. FFmpeg is required for exports.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "~/Library/Application Support/SwiftBot/recordings/exports",
+                    text: $app.mediaLibrarySettings.exportRootPath
+                )
+                .textFieldStyle(.roundedBorder)
+                Toggle("Show exports in the recordings library", isOn: $app.mediaLibrarySettings.exportIncludeInLibrary)
+            }
+            .padding(14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+            )
+
             Button {
                 app.mediaLibrarySettings.sources.append(MediaLibrarySource())
             } label: {

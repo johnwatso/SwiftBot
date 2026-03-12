@@ -43,6 +43,9 @@ actor ClusterCoordinator {
     typealias MeshHandler = @Sendable (String) async -> Data?
     typealias MediaLibraryProvider = @Sendable () async -> MediaLibraryPayload
     typealias MediaStreamHandler = @Sendable (String, String?) async -> BinaryHTTPResponse?
+    typealias MediaClipHandler = @Sendable (MeshMediaClipRequest) async -> MediaExportJob?
+    typealias MediaMultiViewHandler = @Sendable (MeshMediaMultiViewRequest) async -> MediaExportJob?
+    typealias MediaFrameHandler = @Sendable (String, Double) async -> BinaryHTTPResponse?
     /// Returns (records, hasMore) for the given cursor position and batch limit.
     typealias ConversationFetcher = @Sendable (String?, Int) async -> (records: [MemoryRecord], hasMore: Bool)
 
@@ -97,6 +100,9 @@ actor ClusterCoordinator {
     private var mediaLibraryProvider: MediaLibraryProvider?
     private var mediaStreamHandler: MediaStreamHandler?
     private var mediaThumbnailHandler: MediaStreamHandler?
+    private var mediaClipHandler: MediaClipHandler?
+    private var mediaMultiViewHandler: MediaMultiViewHandler?
+    private var mediaFrameHandler: MediaFrameHandler?
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
     var snapshot = ClusterSnapshot()
@@ -111,6 +117,9 @@ actor ClusterCoordinator {
         mediaLibraryProvider: @escaping MediaLibraryProvider,
         mediaStreamHandler: @escaping MediaStreamHandler,
         mediaThumbnailHandler: @escaping MediaStreamHandler,
+        mediaClipHandler: @escaping MediaClipHandler,
+        mediaMultiViewHandler: @escaping MediaMultiViewHandler,
+        mediaFrameHandler: @escaping MediaFrameHandler,
         conversationFetcher: @escaping ConversationFetcher,
         onPromotion: @escaping @Sendable () async -> Void
     ) {
@@ -123,6 +132,9 @@ actor ClusterCoordinator {
         self.mediaLibraryProvider = mediaLibraryProvider
         self.mediaStreamHandler = mediaStreamHandler
         self.mediaThumbnailHandler = mediaThumbnailHandler
+        self.mediaClipHandler = mediaClipHandler
+        self.mediaMultiViewHandler = mediaMultiViewHandler
+        self.mediaFrameHandler = mediaFrameHandler
         self.conversationFetcher = conversationFetcher
         self.onPromotion = onPromotion
     }
@@ -954,6 +966,16 @@ actor ClusterCoordinator {
                 return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"missing_id"}"#.utf8))
             }
             return await handleMediaThumbnailRequest(itemID: itemID)
+        case ("GET", "/v1/media/frame"):
+            guard let itemID = request.query["id"], !itemID.isEmpty else {
+                return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"missing_id"}"#.utf8))
+            }
+            let seconds = Double(request.query["t"] ?? "0") ?? 0
+            return await handleMediaFrameRequest(itemID: itemID, seconds: seconds)
+        case ("POST", "/v1/media/clip"):
+            return await handleMediaClipRequest(request.body)
+        case ("POST", "/v1/media/multiview"):
+            return await handleMediaMultiViewRequest(request.body)
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -2028,6 +2050,42 @@ actor ClusterCoordinator {
         )
     }
 
+    private func handleMediaFrameRequest(itemID: String, seconds: Double) async -> Data {
+        guard let response = await mediaFrameHandler?(itemID, seconds) else {
+            return httpResponse(status: "404 Not Found", body: Data(#"{"error":"frame_not_found"}"#.utf8))
+        }
+        return httpResponse(
+            status: response.status,
+            body: response.body,
+            contentType: response.contentType,
+            headers: response.headers
+        )
+    }
+
+    private func handleMediaClipRequest(_ body: Data) async -> Data {
+        guard let handler = mediaClipHandler,
+              let request = try? decoder.decode(MeshMediaClipRequest.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        if let job = await handler(request),
+           let data = try? encoder.encode(job) {
+            return httpResponse(status: "200 OK", body: data)
+        }
+        return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"export_failed"}"#.utf8))
+    }
+
+    private func handleMediaMultiViewRequest(_ body: Data) async -> Data {
+        guard let handler = mediaMultiViewHandler,
+              let request = try? decoder.decode(MeshMediaMultiViewRequest.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        if let job = await handler(request),
+           let data = try? encoder.encode(job) {
+            return httpResponse(status: "200 OK", body: data)
+        }
+        return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"export_failed"}"#.utf8))
+    }
+
     /// Standby: fetch one page of conversation records from the leader using correct HMAC auth.
     func fetchResyncPage(fromRecordID: String?, pageSize: Int) async -> MeshSyncPayload? {
         guard mode == .standby,
@@ -2070,6 +2128,30 @@ actor ClusterCoordinator {
     }
 
     func fetchRemoteMediaStream(from baseURL: String, itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+        if let response = await fetchRemoteMediaStreamAttempt(from: baseURL, itemID: itemID, rangeHeader: rangeHeader) {
+            return response
+        }
+        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
+        return await fetchRemoteMediaStreamAttempt(from: fallback, itemID: itemID, rangeHeader: rangeHeader)
+    }
+
+    func fetchRemoteMediaThumbnail(from baseURL: String, itemID: String) async -> BinaryHTTPResponse? {
+        if let response = await fetchRemoteMediaThumbnailAttempt(from: baseURL, itemID: itemID) {
+            return response
+        }
+        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
+        return await fetchRemoteMediaThumbnailAttempt(from: fallback, itemID: itemID)
+    }
+
+    func fetchRemoteMediaFrame(from baseURL: String, itemID: String, seconds: Double) async -> BinaryHTTPResponse? {
+        if let response = await fetchRemoteMediaFrameAttempt(from: baseURL, itemID: itemID, seconds: seconds) {
+            return response
+        }
+        guard let fallback = alternateSchemeBaseURL(baseURL) else { return nil }
+        return await fetchRemoteMediaFrameAttempt(from: fallback, itemID: itemID, seconds: seconds)
+    }
+
+    private func fetchRemoteMediaStreamAttempt(from baseURL: String, itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
         guard var components = URLComponents(string: baseURL + "/v1/media/stream") else { return nil }
         components.queryItems = [URLQueryItem(name: "id", value: itemID)]
         guard let url = components.url else { return nil }
@@ -2102,7 +2184,7 @@ actor ClusterCoordinator {
         }
     }
 
-    func fetchRemoteMediaThumbnail(from baseURL: String, itemID: String) async -> BinaryHTTPResponse? {
+    private func fetchRemoteMediaThumbnailAttempt(from baseURL: String, itemID: String) async -> BinaryHTTPResponse? {
         guard var components = URLComponents(string: baseURL + "/v1/media/thumbnail") else { return nil }
         components.queryItems = [URLQueryItem(name: "id", value: itemID)]
         guard let url = components.url else { return nil }
@@ -2121,6 +2203,84 @@ actor ClusterCoordinator {
                 headers: [:],
                 body: data
             )
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchRemoteMediaFrameAttempt(from baseURL: String, itemID: String, seconds: Double) async -> BinaryHTTPResponse? {
+        guard var components = URLComponents(string: baseURL + "/v1/media/frame") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "id", value: itemID),
+            URLQueryItem(name: "t", value: String(format: "%.3f", max(0, seconds)))
+        ]
+        guard let url = components.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMeshAuth(to: &request, path: "/v1/media/frame")
+            request.timeoutInterval = 15
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return nil }
+            return BinaryHTTPResponse(
+                status: "200 OK",
+                contentType: http.value(forHTTPHeaderField: "Content-Type") ?? "image/jpeg",
+                headers: [:],
+                body: data
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func alternateSchemeBaseURL(_ baseURL: String) -> String? {
+        guard let url = URL(string: baseURL), let host = url.host else { return nil }
+        let scheme = (url.scheme ?? "http").lowercased()
+        let altScheme = scheme == "https" ? "http" : "https"
+        var components = URLComponents()
+        components.scheme = altScheme
+        components.host = host
+        components.port = url.port
+        return components.string
+    }
+
+    func startRemoteMediaClip(from baseURL: String, request: MeshMediaClipRequest) async -> MediaExportJob? {
+        guard let url = URL(string: baseURL + "/v1/media/clip"),
+              let body = try? encoder.encode(request) else { return nil }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = body
+        applyMeshAuth(to: &urlRequest, path: "/v1/media/clip")
+        urlRequest.timeoutInterval = 30
+        do {
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            return try? decoder.decode(MediaExportJob.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    func startRemoteMediaMultiView(from baseURL: String, request: MeshMediaMultiViewRequest) async -> MediaExportJob? {
+        guard let url = URL(string: baseURL + "/v1/media/multiview"),
+              let body = try? encoder.encode(request) else { return nil }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = body
+        applyMeshAuth(to: &urlRequest, path: "/v1/media/multiview")
+        urlRequest.timeoutInterval = 60
+        do {
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            return try? decoder.decode(MediaExportJob.self, from: data)
         } catch {
             return nil
         }

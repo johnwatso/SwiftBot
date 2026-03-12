@@ -452,6 +452,11 @@ actor AdminWebServer {
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
     private var mediaStreamProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
     private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
+    private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
+    private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
+    private var mediaExportJobsProvider: (@Sendable () async -> MediaExportJobsPayload)?
+    private var mediaClipExportStarter: (@Sendable (MediaExportClipRequest) async -> MediaExportJobResponse)?
+    private var mediaMultiViewExportStarter: (@Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse)?
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
@@ -503,6 +508,11 @@ actor AdminWebServer {
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
         mediaStreamProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
         mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
+        mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
+        mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
+        mediaExportJobsProvider: @escaping @Sendable () async -> MediaExportJobsPayload,
+        mediaClipExportStarter: @escaping @Sendable (MediaExportClipRequest) async -> MediaExportJobResponse,
+        mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
@@ -546,6 +556,11 @@ actor AdminWebServer {
         self.mediaLibraryProvider = mediaLibraryProvider
         self.mediaStreamProvider = mediaStreamProvider
         self.mediaThumbnailProvider = mediaThumbnailProvider
+        self.mediaFrameProvider = mediaFrameProvider
+        self.mediaExportStatusProvider = mediaExportStatusProvider
+        self.mediaExportJobsProvider = mediaExportJobsProvider
+        self.mediaClipExportStarter = mediaClipExportStarter
+        self.mediaMultiViewExportStarter = mediaMultiViewExportStarter
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
@@ -1177,6 +1192,22 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/media/ffmpeg"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await mediaExportStatusProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "ffmpeg_unavailable"], status: "503 Service Unavailable")
+        case ("GET", "/api/media/exports"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await mediaExportJobsProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "exports_unavailable"], status: "503 Service Unavailable")
         case ("GET", "/api/media/thumbnail"):
             guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
@@ -1185,6 +1216,23 @@ actor AdminWebServer {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             guard let response = await mediaThumbnailProvider?(token) else {
+                return jsonResponse(["error": "thumbnail_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("GET", "/api/media/frame"):
+            guard mediaAccessAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            let seconds = Double(request.query["t"] ?? "0") ?? 0
+            guard let response = await mediaFrameProvider?(token, seconds) else {
                 return jsonResponse(["error": "thumbnail_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
@@ -1227,6 +1275,34 @@ actor AdminWebServer {
                 contentType: response.contentType,
                 headers: response.headers
             )
+        case ("POST", "/api/media/export/clip"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let body = try? decoder.decode(MediaExportClipRequest.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            if let response = await mediaClipExportStarter?(body) {
+                return codableResponse(response)
+            }
+            return jsonResponse(["error": "export_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/media/export/multiview"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let body = try? decoder.decode(MediaExportMultiViewRequest.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            if let response = await mediaMultiViewExportStarter?(body) {
+                return codableResponse(response)
+            }
+            return jsonResponse(["error": "export_unavailable"], status: "503 Service Unavailable")
         case ("POST", "/api/wikibridge/state"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()

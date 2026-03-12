@@ -1505,6 +1505,13 @@
       margin-bottom: 4px;
     }
 
+    .field-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
     .field-input, .field-select, .field-textarea {
       width: 100%;
       border: 1px solid rgba(255,255,255,0.15);
@@ -1527,6 +1534,87 @@
       padding: 8px;
       margin-bottom: 8px;
       background: rgba(255,255,255,0.03);
+    }
+
+    .segmented {
+      display: inline-flex;
+      gap: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .segmented button {
+      padding: 6px 12px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .segmented button.active {
+      background: rgba(255,255,255,0.16);
+      color: var(--text);
+    }
+
+    .timeline-card {
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .timeline-track {
+      position: relative;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .timeline-window {
+      position: absolute;
+      top: 4px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(120, 190, 255, 0.35);
+      border: 1px solid rgba(120, 190, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: grab;
+      background-size: cover;
+      background-position: center;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+    }
+
+    .timeline-handle {
+      width: 8px;
+      height: 18px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.85);
+      margin: 0 6px;
+      cursor: ew-resize;
+    }
+
+    .timeline-meta {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .timeline-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     @media (max-width: 1200px) {
@@ -2022,10 +2110,27 @@
     let patchyData = null;
     let wikiBridgeData = null;
     let mediaLibraryData = null;
+    let mediaExportStatus = null;
+    let mediaExportJobs = [];
     let selectedActionRuleID = null;
     let selectedMediaItemID = null;
     let mediaViewMode = 'library';
     let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
+    let mediaExportState = {
+      secondaryID: '',
+      clipStart: '',
+      clipEnd: '',
+      clipStartSeconds: null,
+      clipEndSeconds: null,
+      clipName: '',
+      multiStart: '',
+      multiEnd: '',
+      multiStartSeconds: null,
+      multiEndSeconds: null,
+      multiName: '',
+      layout: 'stacked',
+      audio: 'primary'
+    };
     let actionSaveTimer = null;
     let patchySaveTimers = {};
     let wikiSaveTimers = {};
@@ -2808,6 +2913,26 @@
       return data;
     }
 
+    async function loadMediaExportStatus() {
+      const response = await fetch('/api/media/ffmpeg');
+      if (!response.ok) throw new Error('FFmpeg status unavailable');
+      const data = await response.json();
+      mediaExportStatus = data;
+      return data;
+    }
+
+    async function loadMediaExportJobs() {
+      const response = await fetch('/api/media/exports');
+      if (!response.ok) throw new Error('Export jobs unavailable');
+      const data = await response.json();
+      mediaExportJobs.splice(0, mediaExportJobs.length, ...(data.jobs || []));
+      return data;
+    }
+
+    async function loadMediaData() {
+      await Promise.all([loadMediaLibrary(), loadMediaExportStatus(), loadMediaExportJobs()]);
+    }
+
     async function postJSON(path, payload) {
       const response = await fetch(path, {
         method: 'POST',
@@ -2830,13 +2955,13 @@
 
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
-      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
+      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       refreshCurrentView();
     }
 
     async function toggleCommand(name, surface, enabled) {
       await postJSON('/api/commands/toggle', { name, surface, enabled });
-      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
+      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       renderCommandsView();
     }
 
@@ -3668,6 +3793,146 @@
       return `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${iconHTML}<span>${gameName}</span></span>`;
     }
 
+    function ffmpegPillHTML() {
+      if (!mediaExportStatus) return '';
+      if (mediaExportStatus.installed) {
+        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">FFmpeg ready</span>`;
+      }
+      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">FFmpeg missing</span>`;
+    }
+
+    function mediaTokenFromURL(url) {
+      try {
+        const token = new URL(url, window.location.origin).searchParams.get('id');
+        return token || '';
+      } catch {
+        return '';
+      }
+    }
+
+    function parseTimeInput(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return null;
+      if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw);
+      const parts = raw.split(':').map(part => part.trim()).filter(Boolean);
+      if (!parts.length) return null;
+      const numbers = parts.map(p => Number(p));
+      if (numbers.some(n => Number.isNaN(n))) return null;
+      let seconds = 0;
+      if (numbers.length === 3) {
+        seconds = numbers[0] * 3600 + numbers[1] * 60 + numbers[2];
+      } else if (numbers.length === 2) {
+        seconds = numbers[0] * 60 + numbers[1];
+      } else {
+        seconds = numbers[0];
+      }
+      return seconds;
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function frameURLForToken(token, seconds) {
+      if (!token) return '';
+      const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
+      return `/api/media/frame?id=${encodeURIComponent(token)}&t=${encodeURIComponent(seconds)}${accessQuery}`;
+    }
+
+    function scheduleFramePreview(windowEl, token, seconds) {
+      if (!windowEl || !token) return;
+      const rounded = Math.max(0, Number(seconds || 0));
+      const now = Date.now();
+      const last = Number(windowEl.dataset.previewTime || 0);
+      if (Math.abs(last - rounded) < 0.35) return;
+      windowEl.dataset.previewTime = rounded;
+      if (windowEl._previewTimer) {
+        clearTimeout(windowEl._previewTimer);
+      }
+      windowEl._previewTimer = setTimeout(() => {
+        windowEl.style.backgroundImage = `url('${frameURLForToken(token, rounded.toFixed(2))}')`;
+      }, 120);
+    }
+
+    function initTimelineState(duration, maxLenSeconds) {
+      const safeDuration = Math.max(1, Number(duration || 0));
+      const maxLen = Math.min(maxLenSeconds, safeDuration);
+      const length = Math.min(maxLen, Math.min(30, safeDuration));
+      return { start: 0, end: length, duration: safeDuration, maxLen };
+    }
+
+    function updateTimelineWindow(track, windowEl, state) {
+      const width = track.clientWidth || 1;
+      const startRatio = state.start / state.duration;
+      const endRatio = state.end / state.duration;
+      const left = Math.max(0, Math.round(startRatio * width));
+      const right = Math.min(width, Math.round(endRatio * width));
+      windowEl.style.left = `${left}px`;
+      windowEl.style.width = `${Math.max(16, right - left)}px`;
+    }
+
+    function attachTimeline(trackId, state, onChange) {
+      const track = document.querySelector(`[data-track="${trackId}"]`);
+      const windowEl = track?.querySelector(`[data-window="${trackId}"]`);
+      if (!track || !windowEl) return;
+      updateTimelineWindow(track, windowEl, state);
+
+      let dragMode = null;
+      let startX = 0;
+      let startState = { ...state };
+
+      const handlePointerMove = (event) => {
+        if (!dragMode) return;
+        const rect = track.getBoundingClientRect();
+        const delta = event.clientX - startX;
+        const deltaSeconds = (delta / rect.width) * state.duration;
+        if (dragMode === 'move') {
+          const length = startState.end - startState.start;
+          let nextStart = clamp(startState.start + deltaSeconds, 0, state.duration - length);
+          state.start = nextStart;
+          state.end = nextStart + length;
+        } else if (dragMode === 'left') {
+          const maxStart = startState.end - 1;
+          state.start = clamp(startState.start + deltaSeconds, 0, maxStart);
+        } else if (dragMode === 'right') {
+          const minEnd = startState.start + 1;
+          state.end = clamp(startState.end + deltaSeconds, minEnd, state.duration);
+        }
+        const maxLen = state.maxLen ?? 900;
+        if (state.end - state.start > maxLen) {
+          if (dragMode === 'left') {
+            state.start = state.end - maxLen;
+          } else {
+            state.end = state.start + maxLen;
+          }
+        }
+        updateTimelineWindow(track, windowEl, state);
+        onChange(state, windowEl, track);
+      };
+
+      const stopDrag = () => {
+        dragMode = null;
+        windowEl.style.cursor = 'grab';
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', stopDrag);
+      };
+
+        windowEl.addEventListener('pointerdown', (event) => {
+        const isHandle = event.target.classList.contains('timeline-handle');
+        if (isHandle) {
+          dragMode = event.target.classList.contains('left') ? 'left' : 'right';
+        } else {
+          dragMode = 'move';
+        }
+        startX = event.clientX;
+        startState = { ...state };
+        windowEl.setPointerCapture(event.pointerId);
+        windowEl.style.cursor = 'grabbing';
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', stopDrag, { once: true });
+      });
+    }
+
     function formatFileSize(value) {
       const size = Number(value || 0);
       if (!Number.isFinite(size) || size <= 0) return '0 B';
@@ -3680,6 +3945,13 @@
       }
       const precision = current >= 100 || unitIndex === 0 ? 0 : 1;
       return `${current.toFixed(precision)} ${units[unitIndex]}`;
+    }
+
+    function formatSeconds(value) {
+      const total = Math.max(0, Math.round(Number(value || 0)));
+      const minutes = Math.floor(total / 60);
+      const seconds = total % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
 
     function asRoleNames(serverID, roleIDs) {
@@ -4114,7 +4386,7 @@
 
       panels.querySelector('#diagMeshRefresh')?.addEventListener('click', async () => {
         await postJSON('/api/swiftmesh/refresh', {});
-        await Promise.all([loadOverview(), loadStatus(), loadConfig(), loadMediaLibrary()]);
+        await Promise.all([loadOverview(), loadStatus(), loadConfig(), loadMediaData()]);
         renderDiagnosticsView();
       });
     }
@@ -4237,8 +4509,27 @@
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <div style="font-size:12px;color:var(--muted);">Now playing</div>
             <button id="mediaBackToLibrary" class="mini-btn" type="button"><span class="ms">arrow_back</span> Back to Library</button>
+            ${ffmpegPillHTML()}
           </div>
         `;
+
+        if (!mediaExportState.secondaryID && items.length > 1) {
+          const fallbackSecondary = items.find(item => item.id !== (selected?.id || ''));
+          if (fallbackSecondary) mediaExportState.secondaryID = fallbackSecondary.id;
+        }
+        const secondaryOptions = items
+          .filter(item => item.id !== (selected?.id || ''))
+          .map(item => `<option value="${item.id}" ${mediaExportState.secondaryID === item.id ? 'selected' : ''}>${item.gameName || 'Unknown'} · ${formatMediaTime(item.modifiedAt)}</option>`)
+          .join('');
+
+        const jobsHTML = (mediaExportJobs || []).length
+          ? mediaExportJobs.slice(0, 6).map(job => `
+              <div class="event-item ${job.status === 'failed' ? 'error' : 'ok'}">
+                <div class="event-title">${job.kind === 'multiview' ? 'Multiview' : 'Clip'} · ${job.status}</div>
+                <div class="event-time">${job.outputFileName || job.message || ''}</div>
+              </div>
+            `).join('')
+          : '<div class="placeholder">No export jobs yet.</div>';
 
         panels.innerHTML = `
           <section class="settings-panel glass full-span">
@@ -4262,12 +4553,315 @@
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
           </section>
+          <section class="settings-panel glass">
+            <div class="panel-title"><span class="ms">content_cut</span> Clip</div>
+            ${mediaExportStatus && !mediaExportStatus.installed ? `
+              <div class="placeholder" style="margin:0;">Install FFmpeg with <code>brew install ffmpeg</code> to enable exports.</div>
+            ` : ''}
+            <div class="timeline-card">
+              <div class="field-label">Primary clip window</div>
+              <div class="timeline-track" data-track="primary-clip">
+                <div class="timeline-window" data-window="primary-clip">
+                  <span class="timeline-handle left"></span>
+                  <span class="timeline-handle right"></span>
+                </div>
+              </div>
+              <div id="primaryTimelineMetaClip" class="timeline-meta"></div>
+              <div class="timeline-actions">
+                <button id="primaryExtendClip" class="mini-btn" type="button"><span class="ms">expand</span> Extend +10s</button>
+                <button id="primaryTrimClip" class="mini-btn" type="button"><span class="ms">compress</span> Trim -10s</button>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px;">This window is shared with the multiview primary timeline.</div>
+            <div style="margin-top:10px;">
+              <div class="field-label">Output name (optional)</div>
+              <input id="clipName" class="field-input" placeholder="My_clip.mp4" value="${mediaExportState.clipName || ''}">
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:8px;">Max clip length: 15 minutes.</div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button id="clipExportStart" class="mini-btn" type="button"><span class="ms">movie_edit</span> Create Clip</button>
+            </div>
+          </section>
+          <section class="settings-panel glass">
+            <div class="panel-title"><span class="ms">view_carousel</span> Multiview</div>
+            <div class="field-label">Second clip</div>
+            <select id="multiSecondary" class="field-select">${secondaryOptions || '<option value=\"\">No other clips</option>'}</select>
+            <div class="timeline-card" style="margin-top:10px;">
+              <div class="field-label">Primary clip window</div>
+              <div class="timeline-track" data-track="primary-multi">
+                <div class="timeline-window" data-window="primary-multi">
+                  <span class="timeline-handle left"></span>
+                  <span class="timeline-handle right"></span>
+                </div>
+              </div>
+              <div id="primaryTimelineMetaMulti" class="timeline-meta"></div>
+            </div>
+            <div class="timeline-card" style="margin-top:10px;">
+              <div class="field-label">Secondary clip window</div>
+              <div class="timeline-track" data-track="secondary">
+                <div class="timeline-window" data-window="secondary">
+                  <span class="timeline-handle left"></span>
+                  <span class="timeline-handle right"></span>
+                </div>
+              </div>
+              <div id="secondaryTimelineMeta" class="timeline-meta"></div>
+              <div class="timeline-actions">
+                <button id="alignSecondary" class="mini-btn" type="button"><span class="ms">align_horizontal_left</span> Align to primary</button>
+              </div>
+            </div>
+            <div class="field-row" style="margin-top:10px;">
+              <div style="flex:1;">
+                <div class="field-label">Layout</div>
+                <div class="segmented" id="multiLayout">
+                  <button data-value="stacked" class="${mediaExportState.layout === 'stacked' ? 'active' : ''}">Stacked</button>
+                  <button data-value="side-by-side" class="${mediaExportState.layout === 'side-by-side' ? 'active' : ''}">Side by side</button>
+                </div>
+              </div>
+              <div style="flex:1;">
+                <div class="field-label">Audio</div>
+                <div class="segmented" id="multiAudio">
+                  <button data-value="primary" class="${mediaExportState.audio === 'primary' ? 'active' : ''}">Primary</button>
+                  <button data-value="secondary" class="${mediaExportState.audio === 'secondary' ? 'active' : ''}">Secondary</button>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:10px;">
+              <div class="field-label">Output name (optional)</div>
+              <input id="multiName" class="field-input" placeholder="Multi_view.mp4" value="${mediaExportState.multiName || ''}">
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button id="multiExportStart" class="mini-btn" type="button"><span class="ms">auto_awesome_mosaic</span> Create Multiview</button>
+            </div>
+          </section>
+          <section class="settings-panel glass full-span">
+            <div class="panel-title"><span class="ms">pending_actions</span> Export Jobs</div>
+            <div class="event-list">${jobsHTML}</div>
+          </section>
         `;
 
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
           mediaViewMode = 'library';
           renderMediaView();
         });
+
+        panels.querySelector('#clipExportStart')?.addEventListener('click', async () => {
+          if (!selected) return;
+          const start = mediaExportState.clipStartSeconds ?? parseTimeInput(mediaExportState.clipStart);
+          const end = mediaExportState.clipEndSeconds ?? parseTimeInput(mediaExportState.clipEnd);
+          if (start == null || end == null) {
+            alert('Enter a valid start and end time.');
+            return;
+          }
+          const token = mediaTokenFromURL(selected.streamURL);
+          const name = panels.querySelector('#clipName')?.value || '';
+          const response = await postJSON('/api/media/export/clip', { token, startSeconds: start, endSeconds: end, name });
+          if (response?.error) {
+            alert(response.error);
+            return;
+          }
+          await loadMediaData();
+          renderMediaView();
+        });
+
+        panels.querySelector('#multiExportStart')?.addEventListener('click', async () => {
+          if (!selected) return;
+          const secondaryID = panels.querySelector('#multiSecondary')?.value || '';
+          if (!secondaryID) {
+            alert('Select a second clip.');
+            return;
+          }
+          const secondary = items.find(item => item.id === secondaryID);
+          if (!secondary) {
+            alert('Could not find the selected clip.');
+            return;
+          }
+          const primaryToken = mediaTokenFromURL(selected.streamURL);
+          const secondaryToken = mediaTokenFromURL(secondary.streamURL);
+          const layout = mediaExportState.layout || 'stacked';
+          const audioSource = mediaExportState.audio || 'primary';
+          const start = mediaExportState.multiStartSeconds ?? parseTimeInput(mediaExportState.multiStart);
+          const end = mediaExportState.multiEndSeconds ?? parseTimeInput(mediaExportState.multiEnd);
+          const name = panels.querySelector('#multiName')?.value || '';
+          const payload = { primaryToken, secondaryToken, layout, audioSource, startSeconds: start, endSeconds: end, name };
+          const response = await postJSON('/api/media/export/multiview', payload);
+          if (response?.error) {
+            alert(response.error);
+            return;
+          }
+          await loadMediaData();
+          renderMediaView();
+        });
+
+        panels.querySelector('#clipName')?.addEventListener('input', (e) => { mediaExportState.clipName = e.target.value; });
+        panels.querySelector('#multiSecondary')?.addEventListener('change', (e) => {
+          mediaExportState.secondaryID = e.target.value;
+          renderMediaView();
+        });
+        panels.querySelector('#multiName')?.addEventListener('input', (e) => { mediaExportState.multiName = e.target.value; });
+
+        panels.querySelectorAll('#multiLayout button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            mediaExportState.layout = btn.dataset.value || 'stacked';
+            panels.querySelectorAll('#multiLayout button').forEach(el => el.classList.toggle('active', el === btn));
+          });
+        });
+        panels.querySelectorAll('#multiAudio button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            mediaExportState.audio = btn.dataset.value || 'primary';
+            panels.querySelectorAll('#multiAudio button').forEach(el => el.classList.toggle('active', el === btn));
+          });
+        });
+
+        panels.querySelector('#alignSecondary')?.addEventListener('click', () => {
+          if (mediaExportState.clipStartSeconds == null || mediaExportState.clipEndSeconds == null) return;
+          const length = mediaExportState.clipEndSeconds - mediaExportState.clipStartSeconds;
+          const start = mediaExportState.clipStartSeconds;
+          const end = start + length;
+          mediaExportState.multiStartSeconds = start;
+          mediaExportState.multiEndSeconds = end;
+          mediaExportState.multiStart = formatSeconds(start);
+          mediaExportState.multiEnd = formatSeconds(end);
+          renderMediaView();
+        });
+
+        const primaryVideo = panels.querySelector('video');
+        const maxLen = 15 * 60;
+        const primaryToken = selected ? mediaTokenFromURL(selected.streamURL) : '';
+        let primaryState = null;
+        if (primaryVideo) {
+          primaryVideo.addEventListener('loadedmetadata', () => {
+            const duration = primaryVideo.duration || 300;
+            const state = initTimelineState(duration, maxLen);
+            primaryState = state;
+            if (mediaExportState.clipStartSeconds != null) {
+              state.start = clamp(mediaExportState.clipStartSeconds, 0, duration - 1);
+            }
+            if (mediaExportState.clipEndSeconds != null) {
+              state.end = clamp(mediaExportState.clipEndSeconds, state.start + 1, duration);
+            }
+
+            const syncPrimaryMeta = (next) => {
+              mediaExportState.clipStartSeconds = next.start;
+              mediaExportState.clipEndSeconds = next.end;
+              mediaExportState.clipStart = formatSeconds(next.start);
+              mediaExportState.clipEnd = formatSeconds(next.end);
+              const summary = `Start ${formatSeconds(next.start)} · End ${formatSeconds(next.end)} · Length ${formatSeconds(next.end - next.start)}`;
+              const metaClip = panels.querySelector('#primaryTimelineMetaClip');
+              const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
+              if (metaClip) metaClip.innerHTML = summary;
+              if (metaMulti) metaMulti.innerHTML = summary;
+            };
+
+            attachTimeline('primary-clip', state, (next, windowEl, track) => {
+              syncPrimaryMeta(next);
+              const otherTrack = panels.querySelector('[data-track="primary-multi"]');
+              const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
+              if (otherTrack && otherWindow) {
+                updateTimelineWindow(otherTrack, otherWindow, next);
+                scheduleFramePreview(otherWindow, primaryToken, (next.start + next.end) / 2);
+              }
+              scheduleFramePreview(windowEl, primaryToken, (next.start + next.end) / 2);
+            });
+
+            attachTimeline('primary-multi', state, (next, windowEl, track) => {
+              syncPrimaryMeta(next);
+              const otherTrack = panels.querySelector('[data-track="primary-clip"]');
+              const otherWindow = otherTrack?.querySelector('[data-window="primary-clip"]');
+              if (otherTrack && otherWindow) {
+                updateTimelineWindow(otherTrack, otherWindow, next);
+                scheduleFramePreview(otherWindow, primaryToken, (next.start + next.end) / 2);
+              }
+              scheduleFramePreview(windowEl, primaryToken, (next.start + next.end) / 2);
+            });
+
+            syncPrimaryMeta(state);
+            const clipWindow = panels.querySelector('[data-window="primary-clip"]');
+            const multiWindow = panels.querySelector('[data-window="primary-multi"]');
+            scheduleFramePreview(clipWindow, primaryToken, (state.start + state.end) / 2);
+            scheduleFramePreview(multiWindow, primaryToken, (state.start + state.end) / 2);
+          }, { once: true });
+        }
+
+        panels.querySelector('#primaryExtendClip')?.addEventListener('click', () => {
+          if (!primaryState) return;
+          const nextEnd = clamp(primaryState.end + 10, primaryState.start + 1, primaryState.duration);
+          if (nextEnd - primaryState.start > primaryState.maxLen) {
+            primaryState.end = primaryState.start + primaryState.maxLen;
+          } else {
+            primaryState.end = nextEnd;
+          }
+          const track = panels.querySelector('[data-track="primary-clip"]');
+          const windowEl = track?.querySelector('[data-window="primary-clip"]');
+          if (track && windowEl) updateTimelineWindow(track, windowEl, primaryState);
+          const otherTrack = panels.querySelector('[data-track="primary-multi"]');
+          const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
+          if (otherTrack && otherWindow) updateTimelineWindow(otherTrack, otherWindow, primaryState);
+          mediaExportState.clipStartSeconds = primaryState.start;
+          mediaExportState.clipEndSeconds = primaryState.end;
+          mediaExportState.clipStart = formatSeconds(primaryState.start);
+          mediaExportState.clipEnd = formatSeconds(primaryState.end);
+          const summary = `Start ${formatSeconds(primaryState.start)} · End ${formatSeconds(primaryState.end)} · Length ${formatSeconds(primaryState.end - primaryState.start)}`;
+          const metaClip = panels.querySelector('#primaryTimelineMetaClip');
+          const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
+          if (metaClip) metaClip.innerHTML = summary;
+          if (metaMulti) metaMulti.innerHTML = summary;
+        });
+
+        panels.querySelector('#primaryTrimClip')?.addEventListener('click', () => {
+          if (!primaryState) return;
+          primaryState.end = clamp(primaryState.end - 10, primaryState.start + 1, primaryState.duration);
+          const track = panels.querySelector('[data-track="primary-clip"]');
+          const windowEl = track?.querySelector('[data-window="primary-clip"]');
+          if (track && windowEl) updateTimelineWindow(track, windowEl, primaryState);
+          const otherTrack = panels.querySelector('[data-track="primary-multi"]');
+          const otherWindow = otherTrack?.querySelector('[data-window="primary-multi"]');
+          if (otherTrack && otherWindow) updateTimelineWindow(otherTrack, otherWindow, primaryState);
+          mediaExportState.clipStartSeconds = primaryState.start;
+          mediaExportState.clipEndSeconds = primaryState.end;
+          mediaExportState.clipStart = formatSeconds(primaryState.start);
+          mediaExportState.clipEnd = formatSeconds(primaryState.end);
+          const summary = `Start ${formatSeconds(primaryState.start)} · End ${formatSeconds(primaryState.end)} · Length ${formatSeconds(primaryState.end - primaryState.start)}`;
+          const metaClip = panels.querySelector('#primaryTimelineMetaClip');
+          const metaMulti = panels.querySelector('#primaryTimelineMetaMulti');
+          if (metaClip) metaClip.innerHTML = summary;
+          if (metaMulti) metaMulti.innerHTML = summary;
+        });
+
+        const secondary = items.find(item => item.id === mediaExportState.secondaryID);
+        if (secondary) {
+          const probe = document.createElement('video');
+          const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
+          probe.src = `${secondary.streamURL}${accessQuery}`;
+          probe.preload = 'metadata';
+          probe.addEventListener('loadedmetadata', () => {
+            const duration = probe.duration || 300;
+            const state = initTimelineState(duration, maxLen);
+            if (mediaExportState.multiStartSeconds != null) {
+              state.start = clamp(mediaExportState.multiStartSeconds, 0, duration - 1);
+            }
+            if (mediaExportState.multiEndSeconds != null) {
+              state.end = clamp(mediaExportState.multiEndSeconds, state.start + 1, duration);
+            }
+            const secondaryToken = mediaTokenFromURL(secondary.streamURL);
+            attachTimeline('secondary', state, (next, windowEl, track) => {
+              mediaExportState.multiStartSeconds = next.start;
+              mediaExportState.multiEndSeconds = next.end;
+              mediaExportState.multiStart = formatSeconds(next.start);
+              mediaExportState.multiEnd = formatSeconds(next.end);
+              const meta = panels.querySelector('#secondaryTimelineMeta');
+              if (meta) {
+                meta.innerHTML = `Start ${formatSeconds(next.start)} · End ${formatSeconds(next.end)} · Length ${formatSeconds(next.end - next.start)}`;
+              }
+              scheduleFramePreview(windowEl, secondaryToken, (next.start + next.end) / 2);
+            });
+            const meta = panels.querySelector('#secondaryTimelineMeta');
+            if (meta) {
+              meta.innerHTML = `Start ${formatSeconds(state.start)} · End ${formatSeconds(state.end)} · Length ${formatSeconds(state.end - state.start)}`;
+            }
+            const secondaryWindow = panels.querySelector('[data-window="secondary"]');
+            scheduleFramePreview(secondaryWindow, secondaryToken, (state.start + state.end) / 2);
+          }, { once: true });
+        }
         return;
       }
 
@@ -4305,6 +4899,7 @@
             <div class="field-label" style="margin-bottom:4px;">Results</div>
             <div style="font-size:13px;color:var(--muted);">${mediaLibraryData.totalItems || 0} items · page ${mediaLibraryData.page || 1} of ${mediaLibraryData.totalPages || 1}</div>
           </div>
+          ${ffmpegPillHTML()}
         </div>
       `;
 
@@ -4388,19 +4983,19 @@
         mediaFilterState.game = header.querySelector('#mediaGameFilter')?.value || '';
         mediaFilterState.dateRange = header.querySelector('#mediaDateFilter')?.value || 'all';
         mediaFilterState.page = 1;
-        await loadMediaLibrary();
+        await loadMediaData();
         renderMediaView();
       });
       panels.querySelector('#mediaPrevPage')?.addEventListener('click', async () => {
         if ((mediaLibraryData.page || 1) <= 1) return;
         mediaFilterState.page = Math.max(1, (mediaLibraryData.page || 1) - 1);
-        await loadMediaLibrary();
+        await loadMediaData();
         renderMediaView();
       });
       panels.querySelector('#mediaNextPage')?.addEventListener('click', async () => {
         if ((mediaLibraryData.page || 1) >= (mediaLibraryData.totalPages || 1)) return;
         mediaFilterState.page = (mediaLibraryData.page || 1) + 1;
-        await loadMediaLibrary();
+        await loadMediaData();
         renderMediaView();
       });
     }
@@ -4634,7 +5229,7 @@
       });
       panels.querySelector('#meshRefresh')?.addEventListener('click', async () => {
         await postJSON('/api/swiftmesh/refresh', {});
-        await Promise.all([loadOverview(), loadConfig(), loadStatus(), loadMediaLibrary()]);
+        await Promise.all([loadOverview(), loadConfig(), loadStatus(), loadMediaData()]);
         renderSwiftMeshView();
       });
 
@@ -5071,7 +5666,7 @@
         eventsNode.prepend(controls);
         controls.querySelector('#meshRefresh')?.addEventListener('click', async () => {
           await postJSON('/api/swiftmesh/refresh', {});
-          await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadMediaLibrary()]);
+          await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadMediaData()]);
           renderSectionView('swiftmesh');
         });
       } else if (view === 'aibots') {
@@ -5373,7 +5968,7 @@
       loadOverviewLayout();
 
       showDashboard();
-      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
+      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
       const allowed = new Set(['overview', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'media', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
@@ -5438,7 +6033,7 @@
         const runningStates = ['running', 'connecting', 'reconnecting'];
         const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
         await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
-        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaLibrary()]);
+        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
         refreshCurrentView();
         setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
       } catch (error) {

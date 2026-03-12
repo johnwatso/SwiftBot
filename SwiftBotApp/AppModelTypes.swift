@@ -31,6 +31,9 @@ struct MediaStreamDescriptor: Codable, Hashable {
 
 struct MediaLibrarySettings: Codable, Hashable {
     var sources: [MediaLibrarySource] = []
+    var exportRootPath: String = ""
+    var exportIncludeInLibrary: Bool = true
+    var exportSourceID: UUID? = nil
 }
 
 struct MediaLibrarySource: Codable, Hashable, Identifiable {
@@ -74,4 +77,79 @@ struct MediaLibraryPayload: Codable, Hashable {
     var sources: [MediaLibrarySource]
     var items: [MediaLibraryItem]
     var generatedAt: Date
+}
+
+struct MediaExportStatus: Codable, Hashable {
+    var installed: Bool
+    var version: String?
+    var path: String?
+}
+
+struct MediaExportJob: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable {
+        case clip
+        case multiview
+    }
+
+    enum Status: String, Codable {
+        case queued
+        case running
+        case finished
+        case failed
+    }
+
+    var id: String
+    var kind: Kind
+    var status: Status
+    var createdAt: Date
+    var startedAt: Date?
+    var finishedAt: Date?
+    var message: String?
+    var outputFileName: String?
+    var outputPath: String?
+    var nodeName: String
+}
+
+struct MediaExportClipRequest: Codable, Hashable {
+    var token: String
+    var startSeconds: Double
+    var endSeconds: Double
+    var name: String?
+    var thumbnailAtSeconds: Double?
+}
+
+struct MediaExportMultiViewRequest: Codable, Hashable {
+    var primaryToken: String
+    var secondaryToken: String
+    var layout: String
+    var audioSource: String
+    var startSeconds: Double?
+    var endSeconds: Double?
+    var name: String?
+}
+
+struct MeshMediaClipRequest: Codable, Hashable {
+    var itemID: String
+    var startSeconds: Double
+    var endSeconds: Double
+    var name: String?
+}
+
+struct MeshMediaMultiViewRequest: Codable, Hashable {
+    var primaryID: String
+    var secondaryID: String
+    var layout: String
+    var audioSource: String
+    var startSeconds: Double?
+    var endSeconds: Double?
+    var name: String?
+}
+
+struct MediaExportJobsPayload: Codable, Hashable {
+    var jobs: [MediaExportJob]
+}
+
+struct MediaExportJobResponse: Codable, Hashable {
+    var job: MediaExportJob?
+    var error: String?
 }
