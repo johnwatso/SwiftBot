@@ -5,6 +5,64 @@ struct DiscordIdentityRESTClient {
     let identitySession: URLSession
     let restBase: URL
 
+    func validateBotTokenRich(_ token: String) async -> DiscordService.TokenValidationResult {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return DiscordService.TokenValidationResult(
+                isValid: false,
+                userId: nil,
+                username: nil,
+                discriminator: nil,
+                avatarURL: nil,
+                errorCategory: .invalidToken,
+                errorMessage: "Token is empty."
+            )
+        }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.networkFailure)
+            }
+
+            switch http.statusCode {
+            case 200..<300:
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let userId = json?["id"] as? String
+                let username = json?["username"] as? String
+                let discriminator = json?["discriminator"] as? String
+                let avatarHash = json?["avatar"] as? String
+                let avatarURL: URL?
+                if let userId, let avatarHash, !avatarHash.isEmpty {
+                    avatarURL = URL(string: "https://cdn.discordapp.com/avatars/\(userId)/\(avatarHash).png")
+                } else {
+                    avatarURL = nil
+                }
+                return DiscordService.TokenValidationResult(
+                    isValid: true,
+                    userId: userId,
+                    username: username,
+                    discriminator: discriminator,
+                    avatarURL: avatarURL,
+                    errorCategory: nil,
+                    errorMessage: "Valid token"
+                )
+            case 401:
+                return .failure(.invalidToken)
+            case 429:
+                return .failure(.rateLimited)
+            default:
+                return .failure(.serverError(http.statusCode))
+            }
+        } catch {
+            return .failure(.networkFailure)
+        }
+    }
+
     func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
