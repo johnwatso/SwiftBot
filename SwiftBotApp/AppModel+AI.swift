@@ -11,8 +11,65 @@ extension AppModel {
         case noReply             // Engine returned nil — caller may use its own fallback.
     }
 
+    private func sendPayloadResponse(
+        channelId: String,
+        payload: [String: Any],
+        action: String
+    ) async throws -> (statusCode: Int, responseBody: String) {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            throw NSError(domain: "AppModel", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked by ActionDispatcher"])
+        }
+        return try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
+    }
+
+    private func performOutputRequest<T>(
+        action: String,
+        operation: () async throws -> T
+    ) async -> T? {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            return nil
+        }
+        do {
+            return try await operation()
+        } catch {
+            return nil
+        }
+    }
+
+    private func performOutputAction(
+        action: String,
+        operation: () async throws -> Void
+    ) async -> Bool {
+        await performOutputRequest(action: action) {
+            try await operation()
+            return true
+        } ?? false
+    }
+
+    private func performOutputSideEffect(
+        action: String,
+        operation: () async -> Void
+    ) async {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            return
+        }
+        await operation()
+    }
+
+    func sendPayload(
+        channelId: String,
+        payload: [String: Any],
+        action: String
+    ) async -> Bool {
+        await performOutputAction(action: action) {
+            _ = try await sendPayloadResponse(channelId: channelId, payload: payload, action: action)
+        }
+    }
+
     func sendTypingIndicator(_ channelId: String) async {
-        await service.triggerTyping(channelId: channelId, token: settings.token)
+        await performOutputSideEffect(action: "triggerTyping") {
+            await service.triggerTyping(channelId: channelId, token: settings.token)
+        }
     }
 
     /// Runs AI generation with a typing indicator, a 10s soft notice, and a 30s hard timeout.
@@ -102,51 +159,28 @@ extension AppModel {
     }
 
     func send(_ channelId: String, _ message: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessage", log: { logs.append($0) }) else { return false }
-        do {
-            try await service.sendMessage(channelId: channelId, content: message, token: settings.token)
-            return true
-        } catch {
-            return false
-        }
+        await sendPayload(channelId: channelId, payload: ["content": message], action: "sendMessage")
     }
 
     func sendMessageReturningID(channelId: String, content: String) async -> String? {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageReturningID", log: { logs.append($0) }) else { return nil }
-        do {
-            return try await service.sendMessageReturningID(channelId: channelId, content: content, token: settings.token)
-        } catch {
-            return nil
+        await performOutputRequest(action: "sendMessageReturningID") {
+            try await service.sendMessageReturningID(channelId: channelId, content: content, token: settings.token)
         }
     }
 
     func sendEmbed(_ channelId: String, embed: [String: Any]) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendEmbed", log: { logs.append($0) }) else { return false }
-        do {
-            _ = try await service.sendMessage(
-                channelId: channelId,
-                payload: ["embeds": [embed]],
-                token: settings.token
-            )
-            return true
-        } catch {
-            return false
-        }
+        await sendPayload(channelId: channelId, payload: ["embeds": [embed]], action: "sendEmbed")
     }
 
     func editMessage(channelId: String, messageId: String, content: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "editMessage") {
             try await service.editMessage(channelId: channelId, messageId: messageId, content: content, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func fetchMessage(channelId: String, messageId: String) async -> [String: DiscordJSON]? {
         do {
-            return try await service.fetchMessage(channelId: channelId, messageId: messageId, token: settings.token)
+            return try await messageRESTClient.fetchMessage(channelId: channelId, messageId: messageId, token: settings.token)
         } catch {
             return nil
         }
@@ -154,55 +188,39 @@ extension AppModel {
 
     func fetchRecentMessages(channelId: String, limit: Int = 30) async -> [[String: DiscordJSON]] {
         do {
-            return try await service.fetchRecentMessages(channelId: channelId, limit: limit, token: settings.token)
+            return try await messageRESTClient.fetchRecentMessages(channelId: channelId, limit: limit, token: settings.token)
         } catch {
             return []
         }
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "addReaction", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "addReaction") {
             try await service.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func removeOwnReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
-        do {
+        await performOutputAction(action: "removeOwnReaction") {
             try await service.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func pinMessage(channelId: String, messageId: String) async -> Bool {
-        do {
+        await performOutputAction(action: "pinMessage") {
             try await service.pinMessage(channelId: channelId, messageId: messageId, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func unpinMessage(channelId: String, messageId: String) async -> Bool {
-        do {
+        await performOutputAction(action: "unpinMessage") {
             try await service.unpinMessage(channelId: channelId, messageId: messageId, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func createThreadFromMessage(channelId: String, messageId: String, name: String) async -> Bool {
-        do {
+        await performOutputAction(action: "createThreadFromMessage") {
             try await service.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -212,8 +230,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageWithImage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "sendMessageWithImage") {
             _ = try await service.sendMessageWithImage(
                 channelId: channelId,
                 content: content,
@@ -221,9 +238,6 @@ extension AppModel {
                 filename: filename,
                 token: settings.token
             )
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -234,8 +248,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessageWithImage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "editMessageWithImage") {
             try await service.editMessageWithImage(
                 channelId: channelId,
                 messageId: messageId,
@@ -244,9 +257,6 @@ extension AppModel {
                 filename: filename,
                 token: settings.token
             )
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -276,7 +286,6 @@ extension AppModel {
         ]
 
         var payload: [String: Any] = [:]
-        var usingEmbedPayload = false
         if let rawEmbedJSON = embedJSON?.trimmingCharacters(in: .whitespacesAndNewlines),
            !rawEmbedJSON.isEmpty,
            let data = rawEmbedJSON.data(using: .utf8),
@@ -290,7 +299,6 @@ extension AppModel {
             if let allowedMentions {
                 payload["allowed_mentions"] = allowedMentions
             }
-            usingEmbedPayload = true
         } else {
             let fallbackBody = message.trimmingCharacters(in: .whitespacesAndNewlines)
             let content = [roleMentionText, fallbackBody].filter { !$0.isEmpty }.joined(separator: " ")
@@ -301,16 +309,18 @@ extension AppModel {
         }
 
         do {
-            let response = try await service.sendMessage(channelId: channelId, payload: payload, token: token)
-            let mode = usingEmbedPayload ? "embed" : "fallback"
-            let detail = "Patchy send succeeded (\(mode), status=\(response.statusCode))."
-            logs.append("✅ \(detail)")
+            _ = try await sendPayloadResponse(
+                channelId: channelId,
+                payload: payload,
+                action: "sendPatchyNotification"
+            )
+            let detail = "Notification sent successfully."
+            logs.append("✅ Patchy: \(detail)")
             return (true, detail)
         } catch {
             let diagnostic = patchyErrorDiagnostic(from: error)
-            let detail = "Patchy send failed (\(usingEmbedPayload ? "embed" : "fallback")). \(diagnostic)"
-            logs.append("❌ \(detail)")
-            return (false, detail)
+            logs.append("❌ Patchy: \(diagnostic)")
+            return (false, diagnostic)
         }
     }
 

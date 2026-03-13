@@ -7,7 +7,7 @@ struct GeneralSettingsView: View {
     @AppStorage("settings.swiftmesh.expanded.v1") private var isSwiftMeshExpanded = false
     @AppStorage("settings.media.expanded.v1") private var isMediaExpanded = false
     @AppStorage("settings.webui.expanded.v1") private var isWebUIExpanded = false
-    @State private var settingsSnapshot = GeneralSettingsSnapshot()
+    @State private var settingsSnapshot = AppPreferencesSnapshot()
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
@@ -15,6 +15,10 @@ struct GeneralSettingsView: View {
 
     private var hasUnsavedChanges: Bool {
         currentSettingsSnapshot != settingsSnapshot
+    }
+
+    private var currentSettingsSnapshot: AppPreferencesSnapshot {
+        app.createPreferencesSnapshot()
     }
 
     private var isFailoverManagedNode: Bool {
@@ -40,54 +44,6 @@ struct GeneralSettingsView: View {
         )
     }
 
-    private var currentSettingsSnapshot: GeneralSettingsSnapshot {
-        GeneralSettingsSnapshot(
-            token: app.settings.token,
-            autoStart: app.settings.autoStart,
-            clusterMode: app.settings.clusterMode,
-            clusterNodeName: app.settings.clusterNodeName,
-            clusterLeaderAddress: app.settings.clusterLeaderAddress,
-            clusterLeaderPort: app.settings.clusterLeaderPort,
-            clusterListenPort: app.settings.clusterListenPort,
-            clusterSharedSecret: app.settings.clusterSharedSecret,
-            clusterWorkerOffloadEnabled: app.settings.clusterWorkerOffloadEnabled,
-            clusterOffloadAIReplies: app.settings.clusterOffloadAIReplies,
-            clusterOffloadWikiLookups: app.settings.clusterOffloadWikiLookups,
-            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
-            adminWebEnabled: app.settings.adminWebUI.enabled,
-            adminWebHost: app.settings.adminWebUI.bindHost,
-            adminWebPort: app.settings.adminWebUI.port,
-            adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
-            adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
-            adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
-            adminWebHostname: app.settings.adminWebUI.hostname,
-            adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
-            adminWebPublicAccessEnabled: app.settings.adminWebUI.publicAccessEnabled,
-            adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
-            adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
-            adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
-            adminLocalAuthEnabled: app.settings.adminWebUI.localAuthEnabled,
-            adminLocalAuthUsername: app.settings.adminWebUI.localAuthUsername,
-            adminLocalAuthPassword: app.settings.adminWebUI.localAuthPassword,
-            adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
-            adminDiscordClientID: app.settings.adminWebUI.discordClientID,
-            adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
-            adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
-            devFeaturesEnabled: app.settings.devFeaturesEnabled,
-            bugAutoFixEnabled: app.settings.bugAutoFixEnabled,
-            bugAutoFixTriggerEmoji: app.settings.bugAutoFixTriggerEmoji,
-            bugAutoFixCommandTemplate: app.settings.bugAutoFixCommandTemplate,
-            bugAutoFixRepoPath: app.settings.bugAutoFixRepoPath,
-            bugAutoFixGitBranch: app.settings.bugAutoFixGitBranch,
-            bugAutoFixVersionBumpEnabled: app.settings.bugAutoFixVersionBumpEnabled,
-            bugAutoFixPushEnabled: app.settings.bugAutoFixPushEnabled,
-            bugAutoFixRequireApproval: app.settings.bugAutoFixRequireApproval,
-            bugAutoFixApproveEmoji: app.settings.bugAutoFixApproveEmoji,
-            bugAutoFixRejectEmoji: app.settings.bugAutoFixRejectEmoji,
-            bugAutoFixAllowedUsernames: app.settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
-        )
-    }
-
     private var swiftMeshSummaryLines: [String] {
         let role = app.settings.clusterMode == .standalone ? "Disabled" : app.settings.clusterMode.displayName
         return ["Cluster role: \(role)"]
@@ -98,75 +54,55 @@ struct GeneralSettingsView: View {
             "Admin Web UI \(app.settings.adminWebUI.enabled ? "Enabled" : "Disabled")",
             "Port: \(app.settings.adminWebUI.port)"
         ]
-        if app.settings.adminWebUI.httpsEnabled {
-            switch app.settings.adminWebUI.certificateMode {
-            case .automatic:
-                let domain = app.settings.adminWebUI.normalizedHostname
-                lines.append(domain.isEmpty ? "HTTPS automatic setup pending" : "HTTPS via Let's Encrypt for \(domain)")
-            case .importCertificate:
-                let certificatePath = app.settings.adminWebUI.normalizedImportedCertificateFile
-                lines.append(certificatePath.isEmpty ? "HTTPS imported certificate pending" : "HTTPS via imported PEM")
-            }
-        }
-        if app.settings.adminWebUI.publicAccessEnabled {
-            let hostname = app.settings.adminWebUI.normalizedHostname
-            lines.append(hostname.isEmpty ? "Public Access setup pending" : "Public Access via Cloudflare Tunnel for \(hostname)")
+        if app.settings.adminWebUI.enabled && !app.settings.adminWebUI.hostname.isEmpty {
+            lines.append("Hostname: \(app.settings.adminWebUI.hostname)")
         }
         return lines
     }
 
     private var mediaLibrarySummaryLines: [String] {
-        let sources = app.mediaLibrarySettings.sources
-        let enabledCount = sources.filter(\.isEnabled).count
-        return [
-            "\(enabledCount)/\(sources.count) sources enabled",
-            sources.isEmpty ? "No recording libraries configured" : "Node-local NAS/library paths"
-        ]
+        let count = app.mediaLibrarySettings.sources.count
+        let enabledCount = app.mediaLibrarySettings.sources.filter(\.isEnabled).count
+        return ["\(count) sources (\(enabledCount) enabled)"]
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewSectionHeader(title: "Settings", symbol: "gearshape.2.fill")
-            if isFailoverManagedNode {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                        .foregroundStyle(.orange)
-                    Text("This node is in Failover mode. Non‑SwiftMesh settings are synced from Primary and are read-only here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 4)
-            }
-
-            ScrollView {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 16) {
-                    sectionTitle("Discord Authentication", symbol: "person.badge.key.fill")
+                        sectionTitle("Discord Authentication", symbol: "person.badge.key.fill")
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Bot Token")
-                            .font(.subheadline.weight(.medium))
-                        HStack {
-                            if showToken {
-                                TextField("Token", text: $app.settings.token)
-                                    .textFieldStyle(.roundedBorder)
-                            } else {
-                                SecureField("Token", text: $app.settings.token)
-                                    .textFieldStyle(.roundedBorder)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Bot Token")
+                                .font(.subheadline.weight(.medium))
+                            
+                            HStack(spacing: 10) {
+                                Group {
+                                    if showToken {
+                                        TextField("MTA...", text: $app.settings.token)
+                                    } else {
+                                        SecureField("MTA...", text: $app.settings.token)
+                                    }
+                                }
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                                .disabled(isFailoverManagedNode)
+                                
+                                Button {
+                                    showToken.toggle()
+                                } label: {
+                                    Image(systemName: showToken ? "eye.slash" : "eye")
+                                        .frame(width: 20)
+                                }
+                                .buttonStyle(.plain)
+                                .help(showToken ? "Hide token" : "Show token")
                             }
-                            Button { showToken.toggle() } label: {
-                                Image(systemName: showToken ? "eye.slash" : "eye")
-                            }
+                            
+                            Text("Create a bot in the Discord Developer Portal and paste its token here.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        Text("Obtain this from the Discord Developer Portal.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Invite Bot")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
 
                         HStack(spacing: 10) {
                             Button {
@@ -175,6 +111,7 @@ struct GeneralSettingsView: View {
                                 Label("Copy Invite Link", systemImage: "doc.on.doc")
                             }
                             .buttonStyle(.bordered)
+                            .disabled(!canGenerateInviteLink || inviteActionInProgress)
 
                             Button {
                                 Task { await openInviteLink() }
@@ -182,68 +119,63 @@ struct GeneralSettingsView: View {
                                 Label("Open Invite Link", systemImage: "arrow.up.forward.square")
                             }
                             .buttonStyle(.bordered)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .disabled(!canGenerateInviteLink || inviteActionInProgress)
-
-                        if !canGenerateInviteLink {
-                            Text("Bot token required to generate invite link.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            .disabled(!canGenerateInviteLink || inviteActionInProgress)
+                            
+                            if inviteActionInProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(.leading, 4)
+                            }
                         }
                     }
 
                     Divider()
 
-                    Toggle("Start Bot Automatically", isOn: $app.settings.autoStart)
-                        .toggleStyle(.switch)
-                }
-                .padding(16)
-                .commandCatalogSurface(cornerRadius: 22)
-                .disabled(isFailoverManagedNode)
-                .opacity(isFailoverManagedNode ? 0.62 : 1)
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Deployment", symbol: "wrench.and.screwdriver.fill")
 
-                VStack(alignment: .leading, spacing: 16) {
-                    sectionTitle("Deployment", symbol: "wrench.and.screwdriver.fill")
-
-                    Button(role: .none) {
-                        showRunSetupPrompt = true
-                    } label: {
-                        Label("Run Setup Wizard", systemImage: "wand.and.stars")
+                        Button(role: .none) {
+                            showRunSetupPrompt = true
+                        } label: {
+                            Label("Run Initial Setup...", systemImage: "sparkles")
+                        }
+                        .buttonStyle(.bordered)
+                        .confirmationDialog(
+                            "Are you sure you want to run the initial setup again?",
+                            isPresented: $showRunSetupPrompt,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Run Setup", role: .destructive) {
+                                app.runInitialSetup()
+                            }
+                            Button("Cancel", role: .cancel) { }
+                        } message: {
+                            Text("This will clear your current connection settings and take you back to the onboarding flow.")
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .confirmationDialog(
-                        "Run setup again?",
-                        isPresented: $showRunSetupPrompt,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Start Setup", role: .destructive) { app.isOnboardingComplete = false }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This will take you back to the initial configuration screens.")
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        sectionTitle("Advanced", symbol: "slider.horizontal.3")
+
+                        settingsToggleRow("Enable Advanced Features", isOn: developerFeaturesBinding)
+
+                        Text("Enable experimental SwiftBot functionality intended for testing.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
                     }
                 }
-                .padding(16)
-                .commandCatalogSurface(cornerRadius: 22)
-                .disabled(isFailoverManagedNode)
-                .opacity(isFailoverManagedNode ? 0.62 : 1)
-
-                VStack(alignment: .leading, spacing: 16) {
-                    sectionTitle("Advanced", symbol: "slider.horizontal.3")
-
-                    settingsToggleRow("Enable Advanced Features", isOn: developerFeaturesBinding)
-
-                    Text("Enable experimental SwiftBot functionality intended for testing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(16)
-                .commandCatalogSurface(cornerRadius: 22)
-                .disabled(isFailoverManagedNode)
-                .opacity(isFailoverManagedNode ? 0.62 : 1)
+                .padding(24)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
 
                 SettingsDisclosureCard(
-                    title: "SwiftMesh",
+                    title: "SwiftMesh Cluster",
                     summaryLines: swiftMeshSummaryLines,
                     isExpanded: $isSwiftMeshExpanded
                 ) {
@@ -251,7 +183,7 @@ struct GeneralSettingsView: View {
                 }
 
                 SettingsDisclosureCard(
-                    title: "Recordings",
+                    title: "Media Library",
                     summaryLines: mediaLibrarySummaryLines,
                     isExpanded: $isMediaExpanded
                 ) {
@@ -259,7 +191,7 @@ struct GeneralSettingsView: View {
                 }
 
                 SettingsDisclosureCard(
-                    title: "Web UI",
+                    title: "Admin Web UI",
                     summaryLines: webUISummaryLines,
                     isExpanded: $isWebUIExpanded,
                     contentDisabled: isFailoverManagedNode
@@ -271,7 +203,6 @@ struct GeneralSettingsView: View {
                     bugAutoFixSection
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .disabled(isFailoverManagedNode)
-                        .opacity(isFailoverManagedNode ? 0.62 : 1)
                 }
 
                 VStack(alignment: .leading, spacing: 16) {
@@ -282,42 +213,30 @@ struct GeneralSettingsView: View {
                         updateChannelOption(.beta)
                     }
 
-                    if updater.selectedChannel == .beta {
-                        Label("Beta channel enabled. Updates will come from the beta appcast feed.", systemImage: "flask.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
+                        Text("Build: \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")")
                     }
-
-                    Button("Check for Updates...") {
-                        updater.checkForUpdates()
-                    }
-                    .buttonStyle(GlassActionButtonStyle())
-                    .disabled(!updater.canCheckForUpdates)
-
-                    if !updater.isConfigured {
-                        Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
                 }
-                .padding(16)
-                .commandCatalogSurface(cornerRadius: 22)
-                .disabled(isFailoverManagedNode)
-                .opacity(isFailoverManagedNode ? 0.62 : 1)
+                .padding(24)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                )
             }
-            .animation(.easeInOut(duration: 0.2), value: app.settings.devFeaturesEnabled)
-            }
-            .padding(.bottom, 16)
+            .padding(24)
+            .padding(.bottom, 80)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
         .overlay(alignment: .topTrailing) {
-            if let transientToastMessage {
-                Text(transientToastMessage)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+            if let message = transientToastMessage {
+                Text(message)
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule())
                     .overlay(
                         Capsule()
@@ -332,7 +251,9 @@ struct GeneralSettingsView: View {
             if hasUnsavedChanges {
                 StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
                     app.saveSettings()
-                    settingsSnapshot = currentSettingsSnapshot
+                    withAnimation {
+                        settingsSnapshot = currentSettingsSnapshot
+                    }
                 }
                 .padding(.trailing, 22)
                 .padding(.bottom, 18)
@@ -343,7 +264,22 @@ struct GeneralSettingsView: View {
         }
     }
 
-    @ViewBuilder
+    private func showToast(_ message: String) {
+        toastDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            transientToastMessage = message
+        }
+        toastDismissTask = Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    transientToastMessage = nil
+                }
+            }
+        }
+    }
+
     private func sectionTitle(_ title: String, symbol: String) -> some View {
         SettingsSectionHeader(title: title, systemImage: symbol)
     }
@@ -463,151 +399,106 @@ struct GeneralSettingsView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
-                settingsSubsectionTitle("Restrictions")
+                settingsSubsectionTitle("Access Control")
 
                 Text("Allowed Usernames")
                     .font(.subheadline.weight(.medium))
-                TextField(
-                    "Comma-separated usernames; leave blank for no restriction",
-                    text: Binding(
-                        get: { app.settings.bugAutoFixAllowedUsernames.joined(separator: ", ") },
-                        set: { raw in
-                            app.settings.bugAutoFixAllowedUsernames = raw
-                                .split(separator: ",")
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                                .filter { !$0.isEmpty }
-                        }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                settingsSubsectionTitle("Console")
-
-                HStack {
-                    Text("Auto-Fix Console")
-                        .font(.subheadline.weight(.medium))
-                    Spacer()
-                    Text(app.bugAutoFixStatusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Button("Clear") {
-                        app.bugAutoFixConsoleText = ""
+                TextField("Comma-separated Discord usernames", text: Binding(
+                    get: { app.settings.bugAutoFixAllowedUsernames.joined(separator: ", ") },
+                    set: { newValue in
+                        app.settings.bugAutoFixAllowedUsernames = newValue
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
                     }
-                    .buttonStyle(.plain)
+                ))
+                .textFieldStyle(.roundedBorder)
+                Text("Restricts bug auto-fix triggers to these users. Leave empty to allow all server administrators.")
                     .font(.caption)
-                }
-                ScrollView {
-                    Text(app.bugAutoFixConsoleText.isEmpty ? "No output yet." : app.bugAutoFixConsoleText)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(10)
-                }
-                .frame(minHeight: 140, maxHeight: 200)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white.opacity(0.16), lineWidth: 1)
-                )
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .commandCatalogSurface(cornerRadius: 22)
+        .padding(24)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
     }
 
     private var swiftMeshContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Role")
-                    .font(.subheadline.weight(.medium))
-                Picker("Role", selection: $app.settings.clusterMode) {
-                    ForEach(ClusterMode.selectableCases) { mode in
+                settingsSubsectionTitle("Cluster Role")
+                Picker("", selection: $app.settings.clusterMode) {
+                    ForEach(ClusterMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
+                .disabled(isFailoverManagedNode)
+
                 Text(app.settings.clusterMode.description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Node Name")
-                    .font(.subheadline.weight(.medium))
-                TextField("SwiftBot Node", text: $app.settings.clusterNodeName)
-                    .textFieldStyle(.roundedBorder)
-            }
+            Divider()
 
-            if app.settings.clusterMode == .standby {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Primary Address")
+                    Text("Node Name")
                         .font(.subheadline.weight(.medium))
-                    TextField("http://host:port", text: $app.settings.clusterLeaderAddress)
+                    TextField("SwiftBot Node", text: $app.settings.clusterNodeName)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(isFailoverManagedNode)
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Listen Port")
-                    .font(.subheadline.weight(.medium))
-                Stepper(value: $app.settings.clusterListenPort, in: 1...65535) {
-                    Text("\(app.settings.clusterListenPort)")
-                        .font(.body.monospacedDigit())
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Shared Secret")
-                    .font(.subheadline.weight(.medium))
-                SecureField("Required for clustered mode", text: $app.settings.clusterSharedSecret)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Worker Offload")
-                    .font(.subheadline.weight(.medium))
-                Toggle("Offload AI replies to workers when Primary", isOn: $app.settings.clusterOffloadAIReplies)
-                    .toggleStyle(.switch)
-                Toggle("Offload Wiki lookups to workers when Primary", isOn: $app.settings.clusterOffloadWikiLookups)
-                    .toggleStyle(.switch)
-                Text("Applies only in Primary mode and only when workers are registered/reachable.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!canEditOffloadPolicy)
-            .opacity(canEditOffloadPolicy ? 1 : 0.62)
-
-            if app.settings.clusterMode == .standby {
-                HStack(spacing: 10) {
-                    Button {
-                        app.testWorkerLeaderConnection()
-                    } label: {
-                        Label("Test Connection", systemImage: "antenna.radiowaves.left.and.right")
+                if app.settings.clusterMode == .standby || app.settings.clusterMode == .worker {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Primary Node Address")
+                            .font(.subheadline.weight(.medium))
+                        TextField("192.168.1.50", text: $app.settings.clusterLeaderAddress)
+                            .textFieldStyle(.roundedBorder)
                     }
-                    .buttonStyle(GlassActionButtonStyle())
-                    .disabled(app.workerConnectionTestInProgress)
 
-                    Button {
-                        app.refreshClusterStatus()
-                    } label: {
-                        Label("Refresh Status", systemImage: "arrow.clockwise")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Primary Node Port")
+                            .font(.subheadline.weight(.medium))
+                        TextField("38787", value: $app.settings.clusterLeaderPort, format: .number)
+                            .textFieldStyle(.roundedBorder)
                     }
-                    .buttonStyle(GlassActionButtonStyle())
                 }
 
-                if app.workerConnectionTestInProgress {
-                    ProgressView("Testing connection…")
-                        .controlSize(.small)
-                } else {
-                    Text(app.workerConnectionTestStatus)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Listen Port")
+                        .font(.subheadline.weight(.medium))
+                    TextField("38787", value: $app.settings.clusterListenPort, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isFailoverManagedNode)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Shared Secret")
+                        .font(.subheadline.weight(.medium))
+                    SecureField("Secret key for node authentication", text: $app.settings.clusterSharedSecret)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isFailoverManagedNode)
+                }
+            }
+
+            if canEditOffloadPolicy {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    settingsSubsectionTitle("Offload Policy")
+                    Text("Decide which tasks this Primary node can offload to connected Worker nodes.")
                         .font(.caption)
-                        .foregroundStyle(app.workerConnectionTestIsSuccess ? .green : .secondary)
-                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+
+                    settingsToggleRow("Offload AI Replies", isOn: $app.settings.clusterOffloadAIReplies)
+                    settingsToggleRow("Offload Wiki Lookups", isOn: $app.settings.clusterOffloadWikiLookups)
                 }
             }
         }
@@ -616,30 +507,43 @@ struct GeneralSettingsView: View {
     private var webUIContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             adminWebSettingsCard(
-                title: "Web Server",
-                symbol: "globe",
-                subtitle: "Manage the local SwiftBot dashboard listener and the URL SwiftBot shares with browsers."
+                title: "Local Access",
+                symbol: "network"
             ) {
-                AdminWebServerConfigurationSection()
+                VStack(alignment: .leading, spacing: 12) {
+                    settingsToggleRow("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
+                    
+                    if app.settings.adminWebUI.enabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Port")
+                                .font(.subheadline.weight(.medium))
+                            Text("\(app.settings.adminWebUI.port)")
+                                .font(.system(.body, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
             }
 
             adminWebSettingsCard(
-                title: "Internet Access",
-                symbol: "network",
-                subtitle: "Expose SwiftBot securely over the internet with automatic HTTPS and Cloudflare Tunneling."
+                title: "Public Access",
+                symbol: "globe"
             ) {
-                InternetAccessConfigurationSection()
+                VStack(alignment: .leading, spacing: 12) {
+                    settingsToggleRow("Internet Access (Cloudflare)", isOn: $app.settings.adminWebUI.internetAccessEnabled)
+                    
+                    if app.settings.adminWebUI.internetAccessEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Subdomain")
+                                .font(.subheadline.weight(.medium))
+                            TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
             }
-
-            adminWebSettingsCard(
-                title: "Authentication",
-                symbol: "person.badge.key",
-                subtitle: "Control who can sign in to the Web UI with Discord."
-            ) {
-                AdminWebAuthenticationSection()
-            }
-
-            AdminWebLaunchControls(usesGlassActionStyle: true)
         }
     }
 
@@ -649,82 +553,44 @@ struct GeneralSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            ForEach($app.mediaLibrarySettings.sources) { $source in
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        TextField("Source Name", text: $source.name)
-                            .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach($app.mediaLibrarySettings.sources) { $source in
+                    HStack(spacing: 12) {
                         Toggle("", isOn: $source.isEnabled)
+                            .toggleStyle(.switch)
                             .labelsHidden()
-                        Button(role: .destructive) {
-                            if let index = app.mediaLibrarySettings.sources.firstIndex(where: { $0.id == source.id }) {
-                                app.mediaLibrarySettings.sources.remove(at: index)
-                            }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Source Name", text: $source.name)
+                                .font(.subheadline.weight(.semibold))
+                                .textFieldStyle(.plain)
+                            TextField("Path", text: $source.rootPath)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textFieldStyle(.plain)
+                        }
+                        
+                        Spacer()
+                        
+                        Button {
+                            app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
                         } label: {
                             Image(systemName: "trash")
+                                .foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
                     }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Root Path")
-                            .font(.subheadline.weight(.medium))
-                        TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Allowed Extensions")
-                            .font(.subheadline.weight(.medium))
-                        TextField(
-                            "mp4, mov, m4v",
-                            text: Binding(
-                                get: { source.allowedExtensions.joined(separator: ", ") },
-                                set: { rawValue in
-                                    source.allowedExtensions = rawValue
-                                        .split(separator: ",")
-                                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                        .filter { !$0.isEmpty }
-                                }
-                            )
-                        )
-                        .textFieldStyle(.roundedBorder)
-                    }
+                    .padding(12)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                )
+                
+                Button {
+                    app.mediaLibrarySettings.sources.append(MediaLibrarySource(name: "New Source", rootPath: ""))
+                } label: {
+                    Label("Add Source", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.bordered)
             }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Exports")
-                    .font(.subheadline.weight(.medium))
-                Text("Clipped and multiview videos will be saved here. FFmpeg is required for exports.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField(
-                    "~/Library/Application Support/SwiftBot/recordings/exports",
-                    text: $app.mediaLibrarySettings.exportRootPath
-                )
-                .textFieldStyle(.roundedBorder)
-                Toggle("Show exports in the recordings library", isOn: $app.mediaLibrarySettings.exportIncludeInLibrary)
-            }
-            .padding(14)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-            )
-
-            Button {
-                app.mediaLibrarySettings.sources.append(MediaLibrarySource())
-            } label: {
-                Label("Add Source", systemImage: "plus")
-            }
-            .buttonStyle(GlassActionButtonStyle())
         }
     }
 
@@ -732,39 +598,30 @@ struct GeneralSettingsView: View {
     private func adminWebSettingsCard<Content: View>(
         title: String,
         symbol: String,
-        subtitle: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                SettingsSectionHeader(title: title, systemImage: symbol)
-
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.bold))
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .commandCatalogSurface(cornerRadius: 18)
+        .padding(16)
+        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     @ViewBuilder
     private func settingsSubsectionTitle(_ title: String) -> some View {
         Text(title)
             .font(.headline.weight(.semibold))
-            .foregroundStyle(.secondary)
     }
 
     private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack(alignment: .center) {
             Text(title)
+                .font(.subheadline.weight(.medium))
             Spacer()
             Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
                 .labelsHidden()
         }
     }
@@ -773,13 +630,12 @@ struct GeneralSettingsView: View {
         guard let inviteURL = await resolveInviteURL() else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(inviteURL, forType: .string)
-        showToast("Invite link copied")
+        showToast("Invite link copied to clipboard")
     }
 
     private func openInviteLink() async {
         guard let inviteURL = await resolveInviteURL(),
-              let url = URL(string: inviteURL)
-        else { return }
+              let url = URL(string: inviteURL) else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -798,163 +654,66 @@ struct GeneralSettingsView: View {
         }
         return inviteURL
     }
-
-    private func showToast(_ message: String) {
-        toastDismissTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.2)) {
-            transientToastMessage = message
-        }
-        toastDismissTask = Task {
-            try? await Task.sleep(for: .seconds(1.6))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    transientToastMessage = nil
-                }
-            }
-        }
-    }
-
-    private func mediaSourcesSnapshotJSON() -> String {
-        guard let data = try? JSONEncoder().encode(app.mediaLibrarySettings.sources),
-              let text = String(data: data, encoding: .utf8) else {
-            return ""
-        }
-        return text
-    }
-}
-
-private struct GeneralSettingsSnapshot: Equatable {
-    var token = ""
-    var autoStart = false
-    var clusterMode: ClusterMode = .standalone
-    var clusterNodeName = ""
-    var clusterLeaderAddress = ""
-    var clusterLeaderPort = 38787
-    var clusterListenPort = 38787
-    var clusterSharedSecret = ""
-    var clusterWorkerOffloadEnabled = false
-    var clusterOffloadAIReplies = false
-    var clusterOffloadWikiLookups = false
-    var mediaSourcesJSON = ""
-    var adminWebEnabled = false
-    var adminWebHost = ""
-    var adminWebPort = 38888
-    var adminWebBaseURL = ""
-    var adminWebHTTPSEnabled = false
-    var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
-    var adminWebHostname = ""
-    var adminWebCloudflareToken = ""
-    var adminWebPublicAccessEnabled = false
-    var adminWebImportedCertificateFile = ""
-    var adminWebImportedPrivateKeyFile = ""
-    var adminWebImportedCertificateChainFile = ""
-    var adminLocalAuthEnabled = false
-    var adminLocalAuthUsername = ""
-    var adminLocalAuthPassword = ""
-    var adminRestrictSpecificUsers = false
-    var adminDiscordClientID = ""
-    var adminDiscordClientSecret = ""
-    var adminAllowedUserIDs = ""
-    var devFeaturesEnabled = false
-    var bugAutoFixEnabled = false
-    var bugAutoFixTriggerEmoji = "🤖"
-    var bugAutoFixCommandTemplate = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
-    var bugAutoFixRepoPath = ""
-    var bugAutoFixGitBranch = "main"
-    var bugAutoFixVersionBumpEnabled = true
-    var bugAutoFixPushEnabled = true
-    var bugAutoFixRequireApproval = true
-    var bugAutoFixApproveEmoji = "🚀"
-    var bugAutoFixRejectEmoji = "🛑"
-    var bugAutoFixAllowedUsernames = ""
 }
 
 private struct SettingsDisclosureCard<Content: View>: View {
     let title: String
     let summaryLines: [String]
     @Binding var isExpanded: Bool
-    let contentDisabled: Bool
-    let content: Content
-    @State private var isHovering = false
-
-    init(
-        title: String,
-        summaryLines: [String],
-        isExpanded: Binding<Bool>,
-        contentDisabled: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.summaryLines = summaryLines
-        _isExpanded = isExpanded
-        self.contentDisabled = contentDisabled
-        self.content = content()
-    }
+    var contentDisabled: Bool = false
+    let content: () -> Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
-
-        VStack(alignment: .leading, spacing: isExpanded ? 16 : 0) {
+        VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(title)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-
+                            .font(.headline.weight(.bold))
+                        
                         if !isExpanded {
-                            ForEach(summaryLines, id: \.self) { line in
-                                Text(line)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(summaryLines, id: \.self) { line in
+                                    Text(line)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
-
-                    Spacer(minLength: 12)
-
+                    
+                    Spacer()
+                    
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .opacity(0.65)
+                        .font(.system(size: 14, weight: .bold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(24)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    isHovering = hovering
-                }
-            }
 
             if isExpanded {
-                Divider()
-
-                content
-                    .disabled(contentDisabled)
-                    .opacity(contentDisabled ? 0.62 : 1)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                VStack(alignment: .leading, spacing: 0) {
+                    Divider()
+                        .padding(.horizontal, 24)
+                    
+                    content()
+                        .padding(24)
+                        .disabled(contentDisabled)
+                        .opacity(contentDisabled ? 0.6 : 1.0)
+                }
             }
         }
-        .padding(.horizontal, isExpanded ? 16 : 14)
-        .padding(.vertical, isExpanded ? 15 : 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isExpanded ? .thinMaterial : .ultraThinMaterial, in: shape)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            shape
-                .fill(Color.white.opacity(isHovering && !isExpanded ? 0.045 : 0))
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            shape
-                .strokeBorder(.white.opacity(isExpanded ? 0.10 : (isHovering ? 0.11 : 0.07)), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
     }
 }

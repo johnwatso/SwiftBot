@@ -186,27 +186,34 @@ final class RemoteBotProvider: BotDataProvider {
     }
     
     func addPatchyTarget(_ target: PatchySourceTarget) async throws {
-        // Remote API needs patchy endpoints
+        try await api.post("/api/patchy/target/upsert", body: AdminWebPatchyTargetPatch(target: target))
+        await refresh()
     }
     
     func updatePatchyTarget(_ target: PatchySourceTarget) async throws {
-        // Remote API needs patchy endpoints
+        try await api.post("/api/patchy/target/upsert", body: AdminWebPatchyTargetPatch(target: target))
+        await refresh()
     }
     
     func deletePatchyTarget(_ id: UUID) async throws {
-        // Remote API needs patchy endpoints
+        try await api.post("/api/patchy/target/delete", body: AdminWebPatchyTargetIDPatch(targetID: id))
+        await refresh()
     }
     
     func togglePatchyTargetEnabled(_ id: UUID) async throws {
-        // Remote API needs patchy endpoints
+        // Find current state to toggle
+        guard let target = settings.patchy.sourceTargets.first(where: { $0.id == id }) else { return }
+        try await api.post("/api/patchy/target/toggle", body: AdminWebPatchyTargetEnabledPatch(targetID: id, enabled: !target.isEnabled))
+        await refresh()
     }
     
     func sendPatchyTest(targetID: UUID) async throws {
-        // Remote API needs patchy endpoints
+        try await api.post("/api/patchy/target/test", body: AdminWebPatchyTargetIDPatch(targetID: targetID))
+        // No refresh needed immediately, logs will follow in background refresh
     }
     
     func runPatchyManualCheck() async throws {
-        // Remote API needs patchy endpoints
+        try await api.post("/api/patchy/check")
     }
     
     private func startBackgroundRefresh() {

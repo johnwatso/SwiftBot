@@ -7,57 +7,14 @@ struct PreferencesView: View {
     @AppStorage("swiftbot.preferences.selectedTab")
     private var selectedTab = 0
 
-    @State private var settingsSnapshot = PreferencesSnapshot()
+    @State private var settingsSnapshot = AppPreferencesSnapshot()
 
     private var hasUnsavedChanges: Bool {
         currentSettingsSnapshot != settingsSnapshot
     }
 
-    private var currentSettingsSnapshot: PreferencesSnapshot {
-        PreferencesSnapshot(
-            token: app.settings.token,
-            autoStart: app.settings.autoStart,
-            clusterMode: app.settings.clusterMode,
-            clusterNodeName: app.settings.clusterNodeName,
-            clusterLeaderAddress: app.settings.clusterLeaderAddress,
-            clusterLeaderPort: app.settings.clusterLeaderPort,
-            clusterListenPort: app.settings.clusterListenPort,
-            clusterSharedSecret: app.settings.clusterSharedSecret,
-            clusterWorkerOffloadEnabled: app.settings.clusterWorkerOffloadEnabled,
-            clusterOffloadAIReplies: app.settings.clusterOffloadAIReplies,
-            clusterOffloadWikiLookups: app.settings.clusterOffloadWikiLookups,
-            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
-            adminWebEnabled: app.settings.adminWebUI.enabled,
-            adminWebHost: app.settings.adminWebUI.bindHost,
-            adminWebPort: app.settings.adminWebUI.port,
-            adminWebBaseURL: app.settings.adminWebUI.publicBaseURL,
-            adminWebHTTPSEnabled: app.settings.adminWebUI.httpsEnabled,
-            adminWebCertificateMode: app.settings.adminWebUI.certificateMode,
-            adminWebHostname: app.settings.adminWebUI.hostname,
-            adminWebCloudflareToken: app.settings.adminWebUI.cloudflareAPIToken,
-            adminWebPublicAccessEnabled: app.settings.adminWebUI.publicAccessEnabled,
-            adminWebImportedCertificateFile: app.settings.adminWebUI.importedCertificateFile,
-            adminWebImportedPrivateKeyFile: app.settings.adminWebUI.importedPrivateKeyFile,
-            adminWebImportedCertificateChainFile: app.settings.adminWebUI.importedCertificateChainFile,
-            adminLocalAuthEnabled: app.settings.adminWebUI.localAuthEnabled,
-            adminLocalAuthUsername: app.settings.adminWebUI.localAuthUsername,
-            adminLocalAuthPassword: app.settings.adminWebUI.localAuthPassword,
-            adminRestrictSpecificUsers: app.settings.adminWebUI.restrictAccessToSpecificUsers,
-            adminDiscordClientID: app.settings.adminWebUI.discordClientID,
-            adminDiscordClientSecret: app.settings.adminWebUI.discordClientSecret,
-            adminAllowedUserIDs: app.settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
-            devFeaturesEnabled: app.settings.devFeaturesEnabled,
-            bugAutoFixEnabled: app.settings.bugAutoFixEnabled,
-            bugAutoFixTriggerEmoji: app.settings.bugAutoFixTriggerEmoji,
-            bugAutoFixCommandTemplate: app.settings.bugAutoFixCommandTemplate,
-            bugAutoFixRepoPath: app.settings.bugAutoFixRepoPath,
-            bugAutoFixGitBranch: app.settings.bugAutoFixGitBranch,
-            bugAutoFixPushEnabled: app.settings.bugAutoFixPushEnabled,
-            bugAutoFixRequireApproval: app.settings.bugAutoFixRequireApproval,
-            bugAutoFixApproveEmoji: app.settings.bugAutoFixApproveEmoji,
-            bugAutoFixRejectEmoji: app.settings.bugAutoFixRejectEmoji,
-            bugAutoFixAllowedUsernames: app.settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
-        )
+    private var currentSettingsSnapshot: AppPreferencesSnapshot {
+        app.createPreferencesSnapshot()
     }
 
     var body: some View {
@@ -110,7 +67,9 @@ struct PreferencesView: View {
                     if hasUnsavedChanges {
                         StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
                             app.saveSettings()
-                            settingsSnapshot = currentSettingsSnapshot
+                            withAnimation {
+                                settingsSnapshot = currentSettingsSnapshot
+                            }
                         }
                         .padding(.trailing, 20)
                         .padding(.bottom, 18)
@@ -132,14 +91,6 @@ struct PreferencesView: View {
             PreferencesWindowCloser()
         )
     }
-
-    private func mediaSourcesSnapshotJSON() -> String {
-        guard let data = try? JSONEncoder().encode(app.mediaLibrarySettings.sources),
-              let text = String(data: data, encoding: .utf8) else {
-            return ""
-        }
-        return text
-    }
 }
 
 // Separate view to handle window closing without affecting PreferencesView identity
@@ -159,49 +110,4 @@ private struct PreferencesWindowCloser: View {
                 }
             }
     }
-}
-
-private struct PreferencesSnapshot: Equatable {
-    var token = ""
-    var autoStart = false
-    var clusterMode: ClusterMode = .standalone
-    var clusterNodeName = ""
-    var clusterLeaderAddress = ""
-    var clusterLeaderPort = 38787
-    var clusterListenPort = 38787
-    var clusterSharedSecret = ""
-    var clusterWorkerOffloadEnabled = false
-    var clusterOffloadAIReplies = false
-    var clusterOffloadWikiLookups = false
-    var mediaSourcesJSON = ""
-    var adminWebEnabled = false
-    var adminWebHost = ""
-    var adminWebPort = 38888
-    var adminWebBaseURL = ""
-    var adminWebHTTPSEnabled = false
-    var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
-    var adminWebHostname = ""
-    var adminWebCloudflareToken = ""
-    var adminWebPublicAccessEnabled = false
-    var adminWebImportedCertificateFile = ""
-    var adminWebImportedPrivateKeyFile = ""
-    var adminWebImportedCertificateChainFile = ""
-    var adminLocalAuthEnabled = false
-    var adminLocalAuthUsername = ""
-    var adminLocalAuthPassword = ""
-    var adminRestrictSpecificUsers = false
-    var adminDiscordClientID = ""
-    var adminDiscordClientSecret = ""
-    var adminAllowedUserIDs = ""
-    var devFeaturesEnabled = false
-    var bugAutoFixEnabled = false
-    var bugAutoFixTriggerEmoji = "🤖"
-    var bugAutoFixCommandTemplate = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
-    var bugAutoFixRepoPath = ""
-    var bugAutoFixGitBranch = "main"
-    var bugAutoFixPushEnabled = true
-    var bugAutoFixRequireApproval = true
-    var bugAutoFixApproveEmoji = "🚀"
-    var bugAutoFixRejectEmoji = "🛑"
-    var bugAutoFixAllowedUsernames = ""
 }

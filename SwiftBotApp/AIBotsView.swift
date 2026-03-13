@@ -5,29 +5,14 @@ struct AIBotsView: View {
     @State private var showAppleSettings = false
     @State private var showOllamaSettings = false
     @State private var showOpenAISettings = false
-    @State private var baselineSettings = AIBotsSettingsSnapshot()
+    @State private var baselineSettings = AppPreferencesSnapshot()
 
     private var hasUnsavedChanges: Bool {
         currentSettingsSnapshot != baselineSettings
     }
 
-    private var currentSettingsSnapshot: AIBotsSettingsSnapshot {
-        AIBotsSettingsSnapshot(
-            localAIDMReplyEnabled: app.settings.localAIDMReplyEnabled,
-            useAIInGuildChannels: app.settings.behavior.useAIInGuildChannels,
-            allowDMs: app.settings.behavior.allowDMs,
-            preferredAIProvider: app.settings.preferredAIProvider,
-            ollamaBaseURL: app.settings.ollamaBaseURL,
-            ollamaModel: app.settings.localAIModel,
-            ollamaEnabled: app.settings.ollamaEnabled,
-            openAIEnabled: app.settings.openAIEnabled,
-            openAIAPIKey: app.settings.openAIAPIKey,
-            openAIModel: app.settings.openAIModel,
-            openAIImageGenerationEnabled: app.settings.openAIImageGenerationEnabled,
-            openAIImageModel: app.settings.openAIImageModel,
-            openAIImageMonthlyLimitPerUser: app.settings.openAIImageMonthlyLimitPerUser,
-            localAISystemPrompt: app.settings.localAISystemPrompt
-        )
+    private var currentSettingsSnapshot: AppPreferencesSnapshot {
+        app.createPreferencesSnapshot()
     }
 
     var body: some View {
@@ -60,7 +45,9 @@ struct AIBotsView: View {
             if hasUnsavedChanges && !app.isFailoverManagedNode {
                 StickySaveButton(label: "Save AI Settings", systemImage: "square.and.arrow.down.fill") {
                     app.saveSettings()
-                    baselineSettings = currentSettingsSnapshot
+                    withAnimation {
+                        baselineSettings = currentSettingsSnapshot
+                    }
                 }
                 .padding(.trailing, 22)
                 .padding(.bottom, 18)
@@ -559,24 +546,8 @@ private struct EngineStatusStackView: View {
                 .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
         }
     }
-}
+    }
 
-private struct AIBotsSettingsSnapshot: Equatable {
-    var localAIDMReplyEnabled = false
-    var useAIInGuildChannels = true
-    var allowDMs = false
-    var preferredAIProvider: AIProviderPreference = .apple
-    var ollamaBaseURL = ""
-    var ollamaModel = ""
-    var ollamaEnabled = true
-    var openAIEnabled = true
-    var openAIAPIKey = ""
-    var openAIModel = ""
-    var openAIImageGenerationEnabled = true
-    var openAIImageModel = ""
-    var openAIImageMonthlyLimitPerUser = 5
-    var localAISystemPrompt = ""
-}
 
 private enum AIEngineStatus {
     case online

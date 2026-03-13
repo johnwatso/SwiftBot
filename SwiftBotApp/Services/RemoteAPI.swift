@@ -55,6 +55,11 @@ struct RemoteAPI {
         let _: RemoteOKResponse = try await send(request, decode: RemoteOKResponse.self)
     }
 
+    func post(_ path: String) async throws {
+        let request = try makeRequest(path: path, method: "POST")
+        let _: RemoteOKResponse = try await send(request, decode: RemoteOKResponse.self)
+    }
+
     private func makeRequest(path: String, method: String) throws -> URLRequest {
         try makeRequest(path: path, method: method, body: Optional<String>.none)
     }

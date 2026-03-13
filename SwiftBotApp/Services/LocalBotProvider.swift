@@ -113,26 +113,26 @@ final class LocalBotProvider: ObservableObject, BotDataProvider {
     // MARK: - Patchy
     
     func addPatchyTarget(_ target: PatchySourceTarget) async throws {
-        // TODO: Implement when PatchyService is available
+        app.addPatchyTarget(target)
     }
     
     func updatePatchyTarget(_ target: PatchySourceTarget) async throws {
-        // TODO: Implement when PatchyService is available
+        app.updatePatchyTarget(target)
     }
     
     func deletePatchyTarget(_ id: UUID) async throws {
-        // TODO: Implement when PatchyService is available
+        app.deletePatchyTarget(id)
     }
     
     func togglePatchyTargetEnabled(_ id: UUID) async throws {
-        // TODO: Implement when PatchyService is available
+        app.togglePatchyTargetEnabled(id)
     }
     
     func sendPatchyTest(targetID: UUID) async throws {
-        // TODO: Implement when PatchyService is available
+        app.sendPatchyTest(targetID: targetID)
     }
     
     func runPatchyManualCheck() async throws {
-        // TODO: Implement when PatchyService is available
+        app.runPatchyManualCheck()
     }
 }

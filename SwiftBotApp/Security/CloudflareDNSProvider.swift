@@ -55,7 +55,7 @@ struct CloudflareDNSProvider: Sendable {
             case .zoneNotFound(let domain):
                 return "The domain \(domain) was not detected in Cloudflare."
             case .identicalRecordAlreadyExists:
-                return "The required DNS record already exists and will be reused."
+                return "The required DNS record already exists and will be reused for certificate provisioning."
             case .apiFailed(let message):
                 return message
             }
@@ -273,20 +273,25 @@ struct CloudflareDNSProvider: Sendable {
         }
     }
 
-    func verifyAPIToken() async throws -> Bool {
+    func verifyAPIToken() async -> Bool {
+        guard !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+
         let requestURL = baseURL
             .appendingPathComponent("user")
             .appendingPathComponent("tokens")
             .appendingPathComponent("verify")
 
-        let request = makeRequest(url: requestURL, method: "GET")
+        let request = makeRequest(url: requestURL, method: "GET", timeoutInterval: 5)
         let data: Data
         let response: URLResponse
 
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw Error.apiFailed("Cloudflare verification failed. Check your API token.")
+            // Non-blocking failure: return false instead of throwing
+            return false
         }
 
         guard let http = response as? HTTPURLResponse,
@@ -297,7 +302,8 @@ struct CloudflareDNSProvider: Sendable {
               let result = json["result"] as? [String: Any],
               let status = result["status"] as? String
         else {
-            throw Error.apiFailed("Cloudflare verification failed. Check your API token.")
+            // Non-blocking failure: return false instead of throwing
+            return false
         }
 
         return status.lowercased() == "active"
@@ -550,8 +556,8 @@ struct CloudflareDNSProvider: Sendable {
         return components?.url
     }
 
-    private func makeRequest(url: URL, method: String) -> URLRequest {
-        var request = URLRequest(url: url)
+    private func makeRequest(url: URL, method: String, timeoutInterval: TimeInterval = 30) -> URLRequest {
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = method
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

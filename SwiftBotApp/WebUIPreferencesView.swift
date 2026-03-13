@@ -793,10 +793,31 @@ struct AdminWebAuthenticationSection: View {
     }
 
     private func redirectURL(for provider: String) -> String {
-        guard !hostname.isEmpty else { return "" }
-        return "https://\(hostname)/auth/\(provider)/callback"
-    }
+        var baseURL = app.adminWebBaseURL()
+        guard !baseURL.isEmpty else { return "" }
 
+        // Ensure scheme exists
+        if !baseURL.contains("://") {
+            baseURL = "https://" + baseURL
+        }
+
+        let path = app.normalizedAdminRedirectPath(app.settings.adminWebUI.redirectPath)
+
+        guard var components = URLComponents(string: baseURL) else {
+            return baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path)
+        }
+
+        // Handle existing path in base URL (e.g. proxy subpath)
+        if !components.path.isEmpty && components.path != "/" {
+            let base_path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+            let sub_path = path.hasPrefix("/") ? path : "/" + path
+            components.path = base_path + sub_path
+        } else {
+            components.path = path
+        }
+
+        return components.url?.absoluteString ?? (baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path))
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Sign-in")
