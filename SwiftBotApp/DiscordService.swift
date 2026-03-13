@@ -370,8 +370,7 @@ actor DiscordService {
     private var reconnectAttempts = 0
     private var userInitiatedDisconnect = false
     private var ruleEngine: RuleEngine?
-    private var voiceChannelByMemberKey: [String: String] = [:]
-    private var voiceJoinTimeByMemberKey: [String: Date] = [:]
+    private var voiceRuleStateStore = VoiceRuleStateStore()
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
     private var guildNamesById: [String: String] = [:]
@@ -921,8 +920,7 @@ actor DiscordService {
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
         botToken = nil
-        voiceChannelByMemberKey.removeAll()
-        voiceJoinTimeByMemberKey.removeAll()
+        voiceRuleStateStore.clearAll()
         voiceChannelNamesByGuild.removeAll()
         channelTypeById.removeAll()
         Task { await onConnectionState?(.stopped) }
@@ -2018,16 +2016,17 @@ actor DiscordService {
               case let .array(voiceStates)? = guildMap["voice_states"]
         else { return }
 
+        var members: [VoiceRulePresenceSeed] = []
         for state in voiceStates {
             guard case let .object(stateMap) = state,
                   case let .string(userId)? = stateMap["user_id"],
                   case let .string(channelId)? = stateMap["channel_id"]
             else { continue }
 
-            let key = "\(guildId)-\(userId)"
-            voiceChannelByMemberKey[key] = channelId
-            voiceJoinTimeByMemberKey[key] = Date()
+            members.append(VoiceRulePresenceSeed(userID: userId, channelID: channelId))
         }
+
+        voiceRuleStateStore.seedSnapshot(guildID: guildId, members: members, seededAt: Date())
     }
 
     private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
@@ -2081,24 +2080,24 @@ actor DiscordService {
         else { return nil }
 
         let now = Date()
-        let memberKey = "\(guildId)-\(userId)"
-        let previousChannel = voiceChannelByMemberKey[memberKey]
         let newChannel: String?
         if case let .string(cid)? = map["channel_id"] { newChannel = cid } else { newChannel = nil }
 
         let username = parseUsername(from: map, userId: userId)
+        let transition = voiceRuleStateStore.applyEvent(guildID: guildId, userID: userId, channelID: newChannel, at: now)
 
-        if let newChannel, previousChannel == nil {
-            voiceChannelByMemberKey[memberKey] = newChannel
-            voiceJoinTimeByMemberKey[memberKey] = now
+        switch transition {
+        case .ignored:
+            return nil
+        case .joined(let channelID):
             return VoiceRuleEvent(
                 kind: .join,
                 guildId: guildId,
                 userId: userId,
                 username: username,
-                channelId: newChannel,
+                channelId: channelID,
                 fromChannelId: nil,
-                toChannelId: newChannel,
+                toChannelId: channelID,
                 durationSeconds: nil,
                 messageContent: nil,
                 messageId: nil,
@@ -2114,21 +2113,15 @@ actor DiscordService {
                 authorIsBot: nil,
                 joinedAt: nil
             )
-        }
-
-        if let newChannel, let previousChannel, previousChannel != newChannel {
-            let joinedAt = voiceJoinTimeByMemberKey[memberKey] ?? now
-            let durationSeconds = Int(now.timeIntervalSince(joinedAt))
-            voiceChannelByMemberKey[memberKey] = newChannel
-            voiceJoinTimeByMemberKey[memberKey] = now
+        case .moved(let fromChannelID, let toChannelID, let durationSeconds):
             return VoiceRuleEvent(
                 kind: .move,
                 guildId: guildId,
                 userId: userId,
                 username: username,
-                channelId: newChannel,
-                fromChannelId: previousChannel,
-                toChannelId: newChannel,
+                channelId: toChannelID,
+                fromChannelId: fromChannelID,
+                toChannelId: toChannelID,
                 durationSeconds: durationSeconds,
                 messageContent: nil,
                 messageId: nil,
@@ -2144,20 +2137,14 @@ actor DiscordService {
                 authorIsBot: nil,
                 joinedAt: nil
             )
-        }
-
-        if newChannel == nil, let previousChannel {
-            let joinedAt = voiceJoinTimeByMemberKey[memberKey] ?? now
-            let durationSeconds = Int(now.timeIntervalSince(joinedAt))
-            voiceChannelByMemberKey[memberKey] = nil
-            voiceJoinTimeByMemberKey[memberKey] = nil
+        case .left(let channelID, let durationSeconds):
             return VoiceRuleEvent(
                 kind: .leave,
                 guildId: guildId,
                 userId: userId,
                 username: username,
-                channelId: previousChannel,
-                fromChannelId: previousChannel,
+                channelId: channelID,
+                fromChannelId: channelID,
                 toChannelId: nil,
                 durationSeconds: durationSeconds,
                 messageContent: nil,
@@ -2175,8 +2162,6 @@ actor DiscordService {
                 joinedAt: nil
             )
         }
-
-        return nil
     }
 
     private func parseMessageRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
