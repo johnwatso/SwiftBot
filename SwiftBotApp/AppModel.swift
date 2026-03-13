@@ -450,6 +450,7 @@ final class AppModel: ObservableObject {
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
     var serviceCallbacksConfigured = false
+    lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
     var uptimeTask: Task<Void, Never>?
     var joinTimes: [String: Date] = [:]
     var discordCacheSaveTask: Task<Void, Never>?

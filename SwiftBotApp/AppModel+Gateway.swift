@@ -2,63 +2,92 @@ import Foundation
 
 extension AppModel {
     func handlePayload(_ payload: GatewayPayload) async {
-        guard payload.op == 0, let eventName = payload.t else { return }
+        await gatewayEventDispatcher.dispatch(
+            payload,
+            shouldProcessPrimaryGatewayActions: shouldProcessPrimaryGatewayActions
+        )
+    }
 
+    func makeGatewayEventDispatcher() -> GatewayEventDispatcher {
+        GatewayEventDispatcher(
+            onEventReceived: { [weak self] eventName in
+                guard let self else { return }
+                await self.recordGatewayEvent(named: eventName)
+            },
+            onMessageCreate: { [weak self] raw in
+                await self?.handleMessageCreate(raw)
+            },
+            onMessageReactionAdd: { [weak self] raw in
+                await self?.handleMessageReactionAdd(raw)
+            },
+            onInteractionCreate: { [weak self] raw in
+                await self?.handleInteractionCreate(raw)
+            },
+            onVoiceStateUpdate: { [weak self] raw in
+                await self?.handleVoiceStateUpdateDispatch(raw)
+            },
+            onReady: { [weak self] raw, shouldRegisterSlashCommands in
+                await self?.handleReadyDispatch(raw, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
+            },
+            onGuildCreate: { [weak self] raw in
+                await self?.handleGuildCreateDispatch(raw)
+            },
+            onChannelCreate: { [weak self] raw in
+                await self?.handleChannelCreate(raw)
+            },
+            onMemberJoin: { [weak self] raw in
+                await self?.handleMemberJoin(raw)
+            },
+            onMemberLeave: { [weak self] raw in
+                await self?.handleMemberLeave(raw)
+            },
+            onGuildDelete: { [weak self] raw in
+                await self?.handleGuildDelete(raw)
+            }
+        )
+    }
+
+    private func recordGatewayEvent(named eventName: String) {
         gatewayEventCount += 1
         lastGatewayEventName = eventName
+    }
 
-        switch eventName {
-        case "MESSAGE_CREATE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMessageCreate(payload.d)
-        case "MESSAGE_REACTION_ADD":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMessageReactionAdd(payload.d)
-        case "INTERACTION_CREATE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleInteractionCreate(payload.d)
-        case "VOICE_STATE_UPDATE":
-            voiceStateEventCount += 1
-            await handleVoiceStateUpdate(payload.d)
-        case "READY":
-            readyEventCount += 1
-            // Clear any stale close-code state — a new READY means the gateway is healthy.
-            connectionDiagnostics.lastGatewayCloseCode = nil
-            if case let .object(map)? = payload.d,
-               case let .object(user)? = map["user"] {
-                if case let .string(id)? = user["id"] {
-                    botUserId = id
-                }
-                if case let .string(username)? = user["username"] {
-                    botUsername = username
-                }
-                if case let .string(discriminator)? = user["discriminator"] {
-                    botDiscriminator = discriminator != "0" ? discriminator : nil
-                }
-                if case let .string(avatarHash)? = user["avatar"] {
-                    botAvatarHash = avatarHash
-                }
-            }
-            await handleReady(payload.d)
-            logs.append("READY received")
-            if shouldProcessPrimaryGatewayActions {
-                await registerSlashCommandsIfNeeded()
-            }
-        case "GUILD_CREATE":
-            guildCreateEventCount += 1
-            await handleGuildCreate(payload.d)
-        case "CHANNEL_CREATE":
-            await handleChannelCreate(payload.d)
-        case "GUILD_MEMBER_ADD":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMemberJoin(payload.d)
-        case "GUILD_MEMBER_REMOVE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMemberLeave(payload.d)
-        case "GUILD_DELETE":
-            await handleGuildDelete(payload.d)
-        default:
-            break
+    private func handleVoiceStateUpdateDispatch(_ raw: DiscordJSON?) async {
+        voiceStateEventCount += 1
+        await handleVoiceStateUpdate(raw)
+    }
+
+    private func handleReadyDispatch(_ raw: DiscordJSON?, shouldRegisterSlashCommands: Bool) async {
+        readyEventCount += 1
+        connectionDiagnostics.lastGatewayCloseCode = nil
+        updateBotIdentity(from: raw)
+        await handleReady(raw)
+        logs.append("READY received")
+        if shouldRegisterSlashCommands {
+            await registerSlashCommandsIfNeeded()
+        }
+    }
+
+    private func handleGuildCreateDispatch(_ raw: DiscordJSON?) async {
+        guildCreateEventCount += 1
+        await handleGuildCreate(raw)
+    }
+
+    private func updateBotIdentity(from raw: DiscordJSON?) {
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"] else { return }
+
+        if case let .string(id)? = user["id"] {
+            botUserId = id
+        }
+        if case let .string(username)? = user["username"] {
+            botUsername = username
+        }
+        if case let .string(discriminator)? = user["discriminator"] {
+            botDiscriminator = discriminator != "0" ? discriminator : nil
+        }
+        if case let .string(avatarHash)? = user["avatar"] {
+            botAvatarHash = avatarHash
         }
     }
 
