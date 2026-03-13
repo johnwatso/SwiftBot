@@ -46,6 +46,16 @@ extension AppModel {
         } ?? false
     }
 
+    private func performOutputSideEffect(
+        action: String,
+        operation: () async -> Void
+    ) async {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            return
+        }
+        await operation()
+    }
+
     func sendPayload(
         channelId: String,
         payload: [String: Any],
@@ -57,7 +67,9 @@ extension AppModel {
     }
 
     func sendTypingIndicator(_ channelId: String) async {
-        await service.triggerTyping(channelId: channelId, token: settings.token)
+        await performOutputSideEffect(action: "triggerTyping") {
+            await service.triggerTyping(channelId: channelId, token: settings.token)
+        }
     }
 
     /// Runs AI generation with a typing indicator, a 10s soft notice, and a 30s hard timeout.
@@ -189,38 +201,26 @@ extension AppModel {
     }
 
     func removeOwnReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
-        do {
+        await performOutputAction(action: "removeOwnReaction") {
             try await service.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func pinMessage(channelId: String, messageId: String) async -> Bool {
-        do {
+        await performOutputAction(action: "pinMessage") {
             try await service.pinMessage(channelId: channelId, messageId: messageId, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func unpinMessage(channelId: String, messageId: String) async -> Bool {
-        do {
+        await performOutputAction(action: "unpinMessage") {
             try await service.unpinMessage(channelId: channelId, messageId: messageId, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
     func createThreadFromMessage(channelId: String, messageId: String, name: String) async -> Bool {
-        do {
+        await performOutputAction(action: "createThreadFromMessage") {
             try await service.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
