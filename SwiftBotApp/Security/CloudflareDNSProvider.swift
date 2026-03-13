@@ -1,6 +1,9 @@
 import Foundation
+import OSLog
 
 struct CloudflareDNSProvider: Sendable {
+    private static let logger = Logger(subsystem: "com.swiftbot", category: "security")
+
     private static let cloudflareDebugLoggingEnabled: Bool = {
         #if DEBUG
         true
@@ -356,7 +359,7 @@ struct CloudflareDNSProvider: Sendable {
             response = try decoder.decode(CloudflareZoneResponse.self, from: data)
         } catch {
             #if DEBUG
-            print("Cloudflare zone lookup decode error: \(error)")
+            Self.logger.debug("Cloudflare zone lookup decode error: \(error)")
             #endif
             throw Error.apiFailed("Cloudflare zone lookup failed.")
         }
@@ -412,7 +415,7 @@ struct CloudflareDNSProvider: Sendable {
             response = try decoder.decode(CloudflareDNSResponse.self, from: data)
         } catch {
             #if DEBUG
-            print("Cloudflare DNS record lookup decode error: \(error)")
+            Self.logger.debug("Cloudflare DNS record lookup decode error: \(error)")
             #endif
             throw Error.apiFailed("Cloudflare DNS lookup failed.")
         }

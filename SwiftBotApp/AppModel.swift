@@ -442,14 +442,34 @@ final class AppModel: ObservableObject {
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
-    let discordHTTPSession = URLSession(configuration: .default)
-    lazy var aiService = DiscordAIService(session: discordHTTPSession)
-    lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
-    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordHTTPSession)
-    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordHTTPSession)
-    lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
+    
+    /// Shared session for general Discord REST API calls (gateway, guild, message operations).
+    /// Uses default configuration for connection pooling and reuse.
+    let discordRESTSession = URLSession(configuration: .default)
+    
+    /// Dedicated session for Discord identity/token validation calls.
+    /// Uses ephemeral configuration: no disk cache, no credential storage, short timeout.
+    /// This ensures token validation responses are never cached and credentials aren't persisted.
+    private static let identitySessionConfig: URLSessionConfiguration = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 10
+        c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        c.urlCache = nil
+        return c
+    }()
+    let identitySession = URLSession(configuration: AppModel.identitySessionConfig)
+    
+    lazy var aiService = DiscordAIService(session: discordRESTSession)
+    lazy var identityRESTClient = DiscordIdentityRESTClient(
+        session: discordRESTSession,
+        identitySession: identitySession
+    )
+    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordRESTSession)
+    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordRESTSession)
+    lazy var wikiLookupService = WikiLookupService(session: discordRESTSession)
     lazy var service = DiscordService(
-        session: discordHTTPSession,
+        session: discordRESTSession,
+        identitySession: identitySession,
         aiService: aiService,
         wikiLookupService: wikiLookupService
     )
