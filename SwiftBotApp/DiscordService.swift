@@ -378,6 +378,7 @@ actor DiscordService {
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
     private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
+    private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
     private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
@@ -1357,24 +1358,11 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
-        let trimmedAppID = applicationID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAppID.isEmpty else { return }
-        var req = URLRequest(url: restBase.appendingPathComponent("applications/\(trimmedAppID)/commands"))
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: commands)
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to register slash commands",
-                    "responseBody": String(data: data, encoding: .utf8) ?? ""
-                ]
-            )
-        }
+        try await interactionRESTClient.registerGlobalApplicationCommands(
+            applicationID: applicationID,
+            commands: commands,
+            token: token
+        )
     }
 
     func registerGuildApplicationCommands(
@@ -1383,25 +1371,12 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
-        let trimmedAppID = applicationID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAppID.isEmpty, !trimmedGuildID.isEmpty else { return }
-        var req = URLRequest(url: restBase.appendingPathComponent("applications/\(trimmedAppID)/guilds/\(trimmedGuildID)/commands"))
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: commands)
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to register guild slash commands",
-                    "responseBody": String(data: data, encoding: .utf8) ?? ""
-                ]
-            )
-        }
+        try await interactionRESTClient.registerGuildApplicationCommands(
+            applicationID: applicationID,
+            guildID: guildID,
+            commands: commands,
+            token: token
+        )
     }
 
     func respondToInteraction(
@@ -1413,21 +1388,11 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: respondToInteraction blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        var req = URLRequest(url: restBase.appendingPathComponent("interactions/\(interactionID)/\(interactionToken)/callback"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to respond to interaction",
-                    "responseBody": String(data: data, encoding: .utf8) ?? ""
-                ]
-            )
-        }
+        try await interactionRESTClient.respondToInteraction(
+            interactionID: interactionID,
+            interactionToken: interactionToken,
+            payload: payload
+        )
     }
 
     func editOriginalInteractionResponse(
@@ -1447,21 +1412,11 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
-        var req = URLRequest(url: restBase.appendingPathComponent("webhooks/\(applicationID)/\(interactionToken)/messages/@original"))
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to edit interaction response",
-                    "responseBody": String(data: data, encoding: .utf8) ?? ""
-                ]
-            )
-        }
+        try await interactionRESTClient.editOriginalInteractionResponse(
+            applicationID: applicationID,
+            interactionToken: interactionToken,
+            payload: payload
+        )
     }
 
     func fetchFinalsMetaFromSkycoach() async -> String? {
@@ -2115,16 +2070,7 @@ actor DiscordService {
     }
 
     func sendWebhook(url: String, content: String) async throws {
-        guard let webhookUrl = URL(string: url) else { return }
-        var req = URLRequest(url: webhookUrl)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["content": content])
-        
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to send webhook"])
-        }
+        try await interactionRESTClient.sendWebhook(url: url, content: content)
     }
 
     private func parseUsername(from map: [String: DiscordJSON], userId: String) -> String {
