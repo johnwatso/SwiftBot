@@ -35,6 +35,27 @@ struct GatewayGuildDeleteEvent: Sendable {
     let guildID: String
 }
 
+struct GatewayInteractionCreateEvent {
+    let interactionID: String
+    let interactionToken: String
+    let commandName: String
+    let data: [String: DiscordJSON]
+    let rawMap: [String: DiscordJSON]
+}
+
+struct GatewayMemberJoinEvent: Sendable {
+    let guildID: String
+    let userID: String
+    let rawUsername: String
+    let joinedAt: Date?
+}
+
+struct GatewayMemberLeaveEvent: Sendable {
+    let guildID: String
+    let userID: String
+    let username: String
+}
+
 actor GatewayEventDispatcher {
     typealias EventRecorder = (String) async -> Void
     typealias PayloadHandler = (DiscordJSON?) async -> Void
@@ -42,30 +63,33 @@ actor GatewayEventDispatcher {
     typealias GuildCreateHandler = (GatewayGuildCreateEvent) async -> Void
     typealias ChannelCreateHandler = (GatewayChannelCreateEvent) async -> Void
     typealias GuildDeleteHandler = (GatewayGuildDeleteEvent) async -> Void
+    typealias InteractionCreateHandler = (GatewayInteractionCreateEvent) async -> Void
+    typealias MemberJoinHandler = (GatewayMemberJoinEvent) async -> Void
+    typealias MemberLeaveHandler = (GatewayMemberLeaveEvent) async -> Void
 
     private let onEventReceived: EventRecorder
     private let onMessageCreate: PayloadHandler
     private let onMessageReactionAdd: PayloadHandler
-    private let onInteractionCreate: PayloadHandler
+    private let onInteractionCreate: InteractionCreateHandler
     private let onVoiceStateUpdate: PayloadHandler
     private let onReady: ReadyHandler
     private let onGuildCreate: GuildCreateHandler
     private let onChannelCreate: ChannelCreateHandler
-    private let onMemberJoin: PayloadHandler
-    private let onMemberLeave: PayloadHandler
+    private let onMemberJoin: MemberJoinHandler
+    private let onMemberLeave: MemberLeaveHandler
     private let onGuildDelete: GuildDeleteHandler
 
     init(
         onEventReceived: @escaping EventRecorder,
         onMessageCreate: @escaping PayloadHandler,
         onMessageReactionAdd: @escaping PayloadHandler,
-        onInteractionCreate: @escaping PayloadHandler,
+        onInteractionCreate: @escaping InteractionCreateHandler,
         onVoiceStateUpdate: @escaping PayloadHandler,
         onReady: @escaping ReadyHandler,
         onGuildCreate: @escaping GuildCreateHandler,
         onChannelCreate: @escaping ChannelCreateHandler,
-        onMemberJoin: @escaping PayloadHandler,
-        onMemberLeave: @escaping PayloadHandler,
+        onMemberJoin: @escaping MemberJoinHandler,
+        onMemberLeave: @escaping MemberLeaveHandler,
         onGuildDelete: @escaping GuildDeleteHandler
     ) {
         self.onEventReceived = onEventReceived
@@ -95,7 +119,8 @@ actor GatewayEventDispatcher {
             await onMessageReactionAdd(payload.d)
         case "INTERACTION_CREATE":
             guard shouldProcessPrimaryGatewayActions else { return }
-            await onInteractionCreate(payload.d)
+            guard let interactionCreateEvent = parseInteractionCreateEvent(from: payload.d) else { return }
+            await onInteractionCreate(interactionCreateEvent)
         case "VOICE_STATE_UPDATE":
             await onVoiceStateUpdate(payload.d)
         case "READY":
@@ -109,10 +134,12 @@ actor GatewayEventDispatcher {
             await onChannelCreate(channelCreateEvent)
         case "GUILD_MEMBER_ADD":
             guard shouldProcessPrimaryGatewayActions else { return }
-            await onMemberJoin(payload.d)
+            guard let memberJoinEvent = parseMemberJoinEvent(from: payload.d) else { return }
+            await onMemberJoin(memberJoinEvent)
         case "GUILD_MEMBER_REMOVE":
             guard shouldProcessPrimaryGatewayActions else { return }
-            await onMemberLeave(payload.d)
+            guard let memberLeaveEvent = parseMemberLeaveEvent(from: payload.d) else { return }
+            await onMemberLeave(memberLeaveEvent)
         case "GUILD_DELETE":
             guard let guildDeleteEvent = parseGuildDeleteEvent(from: payload.d) else { return }
             await onGuildDelete(guildDeleteEvent)
@@ -201,6 +228,73 @@ actor GatewayEventDispatcher {
         guard case let .object(map)? = raw,
               let guildID = stringValue(for: "id", in: map) else { return nil }
         return GatewayGuildDeleteEvent(guildID: guildID)
+    }
+
+    private func parseInteractionCreateEvent(from raw: DiscordJSON?) -> GatewayInteractionCreateEvent? {
+        guard case let .object(map)? = raw,
+              let interactionID = stringValue(for: "id", in: map),
+              let interactionToken = stringValue(for: "token", in: map),
+              case let .int(kind)? = map["type"], kind == 2,
+              case let .object(data)? = map["data"],
+              let commandName = stringValue(for: "name", in: data) else {
+            return nil
+        }
+
+        return GatewayInteractionCreateEvent(
+            interactionID: interactionID,
+            interactionToken: interactionToken,
+            commandName: commandName,
+            data: data,
+            rawMap: map
+        )
+    }
+
+    private func parseMemberJoinEvent(from raw: DiscordJSON?) -> GatewayMemberJoinEvent? {
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"],
+              let userID = stringValue(for: "id", in: user),
+              let guildID = stringValue(for: "guild_id", in: map) else {
+            return nil
+        }
+
+        let rawUsername = stringValue(for: "global_name", in: user)
+            ?? stringValue(for: "username", in: user)
+            ?? "Unknown"
+
+        let joinedAt: Date?
+        if let dateStr = stringValue(for: "joined_at", in: map) {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            joinedAt = formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr)
+        } else {
+            joinedAt = nil
+        }
+
+        return GatewayMemberJoinEvent(
+            guildID: guildID,
+            userID: userID,
+            rawUsername: rawUsername,
+            joinedAt: joinedAt
+        )
+    }
+
+    private func parseMemberLeaveEvent(from raw: DiscordJSON?) -> GatewayMemberLeaveEvent? {
+        guard case let .object(map)? = raw,
+              case let .object(user)? = map["user"],
+              let userID = stringValue(for: "id", in: user),
+              let guildID = stringValue(for: "guild_id", in: map) else {
+            return nil
+        }
+
+        let username = stringValue(for: "global_name", in: user)
+            ?? stringValue(for: "username", in: user)
+            ?? "Unknown"
+
+        return GatewayMemberLeaveEvent(
+            guildID: guildID,
+            userID: userID,
+            username: username
+        )
     }
 
     private func stringValue(for key: String, in map: [String: DiscordJSON]) -> String? {
