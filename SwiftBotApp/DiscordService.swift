@@ -16,6 +16,7 @@ actor DiscordService {
 
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
+    private let session: URLSession
     private var botToken: String?
     private var ruleEngine: RuleEngine?
     private var voiceRuleStateStore = VoiceRuleStateStore()
@@ -23,7 +24,7 @@ actor DiscordService {
     private var channelTypeById: [String: Int] = [:]
     private var guildNamesById: [String: String] = [:]
     private var guildOwnerIdByGuild: [String: String] = [:]
-    private lazy var aiService = DiscordAIService(session: session)
+    private let aiService: DiscordAIService
     private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
     private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
     private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
@@ -81,14 +82,12 @@ actor DiscordService {
             }
         )
     )
-    private lazy var wikiLookupService = WikiLookupService(session: session)
+    private let wikiLookupService: WikiLookupService
     private lazy var gatewayConnection = DiscordGatewayConnection(session: session, gatewayURL: gatewayURL)
     private var gatewayCallbacksConfigured = false
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
-
-    private let session = URLSession(configuration: .default)
 
     /// Dedicated session for Discord identity probes (/users/@me, /oauth2/applications/@me).
     /// Short timeout, no caching — token never cached locally.
@@ -100,6 +99,16 @@ actor DiscordService {
         return c
     }()
     private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
+
+    init(
+        session: URLSession = URLSession(configuration: .default),
+        aiService: DiscordAIService? = nil,
+        wikiLookupService: WikiLookupService? = nil
+    ) {
+        self.session = session
+        self.aiService = aiService ?? DiscordAIService(session: session)
+        self.wikiLookupService = wikiLookupService ?? WikiLookupService(session: session)
+    }
 
     var onPayload: ((GatewayPayload) async -> Void)?
     var onConnectionState: ((BotStatus) async -> Void)?
@@ -160,73 +169,9 @@ actor DiscordService {
         historyProvider = provider
     }
 
-    func configureLocalAIDMReplies(
-        enabled: Bool,
-        provider: AIProvider,
-        preferredProvider: AIProviderPreference,
-        endpoint: String,
-        model: String,
-        openAIAPIKey: String,
-        openAIModel: String,
-        systemPrompt: String
-    ) async {
-        await aiService.configureLocalAIDMReplies(
-            enabled: enabled,
-            provider: provider,
-            preferredProvider: preferredProvider,
-            endpoint: endpoint,
-            model: model,
-            openAIAPIKey: openAIAPIKey,
-            openAIModel: openAIModel,
-            systemPrompt: systemPrompt
-        )
-    }
-
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
     func wasMessageHandledByRules(messageId: String) -> Bool {
         ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
-    }
-
-    func detectOllamaModel(baseURL: String) async -> String? {
-        await aiService.detectOllamaModel(baseURL: baseURL)
-    }
-
-    func currentAIStatus(ollamaBaseURL: String, ollamaModelHint: String?, openAIAPIKey: String) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?, openAIOnline: Bool) {
-        await aiService.currentAIStatus(
-            ollamaBaseURL: ollamaBaseURL,
-            ollamaModelHint: ollamaModelHint,
-            openAIAPIKey: openAIAPIKey
-        )
-    }
-
-    func generateSmartDMReply(
-        messages: [Message],
-        serverName: String? = nil,
-        channelName: String? = nil,
-        wikiContext: String? = nil
-    ) async -> String? {
-        await aiService.generateSmartDMReply(
-            messages: messages,
-            serverName: serverName,
-            channelName: channelName,
-            wikiContext: wikiContext
-        )
-    }
-
-    /// Generates an AI-rewritten help response. Not gated by `localAIDMReplyEnabled` — the
-    /// caller controls whether AI help is attempted via `HelpSettings.mode`.
-    /// Tries primary → secondary provider; returns nil if both are unavailable (caller falls
-    /// back to deterministic catalog text).
-    func generateHelpReply(messages: [Message], systemPrompt: String) async -> String? {
-        await aiService.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
-    }
-
-    func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
-        await wikiLookupService.lookupWiki(query: query, source: source)
-    }
-
-    func lookupFinalsWiki(query: String) async -> FinalsWikiLookupResult? {
-        await wikiLookupService.lookupFinalsWiki(query: query)
     }
 
     func connect(token: String) async {
@@ -488,10 +433,6 @@ actor DiscordService {
         )
     }
 
-    func fetchFinalsMetaFromSkycoach() async -> String? {
-        await wikiLookupService.fetchFinalsMetaFromSkycoach()
-    }
-
     func sendMessageReturningID(channelId: String, content: String, token: String) async throws -> String {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
@@ -574,10 +515,6 @@ actor DiscordService {
             filename: filename,
             token: token
         )
-    }
-
-    func generateOpenAIImage(prompt: String, apiKey: String, model: String) async -> Data? {
-        await aiService.generateOpenAIImage(prompt: prompt, apiKey: apiKey, model: model)
     }
 
     /// Sends a typing indicator to the given channel. Fire-and-forget; errors are silently discarded.

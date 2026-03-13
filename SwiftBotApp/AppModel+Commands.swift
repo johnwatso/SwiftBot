@@ -125,7 +125,7 @@ extension AppModel {
         let placeholderText = "🎨 Generating image for @\(username)…"
         let placeholderId = await sendMessageReturningID(channelId: channelId, content: placeholderText)
 
-        guard let imageData = await service.generateOpenAIImage(prompt: cleanedPrompt, apiKey: apiKey, model: model) else {
+        guard let imageData = await aiService.generateOpenAIImage(prompt: cleanedPrompt, apiKey: apiKey, model: model) else {
             if let placeholderId {
                 _ = await editMessage(channelId: channelId, messageId: placeholderId, content: "❌ Image generation failed. Please try a different prompt.")
             } else {
