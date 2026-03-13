@@ -451,8 +451,8 @@ final class AppModel: ObservableObject {
     let wikiContextCache = WikiContextCache()
     var serviceCallbacksConfigured = false
     lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
+    let voicePresenceStore = VoicePresenceStore()
     var uptimeTask: Task<Void, Never>?
-    var joinTimes: [String: Date] = [:]
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?
     let conversationStore = ConversationStore()
@@ -2192,8 +2192,7 @@ final class AppModel: ObservableObject {
 
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         gatewayEventCount = 0
@@ -2310,8 +2309,7 @@ final class AppModel: ObservableObject {
         // Step 2: clear runtime state (mirrors stopBot without fire-and-forget disconnect).
         uptimeTask?.cancel()
         uptime = nil
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"
@@ -4128,8 +4126,7 @@ final class AppModel: ObservableObject {
         clusterNodesRefreshTask = nil
         uptimeTask?.cancel()
         uptime = nil
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"
@@ -4865,8 +4862,7 @@ final class AppModel: ObservableObject {
     func handleGuildDelete(_ event: GatewayGuildDeleteEvent) async {
         await discordCache.removeGuild(id: event.guildID)
         await syncPublishedDiscordCacheFromService()
-        activeVoice.removeAll { $0.guildId == event.guildID }
-        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(event.guildID)-") }
+        await clearVoicePresence(guildID: event.guildID)
         scheduleDiscordCacheSave()
     }
 
@@ -4887,10 +4883,8 @@ final class AppModel: ObservableObject {
     func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {
         guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
 
-        activeVoice.removeAll { $0.guildId == guildId }
-        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
-
         let now = Date()
+        var snapshot: [VoiceMemberPresence] = []
         for state in voiceStates {
             guard case let .object(stateMap) = state,
                   case let .string(userId)? = stateMap["user_id"],
@@ -4914,9 +4908,8 @@ final class AppModel: ObservableObject {
             let username = await voiceDisplayName(from: stateMap, userId: userId)
             let key = "\(guildId)-\(userId)"
             let joinedAt = now
-            joinTimes[key] = joinedAt
 
-            activeVoice.append(
+            snapshot.append(
                 VoiceMemberPresence(
                     id: key,
                     userId: userId,
@@ -4928,6 +4921,8 @@ final class AppModel: ObservableObject {
                 )
             )
         }
+
+        activeVoice = await voicePresenceStore.syncGuildSnapshot(guildId, members: snapshot)
     }
 
     func cacheGuildMembers(from guildMap: [String: DiscordJSON]) async {
