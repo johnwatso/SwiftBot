@@ -23,7 +23,6 @@ actor DiscordService {
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
     private var guildNamesById: [String: String] = [:]
-    private var guildOwnerIdByGuild: [String: String] = [:]
     private let aiService: DiscordAIService
     private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
     private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
@@ -272,40 +271,6 @@ actor DiscordService {
         components.percentEncodedQuery = query
 
         return components.url?.absoluteString
-    }
-
-    /// Returns the guild owner_id for permission-sensitive commands.
-    /// Uses an in-memory cache and falls back to GET /guilds/{guild.id} when needed.
-    func guildOwnerID(guildID: String) async -> String? {
-        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedGuildID.isEmpty else { return nil }
-
-        if let cached = guildOwnerIdByGuild[trimmedGuildID], !cached.isEmpty {
-            return cached
-        }
-
-        guard let token = botToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
-            return nil
-        }
-
-        if let ownerID = await identityRESTClient.fetchGuildOwnerID(guildID: trimmedGuildID, token: token) {
-            guildOwnerIdByGuild[trimmedGuildID] = ownerID
-            return ownerID
-        }
-        return nil
-    }
-
-    /// Returns role IDs for a guild member using GET /guilds/{guild.id}/members/{user.id}.
-    /// This is used as a fallback for permission checks when gateway payloads do not include `member`.
-    func guildMemberRoleIDs(guildID: String, userID: String) async -> [String]? {
-        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedGuildID.isEmpty, !trimmedUserID.isEmpty else { return nil }
-
-        guard let token = botToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
-            return nil
-        }
-        return await identityRESTClient.fetchGuildMemberRoleIDs(guildID: trimmedGuildID, userID: trimmedUserID, token: token)
     }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
