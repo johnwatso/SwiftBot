@@ -443,6 +443,7 @@ final class AppModel: ObservableObject {
     let discordCache = DiscordCache()
     let discordHTTPSession = URLSession(configuration: .default)
     lazy var aiService = DiscordAIService(session: discordHTTPSession)
+    lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
     lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
     lazy var service = DiscordService(
         session: discordHTTPSession,
@@ -2186,7 +2187,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let tokenValidation = await service.validateBotTokenRich(token)
+        let tokenValidation = await identityRESTClient.validateBotTokenRich(token)
         lastTokenValidationResult = tokenValidation
         guard tokenValidation.isValid else {
             status = .stopped
@@ -2249,10 +2250,10 @@ final class AppModel: ObservableObject {
         settings.launchMode = .standaloneBot
         let token = normalizedDiscordToken(from: settings.token)
         guard !token.isEmpty else { return false }
-        let result = await service.validateBotTokenRich(token)
+        let result = await identityRESTClient.validateBotTokenRich(token)
         lastTokenValidationResult = result
         guard result.isValid else { return false }
-        let cid = await service.resolveClientID(token: token, fallbackUserID: result.userId)
+        let cid = await resolveClientID(token: token, fallbackUserID: result.userId)
         resolvedClientID = cid
         return true
     }
@@ -2344,6 +2345,17 @@ final class AppModel: ObservableObject {
         isOnboardingComplete = false
     }
 
+    private func resolveClientID(token: String, fallbackUserID: String?) async -> String? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallbackUserID }
+
+        if let appID = await identityRESTClient.resolveClientID(token: trimmed) {
+            return appID
+        }
+
+        return fallbackUserID
+    }
+
     /// Generates a Discord invite URL for the bot, resolving/storing client ID on demand.
     func generateInviteURL(includeSlashCommands: Bool? = nil) async -> String? {
         let cid: String
@@ -2352,18 +2364,18 @@ final class AppModel: ObservableObject {
         } else {
             let token = normalizedDiscordToken(from: settings.token)
             guard !token.isEmpty else { return nil }
-            let resolved = await service.resolveClientID(token: token, fallbackUserID: nil)
+            let resolved = await resolveClientID(token: token, fallbackUserID: nil)
             if let resolved {
                 resolvedClientID = resolved
                 cid = resolved
             } else {
-                let validation = await service.validateBotTokenRich(token)
+                let validation = await identityRESTClient.validateBotTokenRich(token)
                 guard validation.isValid else {
                     lastTokenValidationResult = validation
                     return nil
                 }
                 lastTokenValidationResult = validation
-                guard let fallback = await service.resolveClientID(token: token, fallbackUserID: validation.userId) else {
+                guard let fallback = await resolveClientID(token: token, fallbackUserID: validation.userId) else {
                     return nil
                 }
                 resolvedClientID = fallback
@@ -2403,7 +2415,7 @@ final class AppModel: ObservableObject {
             connectionDiagnostics.restHealth = .error(0, "No token")
             return
         }
-        let (isOK, httpStatus, remaining) = await service.restHealthProbe(token: token)
+        let (isOK, httpStatus, remaining) = await identityRESTClient.restHealthProbe(token: token)
         let now = Date()
         connectionDiagnostics.lastTestAt = now
         connectionDiagnostics.rateLimitRemaining = remaining

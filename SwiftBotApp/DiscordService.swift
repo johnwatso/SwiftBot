@@ -249,51 +249,6 @@ actor DiscordService {
 
     }
 
-    /// Validates a bot token against Discord's /users/@me endpoint.
-    /// Returns a rich result including bot identity on success.
-    /// Token is never logged; OSLog uses privacy: .private throughout.
-    func validateBotTokenRich(_ token: String) async -> TokenValidationResult {
-        let result = await identityRESTClient.validateBotTokenRich(token)
-        if result.isValid {
-            discordLogger.info("Token validation succeeded for user \(result.userId ?? "unknown", privacy: .private)")
-            return result
-        }
-
-        switch result.errorCategory {
-        case .invalidToken:
-            discordLogger.warning("Token validation: 401 unauthorized")
-        case .rateLimited:
-            discordLogger.warning("Token validation: 429 rate limited")
-        case .serverError(let statusCode):
-            discordLogger.warning("Token validation: unexpected HTTP \(statusCode, privacy: .public)")
-        case .networkFailure:
-            discordLogger.warning("Token validation: network failure")
-        case nil:
-            discordLogger.warning("Token validation failed without an error category")
-        }
-
-        return result
-    }
-
-    /// Resolves the bot's application client_id via /oauth2/applications/@me.
-    /// Falls back to the userId from token validation if the endpoint is unavailable.
-    func resolveClientID(token: String, fallbackUserID: String?) async -> String? {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return fallbackUserID }
-
-        if let appID = await identityRESTClient.resolveClientID(token: trimmed) {
-            discordLogger.info("Resolved client_id from /oauth2/applications/@me")
-            return appID
-        }
-
-        // Fallback: use the user ID from /users/@me (same value for bots).
-        if let fallback = fallbackUserID {
-            discordLogger.info("Using userId as client_id fallback")
-            return fallback
-        }
-        return nil
-    }
-
     /// Generates a Discord OAuth2 bot invite URL using URLComponents (no manual string concatenation).
     /// - Parameters:
     ///   - clientId: The bot's application ID.
@@ -317,12 +272,6 @@ actor DiscordService {
         components.percentEncodedQuery = query
 
         return components.url?.absoluteString
-    }
-
-    /// Runs a REST health probe against GET /users/@me.
-    /// Returns: ok flag, HTTP status code, and the X-RateLimit-Remaining header value.
-    func restHealthProbe(token: String) async -> (isOK: Bool, httpStatus: Int?, rateLimitRemaining: Int?) {
-        await identityRESTClient.restHealthProbe(token: token)
     }
 
     /// Returns the guild owner_id for permission-sensitive commands.
