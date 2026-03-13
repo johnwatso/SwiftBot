@@ -1598,6 +1598,80 @@ struct MeshSyncedFile: Codable, Hashable {
     let base64Data: String
 }
 
+/// A lightweight snapshot of all user-configurable settings, used to detect unsaved changes in the UI.
+struct AppPreferencesSnapshot: Equatable {
+    // General
+    var token = ""
+    var prefix = "/"
+    var autoStart = false
+    
+    // SwiftMesh
+    var clusterMode: ClusterMode = .standalone
+    var clusterNodeName = ""
+    var clusterLeaderAddress = ""
+    var clusterLeaderPort = 38787
+    var clusterListenPort = 38787
+    var clusterSharedSecret = ""
+    var clusterWorkerOffloadEnabled = false
+    var clusterOffloadAIReplies = false
+    var clusterOffloadWikiLookups = false
+    
+    // Media Library
+    var mediaSourcesJSON = ""
+    
+    // Admin Web UI
+    var adminWebEnabled = false
+    var adminWebHost = ""
+    var adminWebPort = 38888
+    var adminWebBaseURL = ""
+    var adminWebHTTPSEnabled = false
+    var adminWebCertificateMode: AdminWebUICertificateMode = .automatic
+    var adminWebHostname = ""
+    var adminWebCloudflareToken = ""
+    var adminWebPublicAccessEnabled = false
+    var adminWebImportedCertificateFile = ""
+    var adminWebImportedPrivateKeyFile = ""
+    var adminWebImportedCertificateChainFile = ""
+    var adminLocalAuthEnabled = false
+    var adminLocalAuthUsername = ""
+    var adminLocalAuthPassword = ""
+    var adminRestrictSpecificUsers = false
+    var adminDiscordClientID = ""
+    var adminDiscordClientSecret = ""
+    var adminAllowedUserIDs = ""
+    var adminRedirectPath = ""
+    
+    // AI Bots
+    var localAIDMReplyEnabled = false
+    var useAIInGuildChannels = false
+    var allowDMs = false
+    var preferredAIProvider: AIProviderPreference = .apple
+    var ollamaBaseURL = ""
+    var ollamaModel = ""
+    var ollamaEnabled = false
+    var openAIEnabled = false
+    var openAIAPIKey = ""
+    var openAIModel = ""
+    var openAIImageGenerationEnabled = false
+    var openAIImageModel = ""
+    var openAIImageMonthlyLimitPerUser = 0
+    var localAISystemPrompt = ""
+    
+    // Developer & Bug Auto-Fix
+    var devFeaturesEnabled = false
+    var bugAutoFixEnabled = false
+    var bugAutoFixTriggerEmoji = "🤖"
+    var bugAutoFixCommandTemplate = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
+    var bugAutoFixRepoPath = ""
+    var bugAutoFixGitBranch = "main"
+    var bugAutoFixVersionBumpEnabled = true
+    var bugAutoFixPushEnabled = true
+    var bugAutoFixRequireApproval = true
+    var bugAutoFixApproveEmoji = "🚀"
+    var bugAutoFixRejectEmoji = "🛑"
+    var bugAutoFixAllowedUsernames = ""
+}
+
 struct MeshSyncedFilesPayload: Codable, Hashable {
     let generatedAt: Date
     let files: [MeshSyncedFile]

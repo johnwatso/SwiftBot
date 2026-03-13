@@ -2576,6 +2576,79 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Creates a complete snapshot of current configuration for change detection in the UI.
+    func createPreferencesSnapshot() -> AppPreferencesSnapshot {
+        AppPreferencesSnapshot(
+            token: settings.token,
+            prefix: settings.prefix,
+            autoStart: settings.autoStart,
+            clusterMode: settings.clusterMode,
+            clusterNodeName: settings.clusterNodeName,
+            clusterLeaderAddress: settings.clusterLeaderAddress,
+            clusterLeaderPort: settings.clusterLeaderPort,
+            clusterListenPort: settings.clusterListenPort,
+            clusterSharedSecret: settings.clusterSharedSecret,
+            clusterWorkerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
+            clusterOffloadAIReplies: settings.clusterOffloadAIReplies,
+            clusterOffloadWikiLookups: settings.clusterOffloadWikiLookups,
+            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
+            adminWebEnabled: settings.adminWebUI.enabled,
+            adminWebHost: settings.adminWebUI.bindHost,
+            adminWebPort: settings.adminWebUI.port,
+            adminWebBaseURL: settings.adminWebUI.publicBaseURL,
+            adminWebHTTPSEnabled: settings.adminWebUI.httpsEnabled,
+            adminWebCertificateMode: settings.adminWebUI.certificateMode,
+            adminWebHostname: settings.adminWebUI.hostname,
+            adminWebCloudflareToken: settings.adminWebUI.cloudflareAPIToken,
+            adminWebPublicAccessEnabled: settings.adminWebUI.publicAccessEnabled,
+            adminWebImportedCertificateFile: settings.adminWebUI.importedCertificateFile,
+            adminWebImportedPrivateKeyFile: settings.adminWebUI.importedPrivateKeyFile,
+            adminWebImportedCertificateChainFile: settings.adminWebUI.importedCertificateChainFile,
+            adminLocalAuthEnabled: settings.adminWebUI.localAuthEnabled,
+            adminLocalAuthUsername: settings.adminWebUI.localAuthUsername,
+            adminLocalAuthPassword: settings.adminWebUI.localAuthPassword,
+            adminRestrictSpecificUsers: settings.adminWebUI.restrictAccessToSpecificUsers,
+            adminDiscordClientID: settings.adminWebUI.discordClientID,
+            adminDiscordClientSecret: settings.adminWebUI.discordClientSecret,
+            adminAllowedUserIDs: settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
+            adminRedirectPath: settings.adminWebUI.redirectPath,
+            localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
+            useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
+            allowDMs: settings.behavior.allowDMs,
+            preferredAIProvider: settings.preferredAIProvider,
+            ollamaBaseURL: settings.ollamaBaseURL,
+            ollamaModel: settings.localAIModel,
+            ollamaEnabled: settings.ollamaEnabled,
+            openAIEnabled: settings.openAIEnabled,
+            openAIAPIKey: settings.openAIAPIKey,
+            openAIModel: settings.openAIModel,
+            openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
+            openAIImageModel: settings.openAIImageModel,
+            openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser,
+            localAISystemPrompt: settings.localAISystemPrompt,
+            devFeaturesEnabled: settings.devFeaturesEnabled,
+            bugAutoFixEnabled: settings.bugAutoFixEnabled,
+            bugAutoFixTriggerEmoji: settings.bugAutoFixTriggerEmoji,
+            bugAutoFixCommandTemplate: settings.bugAutoFixCommandTemplate,
+            bugAutoFixRepoPath: settings.bugAutoFixRepoPath,
+            bugAutoFixGitBranch: settings.bugAutoFixGitBranch,
+            bugAutoFixVersionBumpEnabled: settings.bugAutoFixVersionBumpEnabled,
+            bugAutoFixPushEnabled: settings.bugAutoFixPushEnabled,
+            bugAutoFixRequireApproval: settings.bugAutoFixRequireApproval,
+            bugAutoFixApproveEmoji: settings.bugAutoFixApproveEmoji,
+            bugAutoFixRejectEmoji: settings.bugAutoFixRejectEmoji,
+            bugAutoFixAllowedUsernames: settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
+        )
+    }
+
+    private func mediaSourcesSnapshotJSON() -> String {
+        guard let data = try? JSONEncoder().encode(mediaLibrarySettings.sources),
+              let text = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return text
+    }
+
     func adminWebOverviewSnapshot() -> AdminWebOverviewPayload {
         let enabledWikiSourceCount = settings.wikiBot.sources.filter(\.enabled).count
         let patchyTargetCount = settings.patchy.sourceTargets.count
