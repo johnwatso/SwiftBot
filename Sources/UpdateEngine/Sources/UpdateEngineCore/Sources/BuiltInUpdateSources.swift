@@ -54,11 +54,14 @@ public struct AMDUpdateSource: UpdateSource, Sendable {
 
 /// Intel Arc driver update source.
 public struct IntelUpdateSource: UpdateSource, Sendable {
-    public var cacheKey: String { "intel-default" }
-    public var sourceKey: String { cacheKey }
+    public let sourceKey: String
     private let service: IntelService
 
-    public init(service: IntelService = IntelService()) {
+    public init(
+        sourceKey: String = CacheKeyBuilder.build(vendor: "Intel", channel: "default"),
+        service: IntelService = IntelService()
+    ) {
+        self.sourceKey = sourceKey
         self.service = service
     }
 

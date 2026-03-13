@@ -378,6 +378,7 @@ final class AppModel: ObservableObject {
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
+    private var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
     @Published var bugAutoFixStatusText: String = "Idle"
     @Published var bugAutoFixConsoleText: String = ""
     @Published private(set) var adminWebResolvedBaseURL: String = ""
@@ -441,7 +442,17 @@ final class AppModel: ObservableObject {
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
-    let service = DiscordService()
+    let discordHTTPSession = URLSession(configuration: .default)
+    lazy var aiService = DiscordAIService(session: discordHTTPSession)
+    lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
+    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordHTTPSession)
+    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordHTTPSession)
+    lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
+    lazy var service = DiscordService(
+        session: discordHTTPSession,
+        aiService: aiService,
+        wikiLookupService: wikiLookupService
+    )
     let cluster = ClusterCoordinator()
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
@@ -449,9 +460,12 @@ final class AppModel: ObservableObject {
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
+    var guildOwnerIdByGuild: [String: String] = [:]
     var serviceCallbacksConfigured = false
+    lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
+    lazy var commandProcessor = makeCommandProcessor()
+    let voicePresenceStore = VoicePresenceStore()
     var uptimeTask: Task<Void, Never>?
-    var joinTimes: [String: Date] = [:]
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?
     let conversationStore = ConversationStore()
@@ -665,7 +679,7 @@ final class AppModel: ObservableObject {
             await cluster.configureHandlers(
                 aiHandler: { [weak self] messages, serverName, channelName, wikiContext in
                     guard let self else { return nil }
-                    return await self.service.generateSmartDMReply(
+                    return await self.aiService.generateSmartDMReply(
                         messages: messages,
                         serverName: serverName,
                         channelName: channelName,
@@ -674,7 +688,7 @@ final class AppModel: ObservableObject {
                 },
                 wikiHandler: { [weak self] query, source in
                     guard let self else { return nil }
-                    return await self.service.lookupWiki(query: query, source: source)
+                    return await self.wikiLookupService.lookupWiki(query: query, source: source)
                 },
                 onSnapshot: { [weak self] snapshot in
                     let model = self
@@ -735,7 +749,7 @@ final class AppModel: ObservableObject {
                     }
                 }
             )
-            await service.configureLocalAIDMReplies(
+            await aiService.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
                 provider: settings.localAIProvider,
                 preferredProvider: settings.preferredAIProvider,
@@ -841,7 +855,7 @@ final class AppModel: ObservableObject {
             }
 
             if self.usesLocalRuntime {
-                await service.configureLocalAIDMReplies(
+                await aiService.configureLocalAIDMReplies(
                     enabled: settings.localAIDMReplyEnabled,
                     provider: settings.localAIProvider,
                     preferredProvider: settings.preferredAIProvider,
@@ -1640,10 +1654,7 @@ final class AppModel: ObservableObject {
 
         let matchedRules = ruleEngine.evaluateRules(event: event)
         for rule in matchedRules {
-            var context = PipelineContext()
-            for action in rule.processedActions {
-                await service.execute(action: action, for: event, context: &context)
-            }
+            _ = await service.executeRulePipeline(actions: rule.processedActions, for: event, isDirectMessage: event.isDirectMessage)
         }
     }
 
@@ -1658,7 +1669,7 @@ final class AppModel: ObservableObject {
     func detectOllamaModel() {
         let base = normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
         Task {
-            guard let model = await service.detectOllamaModel(baseURL: base) else {
+            guard let model = await aiService.detectOllamaModel(baseURL: base) else {
                 await MainActor.run {
                     self.logs.append("⚠️ Ollama model auto-detect failed.")
                 }
@@ -1678,7 +1689,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAIStatus() async {
-        let status = await service.currentAIStatus(
+        let status = await aiService.currentAIStatus(
             ollamaBaseURL: normalizedOllamaBaseURL(from: settings.ollamaBaseURL),
             ollamaModelHint: settings.localAIModel,
             openAIAPIKey: effectiveOpenAIAPIKey()
@@ -1753,7 +1764,7 @@ final class AppModel: ObservableObject {
             guard let target = settings.wikiBot.sources.first(where: { $0.id == targetID }) else { return }
             let usesWeaponCommand = target.commands.contains { normalizedWikiCommandTrigger($0.trigger) == "weapon" }
             let testQuery = usesWeaponCommand ? "AKM" : "Main Page"
-            let result = await service.lookupWiki(query: testQuery, source: target)
+            let result = await wikiLookupService.lookupWiki(query: testQuery, source: target)
             updateWikiBridgeSourceRuntimeState(id: targetID) { entry in
                 entry.lastLookupAt = Date()
                 if let result {
@@ -1769,7 +1780,7 @@ final class AppModel: ObservableObject {
     func runWikiBridgeSourceTestQuery(source: WikiSource, query: String) async -> FinalsWikiLookupResult? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        return await service.lookupWiki(query: trimmed, source: source)
+        return await wikiLookupService.lookupWiki(query: trimmed, source: source)
     }
 
     func updatePatchyTarget(_ target: PatchySourceTarget) {
@@ -1802,11 +1813,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func validatePatchyTarget(_ target: PatchySourceTarget, forceRefresh: Bool = false) async -> (isValid: Bool, detail: String) {
+        let channelId = target.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !channelId.isEmpty else {
+            return (false, "Target channel ID is empty.")
+        }
+
+        let now = Date()
+        if !forceRefresh, let cached = patchyTargetValidationCache[channelId], now.timeIntervalSince(cached.validatedAt) < 3600 {
+            return (cached.isValid, cached.detail)
+        }
+
+        do {
+            _ = try await service.fetchChannel(channelId: channelId, token: settings.token)
+            let result = (true, "Ready")
+            patchyTargetValidationCache[channelId] = (result.0, result.1, now)
+            return result
+        } catch {
+            let detail = patchyErrorDiagnostic(from: error)
+            let result = (false, detail)
+            patchyTargetValidationCache[channelId] = (result.0, result.1, now)
+            return result
+        }
+    }
+
     func sendPatchyTest(targetID: UUID) {
         Task {
             guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
             guard !target.channelId.isEmpty else {
                 appendPatchyLog("Test send skipped: target channel is empty.")
+                return
+            }
+
+            let validation = await validatePatchyTarget(target, forceRefresh: true)
+            guard validation.isValid else {
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = validation.detail
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Patchy test skipped: \(validation.detail)")
                 return
             }
 
@@ -1831,12 +1877,41 @@ final class AppModel: ObservableObject {
                 persistSettingsQuietly()
                 appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
             } catch {
+                let diagnostic = patchyErrorDiagnostic(from: error)
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
                     entry.lastCheckedAt = Date()
-                    entry.lastStatus = "Patchy test failed: \(error.localizedDescription)"
+                    entry.lastStatus = "Patchy test failed: \(diagnostic)"
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Patchy test failed: \(error.localizedDescription)")
+                appendPatchyLog("Patchy test failed: \(diagnostic)")
+            }
+        }
+    }
+
+    func pullPatchyUpdate(targetID: UUID) {
+        Task {
+            guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
+            
+            do {
+                resolveSteamNameIfNeeded(for: target)
+                let source = try PatchyRuntime.makeSource(from: target)
+                let item = try await source.fetchLatest()
+                let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
+                
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = mapped.statusSummary
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Pull [\(target.source.rawValue)] -> \(mapped.statusSummary)")
+            } catch {
+                let diagnostic = patchyErrorDiagnostic(from: error)
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = "Pull failed: \(diagnostic)"
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Pull [\(target.source.rawValue)] failed: \(diagnostic)")
             }
         }
     }
@@ -1934,6 +2009,16 @@ final class AppModel: ObservableObject {
 
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -1982,6 +2067,16 @@ final class AppModel: ObservableObject {
 
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -2012,6 +2107,16 @@ final class AppModel: ObservableObject {
                     if change.isNewItem {
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -2180,7 +2285,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let tokenValidation = await service.validateBotTokenRich(token)
+        let tokenValidation = await identityRESTClient.validateBotTokenRich(token)
         lastTokenValidationResult = tokenValidation
         guard tokenValidation.isValid else {
             status = .stopped
@@ -2191,8 +2296,8 @@ final class AppModel: ObservableObject {
 
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
+        patchyTargetValidationCache.removeAll()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         gatewayEventCount = 0
@@ -2244,10 +2349,10 @@ final class AppModel: ObservableObject {
         settings.launchMode = .standaloneBot
         let token = normalizedDiscordToken(from: settings.token)
         guard !token.isEmpty else { return false }
-        let result = await service.validateBotTokenRich(token)
+        let result = await identityRESTClient.validateBotTokenRich(token)
         lastTokenValidationResult = result
         guard result.isValid else { return false }
-        let cid = await service.resolveClientID(token: token, fallbackUserID: result.userId)
+        let cid = await resolveClientID(token: token, fallbackUserID: result.userId)
         resolvedClientID = cid
         return true
     }
@@ -2309,8 +2414,7 @@ final class AppModel: ObservableObject {
         // Step 2: clear runtime state (mirrors stopBot without fire-and-forget disconnect).
         uptimeTask?.cancel()
         uptime = nil
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"
@@ -2340,6 +2444,17 @@ final class AppModel: ObservableObject {
         isOnboardingComplete = false
     }
 
+    private func resolveClientID(token: String, fallbackUserID: String?) async -> String? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallbackUserID }
+
+        if let appID = await identityRESTClient.resolveClientID(token: trimmed) {
+            return appID
+        }
+
+        return fallbackUserID
+    }
+
     /// Generates a Discord invite URL for the bot, resolving/storing client ID on demand.
     func generateInviteURL(includeSlashCommands: Bool? = nil) async -> String? {
         let cid: String
@@ -2348,18 +2463,18 @@ final class AppModel: ObservableObject {
         } else {
             let token = normalizedDiscordToken(from: settings.token)
             guard !token.isEmpty else { return nil }
-            let resolved = await service.resolveClientID(token: token, fallbackUserID: nil)
+            let resolved = await resolveClientID(token: token, fallbackUserID: nil)
             if let resolved {
                 resolvedClientID = resolved
                 cid = resolved
             } else {
-                let validation = await service.validateBotTokenRich(token)
+                let validation = await identityRESTClient.validateBotTokenRich(token)
                 guard validation.isValid else {
                     lastTokenValidationResult = validation
                     return nil
                 }
                 lastTokenValidationResult = validation
-                guard let fallback = await service.resolveClientID(token: token, fallbackUserID: validation.userId) else {
+                guard let fallback = await resolveClientID(token: token, fallbackUserID: validation.userId) else {
                     return nil
                 }
                 resolvedClientID = fallback
@@ -2399,7 +2514,7 @@ final class AppModel: ObservableObject {
             connectionDiagnostics.restHealth = .error(0, "No token")
             return
         }
-        let (isOK, httpStatus, remaining) = await service.restHealthProbe(token: token)
+        let (isOK, httpStatus, remaining) = await identityRESTClient.restHealthProbe(token: token)
         let now = Date()
         connectionDiagnostics.lastTestAt = now
         connectionDiagnostics.rateLimitRemaining = remaining
@@ -2459,6 +2574,79 @@ final class AppModel: ObservableObject {
             webUIEnabled: settings.adminWebUI.enabled,
             webUIBaseURL: adminWebBaseURL()
         )
+    }
+
+    /// Creates a complete snapshot of current configuration for change detection in the UI.
+    func createPreferencesSnapshot() -> AppPreferencesSnapshot {
+        AppPreferencesSnapshot(
+            token: settings.token,
+            prefix: settings.prefix,
+            autoStart: settings.autoStart,
+            clusterMode: settings.clusterMode,
+            clusterNodeName: settings.clusterNodeName,
+            clusterLeaderAddress: settings.clusterLeaderAddress,
+            clusterLeaderPort: settings.clusterLeaderPort,
+            clusterListenPort: settings.clusterListenPort,
+            clusterSharedSecret: settings.clusterSharedSecret,
+            clusterWorkerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
+            clusterOffloadAIReplies: settings.clusterOffloadAIReplies,
+            clusterOffloadWikiLookups: settings.clusterOffloadWikiLookups,
+            mediaSourcesJSON: mediaSourcesSnapshotJSON(),
+            adminWebEnabled: settings.adminWebUI.enabled,
+            adminWebHost: settings.adminWebUI.bindHost,
+            adminWebPort: settings.adminWebUI.port,
+            adminWebBaseURL: settings.adminWebUI.publicBaseURL,
+            adminWebHTTPSEnabled: settings.adminWebUI.httpsEnabled,
+            adminWebCertificateMode: settings.adminWebUI.certificateMode,
+            adminWebHostname: settings.adminWebUI.hostname,
+            adminWebCloudflareToken: settings.adminWebUI.cloudflareAPIToken,
+            adminWebPublicAccessEnabled: settings.adminWebUI.publicAccessEnabled,
+            adminWebImportedCertificateFile: settings.adminWebUI.importedCertificateFile,
+            adminWebImportedPrivateKeyFile: settings.adminWebUI.importedPrivateKeyFile,
+            adminWebImportedCertificateChainFile: settings.adminWebUI.importedCertificateChainFile,
+            adminLocalAuthEnabled: settings.adminWebUI.localAuthEnabled,
+            adminLocalAuthUsername: settings.adminWebUI.localAuthUsername,
+            adminLocalAuthPassword: settings.adminWebUI.localAuthPassword,
+            adminRestrictSpecificUsers: settings.adminWebUI.restrictAccessToSpecificUsers,
+            adminDiscordClientID: settings.adminWebUI.discordClientID,
+            adminDiscordClientSecret: settings.adminWebUI.discordClientSecret,
+            adminAllowedUserIDs: settings.adminWebUI.allowedUserIDs.joined(separator: ", "),
+            adminRedirectPath: settings.adminWebUI.redirectPath,
+            localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
+            useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
+            allowDMs: settings.behavior.allowDMs,
+            preferredAIProvider: settings.preferredAIProvider,
+            ollamaBaseURL: settings.ollamaBaseURL,
+            ollamaModel: settings.localAIModel,
+            ollamaEnabled: settings.ollamaEnabled,
+            openAIEnabled: settings.openAIEnabled,
+            openAIAPIKey: settings.openAIAPIKey,
+            openAIModel: settings.openAIModel,
+            openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
+            openAIImageModel: settings.openAIImageModel,
+            openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser,
+            localAISystemPrompt: settings.localAISystemPrompt,
+            devFeaturesEnabled: settings.devFeaturesEnabled,
+            bugAutoFixEnabled: settings.bugAutoFixEnabled,
+            bugAutoFixTriggerEmoji: settings.bugAutoFixTriggerEmoji,
+            bugAutoFixCommandTemplate: settings.bugAutoFixCommandTemplate,
+            bugAutoFixRepoPath: settings.bugAutoFixRepoPath,
+            bugAutoFixGitBranch: settings.bugAutoFixGitBranch,
+            bugAutoFixVersionBumpEnabled: settings.bugAutoFixVersionBumpEnabled,
+            bugAutoFixPushEnabled: settings.bugAutoFixPushEnabled,
+            bugAutoFixRequireApproval: settings.bugAutoFixRequireApproval,
+            bugAutoFixApproveEmoji: settings.bugAutoFixApproveEmoji,
+            bugAutoFixRejectEmoji: settings.bugAutoFixRejectEmoji,
+            bugAutoFixAllowedUsernames: settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
+        )
+    }
+
+    private func mediaSourcesSnapshotJSON() -> String {
+        guard let data = try? JSONEncoder().encode(mediaLibrarySettings.sources),
+              let text = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return text
     }
 
     func adminWebOverviewSnapshot() -> AdminWebOverviewPayload {
@@ -3108,7 +3296,9 @@ final class AppModel: ObservableObject {
     ///    registrations, which typically list localhost not the loopback IP.
     private func oauthPublicBaseURL() -> String {
         let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !explicit.isEmpty { return explicit }
+        if !explicit.isEmpty {
+            return explicit.contains("://") ? explicit : "https://" + explicit
+        }
 
         let hostname = settings.adminWebUI.normalizedHostname
         if settings.adminWebUI.internetAccessEnabled, !hostname.isEmpty {
@@ -3132,7 +3322,7 @@ final class AppModel: ObservableObject {
             localAuthEnabled: settings.adminWebUI.localAuthEnabled,
             localAuthUsername: settings.adminWebUI.localAuthUsername,
             localAuthPassword: settings.adminWebUI.localAuthPassword,
-            redirectPath: settings.adminWebUI.redirectPath,
+            redirectPath: normalizedAdminRedirectPath(settings.adminWebUI.redirectPath),
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
@@ -3640,13 +3830,22 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
 
+        // Verify token in background (non-blocking, warning-level logging only)
         progress(.verifyingCloudflareAccess)
-        let tokenIsValid = try await dnsProvider.verifyAPIToken()
-        guard tokenIsValid else {
-            throw CertificateManager.Error.inactiveCloudflareToken
+        Task.detached(priority: .background) {
+            let tokenIsValid = await dnsProvider.verifyAPIToken()
+            if tokenIsValid {
+                await self.logs.append("✅ Cloudflare API verified (background)")
+                await MainActor.run {
+                    progress(.cloudflareAccessVerified)
+                }
+            } else {
+                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+            }
         }
-        logs.append("Cloudflare API verified")
-        progress(.cloudflareAccessVerified)
+
+        // Continue without waiting for verification result
+        logs.append("Cloudflare tunnel detection proceeding (verification in background)...")
 
         progress(.detectingCloudflareZone(domain: hostname))
         guard let zone = try await dnsProvider.findZone(for: hostname) else {
@@ -3817,7 +4016,7 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         
         // First verify the token is valid by checking user info
-        let isValid = try await dnsProvider.verifyAPIToken()
+        let isValid = await dnsProvider.verifyAPIToken()
         guard isValid else {
             throw CertificateManager.Error.inactiveCloudflareToken
         }
@@ -3853,14 +4052,22 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
 
-        // Step 1: Verify Cloudflare API
+        // Step 1: Verify Cloudflare API (non-blocking, background task)
         progress(.verifyingCloudflareAccess)
-        let tokenIsValid = try await dnsProvider.verifyAPIToken()
-        guard tokenIsValid else {
-            throw CertificateManager.Error.inactiveCloudflareToken
+        Task.detached(priority: .background) {
+            let tokenIsValid = await dnsProvider.verifyAPIToken()
+            if tokenIsValid {
+                await self.logs.append("✅ Cloudflare API verified (background)")
+                await MainActor.run {
+                    progress(.cloudflareAccessVerified)
+                }
+            } else {
+                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+            }
         }
-        logs.append("Cloudflare API verified")
-        progress(.cloudflareAccessVerified)
+
+        // Continue without waiting for verification result
+        logs.append("Cloudflare tunnel detection proceeding (verification in background)...")
 
         // Step 2: Detect Cloudflare zone
         progress(.detectingCloudflareZone(domain: hostname))
@@ -4127,8 +4334,7 @@ final class AppModel: ObservableObject {
         clusterNodesRefreshTask = nil
         uptimeTask?.cancel()
         uptime = nil
-        activeVoice.removeAll()
-        joinTimes.removeAll()
+        await clearVoicePresence()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         lastGatewayEventName = "-"
@@ -4341,7 +4547,7 @@ final class AppModel: ObservableObject {
         mediaLibrarySettings = currentLocalMedia
         await mediaLibraryIndexer.invalidate()
         await ruleStore.reloadFromDisk()
-        await service.configureLocalAIDMReplies(
+        await aiService.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled,
             provider: settings.localAIProvider,
             preferredProvider: settings.preferredAIProvider,
@@ -4675,7 +4881,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - P0.5: Member join welcome
 
-    func handleMemberJoin(_ raw: DiscordJSON?) async {
+    func handleMemberJoin(_ event: GatewayMemberJoinEvent) async {
         // Legacy settings path still active for backward compatibility.
         // New config: use a "Member Joined" trigger rule in Actions instead.
         let legacyEnabled = settings.behavior.memberJoinWelcomeEnabled &&
@@ -4683,15 +4889,9 @@ final class AppModel: ObservableObject {
         let hasRules = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .memberJoined }
         guard legacyEnabled || hasRules else { return }
 
-        guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"],
-              case let .string(userId)? = user["id"]
-        else { return }
-
-        let guildId: String
-        if case let .string(gid)? = map["guild_id"] { guildId = gid } else { return }
-
         let now = Date()
+        let guildId = event.guildID
+        let userId = event.userID
 
         // Increment member count for this guild (best-effort; sourced from GUILD_CREATE).
         let memberCount = (guildMemberCounts[guildId] ?? 0) + 1
@@ -4728,15 +4928,8 @@ final class AppModel: ObservableObject {
             recentMemberJoins = Dictionary(uniqueKeysWithValues: Array(pruned.prefix(500)))
         }
 
-        let rawUsername: String
-        if case let .string(name)? = user["global_name"] ?? user["username"] {
-            rawUsername = name
-        } else {
-            rawUsername = "Unknown"
-        }
-
         // Template sanitization: neutralize @everyone and @here to prevent mass-ping abuse.
-        let safeUsername = rawUsername
+        let safeUsername = event.rawUsername
             .replacingOccurrences(of: "@everyone", with: "@​everyone")
             .replacingOccurrences(of: "@here", with: "@​here")
 
@@ -4751,15 +4944,6 @@ final class AppModel: ObservableObject {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             _ = await send(channelId, message)
         }
-
-        let joinedAt: Date? = {
-            if case let .string(dateStr)? = map["joined_at"] {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                return formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr)
-            }
-            return nil
-        }()
 
         // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
         let ruleEvent = VoiceRuleEvent(
@@ -4783,7 +4967,7 @@ final class AppModel: ObservableObject {
             triggerUserId: userId,
             isDirectMessage: false,
             authorIsBot: nil,
-            joinedAt: joinedAt
+            joinedAt: event.joinedAt
         )
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
@@ -4805,24 +4989,17 @@ final class AppModel: ObservableObject {
         logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
     }
 
-    func handleMemberLeave(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"],
-              case let .string(userId)? = user["id"],
-              case let .string(guildId)? = map["guild_id"]
-        else { return }
-
+    func handleMemberLeave(_ event: GatewayMemberLeaveEvent) async {
         let now = Date()
+        let guildId = event.guildID
+        let userId = event.userID
         
         // Best-effort member count decrement
         if let count = guildMemberCounts[guildId] {
             guildMemberCounts[guildId] = max(0, count - 1)
         }
 
-        let username: String = {
-            if case let .string(name)? = user["global_name"] ?? user["username"] { return name }
-            return "Unknown"
-        }()
+        let username = event.username
 
         let ruleEvent = VoiceRuleEvent(
             kind: .memberLeave,
@@ -4850,78 +5027,47 @@ final class AppModel: ObservableObject {
 
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
-            var context = PipelineContext()
-            for action in rule.processedActions {
-                await service.execute(action: action, for: ruleEvent, context: &context)
-            }
+            _ = await service.executeRulePipeline(actions: rule.processedActions, for: ruleEvent, isDirectMessage: ruleEvent.isDirectMessage)
         }
 
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "🚪 \(username) left the server"))
         logs.append("Member leave handled for \(username)")
     }
 
-    func handleGuildCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(guildId)? = map["id"]
-        else { return }
-
-        if case let .int(count)? = map["member_count"] {
-            guildMemberCounts[guildId] = count
+    func handleGuildCreate(_ event: GatewayGuildCreateEvent) async {
+        guildCreateEventCount += 1
+        if let memberCount = event.memberCount {
+            guildMemberCounts[event.guildID] = memberCount
         }
 
-        let guildName: String?
-        if case let .string(name)? = map["name"] {
-            guildName = name
-        } else {
-            guildName = nil
-        }
-
-        await discordCache.upsertGuild(id: guildId, name: guildName)
-        await discordCache.setGuildVoiceChannels(guildID: guildId, channels: parseVoiceChannels(from: map))
-        await discordCache.setGuildTextChannels(guildID: guildId, channels: parseTextChannels(from: map))
-        await discordCache.setGuildRoles(guildID: guildId, roles: parseRoles(from: map))
-        await discordCache.mergeChannelTypes(parseChannelTypes(from: map))
-        await cacheGuildMembers(from: map)
+        await discordCache.upsertGuild(id: event.guildID, name: event.guildName)
+        await discordCache.setGuildVoiceChannels(guildID: event.guildID, channels: parseVoiceChannels(from: event.rawMap))
+        await discordCache.setGuildTextChannels(guildID: event.guildID, channels: parseTextChannels(from: event.rawMap))
+        await discordCache.setGuildRoles(guildID: event.guildID, roles: parseRoles(from: event.rawMap))
+        await discordCache.mergeChannelTypes(parseChannelTypes(from: event.rawMap))
+        await cacheGuildMembers(from: event.rawMap)
         await syncPublishedDiscordCacheFromService()
-        await syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
+        await syncVoicePresenceFromGuildSnapshot(guildId: event.guildID, guildMap: event.rawMap)
         scheduleDiscordCacheSave()
         await registerSlashCommandsIfNeeded()
     }
 
-    func handleChannelCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(channelId)? = map["id"],
-              case let .int(type)? = map["type"]
-        else { return }
-
-        let guildId: String? = {
-            if case let .string(id)? = map["guild_id"] { return id }
-            return nil
-        }()
-        await discordCache.setChannelType(channelID: channelId, type: type)
-        let name: String = {
-            if case let .string(value)? = map["name"] { return value }
-            return type == 1 ? "Direct Message" : (type == 3 ? "Group DM" : "Channel")
-        }()
+    func handleChannelCreate(_ event: GatewayChannelCreateEvent) async {
+        await discordCache.setChannelType(channelID: event.channelID, type: event.type)
         await discordCache.upsertChannel(
-            guildID: guildId,
-            channelID: channelId,
-            name: name,
-            type: type
+            guildID: event.guildID,
+            channelID: event.channelID,
+            name: event.name,
+            type: event.type
         )
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
     }
 
-    func handleGuildDelete(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(guildId)? = map["id"]
-        else { return }
-
-        await discordCache.removeGuild(id: guildId)
+    func handleGuildDelete(_ event: GatewayGuildDeleteEvent) async {
+        await discordCache.removeGuild(id: event.guildID)
         await syncPublishedDiscordCacheFromService()
-        activeVoice.removeAll { $0.guildId == guildId }
-        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
+        await clearVoicePresence(guildID: event.guildID)
         scheduleDiscordCacheSave()
     }
 
@@ -4929,23 +5075,41 @@ final class AppModel: ObservableObject {
         let ns = error as NSError
         let statusCode = ns.userInfo["statusCode"] as? Int ?? ns.code
         let body = (ns.userInfo["responseBody"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let trimmedBody: String
-        if body.count > 220 {
-            trimmedBody = String(body.prefix(220)) + "..."
-        } else {
-            trimmedBody = body
+
+        // Try to parse Discord's specific error code from the JSON body
+        var discordCode: Int? = nil
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let code = json["code"] as? Int {
+            discordCode = code
         }
-        let bodySnippet = trimmedBody.isEmpty ? "-" : trimmedBody
-        return "status=\(statusCode), error=\(error.localizedDescription), response=\(bodySnippet)"
+
+        // Map to HIG-aligned, actionable messages
+        switch (statusCode, discordCode) {
+        case (403, 50001?):
+            return "SwiftBot cannot view this channel. Check permissions in the Discord server."
+        case (403, 50013?):
+            return "SwiftBot lacks 'Embed Links' or 'Mention' permissions in this channel."
+        case (404, 10003?):
+            return "Channel not found. It may have been deleted — please remove or update this target."
+        case (401, _):
+            return "Invalid Bot Token. Please check your token in General Settings."
+        case (429, _):
+            return "Sending too fast. Discord is temporarily limiting requests."
+        default:
+            if !body.isEmpty && body != "-" {
+                let trimmedBody = body.count > 120 ? String(body.prefix(117)) + "..." : body
+                return "Failed to send (HTTP \(statusCode)). Details: \(trimmedBody)"
+            }
+            return "Failed to send (HTTP \(statusCode)). Check Patchy logs for details."
+        }
     }
 
     func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {
         guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
 
-        activeVoice.removeAll { $0.guildId == guildId }
-        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
-
         let now = Date()
+        var snapshot: [VoiceMemberPresence] = []
         for state in voiceStates {
             guard case let .object(stateMap) = state,
                   case let .string(userId)? = stateMap["user_id"],
@@ -4969,9 +5133,8 @@ final class AppModel: ObservableObject {
             let username = await voiceDisplayName(from: stateMap, userId: userId)
             let key = "\(guildId)-\(userId)"
             let joinedAt = now
-            joinTimes[key] = joinedAt
 
-            activeVoice.append(
+            snapshot.append(
                 VoiceMemberPresence(
                     id: key,
                     userId: userId,
@@ -4983,6 +5146,8 @@ final class AppModel: ObservableObject {
                 )
             )
         }
+
+        activeVoice = await voicePresenceStore.syncGuildSnapshot(guildId, members: snapshot)
     }
 
     func cacheGuildMembers(from guildMap: [String: DiscordJSON]) async {

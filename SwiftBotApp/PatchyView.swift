@@ -157,6 +157,7 @@ struct PatchyView: View {
                                     channelName: channelName(for: target),
                                     roleSummary: roleSummary(for: target),
                                     onTestSend: { app.sendPatchyTest(targetID: target.id) },
+                                    onPull: { app.pullPatchyUpdate(targetID: target.id) },
                                     onEdit: {
                                         editorMode = .edit
                                         editorDraft = PatchyTargetDraft(target: target)
@@ -294,6 +295,7 @@ private struct PatchTargetCard: View {
     let channelName: String
     let roleSummary: String
     let onTestSend: () -> Void
+    let onPull: () -> Void
     let onEdit: () -> Void
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
@@ -326,13 +328,23 @@ private struct PatchTargetCard: View {
             }
             .font(.subheadline)
 
-            Text(target.lastStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if target.lastStatus != "Ready" && target.lastStatus != "Never checked" && !target.lastStatus.contains("succeeded") && !target.lastStatus.contains("successfully") && !target.lastStatus.contains("Unchanged") && !target.lastStatus.contains("unchanged") {
+                    Image(systemName: isWarning(target.lastStatus) ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                        .foregroundStyle(isWarning(target.lastStatus) ? .yellow : .red)
+                        .font(.caption)
+                }
+
+                Text(target.lastStatus)
+                    .font(.caption)
+                    .foregroundStyle(statusColor(target.lastStatus))
+                    .lineLimit(2)
+            }
 
             HStack(spacing: 8) {
                 Button("Test", action: onTestSend)
+                    .buttonStyle(.bordered)
+                Button("Pull", action: onPull)
                     .buttonStyle(.bordered)
                 Button("Edit", action: onEdit)
                     .buttonStyle(.bordered)
@@ -360,6 +372,17 @@ private struct PatchTargetCard: View {
     private func timestamp(_ date: Date?) -> String {
         guard let date else { return "Never" }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func isWarning(_ status: String) -> Bool {
+        status.contains("permissions") || status.contains("cannot view") || status.contains("not found")
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        if status == "Ready" || status.contains("succeeded") || status.contains("sent") || status.contains("Sent") { return .green }
+        if status == "Never checked" || status.contains("Unchanged") || status.contains("unchanged") { return .secondary }
+        if isWarning(status) { return .yellow }
+        return .red
     }
 }
 

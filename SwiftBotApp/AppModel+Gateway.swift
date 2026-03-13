@@ -2,64 +2,79 @@ import Foundation
 
 extension AppModel {
     func handlePayload(_ payload: GatewayPayload) async {
-        guard payload.op == 0, let eventName = payload.t else { return }
+        await gatewayEventDispatcher.dispatch(
+            payload,
+            shouldProcessPrimaryGatewayActions: shouldProcessPrimaryGatewayActions
+        )
+    }
 
+    func makeGatewayEventDispatcher() -> GatewayEventDispatcher {
+        GatewayEventDispatcher(
+            onEventReceived: { [weak self] eventName in
+                guard let self else { return }
+                self.recordGatewayEvent(named: eventName)
+            },
+            onMessageCreate: { [weak self] event in
+                await self?.handleMessageCreate(event)
+            },
+            onMessageReactionAdd: { [weak self] raw in
+                await self?.handleMessageReactionAdd(raw)
+            },
+            onInteractionCreate: { [weak self] event in
+                await self?.handleInteractionCreate(event)
+            },
+            onVoiceStateUpdate: { [weak self] event in
+                await self?.handleVoiceStateUpdateDispatch(event)
+            },
+            onReady: { [weak self] event, shouldRegisterSlashCommands in
+                await self?.handleReadyDispatch(event, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
+            },
+            onGuildCreate: { [weak self] event in
+                await self?.handleGuildCreate(event)
+            },
+            onChannelCreate: { [weak self] event in
+                await self?.handleChannelCreate(event)
+            },
+            onMemberJoin: { [weak self] event in
+                await self?.handleMemberJoin(event)
+            },
+            onMemberLeave: { [weak self] event in
+                await self?.handleMemberLeave(event)
+            },
+            onGuildDelete: { [weak self] event in
+                await self?.handleGuildDelete(event)
+            }
+        )
+    }
+
+    private func recordGatewayEvent(named eventName: String) {
         gatewayEventCount += 1
         lastGatewayEventName = eventName
+    }
 
-        switch eventName {
-        case "MESSAGE_CREATE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMessageCreate(payload.d)
-        case "MESSAGE_REACTION_ADD":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMessageReactionAdd(payload.d)
-        case "INTERACTION_CREATE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleInteractionCreate(payload.d)
-        case "VOICE_STATE_UPDATE":
-            voiceStateEventCount += 1
-            await handleVoiceStateUpdate(payload.d)
-        case "READY":
-            readyEventCount += 1
-            // Clear any stale close-code state — a new READY means the gateway is healthy.
-            connectionDiagnostics.lastGatewayCloseCode = nil
-            if case let .object(map)? = payload.d,
-               case let .object(user)? = map["user"] {
-                if case let .string(id)? = user["id"] {
-                    botUserId = id
-                }
-                if case let .string(username)? = user["username"] {
-                    botUsername = username
-                }
-                if case let .string(discriminator)? = user["discriminator"] {
-                    botDiscriminator = discriminator != "0" ? discriminator : nil
-                }
-                if case let .string(avatarHash)? = user["avatar"] {
-                    botAvatarHash = avatarHash
-                }
-            }
-            await handleReady(payload.d)
-            logs.append("READY received")
-            if shouldProcessPrimaryGatewayActions {
-                await registerSlashCommandsIfNeeded()
-            }
-        case "GUILD_CREATE":
-            guildCreateEventCount += 1
-            await handleGuildCreate(payload.d)
-        case "CHANNEL_CREATE":
-            await handleChannelCreate(payload.d)
-        case "GUILD_MEMBER_ADD":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMemberJoin(payload.d)
-        case "GUILD_MEMBER_REMOVE":
-            guard shouldProcessPrimaryGatewayActions else { return }
-            await handleMemberLeave(payload.d)
-        case "GUILD_DELETE":
-            await handleGuildDelete(payload.d)
-        default:
-            break
+    private func handleVoiceStateUpdateDispatch(_ event: GatewayVoiceStateUpdateEvent) async {
+        voiceStateEventCount += 1
+        await handleVoiceStateUpdate(event)
+    }
+
+    private func handleReadyDispatch(_ event: GatewayReadyEvent, shouldRegisterSlashCommands: Bool) async {
+        readyEventCount += 1
+        connectionDiagnostics.lastGatewayCloseCode = nil
+        updateBotIdentity(event.identity)
+        await handleReady(event)
+        logs.append("READY received")
+        if shouldRegisterSlashCommands {
+            await registerSlashCommandsIfNeeded()
         }
+    }
+
+    private func updateBotIdentity(_ identity: GatewayBotIdentity?) {
+        botUserId = identity?.id
+        if let username = identity?.username {
+            botUsername = username
+        }
+        botDiscriminator = identity?.discriminator
+        botAvatarHash = identity?.avatarHash
     }
 
     func handleMeshSync(_ payload: MeshSyncPayload) async {
@@ -103,7 +118,7 @@ extension AppModel {
             voiceLog = Array(remoteVoiceLog.prefix(200))
         }
         if let remoteActiveVoice = payload.activeVoice {
-            activeVoice = remoteActiveVoice
+            await replaceVoicePresence(remoteActiveVoice)
         }
         if payload.configFilesChanged, settings.clusterMode == .standby {
             await pullConfigFilesFromLeader()
@@ -209,34 +224,21 @@ extension AppModel {
         }
     }
 
-    func handleMessageCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(content)? = map["content"],
-              case let .object(author)? = map["author"],
-              case let .string(username)? = author["username"],
-              case let .string(channelId)? = map["channel_id"]
-        else { return }
-
-        let userId: String = {
-            if case let .string(id)? = author["id"] { return id }
-            return "unknown-user"
-        }()
-        if case let .string(avatarHash)? = author["avatar"], !avatarHash.isEmpty {
+    func handleMessageCreate(_ event: GatewayMessageCreateEvent) async {
+        let map = event.rawMap
+        let content = event.content
+        let username = event.username
+        let channelId = event.channelID
+        let userId = event.userID
+        if let avatarHash = event.avatarHash, !avatarHash.isEmpty {
             userAvatarHashById[userId] = avatarHash
         }
-        let messageId: String = {
-            if case let .string(id)? = map["id"] { return id }
-            return UUID().uuidString
-        }()
-        let isBot = (author["bot"] == .bool(true))
+        let messageId = event.messageID
+        let isBot = event.isBot
         let channelType = await resolvedChannelType(from: map, channelID: channelId)
         let isDMChannel = (channelType == 1 || channelType == 3)
         let isGuildTextChannel = (channelType == 0)
-
-        let guildID: String? = {
-            if case let .string(id)? = map["guild_id"] { return id }
-            return nil
-        }()
+        let guildID = event.guildID
         await upsertDiscordCacheFromMessage(
             map: map,
             guildID: guildID,
@@ -424,20 +426,13 @@ extension AppModel {
         await handleBugReactionAdd(raw: map)
     }
 
-    func handleInteractionCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw else { return }
-        guard case let .string(interactionID)? = map["id"],
-              case let .string(interactionToken)? = map["token"] else { return }
-        guard case let .int(kind)? = map["type"], kind == 2 else { return } // 2 = application command
-        guard case let .object(data)? = map["data"],
-              case let .string(commandName)? = data["name"] else { return }
-
+    func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
-        let context = interactionContext(from: map)
+        let context = interactionContext(from: event.rawMap)
         do {
             try await service.respondToInteraction(
-                interactionID: interactionID,
-                interactionToken: interactionToken,
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
                 payload: ["type": 5]
             )
         } catch {
@@ -448,8 +443,8 @@ extension AppModel {
         let response: SlashResponsePayload
         if settings.commandsEnabled && settings.slashCommandsEnabled {
             response = await executeSlashCommand(
-                command: commandName.lowercased(),
-                data: data,
+                command: event.commandName.lowercased(),
+                data: event.data,
                 context: context
             )
         } else {
@@ -463,9 +458,9 @@ extension AppModel {
             )
         }
         stats.commandsRun += 1
-        let slashCommandForLog = formatSlashCommandForLog(name: commandName, data: data)
+        let slashCommandForLog = formatSlashCommandForLog(name: event.commandName, data: event.data)
         let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
-        let slashExecutionDetails = await commandExecutionDetails(for: commandName.lowercased())
+        let slashExecutionDetails = await commandExecutionDetails(for: event.commandName.lowercased())
         commandLog.insert(CommandLogEntry(
             time: Date(),
             user: context.username,
@@ -491,7 +486,7 @@ extension AppModel {
             }
             try await service.editOriginalInteractionResponse(
                 applicationID: applicationID,
-                interactionToken: interactionToken,
+                interactionToken: event.interactionToken,
                 payload: payload
             )
         } catch {
@@ -597,8 +592,8 @@ extension AppModel {
         }
     }
 
-    typealias SlashContext = (channelId: String, username: String, rawLikeMessage: [String: DiscordJSON])
-    typealias SlashResponsePayload = (content: String?, embeds: [[String: Any]]?)
+    typealias SlashContext = CommandProcessor.SlashContext
+    typealias SlashResponsePayload = CommandProcessor.SlashResponsePayload
 
     func interactionContext(from map: [String: DiscordJSON]) -> SlashContext {
         let channelId: String = {
@@ -628,7 +623,7 @@ extension AppModel {
             rawLike["member"] = .object(member)
         }
 
-        return (channelId: channelId, username: username, rawLikeMessage: rawLike)
+        return .init(channelId: channelId, username: username, rawLikeMessage: rawLike)
     }
 
     func executeSlashCommand(
@@ -636,336 +631,90 @@ extension AppModel {
         data: [String: DiscordJSON],
         context: SlashContext
     ) async -> SlashResponsePayload {
-        func embed(title: String, description: String, color: Int = 5_793_266) -> SlashResponsePayload {
-            (
-                content: nil,
-                embeds: [[
-                    "title": title,
-                    "description": description,
-                    "color": color
-                ]]
-            )
-        }
-
-        func statusEmbed(title: String, ok: Bool) -> SlashResponsePayload {
-            embed(title: title, description: ok ? "✅ Completed." : "❌ Failed.", color: ok ? 3_062_954 : 15_790_767)
-        }
-
-        guard settings.commandsEnabled else {
-            return embed(title: "Commands Disabled", description: "Commands are turned off in SwiftBot settings.", color: 15_790_767)
-        }
-
-        guard settings.slashCommandsEnabled else {
-            return embed(title: "Slash Commands Disabled", description: "Slash commands are turned off in SwiftBot settings.", color: 15_790_767)
-        }
-
-        guard isCommandEnabled(name: command, surface: "slash") else {
-            return embed(title: "Slash Command Disabled", description: "`/\(command)` is disabled in command settings.", color: 15_790_767)
-        }
-
-        switch command {
-        case "help":
-            let cmd = slashOptionString(named: "command", in: data)
-            if let cmd, !cmd.isEmpty {
-                _ = await executeCommand(
-                    "help \(cmd)",
-                    username: context.username,
-                    channelId: context.channelId,
-                    raw: context.rawLikeMessage,
-                    bypassSystemToggles: true
-                )
-            } else {
-                _ = await executeCommand(
-                    "help",
-                    username: context.username,
-                    channelId: context.channelId,
-                    raw: context.rawLikeMessage,
-                    bypassSystemToggles: true
-                )
-            }
-            return embed(title: "Help", description: "📘 Posted help details in this channel.")
-        case "ping":
-            return embed(title: "Ping", description: "🏓 Pong!")
-        case "roll":
-            let notation = slashOptionString(named: "notation", in: data) ?? "1d6"
-            if let result = rollDice(notation) {
-                return embed(title: "Dice Roll", description: result)
-            }
-            return embed(title: "Dice Roll", description: "Invalid roll notation. Try `2d6`.", color: 15_790_767)
-        case "8ball":
-            let responses = ["Yes.", "No.", "It is certain.", "Ask again later.", "Very doubtful."]
-            return embed(title: "Magic 8-Ball", description: "🎱 \(responses.randomElement() ?? "Ask again later.")")
-        case "poll":
-            let question = slashOptionString(named: "question", in: data) ?? "New poll"
-            return embed(title: "Poll", description: "📊 \(question)")
-        case "userinfo":
-            return embed(title: "User Info", description: "👤 \(context.username)")
-        case "cluster":
-            let action = slashOptionString(named: "action", in: data) ?? "status"
-            let ok = await clusterCommand(action: action, channelId: context.channelId)
-            return statusEmbed(title: "Cluster", ok: ok)
-        case "weekly":
-            return embed(title: "Weekly Summary", description: weeklyPlugin?.snapshotSummary() ?? "No data yet.")
-        case "bugreport":
-            return embed(title: "Bug Report", description: bugReportText(for: context.rawLikeMessage))
-        case "logabug":
-            let errorText = slashOptionString(named: "error", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !errorText.isEmpty else {
-                return embed(title: "Log a Bug", description: "Usage: `/logabug error:<what happened>`", color: 15_790_767)
-            }
-            let result = await handleLogABugSlash(
-                raw: context.rawLikeMessage,
-                username: context.username,
-                channelId: context.channelId,
-                errorText: errorText
-            )
-            return embed(
-                title: "Log a Bug",
-                description: result.message,
-                color: result.ok ? 3_062_954 : 15_790_767
-            )
-        case "featurerequest":
-            let featureText = slashOptionString(named: "feature", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let reasonText = slashOptionString(named: "reason", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !featureText.isEmpty else {
-                return embed(title: "Feature Request", description: "Usage: `/featurerequest feature:<feature> [reason:<why>]`", color: 15_790_767)
-            }
-            let result = await handleFeatureRequestSlash(
-                raw: context.rawLikeMessage,
-                username: context.username,
-                channelId: context.channelId,
-                featureText: featureText,
-                reasonText: reasonText
-            )
-            return embed(
-                title: "Feature Request",
-                description: result.message,
-                color: result.ok ? 3_062_954 : 15_790_767
-            )
-        case "debug":
-            guard await canRunDebugCommand(raw: context.rawLikeMessage) else {
-                return embed(title: "Debug", description: "⛔ Restricted to server owners or admins.", color: 15_790_767)
-            }
-            return (content: nil, embeds: [debugSummaryEmbed()])
-        case "setchannel":
-            if await setNotificationChannel(for: context.rawLikeMessage, currentChannelId: context.channelId) {
-                return embed(title: "Notifications", description: "✅ Notification channel set.")
-            }
-            return embed(title: "Notifications", description: "❌ Failed setting notification channel.", color: 15_790_767)
-        case "ignorechannel":
-            let action = slashOptionString(named: "action", in: data) ?? "list"
-            if action == "list" {
-                let ok = await updateIgnoredChannels(tokens: ["ignorechannel", "list"], raw: context.rawLikeMessage, responseChannelId: context.channelId)
-                return statusEmbed(title: "Ignored Channels", ok: ok)
-            }
-            let channelID = slashOptionChannelID(named: "channel", in: data) ?? ""
-            if channelID.isEmpty {
-                return embed(title: "Ignored Channels", description: "Provide a channel for add/remove.", color: 15_790_767)
-            }
-            let token = action == "remove" ? "remove" : "add"
-            let ok = await updateIgnoredChannels(tokens: ["ignorechannel", token, channelID], raw: context.rawLikeMessage, responseChannelId: context.channelId)
-            return statusEmbed(title: "Ignored Channels", ok: ok)
-        case "notifystatus":
-            let ok = await notifyStatus(raw: context.rawLikeMessage, responseChannelId: context.channelId)
-            return statusEmbed(title: "Notification Status", ok: ok)
-        case "image":
-            let prompt = slashOptionString(named: "prompt", in: data) ?? ""
-            let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
-            let ok = await generateImageCommand(prompt: prompt, userId: userId, username: context.username, channelId: context.channelId)
-            return statusEmbed(title: "Image Generation", ok: ok)
-        case "wiki":
-            let query = slashOptionString(named: "query", in: data) ?? ""
-            guard settings.wikiBot.isEnabled else {
-                return embed(title: "WikiBridge", description: "WikiBridge is disabled.", color: 15_790_767)
-            }
-            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return embed(title: "WikiBridge", description: "Usage: `/wiki query:<text>`", color: 15_790_767)
-            }
-            let resolved = resolveWikiCommand(named: "wiki") ?? {
-                for source in orderedEnabledWikiSources() {
-                    if let first = source.commands.first(where: \.enabled) {
-                        return ResolvedWikiCommand(source: source, command: first)
-                    }
-                }
-                return nil
-            }()
-            guard let resolved else {
-                return embed(title: "WikiBridge", description: "No enabled wiki source/command found.", color: 15_790_767)
-            }
-            let ok = await performWikiLookup(
-                command: resolved.command,
-                source: resolved.source,
-                query: query,
-                channelId: context.channelId
-            )
-            return statusEmbed(title: "WikiBridge Lookup", ok: ok)
-        case "compare":
-            let left = slashOptionString(named: "weapon_a", in: data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let right = slashOptionString(named: "weapon_b", in: data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !left.isEmpty, !right.isEmpty else {
-                return embed(title: "Weapon Compare", description: "Usage: `/compare weapon_a:<weapon> weapon_b:<weapon>`", color: 15_790_767)
-            }
-
-            guard let leftResult = await service.lookupFinalsWiki(query: left),
-                  let leftStats = leftResult.weaponStats else {
-                return embed(title: "Weapon Compare", description: "Couldn’t find weapon stats for `\(left)`.", color: 15_790_767)
-            }
-            guard let rightResult = await service.lookupFinalsWiki(query: right),
-                  let rightStats = rightResult.weaponStats else {
-                return embed(title: "Weapon Compare", description: "Couldn’t find weapon stats for `\(right)`.", color: 15_790_767)
-            }
-
-            func value(_ stat: String?) -> String {
-                let trimmed = stat?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return trimmed.isEmpty ? "N/A" : trimmed
-            }
-
-            let fields: [[String: Any]] = [
-                [
-                    "name": leftResult.title,
-                    "value": """
-                    Type: \(value(leftStats.type))
-                    Body: \(value(leftStats.bodyDamage))
-                    Head: \(value(leftStats.headshotDamage))
-                    RPM: \(value(leftStats.fireRate))
-                    Magazine: \(value(leftStats.magazineSize))
-                    Reload: \(value(leftStats.shortReload)) / \(value(leftStats.longReload))
-                    """,
-                    "inline": true
-                ],
-                [
-                    "name": rightResult.title,
-                    "value": """
-                    Type: \(value(rightStats.type))
-                    Body: \(value(rightStats.bodyDamage))
-                    Head: \(value(rightStats.headshotDamage))
-                    RPM: \(value(rightStats.fireRate))
-                    Magazine: \(value(rightStats.magazineSize))
-                    Reload: \(value(rightStats.shortReload)) / \(value(rightStats.longReload))
-                    """,
-                    "inline": true
-                ]
-            ]
-            return (
-                content: nil,
-                embeds: [[
-                    "title": "THE FINALS Weapon Compare",
-                    "description": "\(leftResult.title) vs \(rightResult.title)",
-                    "color": 5_793_266,
-                    "fields": fields
-                ]]
-            )
-        case "meta":
-            if let result = await service.fetchFinalsMetaFromSkycoach() {
-                return embed(title: "THE FINALS Meta", description: result)
-            }
-            return embed(
-                title: "THE FINALS Meta",
-                description: "Couldn't fetch meta data right now.\nSource: https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds",
-                color: 15_790_767
-            )
-        default:
-            return embed(title: "Slash Command", description: "Unknown slash command.", color: 15_790_767)
-        }
+        await commandProcessor.executeSlashCommand(command: command, data: data, context: context)
     }
 
-    func handleVoiceStateUpdate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(userId)? = map["user_id"],
-              case let .string(guildId)? = map["guild_id"]
-        else { return }
-
+    func handleVoiceStateUpdate(_ event: GatewayVoiceStateUpdateEvent) async {
         let allowPrimarySideEffects = shouldProcessPrimaryGatewayActions
+        let map = event.rawMap
+        let userId = event.userID
+        let guildId = event.guildID
 
-        let key = "\(guildId)-\(userId)"
         let now = Date()
-        let previous = activeVoice.first(where: { $0.userId == userId && $0.guildId == guildId })
         if let avatarHash = avatarHashFromVoicePayload(map), !avatarHash.isEmpty {
             userAvatarHashById[userId] = avatarHash
         }
+        let memberKey = "\(guildId)-\(userId)"
         if let guildAvatarHash = guildAvatarHashFromVoicePayload(map), !guildAvatarHash.isEmpty {
-            guildAvatarHashByMemberKey[key] = guildAvatarHash
+            guildAvatarHashByMemberKey[memberKey] = guildAvatarHash
         }
         let displayName = await voiceDisplayName(from: map, userId: userId)
 
         lastVoiceStateAt = now
 
-        let channelId: String?
-        if case let .string(cid)? = map["channel_id"] { channelId = cid } else { channelId = nil }
+        let channelId = event.channelID
+        let channelName = channelId.map { channelDisplayName(guildId: guildId, channelId: $0) } ?? ""
+        let transition = await voicePresenceStore.applyVoiceStateUpdate(
+            guildID: guildId,
+            userID: userId,
+            displayName: displayName,
+            channelID: channelId,
+            channelName: channelName,
+            now: now
+        )
+        activeVoice = await voicePresenceStore.snapshot()
 
-        if let newChannel = channelId {
-            // Idempotency: ignore mute/deaf-only updates (channel unchanged). Only fire on channel transitions.
-            if let previous, previous.channelId == newChannel { return }
+        switch transition {
+        case .ignored:
+            break
+        case .unchanged:
+            return
+        case .joined(let next):
+            stats.voiceJoins += 1
+            lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
+            addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
+            voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
 
-            let next = VoiceMemberPresence(
-                id: key,
-                userId: userId,
-                username: displayName,
-                guildId: guildId,
-                channelId: newChannel,
-                channelName: channelDisplayName(guildId: guildId, channelId: newChannel),
-                joinedAt: joinTimes[key] ?? now
-            )
-
-            if let previous {
-                if previous.channelId != newChannel {
-                    let elapsed = formatDuration(from: joinTimes[key] ?? previous.joinedAt, to: now)
-                    stats.voiceLeaves += 1
-                    lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
-                    addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
-                    voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
-
-                    if allowPrimarySideEffects,
-                       (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel)) {
-                        let message = renderNotificationTemplate(
-                            settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
-                            username: displayName,
-                            guildId: guildId,
-                            channelId: newChannel,
-                            fromChannelId: previous.channelId,
-                            toChannelId: newChannel
-                        )
-                        _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move,
-                            displayName: displayName, channelName: next.channelName,
-                            fromChannelName: previous.channelName)
-                    }
-                }
-                activeVoice.removeAll { $0.id == previous.id }
-            } else {
-                joinTimes[key] = now
-                stats.voiceJoins += 1
-                lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
-                addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
-                voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
-
-                if allowPrimarySideEffects,
-                   shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
-                    let message = renderNotificationTemplate(
-                        settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
-                        username: displayName,
-                        guildId: guildId,
-                        channelId: newChannel,
-                        fromChannelId: nil,
-                        toChannelId: newChannel
-                    )
-                    _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
-                        displayName: displayName, channelName: next.channelName)
-                }
-                if allowPrimarySideEffects {
-                    await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
-                }
+            if allowPrimarySideEffects,
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
+                let message = renderNotificationTemplate(
+                    settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
+                    username: displayName,
+                    guildId: guildId,
+                    channelId: next.channelId,
+                    fromChannelId: nil,
+                    toChannelId: next.channelId
+                )
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
+                    displayName: displayName, channelName: next.channelName)
             }
-
-            activeVoice.append(next)
-        } else if let previous {
-            let start = joinTimes[key] ?? previous.joinedAt
-            let elapsed = formatDuration(from: start, to: now)
+            if allowPrimarySideEffects {
+                await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: next.channelId))
+            }
+        case .moved(let previous, let next, let startedAt):
+            let elapsed = formatDuration(from: startedAt, to: now)
             stats.voiceLeaves += 1
-            activeVoice.removeAll { $0.id == previous.id }
-            joinTimes[key] = nil
+            lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
+            addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
+            voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
+
+            if allowPrimarySideEffects,
+               (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId)) {
+                let message = renderNotificationTemplate(
+                    settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
+                    username: displayName,
+                    guildId: guildId,
+                    channelId: next.channelId,
+                    fromChannelId: previous.channelId,
+                    toChannelId: next.channelId
+                )
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move,
+                    displayName: displayName, channelName: next.channelName,
+                    fromChannelName: previous.channelName)
+            }
+        case .left(let previous, let startedAt):
+            let elapsed = formatDuration(from: startedAt, to: now)
+            stats.voiceLeaves += 1
             lastVoiceStateSummary = "LEAVE \(previous.username) <- \(previous.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
@@ -983,7 +732,7 @@ extension AppModel {
                 _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave,
                     displayName: previous.username, channelName: previous.channelName, duration: elapsed)
             }
-            let elapsedSec = Int(now.timeIntervalSince(joinTimes[key] ?? previous.joinedAt))
+            let elapsedSec = Int(now.timeIntervalSince(startedAt))
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
             }
@@ -1153,22 +902,9 @@ extension AppModel {
             .replacingOccurrences(of: "{toChannelName}", with: channelDisplayName(guildId: guildId, channelId: resolvedToChannelId))
     }
 
-    func handleReady(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw else { return }
-        guard case let .array(guilds)? = map["guilds"] else { return }
-
-        for guild in guilds {
-            guard case let .object(guildMap) = guild,
-                  case let .string(guildId)? = guildMap["id"]
-            else { continue }
-
-            let guildName: String?
-            if case let .string(name)? = guildMap["name"] {
-                guildName = name
-            } else {
-                guildName = nil
-            }
-            await discordCache.upsertGuild(id: guildId, name: guildName)
+    func handleReady(_ event: GatewayReadyEvent) async {
+        for guild in event.guilds {
+            await discordCache.upsertGuild(id: guild.id, name: guild.name)
         }
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()

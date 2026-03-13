@@ -114,14 +114,16 @@ actor ClusterCoordinator {
         onJobLog: @escaping JobLogHandler,
         onSync: @escaping SyncHandler,
         meshHandler: @escaping MeshHandler,
-        mediaLibraryProvider: @escaping MediaLibraryProvider,
-        mediaStreamHandler: @escaping MediaStreamHandler,
-        mediaThumbnailHandler: @escaping MediaStreamHandler,
-        mediaClipHandler: @escaping MediaClipHandler,
-        mediaMultiViewHandler: @escaping MediaMultiViewHandler,
-        mediaFrameHandler: @escaping MediaFrameHandler,
+        mediaLibraryProvider: @escaping MediaLibraryProvider = {
+            MediaLibraryPayload(nodeName: "", configFilePath: "", sources: [], items: [], generatedAt: Date())
+        },
+        mediaStreamHandler: @escaping MediaStreamHandler = { _, _ in nil },
+        mediaThumbnailHandler: @escaping MediaStreamHandler = { _, _ in nil },
+        mediaClipHandler: @escaping MediaClipHandler = { _ in nil },
+        mediaMultiViewHandler: @escaping MediaMultiViewHandler = { _ in nil },
+        mediaFrameHandler: @escaping MediaFrameHandler = { _, _ in nil },
         conversationFetcher: @escaping ConversationFetcher,
-        onPromotion: @escaping @Sendable () async -> Void
+        onPromotion: @escaping @Sendable () async -> Void = {}
     ) {
         self.aiHandler = aiHandler
         self.wikiHandler = wikiHandler
@@ -183,7 +185,16 @@ actor ClusterCoordinator {
         await onCursorsChanged?(replicationCursors)
     }
 
-    func applySettings(mode: ClusterMode, nodeName: String, leaderAddress: String, leaderPort: Int, listenPort: Int, sharedSecret: String, leaderTerm: Int = 0) async {
+    func applySettings(
+        mode: ClusterMode,
+        nodeName: String,
+        leaderAddress: String,
+        leaderPort: Int? = nil,
+        listenPort: Int,
+        sharedSecret: String,
+        leaderTerm: Int = 0
+    ) async {
+        let resolvedLeaderPort = leaderPort ?? listenPort
         // Restore persisted term; never go backwards.
         if leaderTerm > self.leaderTerm {
             self.leaderTerm = leaderTerm
@@ -193,8 +204,8 @@ actor ClusterCoordinator {
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
-        self.leaderPort = leaderPort
-        self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: leaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.leaderPort = resolvedLeaderPort
+        self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: resolvedLeaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         self.mode = await startupReconciledMode(requestedMode: mode)
 
