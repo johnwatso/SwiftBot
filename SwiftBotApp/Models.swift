@@ -2701,15 +2701,31 @@ struct PipelineContext: CustomStringConvertible {
     }
 }
 
-@MainActor
 final class RuleEngine {
     private var cancellable: AnyCancellable?
-    private var activeRules: [Rule] = []
+    private var _activeRules: [Rule] = []
+    private let lock = NSLock()
+    
+    private var activeRules: [Rule] {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _activeRules
+        }
+        set {
+            lock.lock()
+            _activeRules = newValue
+            lock.unlock()
+        }
+    }
 
     init(store: RuleStore) {
-        activeRules = store.rules.filter(\.isEnabled)
-        cancellable = store.$rules.sink { [weak self] rules in
-            self?.activeRules = rules.filter(\.isEnabled)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.activeRules = store.rules.filter(\.isEnabled)
+            self.cancellable = store.$rules.sink { [weak self] rules in
+                self?.activeRules = rules.filter(\.isEnabled)
+            }
         }
     }
 

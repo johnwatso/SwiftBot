@@ -202,10 +202,11 @@ extension AppModel {
     }
 
     func startRateLimitCleanupTask() async {
-        Task {
+        Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000) // 60 seconds
                 if Task.isCancelled { break }
+                guard let self = self else { return }
                 await MainActor.run {
                     self.cleanupRateLimitCache()
                 }
