@@ -569,6 +569,9 @@ actor AdminWebServer {
         loadPersistedSessions()
         let previous = self.config
         self.config = config
+        
+        // Refresh the active public base URL so OAuth redirect URIs pick up config changes immediately.
+        self.activePublicBaseURL = resolvedPublicBaseURL(usingTLS: activeTransportUsesTLS)
 
         if !config.enabled {
             await stop()
@@ -1567,7 +1570,6 @@ actor AdminWebServer {
         )
 
         let uri = redirectURI()
-        await logger?("[OAuth] Redirect URI: \(uri)")
 
         var components = URLComponents(string: "https://discord.com/oauth2/authorize")
         components?.queryItems = [
@@ -1956,11 +1958,45 @@ actor AdminWebServer {
     }
 
     private func redirectURI() -> String {
-        let resolvedBase = activePublicBaseURL.isEmpty
+        var resolvedBase = activePublicBaseURL.isEmpty
             ? resolvedPublicBaseURL(usingTLS: config.https != nil)
             : activePublicBaseURL
-        let base = resolvedBase.hasSuffix("/") ? String(resolvedBase.dropLast()) : resolvedBase
-        return base + config.redirectPath
+        
+        // Ensure scheme exists
+        if !resolvedBase.isEmpty && !resolvedBase.contains("://") {
+            resolvedBase = "https://" + resolvedBase
+        }
+        
+        let path = config.redirectPath.hasPrefix("/") ? config.redirectPath : "/" + config.redirectPath
+        
+        Task {
+            await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(path)'")
+        }
+
+        guard var components = URLComponents(string: resolvedBase) else {
+            let fallback = resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path)
+            Task {
+                await logger?("[OAuth] redirectURI fallback construction: \(fallback)")
+            }
+            return fallback
+        }
+        
+        // Handle existing path in base URL (e.g. proxy subpath)
+        if !components.path.isEmpty && components.path != "/" {
+            let base_path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+            let sub_path = path.hasPrefix("/") ? path : "/" + path
+            components.path = base_path + sub_path
+        } else {
+            components.path = path
+        }
+        
+        let result = components.url?.absoluteString ?? (resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path))
+        
+        Task {
+            await logger?("[OAuth] Resulting redirectURI: \(result)")
+        }
+        
+        return result
     }
 
     private func percentEncode(_ value: String) -> String {

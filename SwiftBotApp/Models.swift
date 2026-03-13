@@ -1627,9 +1627,9 @@ enum ClusterMode: String, Codable, CaseIterable, Identifiable {
     var description: String {
         switch self {
         case .standalone: return "Normal operation. All bot features are managed locally."
-        case .leader:     return "This node acts as the Primary controller for the SwiftMesh cluster."
-        case .worker:     return "Deprecated. This node performs offloaded compute tasks for the Primary."
-        case .standby:    return "This node will automatically promote to Primary if the current Leader fails."
+        case .leader:     return "This node acts as the Primary node for the SwiftMesh cluster."
+        case .worker:     return "Deprecated. This node performs offloaded compute tasks for the Primary node."
+        case .standby:    return "This node will automatically promote to Primary node if the current Leader fails. (Fail Over node)"
         }
     }
 }

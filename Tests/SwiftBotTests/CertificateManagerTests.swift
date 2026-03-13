@@ -692,6 +692,27 @@ final class CertificateManagerTests: XCTestCase {
                 )
                 return (response, data)
             case 2:
+                // findExistingTunnel (added to check before creating)
+                XCTAssertEqual(request.httpMethod, "GET")
+                XCTAssertTrue(url.path.contains("/cfd_tunnel"))
+                XCTAssertEqual(url.query, "name=swiftbot-swiftbot-example-com&is_deleted=false")
+
+                let data = """
+                {
+                  "success": true,
+                  "result": []
+                }
+                """.data(using: .utf8)!
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: url,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, data)
+            case 3:
                 XCTAssertEqual(request.httpMethod, "POST")
                 XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel")
                 XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
@@ -720,7 +741,7 @@ final class CertificateManagerTests: XCTestCase {
                     )
                 )
                 return (response, data)
-            case 3:
+            case 4:
                 XCTAssertEqual(request.httpMethod, "GET")
                 XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel/tunnel-789/token")
 
@@ -739,7 +760,7 @@ final class CertificateManagerTests: XCTestCase {
                     )
                 )
                 return (response, data)
-            case 4:
+            case 5:
                 XCTAssertEqual(request.httpMethod, "PUT")
                 XCTAssertEqual(url.path, "/client/v4/accounts/account-456/cfd_tunnel/tunnel-789/configurations")
 
@@ -800,6 +821,6 @@ final class CertificateManagerTests: XCTestCase {
             originURL: "http://127.0.0.1:38888"
         )
 
-        XCTAssertEqual(requestCount, 4)
+        XCTAssertEqual(requestCount, 5)
     }
 }
