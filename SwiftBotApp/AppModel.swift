@@ -441,7 +441,14 @@ final class AppModel: ObservableObject {
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
-    let service = DiscordService()
+    let discordHTTPSession = URLSession(configuration: .default)
+    lazy var aiService = DiscordAIService(session: discordHTTPSession)
+    lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
+    lazy var service = DiscordService(
+        session: discordHTTPSession,
+        aiService: aiService,
+        wikiLookupService: wikiLookupService
+    )
     let cluster = ClusterCoordinator()
     let adminWebServer = AdminWebServer()
     let certificateManager = CertificateManager()
@@ -667,7 +674,7 @@ final class AppModel: ObservableObject {
             await cluster.configureHandlers(
                 aiHandler: { [weak self] messages, serverName, channelName, wikiContext in
                     guard let self else { return nil }
-                    return await self.service.generateSmartDMReply(
+                    return await self.aiService.generateSmartDMReply(
                         messages: messages,
                         serverName: serverName,
                         channelName: channelName,
@@ -676,7 +683,7 @@ final class AppModel: ObservableObject {
                 },
                 wikiHandler: { [weak self] query, source in
                     guard let self else { return nil }
-                    return await self.service.lookupWiki(query: query, source: source)
+                    return await self.wikiLookupService.lookupWiki(query: query, source: source)
                 },
                 onSnapshot: { [weak self] snapshot in
                     let model = self
@@ -737,7 +744,7 @@ final class AppModel: ObservableObject {
                     }
                 }
             )
-            await service.configureLocalAIDMReplies(
+            await aiService.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
                 provider: settings.localAIProvider,
                 preferredProvider: settings.preferredAIProvider,
@@ -843,7 +850,7 @@ final class AppModel: ObservableObject {
             }
 
             if self.usesLocalRuntime {
-                await service.configureLocalAIDMReplies(
+                await aiService.configureLocalAIDMReplies(
                     enabled: settings.localAIDMReplyEnabled,
                     provider: settings.localAIProvider,
                     preferredProvider: settings.preferredAIProvider,
@@ -1657,7 +1664,7 @@ final class AppModel: ObservableObject {
     func detectOllamaModel() {
         let base = normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
         Task {
-            guard let model = await service.detectOllamaModel(baseURL: base) else {
+            guard let model = await aiService.detectOllamaModel(baseURL: base) else {
                 await MainActor.run {
                     self.logs.append("⚠️ Ollama model auto-detect failed.")
                 }
@@ -1677,7 +1684,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAIStatus() async {
-        let status = await service.currentAIStatus(
+        let status = await aiService.currentAIStatus(
             ollamaBaseURL: normalizedOllamaBaseURL(from: settings.ollamaBaseURL),
             ollamaModelHint: settings.localAIModel,
             openAIAPIKey: effectiveOpenAIAPIKey()
@@ -1752,7 +1759,7 @@ final class AppModel: ObservableObject {
             guard let target = settings.wikiBot.sources.first(where: { $0.id == targetID }) else { return }
             let usesWeaponCommand = target.commands.contains { normalizedWikiCommandTrigger($0.trigger) == "weapon" }
             let testQuery = usesWeaponCommand ? "AKM" : "Main Page"
-            let result = await service.lookupWiki(query: testQuery, source: target)
+            let result = await wikiLookupService.lookupWiki(query: testQuery, source: target)
             updateWikiBridgeSourceRuntimeState(id: targetID) { entry in
                 entry.lastLookupAt = Date()
                 if let result {
@@ -1768,7 +1775,7 @@ final class AppModel: ObservableObject {
     func runWikiBridgeSourceTestQuery(source: WikiSource, query: String) async -> FinalsWikiLookupResult? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        return await service.lookupWiki(query: trimmed, source: source)
+        return await wikiLookupService.lookupWiki(query: trimmed, source: source)
     }
 
     func updatePatchyTarget(_ target: PatchySourceTarget) {
@@ -4337,7 +4344,7 @@ final class AppModel: ObservableObject {
         mediaLibrarySettings = currentLocalMedia
         await mediaLibraryIndexer.invalidate()
         await ruleStore.reloadFromDisk()
-        await service.configureLocalAIDMReplies(
+        await aiService.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled,
             provider: settings.localAIProvider,
             preferredProvider: settings.preferredAIProvider,

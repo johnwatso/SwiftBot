@@ -30,7 +30,7 @@ extension AppModel {
                     await self.sendEmbed(channelId, embed: embed)
                 },
                 generateHelpReply: { [unowned self] messages, systemPrompt in
-                    await self.service.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
+                    await self.aiService.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
                 },
                 rollDice: { [unowned self] notation in
                     self.rollDice(notation)
@@ -75,7 +75,7 @@ extension AppModel {
                     self.weeklyPlugin?.snapshotSummary() ?? "No data yet."
                 },
                 fetchFinalsMeta: { [unowned self] in
-                    await self.service.fetchFinalsMetaFromSkycoach()
+                    await self.wikiLookupService.fetchFinalsMetaFromSkycoach()
                 },
                 resolveWikiCommand: { [unowned self] name in
                     self.resolveWikiCommand(named: name).map { ($0.source, $0.command) }
@@ -114,7 +114,7 @@ extension AppModel {
                     )
                 },
                 lookupFinalsWiki: { [unowned self] query in
-                    await self.service.lookupFinalsWiki(query: query)
+                    await self.wikiLookupService.lookupFinalsWiki(query: query)
                 }
             )
         )
