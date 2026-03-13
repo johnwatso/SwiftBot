@@ -31,50 +31,50 @@ actor DiscordService {
     private lazy var ruleExecutionService = RuleExecutionService(
         aiService: aiService,
         dependencies: .init(
-            sendMessage: { [unowned self] channelId, content, token in
-                try await self.sendMessage(channelId: channelId, content: content, token: token)
+            sendMessage: { [weak self] channelId, content, token in
+                try await self?.sendMessage(channelId: channelId, content: content, token: token)
             },
-            sendPayloadMessage: { [unowned self] channelId, payload, token in
-                _ = try await self.sendMessage(channelId: channelId, payload: payload, token: token)
+            sendPayloadMessage: { [weak self] channelId, payload, token in
+                _ = try await self?.sendMessage(channelId: channelId, payload: payload, token: token)
             },
-            sendDM: { [unowned self] userId, content in
-                try await self.sendDM(userId: userId, content: content)
+            sendDM: { [weak self] userId, content in
+                try await self?.sendDM(userId: userId, content: content)
             },
-            addReaction: { [unowned self] channelId, messageId, emoji, token in
-                try await self.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
+            addReaction: { [weak self] channelId, messageId, emoji, token in
+                try await self?.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
             },
-            deleteMessage: { [unowned self] channelId, messageId, token in
-                try await self.deleteMessage(channelId: channelId, messageId: messageId, token: token)
+            deleteMessage: { [weak self] channelId, messageId, token in
+                try await self?.deleteMessage(channelId: channelId, messageId: messageId, token: token)
             },
-            addRole: { [unowned self] guildId, userId, roleId, token in
-                try await self.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            addRole: { [weak self] guildId, userId, roleId, token in
+                try await self?.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
             },
-            removeRole: { [unowned self] guildId, userId, roleId, token in
-                try await self.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            removeRole: { [weak self] guildId, userId, roleId, token in
+                try await self?.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
             },
-            timeoutMember: { [unowned self] guildId, userId, durationSeconds, token in
-                try await self.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
+            timeoutMember: { [weak self] guildId, userId, durationSeconds, token in
+                try await self?.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
             },
-            kickMember: { [unowned self] guildId, userId, reason, token in
-                try await self.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
+            kickMember: { [weak self] guildId, userId, reason, token in
+                try await self?.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
             },
-            moveMember: { [unowned self] guildId, userId, channelId, token in
-                try await self.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
+            moveMember: { [weak self] guildId, userId, channelId, token in
+                try await self?.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
             },
-            createChannel: { [unowned self] guildId, name, token in
-                try await self.createChannel(guildId: guildId, name: name, token: token)
+            createChannel: { [weak self] guildId, name, token in
+                try await self?.createChannel(guildId: guildId, name: name, token: token)
             },
-            sendWebhook: { [unowned self] url, content in
-                try await self.sendWebhook(url: url, content: content)
+            sendWebhook: { [weak self] url, content in
+                try await self?.sendWebhook(url: url, content: content)
             },
-            updatePresence: { [unowned self] text in
-                await self.updatePresence(text: text)
+            updatePresence: { [weak self] text in
+                await self?.updatePresence(text: text)
             },
-            resolveChannelName: { [unowned self] guildId, channelId in
-                await self.resolvedChannelName(guildId: guildId, channelId: channelId)
+            resolveChannelName: { [weak self] guildId, channelId in
+                await self?.resolvedChannelName(guildId: guildId, channelId: channelId) ?? "Unknown"
             },
-            resolveGuildName: { [unowned self] guildId in
-                await self.guildNamesById[guildId]
+            resolveGuildName: { [weak self] guildId in
+                await self?.guildNamesById[guildId]
             },
             debugLog: { [discordLogger] message in
                 discordLogger.debug("\(message, privacy: .public)")
@@ -169,8 +169,8 @@ actor DiscordService {
     }
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
-    func wasMessageHandledByRules(messageId: String) -> Bool {
-        ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
+    func wasMessageHandledByRules(messageId: String) async -> Bool {
+        await ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
     }
 
     func connect(token: String) async {

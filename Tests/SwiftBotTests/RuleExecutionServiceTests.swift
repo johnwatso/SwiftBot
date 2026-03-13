@@ -43,7 +43,8 @@ final class RuleExecutionServiceTests: XCTestCase {
         )
 
         XCTAssertTrue(context.eventHandled)
-        XCTAssertTrue(service.wasMessageHandledByRules(messageId: "message-1"))
+        let wasHandled = await service.wasMessageHandledByRules(messageId: "message-1")
+        XCTAssertTrue(wasHandled)
 
         let payloads = await recorder.sentPayloads
         XCTAssertEqual(payloads.count, 1)
