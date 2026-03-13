@@ -24,7 +24,6 @@
 		11D1A1B2C3D4E5F607182942 /* Services/VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182943 /* Services/VoicePresenceStore.swift */; };
 		11D1A1B2C3D4E5F607182944 /* Services/VoiceRuleStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182945 /* Services/VoiceRuleStateStore.swift */; };
 		11D1A1B2C3D4E5F607182946 /* Services/WikiLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182947 /* Services/WikiLookupService.swift */; };
-		A2B3C4D5E6F7080911223345 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */; };
 		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
 		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
 		222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */; };
@@ -68,6 +67,7 @@
 		A1B2C3D40111223344556A04 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556904 /* NIOCore */; };
 		A1B2C3D40111223344556A05 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556905 /* NIOPosix */; };
 		A1B2C3D40111223344556A06 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556906 /* NIOSSL */; };
+		A2B3C4D5E6F7080911223345 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */; };
 		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
 		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
 		AA1000011122334455667701 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667701 /* PreferencesView.swift */; };
@@ -112,7 +112,6 @@
 		11D1A1B2C3D4E5F607182943 /* Services/VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/VoicePresenceStore.swift; sourceTree = "<group>"; };
 		11D1A1B2C3D4E5F607182945 /* Services/VoiceRuleStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/VoiceRuleStateStore.swift; sourceTree = "<group>"; };
 		11D1A1B2C3D4E5F607182947 /* Services/WikiLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/WikiLookupService.swift; sourceTree = "<group>"; };
-		A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
 		142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
 		199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
 		2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
@@ -139,6 +138,7 @@
 		A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareTunnelClient.swift; sourceTree = "<group>"; };
 		A1B2C3D40111223344556705 /* Security/TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/TunnelManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60708001122A3 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
 		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
 		AA2000011122334455667701 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
@@ -623,7 +623,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.4;
+				MARKETING_VERSION = 1.9.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -671,7 +671,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.4;
+				MARKETING_VERSION = 1.9.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
