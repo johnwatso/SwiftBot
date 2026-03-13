@@ -22,16 +22,37 @@ extension AppModel {
         return try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
     }
 
+    private func performOutputRequest<T>(
+        action: String,
+        operation: () async throws -> T
+    ) async -> T? {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            return nil
+        }
+        do {
+            return try await operation()
+        } catch {
+            return nil
+        }
+    }
+
+    private func performOutputAction(
+        action: String,
+        operation: () async throws -> Void
+    ) async -> Bool {
+        await performOutputRequest(action: action) {
+            try await operation()
+            return true
+        } ?? false
+    }
+
     func sendPayload(
         channelId: String,
         payload: [String: Any],
         action: String
     ) async -> Bool {
-        do {
+        await performOutputAction(action: action) {
             _ = try await sendPayloadResponse(channelId: channelId, payload: payload, action: action)
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -130,11 +151,8 @@ extension AppModel {
     }
 
     func sendMessageReturningID(channelId: String, content: String) async -> String? {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageReturningID", log: { logs.append($0) }) else { return nil }
-        do {
-            return try await service.sendMessageReturningID(channelId: channelId, content: content, token: settings.token)
-        } catch {
-            return nil
+        await performOutputRequest(action: "sendMessageReturningID") {
+            try await service.sendMessageReturningID(channelId: channelId, content: content, token: settings.token)
         }
     }
 
@@ -143,12 +161,8 @@ extension AppModel {
     }
 
     func editMessage(channelId: String, messageId: String, content: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "editMessage") {
             try await service.editMessage(channelId: channelId, messageId: messageId, content: content, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -169,12 +183,8 @@ extension AppModel {
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "addReaction", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "addReaction") {
             try await service.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: settings.token)
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -220,8 +230,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessageWithImage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "sendMessageWithImage") {
             _ = try await service.sendMessageWithImage(
                 channelId: channelId,
                 content: content,
@@ -229,9 +238,6 @@ extension AppModel {
                 filename: filename,
                 token: settings.token
             )
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -242,8 +248,7 @@ extension AppModel {
         imageData: Data,
         filename: String
     ) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editMessageWithImage", log: { logs.append($0) }) else { return false }
-        do {
+        await performOutputAction(action: "editMessageWithImage") {
             try await service.editMessageWithImage(
                 channelId: channelId,
                 messageId: messageId,
@@ -252,9 +257,6 @@ extension AppModel {
                 filename: filename,
                 token: settings.token
             )
-            return true
-        } catch {
-            return false
         }
     }
 
