@@ -29,31 +29,6 @@ enum ViewMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct BugAutoFixPendingApproval {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-}
-
-struct BugAutoFixPendingStart {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-    let requestedByUserID: String
-}
-
 private struct AdminWebCertificateRenewalConfiguration: Equatable {
     let enabled: Bool
     let domain: String
@@ -773,7 +748,7 @@ final class AppModel: ObservableObject {
                 return await self.localMediaFrameResponse(itemID: itemID, atSeconds: seconds)
             },
                 conversationFetcher: { [weak self] fromRecordID, limit in
-                    guard let self else { return ([], false) }
+                    guard let self, let fromRecordID else { return ([], false) }
                     return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
                 },
                 onPromotion: { [weak self] in
@@ -4515,7 +4490,7 @@ final class AppModel: ObservableObject {
         let currentTerm = await cluster.currentLeaderTerm()
         for (nodeName, baseURL) in nodes {
             let cursor = await cluster.currentReplicationCursor(for: nodeName)
-            let fromID = cursor?.lastSentRecordID
+            let fromID = cursor?.lastSentRecordID ?? ""
             let (records, hasMore) = await conversationStore.recordsSince(fromRecordID: fromID, limit: 500)
             let lastID = records.last?.id
             let payload = MeshSyncPayload(
