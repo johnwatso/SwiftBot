@@ -38,14 +38,63 @@ actor DiscordService {
     private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
     private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
     private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
+    private lazy var ruleExecutionService = RuleExecutionService(
+        aiService: aiService,
+        dependencies: .init(
+            sendMessage: { [unowned self] channelId, content, token in
+                try await self.sendMessage(channelId: channelId, content: content, token: token)
+            },
+            sendPayloadMessage: { [unowned self] channelId, payload, token in
+                _ = try await self.sendMessage(channelId: channelId, payload: payload, token: token)
+            },
+            sendDM: { [unowned self] userId, content in
+                try await self.sendDM(userId: userId, content: content)
+            },
+            addReaction: { [unowned self] channelId, messageId, emoji, token in
+                try await self.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
+            },
+            deleteMessage: { [unowned self] channelId, messageId, token in
+                try await self.deleteMessage(channelId: channelId, messageId: messageId, token: token)
+            },
+            addRole: { [unowned self] guildId, userId, roleId, token in
+                try await self.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            },
+            removeRole: { [unowned self] guildId, userId, roleId, token in
+                try await self.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            },
+            timeoutMember: { [unowned self] guildId, userId, durationSeconds, token in
+                try await self.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
+            },
+            kickMember: { [unowned self] guildId, userId, reason, token in
+                try await self.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
+            },
+            moveMember: { [unowned self] guildId, userId, channelId, token in
+                try await self.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
+            },
+            createChannel: { [unowned self] guildId, name, token in
+                try await self.createChannel(guildId: guildId, name: name, token: token)
+            },
+            sendWebhook: { [unowned self] url, content in
+                try await self.sendWebhook(url: url, content: content)
+            },
+            updatePresence: { [unowned self] text in
+                await self.updatePresence(text: text)
+            },
+            resolveChannelName: { [unowned self] guildId, channelId in
+                await self.resolvedChannelName(guildId: guildId, channelId: channelId)
+            },
+            resolveGuildName: { [unowned self] guildId in
+                await self.guildNamesById[guildId]
+            },
+            debugLog: { [discordLogger] message in
+                discordLogger.debug("\(message, privacy: .public)")
+            }
+        )
+    )
     private lazy var wikiLookupService = WikiLookupService(session: session)
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
-
-    /// Tracks message IDs that were handled by rule actions to prevent duplicate AI replies
-    private var ruleHandledMessageIds: Set<String> = []
-    private let ruleHandledLock = NSLock()
 
     private let session = URLSession(configuration: .default)
 
@@ -119,22 +168,12 @@ actor DiscordService {
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
     func wasMessageHandledByRules(messageId: String) -> Bool {
-        ruleHandledLock.lock()
-        defer { ruleHandledLock.unlock() }
-        return ruleHandledMessageIds.contains(messageId)
+        ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
     }
 
     /// Marks a message as handled by rule actions
     func markMessageHandledByRules(messageId: String) {
-        ruleHandledLock.lock()
-        ruleHandledMessageIds.insert(messageId)
-        // Cleanup old entries to prevent memory growth (keep last 1000)
-        if ruleHandledMessageIds.count > 1000 {
-            // Remove oldest entries by converting to array and back
-            let sortedIds = Array(ruleHandledMessageIds)
-            ruleHandledMessageIds = Set(sortedIds.suffix(1000))
-        }
-        ruleHandledLock.unlock()
+        ruleExecutionService.markMessageHandledByRules(messageId: messageId)
     }
 
     func detectOllamaModel(baseURL: String) async -> String? {
@@ -804,26 +843,12 @@ actor DiscordService {
         for event: VoiceRuleEvent,
         isDirectMessage: Bool
     ) async -> PipelineContext {
-        var context = PipelineContext()
-        context.isDirectMessage = isDirectMessage
-        context.triggerGuildId = event.triggerGuildId
-        context.triggerChannelId = event.triggerChannelId
-        context.triggerMessageId = event.triggerMessageId
-
-        discordLogger.debug("Executing rule pipeline: \(actions.count) blocks. Initial context: \(context)")
-
-        for (index, action) in actions.enumerated() {
-            await execute(action: action, for: event, context: &context)
-            discordLogger.debug("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
-        }
-
-        if context.eventHandled, let messageId = event.triggerMessageId {
-            markMessageHandledByRules(messageId: messageId)
-            discordLogger.debug("Message \(messageId) handled by rule actions - AI reply will be skipped")
-        }
-
-        discordLogger.debug("Rule pipeline execution complete.")
-        return context
+        await ruleExecutionService.executeRulePipeline(
+            actions: actions,
+            for: event,
+            isDirectMessage: isDirectMessage,
+            token: botToken
+        )
     }
 
     private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
@@ -1020,236 +1045,7 @@ actor DiscordService {
     }
 
     func execute(action: Action, for event: VoiceRuleEvent, context: inout PipelineContext) async {
-        guard let token = botToken else { return }
-        
-        switch action.type {
-        case .mentionUser:
-            context.prependUserMention = true
-        case .mentionRole:
-            context.mentionRole = action.roleId
-        case .disableMention:
-            context.mentionUser = false
-        case .sendToChannel:
-            context.targetChannelId = action.channelId
-        case .sendToDM:
-            context.sendToDM = true
-        case .replyToTrigger:
-            context.replyToTriggerMessage = true
-            if let triggerChannelId = event.triggerChannelId {
-                context.targetChannelId = triggerChannelId
-            }
-        case .generateAIResponse:
-            let prompt = renderMessage(template: action.message, event: event, context: context)
-            if let aiReply = await generateRuleActionAIReply(prompt: prompt, event: event) {
-                context.aiResponse = aiReply
-            }
-        case .summariseMessage:
-            guard let content = event.messageContent, !content.isEmpty else { break }
-            let prompt = "Summarize the following message concisely:\n\n\(content)"
-            if let summary = await generateRuleActionAIReply(prompt: prompt, event: event) {
-                context.aiSummary = summary
-            }
-        case .classifyMessage:
-            guard let content = event.messageContent, !content.isEmpty else { break }
-            let categories = action.categories.isEmpty ? "question, feedback, spam, other" : action.categories
-            let prompt = "Classify the following message into one of these categories [\(categories)]:\n\n\(content)\n\nCategory:"
-            if let classification = await generateRuleActionAIReply(prompt: prompt, event: event) {
-                context.aiClassification = classification.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        case .extractEntities:
-            guard let content = event.messageContent, !content.isEmpty else { break }
-            let entityTypes = action.entityTypes.isEmpty ? "names, dates, locations, organizations" : action.entityTypes
-            let prompt = "Extract \(entityTypes) from the following message as a comma-separated list:\n\n\(content)\n\nEntities:"
-            if let entities = await generateRuleActionAIReply(prompt: prompt, event: event) {
-                context.aiEntities = entities.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        case .rewriteMessage:
-            guard let content = event.messageContent, !content.isEmpty else { break }
-            let style = action.rewriteStyle.isEmpty ? "professional" : action.rewriteStyle
-            let prompt = "Rewrite the following message in a \(style) style:\n\n\(content)\n\nRewritten:"
-            if let rewrite = await generateRuleActionAIReply(prompt: prompt, event: event) {
-                context.aiRewrite = rewrite
-            }
-        case .sendMessage:
-            // Determine content based on contentSource
-            let messageContent: String
-            switch action.contentSource {
-            case .custom:
-                messageContent = action.message
-            case .aiResponse:
-                messageContent = context.aiResponse ?? "{ai.response} not available"
-            case .aiSummary:
-                messageContent = context.aiSummary ?? "{ai.summary} not available"
-            case .aiClassification:
-                messageContent = context.aiClassification ?? "{ai.classification} not available"
-            case .aiEntities:
-                messageContent = context.aiEntities ?? "{ai.entities} not available"
-            case .aiRewrite:
-                messageContent = context.aiRewrite ?? "{ai.rewrite} not available"
-            }
-            
-            let targetIsDM = context.sendToDM
-            let rendered = renderMessage(template: messageContent, event: event, context: context)
-
-            if targetIsDM && !event.userId.isEmpty {
-                _ = try? await sendDM(userId: event.userId, content: rendered)
-                context.eventHandled = true
-                return
-            }
-
-            let modifierTargetChannelId = context.targetChannelId
-            let triggerMessageId = context.triggerMessageId ?? event.triggerMessageId
-            let triggerChannelId = context.triggerChannelId ?? event.triggerChannelId
-
-            if context.replyToTriggerMessage,
-               let triggerMessageId,
-               let triggerChannelId,
-               !triggerChannelId.isEmpty {
-                let payload: [String: Any] = [
-                    "content": rendered,
-                    "message_reference": [
-                        "message_id": triggerMessageId,
-                        "channel_id": triggerChannelId,
-                        "fail_if_not_exists": false
-                    ]
-                ]
-                _ = try? await sendMessage(channelId: triggerChannelId, payload: payload, token: token)
-                context.eventHandled = true
-                return
-            }
-
-            let destinationMode = action.destinationMode ?? MessageDestination.defaultMode(for: event, context: context)
-
-            switch destinationMode {
-            case .replyToTrigger:
-                if let triggerMessageId,
-                   let triggerChannelId,
-                   !triggerChannelId.isEmpty {
-                    let payload: [String: Any] = [
-                        "content": rendered,
-                        "message_reference": [
-                            "message_id": triggerMessageId,
-                            "channel_id": triggerChannelId,
-                            "fail_if_not_exists": false
-                        ]
-                    ]
-                    _ = try? await sendMessage(channelId: triggerChannelId, payload: payload, token: token)
-                    context.eventHandled = true
-                } else if let fallbackChannelId = modifierTargetChannelId ?? triggerChannelId, !fallbackChannelId.isEmpty {
-                    try? await sendMessage(channelId: fallbackChannelId, content: rendered, token: token)
-                    context.eventHandled = true
-                } else if !action.channelId.isEmpty {
-                    try? await sendMessage(channelId: action.channelId, content: rendered, token: token)
-                    context.eventHandled = true
-                }
-            case .sameChannel:
-                let targetChannelId = modifierTargetChannelId ?? triggerChannelId ?? event.channelId
-                guard !targetChannelId.isEmpty else { return }
-                try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
-                context.eventHandled = true
-            case .specificChannel:
-                let targetChannelId = modifierTargetChannelId ?? action.channelId
-                guard !targetChannelId.isEmpty else { return }
-                try? await sendMessage(channelId: targetChannelId, content: rendered, token: token)
-                context.eventHandled = true
-            }
-        case .addLogEntry:
-            return
-        case .setStatus:
-            let statusText = renderMessage(template: action.statusText, event: event, context: context)
-            guard !statusText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            await updatePresence(text: statusText)
-        case .sendDM:
-            let rendered = renderMessage(template: action.dmContent, event: event, context: context)
-            _ = try? await sendDM(userId: event.userId, content: rendered)
-            context.eventHandled = true
-        case .addReaction:
-            guard let triggerMessageId = event.triggerMessageId, let triggerChannelId = event.triggerChannelId else { return }
-            _ = try? await addReaction(channelId: triggerChannelId, messageId: triggerMessageId, emoji: action.emoji, token: token)
-            context.eventHandled = true
-        case .deleteMessage:
-            guard let triggerMessageId = event.triggerMessageId, let triggerChannelId = event.triggerChannelId else { return }
-            if action.deleteDelaySeconds > 0 {
-                Task {
-                    try? await Task.sleep(nanoseconds: UInt64(action.deleteDelaySeconds) * 1_000_000_000)
-                    _ = try? await deleteMessage(channelId: triggerChannelId, messageId: triggerMessageId, token: token)
-                }
-            } else {
-                _ = try? await deleteMessage(channelId: triggerChannelId, messageId: triggerMessageId, token: token)
-            }
-            context.eventHandled = true
-        case .addRole:
-            _ = try? await addRole(guildId: event.guildId, userId: event.userId, roleId: action.roleId, token: token)
-            context.eventHandled = true
-        case .removeRole:
-            _ = try? await removeRole(guildId: event.guildId, userId: event.userId, roleId: action.roleId, token: token)
-            context.eventHandled = true
-        case .timeoutMember:
-            _ = try? await timeoutMember(guildId: event.guildId, userId: event.userId, durationSeconds: action.timeoutDuration, token: token)
-            context.eventHandled = true
-        case .kickMember:
-            _ = try? await kickMember(guildId: event.guildId, userId: event.userId, reason: action.kickReason, token: token)
-            context.eventHandled = true
-        case .moveMember:
-            _ = try? await moveMember(guildId: event.guildId, userId: event.userId, channelId: action.targetVoiceChannelId, token: token)
-            context.eventHandled = true
-        case .createChannel:
-            _ = try? await createChannel(guildId: event.guildId, name: action.newChannelName, token: token)
-            context.eventHandled = true
-        case .webhook:
-            _ = try? await sendWebhook(url: action.webhookURL, content: action.webhookContent)
-        case .delay:
-            try? await Task.sleep(nanoseconds: UInt64(action.delaySeconds) * 1_000_000_000)
-        case .setVariable, .randomChoice:
-            // TODO: Implement variables and random choice logic
-            discordLogger.debug("Action \(action.type.rawValue) not yet fully implemented")
-            return
-        }
-    }
-
-    private func renderMessage(template: String, event: VoiceRuleEvent, context: PipelineContext) -> String {
-        let channelId = event.channelId
-        let fromChannelId = event.fromChannelId ?? channelId
-        let toChannelId = event.toChannelId ?? channelId
-
-        let channelName = resolvedChannelName(guildId: event.guildId, channelId: channelId)
-        let fromChannelName = resolvedChannelName(guildId: event.guildId, channelId: fromChannelId)
-        let toChannelName = resolvedChannelName(guildId: event.guildId, channelId: toChannelId)
-
-        var output = template
-            .replacingOccurrences(of: "<#{channelId}>", with: channelName)
-            .replacingOccurrences(of: "<#{fromChannelId}>", with: fromChannelName)
-            .replacingOccurrences(of: "<#{toChannelId}>", with: toChannelName)
-            .replacingOccurrences(of: "{userId}", with: event.userId)
-            .replacingOccurrences(of: "{username}", with: event.username)
-            .replacingOccurrences(of: "{guildId}", with: event.guildId)
-            .replacingOccurrences(of: "{guildName}", with: event.guildId)
-            .replacingOccurrences(of: "{channelId}", with: channelId)
-            .replacingOccurrences(of: "{channelName}", with: channelName)
-            .replacingOccurrences(of: "{fromChannelId}", with: fromChannelId)
-            .replacingOccurrences(of: "{toChannelId}", with: toChannelId)
-            .replacingOccurrences(of: "{duration}", with: formatDuration(seconds: event.durationSeconds))
-            .replacingOccurrences(of: "{message}", with: event.messageContent ?? "")
-            .replacingOccurrences(of: "{messageId}", with: event.messageId ?? "")
-            .replacingOccurrences(of: "{media.file}", with: event.mediaFileName ?? "")
-            .replacingOccurrences(of: "{media.path}", with: event.mediaRelativePath ?? "")
-            .replacingOccurrences(of: "{media.source}", with: event.mediaSourceName ?? "")
-            .replacingOccurrences(of: "{media.node}", with: event.mediaNodeName ?? "")
-            .replacingOccurrences(of: "{ai.response}", with: context.aiResponse ?? "")
-
-        if !context.mentionUser {
-            output = output.replacingOccurrences(of: "<@\(event.userId)>", with: event.username)
-        }
-
-        if context.prependUserMention {
-            output = "<@\(event.userId)> " + output
-        }
-
-        if let roleMention = context.mentionRole {
-            output = "<@&\(roleMention)> " + output
-        }
-
-        return output
+        await ruleExecutionService.execute(action: action, for: event, context: &context, token: botToken)
     }
 
     private func resolvedChannelName(guildId: String, channelId: String) -> String {
@@ -1257,29 +1053,6 @@ actor DiscordService {
             return name
         }
         return "Channel \(channelId.suffix(5))"
-    }
-
-    private func generateRuleActionAIReply(prompt: String, event: VoiceRuleEvent) async -> String? {
-        let channelId = event.triggerChannelId ?? event.channelId
-        let channelName = event.isDirectMessage
-            ? "Direct Message"
-            : resolvedChannelName(guildId: event.triggerGuildId, channelId: channelId)
-        return await aiService.generateRuleActionAIReply(
-            prompt: prompt,
-            event: event,
-            serverName: guildNamesById[event.triggerGuildId],
-            channelName: channelName
-        )
-    }
-
-    private func formatDuration(seconds: Int?) -> String {
-        guard let seconds, seconds > 0 else { return "0s" }
-        let h = seconds / 3600
-        let m = (seconds % 3600) / 60
-        let s = seconds % 60
-        if h > 0 { return "\(h)h \(m)m" }
-        if m > 0 { return "\(m)m \(s)s" }
-        return "\(s)s"
     }
 
     private func updatePresence(text: String) async {
