@@ -1,345 +1,5 @@
 import Foundation
 import OSLog
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
-
-protocol AIEngine {
-    func generate(messages: [Message]) async -> String?
-}
-
-private enum EngineMessageRole: String {
-    case system
-    case user
-    case assistant
-}
-
-private struct EngineMessage {
-    let role: EngineMessageRole
-    let content: String
-}
-
-private extension Array where Element == Message {
-    func toEngineMessages() -> [EngineMessage] {
-        compactMap { message in
-            let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-
-            let role: EngineMessageRole
-            let finalContent: String
-            switch message.role {
-            case .system:
-                role = .system
-                finalContent = trimmed
-            case .assistant:
-                role = .assistant
-                // Trim long assistant messages so they don't poison subsequent context.
-                finalContent = trimmed.count > 300 ? String(trimmed.prefix(300)) + "…" : trimmed
-            case .user:
-                role = .user
-                finalContent = "\(message.username): \(trimmed)"
-            }
-            return EngineMessage(role: role, content: finalContent)
-        }
-    }
-}
-
-private func cleanOutput(_ raw: String) -> String {
-    var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    let prefixes = ["assistant:", "user:"]
-
-    var shouldContinue = true
-    while shouldContinue {
-        shouldContinue = false
-        let lowered = cleaned.lowercased()
-        for prefix in prefixes where lowered.hasPrefix(prefix) {
-            cleaned = String(cleaned.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            shouldContinue = true
-            break
-        }
-    }
-
-    return cleaned
-}
-
-struct AppleIntelligenceEngine: AIEngine {
-    let defaultSystemPrompt: String
-
-    func generate(messages: [Message]) async -> String? {
-#if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            guard case .available = model.availability else { return nil }
-            let engineMessages = messages.toEngineMessages()
-            guard let lastUserIndex = engineMessages.lastIndex(where: { $0.role == .user }) else { return nil }
-
-            let instructions = engineMessages
-                .last(where: { $0.role == .system })?
-                .content ?? defaultSystemPrompt
-            let prompt = engineMessages[lastUserIndex].content
-            guard !prompt.isEmpty else { return nil }
-
-            var transcriptEntries: [Transcript.Entry] = [
-                .instructions(
-                    Transcript.Instructions(
-                        segments: [.text(Transcript.TextSegment(content: instructions))],
-                        toolDefinitions: []
-                    )
-                )
-            ]
-            for message in engineMessages.prefix(lastUserIndex) {
-                switch message.role {
-                case .system:
-                    continue
-                case .user:
-                    transcriptEntries.append(
-                        .prompt(
-                            Transcript.Prompt(
-                                segments: [.text(Transcript.TextSegment(content: message.content))]
-                            )
-                        )
-                    )
-                case .assistant:
-                    transcriptEntries.append(
-                        .response(
-                            Transcript.Response(
-                                assetIDs: [],
-                                segments: [.text(Transcript.TextSegment(content: message.content))]
-                            )
-                        )
-                    )
-                }
-            }
-
-            let session = LanguageModelSession(
-                model: model,
-                transcript: Transcript(entries: transcriptEntries)
-            )
-            do {
-                let response = try await session.respond(to: prompt)
-                let content = cleanOutput(response.content)
-                return content.isEmpty ? nil : content
-            } catch {
-                return nil
-            }
-        }
-#endif
-        return nil
-    }
-}
-
-struct OllamaEngine: AIEngine {
-    let baseURL: String
-    let preferredModel: String?
-    let session: URLSession
-
-    private struct PayloadMessage: Encodable {
-        let role: String
-        let content: String
-    }
-
-    private struct ChatPayload: Encodable {
-        let model: String
-        let stream: Bool
-        let messages: [PayloadMessage]
-    }
-
-    func generate(messages: [Message]) async -> String? {
-        guard let url = URL(string: "\(baseURL)/api/chat") else { return nil }
-        guard let model = await Self.resolveModel(baseURL: baseURL, preferredModel: preferredModel, session: session) else { return nil }
-
-        let payloadMessages = messages.toEngineMessages().map { message in
-            PayloadMessage(role: message.role.rawValue, content: message.content)
-        }
-
-        guard payloadMessages.contains(where: { $0.role == EngineMessageRole.user.rawValue }) else { return nil }
-
-        let payload = ChatPayload(model: model, stream: false, messages: payloadMessages)
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 20
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(payload)
-
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-            guard
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let message = object["message"] as? [String: Any],
-                let content = message["content"] as? String
-            else { return nil }
-
-            let cleaned = cleanOutput(content)
-            return cleaned.isEmpty ? nil : cleaned
-        } catch {
-            return nil
-        }
-    }
-
-    static func resolveModel(baseURL: String, preferredModel: String?, session: URLSession) async -> String? {
-        guard let url = URL(string: "\(baseURL)/api/tags") else { return nil }
-
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-            guard
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let models = object["models"] as? [[String: Any]],
-                !models.isEmpty
-            else { return nil }
-
-            let names = models.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
-            guard !names.isEmpty else { return nil }
-
-            let preferred = preferredModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !preferred.isEmpty {
-                if let exact = names.first(where: { $0 == preferred }) { return exact }
-                if let starts = names.first(where: { $0.hasPrefix(preferred) }) { return starts }
-            }
-            return names.first
-        } catch {
-            return nil
-        }
-    }
-}
-
-struct OpenAIEngine: AIEngine {
-    let apiKey: String
-    let model: String
-    let baseURL: String
-    let session: URLSession
-
-    private struct ChatCompletionRequest: Encodable {
-        struct ChatMessage: Encodable {
-            let role: String
-            let content: String
-        }
-        let model: String
-        let messages: [ChatMessage]
-        let temperature: Double
-    }
-
-    private struct ChatCompletionResponse: Decodable {
-        struct Choice: Decodable {
-            struct Message: Decodable {
-                let content: String?
-            }
-            let message: Message
-        }
-        let choices: [Choice]
-    }
-
-    func generate(messages: [Message]) async -> String? {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty else { return nil }
-        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedModel.isEmpty else { return nil }
-        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else { return nil }
-
-        let payloadMessages = messages.toEngineMessages().map { message in
-            ChatCompletionRequest.ChatMessage(role: message.role.rawValue, content: message.content)
-        }
-        guard payloadMessages.contains(where: { $0.role == "user" }) else { return nil }
-
-        let payload = ChatCompletionRequest(model: trimmedModel, messages: payloadMessages, temperature: 0.4)
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 25
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
-            request.httpBody = try JSONEncoder().encode(payload)
-
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-            let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-            let content = decoded.choices.first?.message.content ?? ""
-            let cleaned = cleanOutput(content)
-            return cleaned.isEmpty ? nil : cleaned
-        } catch {
-            return nil
-        }
-    }
-
-    static func isOnline(apiKey: String, baseURL: String, session: URLSession) async -> Bool {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty, let url = URL(string: "\(baseURL)/v1/models") else { return false }
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.timeoutInterval = 10
-            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
-            let (_, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { return false }
-            return (200..<300).contains(http.statusCode)
-        } catch {
-            return false
-        }
-    }
-}
-
-struct OpenAIImageEngine {
-    let apiKey: String
-    let model: String
-    let baseURL: String
-    let session: URLSession
-
-    private struct ImageGenerationRequest: Encodable {
-        let model: String
-        let prompt: String
-        let size: String
-    }
-
-    private struct ImageGenerationResponse: Decodable {
-        struct ImageData: Decodable {
-            let b64_json: String?
-        }
-        let data: [ImageData]
-    }
-
-    func generateImage(prompt: String) async -> Data? {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty else { return nil }
-        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedModel.isEmpty else { return nil }
-        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPrompt.isEmpty else { return nil }
-        guard let url = URL(string: "\(baseURL)/v1/images/generations") else { return nil }
-
-        let payload = ImageGenerationRequest(
-            model: trimmedModel,
-            prompt: trimmedPrompt,
-            size: "1024x1024"
-        )
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 60
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
-            request.httpBody = try JSONEncoder().encode(payload)
-
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-
-            let decoded = try JSONDecoder().decode(ImageGenerationResponse.self, from: data)
-            guard
-                let b64 = decoded.data.first?.b64_json,
-                let imageData = Data(base64Encoded: b64)
-            else {
-                return nil
-            }
-            return imageData
-        } catch {
-            return nil
-        }
-    }
-}
 
 actor DiscordService {
 
@@ -377,6 +37,7 @@ actor DiscordService {
     private var guildOwnerIdByGuild: [String: String] = [:]
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
+    private lazy var aiService = DiscordAIService(session: session)
     private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
     private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
     private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
@@ -384,15 +45,6 @@ actor DiscordService {
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
-
-    private var localAIDMReplyEnabled = false
-    private var localAIProvider: AIProvider = .appleIntelligence
-    private var localPreferredAIProvider: AIProviderPreference = .apple
-    private var localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
-    private var localAIModel = "local-model"
-    private var localOpenAIAPIKey = ""
-    private var localOpenAIModel = "gpt-4o-mini"
-    private var localAISystemPrompt = ""
 
     /// Tracks message IDs that were handled by rule actions to prevent duplicate AI replies
     private var ruleHandledMessageIds: Set<String> = []
@@ -455,15 +107,17 @@ actor DiscordService {
         openAIAPIKey: String,
         openAIModel: String,
         systemPrompt: String
-    ) {
-        localAIDMReplyEnabled = enabled
-        localAIProvider = provider
-        localPreferredAIProvider = preferredProvider
-        localAIEndpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        localAIModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        localOpenAIAPIKey = openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        localOpenAIModel = openAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        localAISystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    ) async {
+        await aiService.configureLocalAIDMReplies(
+            enabled: enabled,
+            provider: provider,
+            preferredProvider: preferredProvider,
+            endpoint: endpoint,
+            model: model,
+            openAIAPIKey: openAIAPIKey,
+            openAIModel: openAIModel,
+            systemPrompt: systemPrompt
+        )
     }
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
@@ -487,15 +141,15 @@ actor DiscordService {
     }
 
     func detectOllamaModel(baseURL: String) async -> String? {
-        await detectOllamaModel(baseURL: baseURL, preferredModel: nil)
+        await aiService.detectOllamaModel(baseURL: baseURL)
     }
 
     func currentAIStatus(ollamaBaseURL: String, ollamaModelHint: String?, openAIAPIKey: String) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?, openAIOnline: Bool) {
-        let appleOnline = isAppleIntelligenceAvailable()
-        let normalized = normalizedOllamaBaseURL(ollamaBaseURL)
-        let model = await detectOllamaModel(baseURL: normalized, preferredModel: ollamaModelHint)
-        let openAIOnline = await OpenAIEngine.isOnline(apiKey: openAIAPIKey, baseURL: "https://api.openai.com", session: session)
-        return (appleOnline, model != nil, model, openAIOnline)
+        await aiService.currentAIStatus(
+            ollamaBaseURL: ollamaBaseURL,
+            ollamaModelHint: ollamaModelHint,
+            openAIAPIKey: openAIAPIKey
+        )
     }
 
     func generateSmartDMReply(
@@ -504,7 +158,7 @@ actor DiscordService {
         channelName: String? = nil,
         wikiContext: String? = nil
     ) async -> String? {
-        await generateLocalAIDMReply(
+        await aiService.generateSmartDMReply(
             messages: messages,
             serverName: serverName,
             channelName: channelName,
@@ -517,51 +171,7 @@ actor DiscordService {
     /// Tries primary → secondary provider; returns nil if both are unavailable (caller falls
     /// back to deterministic catalog text).
     func generateHelpReply(messages: [Message], systemPrompt: String) async -> String? {
-        let finalSystemPrompt = PromptComposer.buildSystemPrompt(
-            base: systemPrompt,
-            serverName: nil,
-            channelName: nil,
-            wikiContext: nil
-        )
-        let finalMessages = PromptComposer.buildMessages(systemPrompt: finalSystemPrompt, history: messages)
-        guard finalMessages.contains(where: { $0.role == .user }) else { return nil }
-
-        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: finalSystemPrompt)
-        let ollamaEngine = OllamaEngine(
-            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
-            preferredModel: localAIModel,
-            session: session
-        )
-        let openAIEngine = OpenAIEngine(
-            apiKey: localOpenAIAPIKey,
-            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
-            baseURL: "https://api.openai.com",
-            session: session
-        )
-
-        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
-            if let reply = await engine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                if !cleaned.isEmpty { return cleaned }
-            }
-        }
-        return nil
-    }
-
-    private func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let speaker = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !speaker.isEmpty else { return trimmed }
-
-        guard let range = trimmed.range(of: speaker, options: [.anchored, .caseInsensitive]) else {
-            return trimmed
-        }
-        var remainder = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-        guard let first = remainder.first, first == ":" || first == "-" else {
-            return trimmed
-        }
-        remainder.removeFirst()
-        return remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        await aiService.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
     }
 
     func lookupWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
@@ -1551,13 +1161,7 @@ actor DiscordService {
     }
 
     func generateOpenAIImage(prompt: String, apiKey: String, model: String) async -> Data? {
-        let engine = OpenAIImageEngine(
-            apiKey: apiKey,
-            model: model,
-            baseURL: "https://api.openai.com",
-            session: session
-        )
-        return await engine.generateImage(prompt: prompt)
+        await aiService.generateOpenAIImage(prompt: prompt, apiKey: apiKey, model: model)
     }
 
     private func htmlMatches(for pattern: String, in text: String) -> [String] {
@@ -2154,127 +1758,17 @@ actor DiscordService {
         return "Channel \(channelId.suffix(5))"
     }
 
-    private func generateLocalAIDMReply(
-        messages: [Message],
-        serverName: String? = nil,
-        channelName: String? = nil,
-        wikiContext: String? = nil
-    ) async -> String? {
-        guard localAIDMReplyEnabled else { return nil }
-
-        let systemPrompt = PromptComposer.buildSystemPrompt(
-            base: localAISystemPrompt,
-            serverName: serverName,
-            channelName: channelName,
-            wikiContext: wikiContext
-        )
-        let finalMessages = PromptComposer.buildMessages(systemPrompt: systemPrompt, history: messages)
-        guard finalMessages.contains(where: { $0.role == .user }) else { return nil }
-
-        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
-        let ollamaEngine = OllamaEngine(
-            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
-            preferredModel: localAIModel,
-            session: session
-        )
-        let openAIEngine = OpenAIEngine(
-            apiKey: localOpenAIAPIKey,
-            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
-            baseURL: "https://api.openai.com",
-            session: session
-        )
-
-        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
-            if let reply = await engine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                return cleaned.isEmpty ? nil : cleaned
-            }
-        }
-        return nil
-    }
-
     private func generateRuleActionAIReply(prompt: String, event: VoiceRuleEvent) async -> String? {
-        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPrompt.isEmpty else { return nil }
-
         let channelId = event.triggerChannelId ?? event.channelId
         let channelName = event.isDirectMessage
             ? "Direct Message"
             : resolvedChannelName(guildId: event.triggerGuildId, channelId: channelId)
-        let systemPrompt = PromptComposer.buildSystemPrompt(
-            base: localAISystemPrompt,
+        return await aiService.generateRuleActionAIReply(
+            prompt: prompt,
+            event: event,
             serverName: guildNamesById[event.triggerGuildId],
-            channelName: channelName,
-            wikiContext: nil
+            channelName: channelName
         )
-        let messages = [
-            Message(
-                channelID: channelId,
-                userID: event.triggerUserId,
-                username: event.username,
-                content: trimmedPrompt,
-                role: .user
-            )
-        ]
-        let finalMessages = PromptComposer.buildMessages(systemPrompt: systemPrompt, history: messages)
-
-        let appleEngine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
-        let ollamaEngine = OllamaEngine(
-            baseURL: normalizedOllamaBaseURL(localAIEndpoint),
-            preferredModel: localAIModel,
-            session: session
-        )
-        let openAIEngine = OpenAIEngine(
-            apiKey: localOpenAIAPIKey,
-            model: localOpenAIModel.isEmpty ? "gpt-4o-mini" : localOpenAIModel,
-            baseURL: "https://api.openai.com",
-            session: session
-        )
-
-        for engine in orderedEngines(preferred: localPreferredAIProvider, apple: appleEngine, ollama: ollamaEngine, openAI: openAIEngine) {
-            if let reply = await engine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                let normalized = stripLeadingSpeakerPrefix(cleaned, username: event.username)
-                if !normalized.isEmpty { return normalized }
-            }
-        }
-        return nil
-    }
-
-    private func orderedEngines(preferred: AIProviderPreference, apple: AIEngine, ollama: AIEngine, openAI: AIEngine) -> [AIEngine] {
-        switch preferred {
-        case .apple:
-            return [apple, openAI, ollama]
-        case .ollama:
-            return [ollama, openAI, apple]
-        case .openAI:
-            return [openAI, apple, ollama]
-        }
-    }
-
-    private func detectOllamaModel(baseURL: String, preferredModel: String?) async -> String? {
-        await OllamaEngine.resolveModel(baseURL: baseURL, preferredModel: preferredModel, session: session)
-    }
-
-    private func normalizedOllamaBaseURL(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "http://localhost:11434" }
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-            return trimmed
-        }
-        return "http://\(trimmed)"
-    }
-
-    private func isAppleIntelligenceAvailable() -> Bool {
-#if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            if case .available = model.availability {
-                return true
-            }
-        }
-#endif
-        return false
     }
 
     private func normalizedWikiBaseURL(from raw: String) -> URL? {
