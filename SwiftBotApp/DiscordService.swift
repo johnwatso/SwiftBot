@@ -101,10 +101,6 @@ actor DiscordService {
     }()
     private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
 
-    private struct DiscordMessageEnvelope: Decodable {
-        let id: String
-    }
-
     var onPayload: ((GatewayPayload) async -> Void)?
     var onConnectionState: ((BotStatus) async -> Void)?
     /// Called each time a heartbeat ACK (op 11) is received; value is round-trip ms.
@@ -189,11 +185,6 @@ actor DiscordService {
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
     func wasMessageHandledByRules(messageId: String) -> Bool {
         ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
-    }
-
-    /// Marks a message as handled by rule actions
-    func markMessageHandledByRules(messageId: String) {
-        ruleExecutionService.markMessageHandledByRules(messageId: messageId)
     }
 
     func detectOllamaModel(baseURL: String) async -> String? {
@@ -300,10 +291,17 @@ actor DiscordService {
         let errorMessage: String
 
         static func failure(_ category: TokenValidationError) -> TokenValidationResult {
-            TokenValidationResult(isValid: false, userId: nil, username: nil,
-                                  discriminator: nil, avatarURL: nil,
-                                  errorCategory: category, errorMessage: category.message)
+            TokenValidationResult(
+                isValid: false,
+                userId: nil,
+                username: nil,
+                discriminator: nil,
+                avatarURL: nil,
+                errorCategory: category,
+                errorMessage: category.message
+            )
         }
+
     }
 
     /// Validates a bot token against Discord's /users/@me endpoint.
@@ -380,10 +378,6 @@ actor DiscordService {
     /// Returns: ok flag, HTTP status code, and the X-RateLimit-Remaining header value.
     func restHealthProbe(token: String) async -> (isOK: Bool, httpStatus: Int?, rateLimitRemaining: Int?) {
         await identityRESTClient.restHealthProbe(token: token)
-    }
-
-    func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
-        await identityRESTClient.validateBotToken(token)
     }
 
     /// Returns the guild owner_id for permission-sensitive commands.
@@ -911,10 +905,6 @@ actor DiscordService {
             return username
         }
         return "User \(userId.suffix(4))"
-    }
-
-    func execute(action: Action, for event: VoiceRuleEvent, context: inout PipelineContext) async {
-        await ruleExecutionService.execute(action: action, for: event, context: &context, token: botToken)
     }
 
     private func resolvedChannelName(guildId: String, channelId: String) -> String {
