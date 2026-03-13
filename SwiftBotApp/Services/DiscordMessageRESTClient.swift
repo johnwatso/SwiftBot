@@ -96,6 +96,22 @@ struct DiscordMessageRESTClient {
         }
     }
 
+    func removeOwnReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        let encodedEmoji = emoji.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? emoji
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(encodedEmoji)/@me"))
+        req.httpMethod = "DELETE"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to remove reaction", "responseBody": responseBody]
+            )
+        }
+    }
+
     func pinMessage(channelId: String, messageId: String, token: String) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/pins/\(messageId)"))
         req.httpMethod = "PUT"
@@ -199,6 +215,23 @@ struct DiscordMessageRESTClient {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to delete message"])
         }
+    }
+
+    func createDirectMessageChannel(userId: String, token: String) async throws -> String {
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me/channels"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["recipient_id": userId])
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let channelId = json["id"] as? String else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
+        }
+        return channelId
     }
 
     private func sendMultipartImage(
