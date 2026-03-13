@@ -378,6 +378,7 @@ final class AppModel: ObservableObject {
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
+    private var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
     @Published var bugAutoFixStatusText: String = "Idle"
     @Published var bugAutoFixConsoleText: String = ""
     @Published private(set) var adminWebResolvedBaseURL: String = ""
@@ -1812,11 +1813,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func validatePatchyTarget(_ target: PatchySourceTarget, forceRefresh: Bool = false) async -> (isValid: Bool, detail: String) {
+        let channelId = target.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !channelId.isEmpty else {
+            return (false, "Target channel ID is empty.")
+        }
+
+        let now = Date()
+        if !forceRefresh, let cached = patchyTargetValidationCache[channelId], now.timeIntervalSince(cached.validatedAt) < 3600 {
+            return (cached.isValid, cached.detail)
+        }
+
+        do {
+            _ = try await service.fetchChannel(channelId: channelId, token: settings.token)
+            let result = (true, "Ready")
+            patchyTargetValidationCache[channelId] = (result.0, result.1, now)
+            return result
+        } catch {
+            let detail = patchyErrorDiagnostic(from: error)
+            let result = (false, detail)
+            patchyTargetValidationCache[channelId] = (result.0, result.1, now)
+            return result
+        }
+    }
+
     func sendPatchyTest(targetID: UUID) {
         Task {
             guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
             guard !target.channelId.isEmpty else {
                 appendPatchyLog("Test send skipped: target channel is empty.")
+                return
+            }
+
+            let validation = await validatePatchyTarget(target, forceRefresh: true)
+            guard validation.isValid else {
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = validation.detail
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Patchy test skipped: \(validation.detail)")
                 return
             }
 
@@ -1841,12 +1877,41 @@ final class AppModel: ObservableObject {
                 persistSettingsQuietly()
                 appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
             } catch {
+                let diagnostic = patchyErrorDiagnostic(from: error)
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
                     entry.lastCheckedAt = Date()
-                    entry.lastStatus = "Patchy test failed: \(error.localizedDescription)"
+                    entry.lastStatus = "Patchy test failed: \(diagnostic)"
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Patchy test failed: \(error.localizedDescription)")
+                appendPatchyLog("Patchy test failed: \(diagnostic)")
+            }
+        }
+    }
+
+    func pullPatchyUpdate(targetID: UUID) {
+        Task {
+            guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
+            
+            do {
+                resolveSteamNameIfNeeded(for: target)
+                let source = try PatchyRuntime.makeSource(from: target)
+                let item = try await source.fetchLatest()
+                let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
+                
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = mapped.statusSummary
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Pull [\(target.source.rawValue)] -> \(mapped.statusSummary)")
+            } catch {
+                let diagnostic = patchyErrorDiagnostic(from: error)
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = "Pull failed: \(diagnostic)"
+                }
+                persistSettingsQuietly()
+                appendPatchyLog("Pull [\(target.source.rawValue)] failed: \(diagnostic)")
             }
         }
     }
@@ -1944,6 +2009,16 @@ final class AppModel: ObservableObject {
 
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -1992,6 +2067,16 @@ final class AppModel: ObservableObject {
 
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -2022,6 +2107,16 @@ final class AppModel: ObservableObject {
                     if change.isNewItem {
                         let fallback = PatchyRuntime.fallbackMessage(for: mapped)
                         for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
@@ -2202,6 +2297,7 @@ final class AppModel: ObservableObject {
         status = .connecting
         uptime = UptimeInfo(startedAt: Date())
         await clearVoicePresence()
+        patchyTargetValidationCache.removeAll()
         userAvatarHashById.removeAll()
         guildAvatarHashByMemberKey.removeAll()
         gatewayEventCount = 0
@@ -3127,7 +3223,9 @@ final class AppModel: ObservableObject {
     ///    registrations, which typically list localhost not the loopback IP.
     private func oauthPublicBaseURL() -> String {
         let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !explicit.isEmpty { return explicit }
+        if !explicit.isEmpty {
+            return explicit.contains("://") ? explicit : "https://" + explicit
+        }
 
         let hostname = settings.adminWebUI.normalizedHostname
         if settings.adminWebUI.internetAccessEnabled, !hostname.isEmpty {
@@ -3151,7 +3249,7 @@ final class AppModel: ObservableObject {
             localAuthEnabled: settings.adminWebUI.localAuthEnabled,
             localAuthUsername: settings.adminWebUI.localAuthUsername,
             localAuthPassword: settings.adminWebUI.localAuthPassword,
-            redirectPath: settings.adminWebUI.redirectPath,
+            redirectPath: normalizedAdminRedirectPath(settings.adminWebUI.redirectPath),
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
@@ -3659,13 +3757,22 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
 
+        // Verify token in background (non-blocking, warning-level logging only)
         progress(.verifyingCloudflareAccess)
-        let tokenIsValid = try await dnsProvider.verifyAPIToken()
-        guard tokenIsValid else {
-            throw CertificateManager.Error.inactiveCloudflareToken
+        Task.detached(priority: .background) {
+            let tokenIsValid = await dnsProvider.verifyAPIToken()
+            if tokenIsValid {
+                await self.logs.append("✅ Cloudflare API verified (background)")
+                await MainActor.run {
+                    progress(.cloudflareAccessVerified)
+                }
+            } else {
+                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+            }
         }
-        logs.append("Cloudflare API verified")
-        progress(.cloudflareAccessVerified)
+
+        // Continue without waiting for verification result
+        logs.append("Cloudflare tunnel detection proceeding (verification in background)...")
 
         progress(.detectingCloudflareZone(domain: hostname))
         guard let zone = try await dnsProvider.findZone(for: hostname) else {
@@ -3836,7 +3943,7 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         
         // First verify the token is valid by checking user info
-        let isValid = try await dnsProvider.verifyAPIToken()
+        let isValid = await dnsProvider.verifyAPIToken()
         guard isValid else {
             throw CertificateManager.Error.inactiveCloudflareToken
         }
@@ -3872,14 +3979,22 @@ final class AppModel: ObservableObject {
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
         let tunnelClient = CloudflareTunnelClient(apiToken: trimmedToken)
 
-        // Step 1: Verify Cloudflare API
+        // Step 1: Verify Cloudflare API (non-blocking, background task)
         progress(.verifyingCloudflareAccess)
-        let tokenIsValid = try await dnsProvider.verifyAPIToken()
-        guard tokenIsValid else {
-            throw CertificateManager.Error.inactiveCloudflareToken
+        Task.detached(priority: .background) {
+            let tokenIsValid = await dnsProvider.verifyAPIToken()
+            if tokenIsValid {
+                await self.logs.append("✅ Cloudflare API verified (background)")
+                await MainActor.run {
+                    progress(.cloudflareAccessVerified)
+                }
+            } else {
+                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+            }
         }
-        logs.append("Cloudflare API verified")
-        progress(.cloudflareAccessVerified)
+
+        // Continue without waiting for verification result
+        logs.append("Cloudflare tunnel detection proceeding (verification in background)...")
 
         // Step 2: Detect Cloudflare zone
         progress(.detectingCloudflareZone(domain: hostname))
@@ -4887,14 +5002,34 @@ final class AppModel: ObservableObject {
         let ns = error as NSError
         let statusCode = ns.userInfo["statusCode"] as? Int ?? ns.code
         let body = (ns.userInfo["responseBody"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let trimmedBody: String
-        if body.count > 220 {
-            trimmedBody = String(body.prefix(220)) + "..."
-        } else {
-            trimmedBody = body
+
+        // Try to parse Discord's specific error code from the JSON body
+        var discordCode: Int? = nil
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let code = json["code"] as? Int {
+            discordCode = code
         }
-        let bodySnippet = trimmedBody.isEmpty ? "-" : trimmedBody
-        return "status=\(statusCode), error=\(error.localizedDescription), response=\(bodySnippet)"
+
+        // Map to HIG-aligned, actionable messages
+        switch (statusCode, discordCode) {
+        case (403, 50001?):
+            return "SwiftBot cannot view this channel. Check permissions in the Discord server."
+        case (403, 50013?):
+            return "SwiftBot lacks 'Embed Links' or 'Mention' permissions in this channel."
+        case (404, 10003?):
+            return "Channel not found. It may have been deleted — please remove or update this target."
+        case (401, _):
+            return "Invalid Bot Token. Please check your token in General Settings."
+        case (429, _):
+            return "Sending too fast. Discord is temporarily limiting requests."
+        default:
+            if !body.isEmpty && body != "-" {
+                let trimmedBody = body.count > 120 ? String(body.prefix(117)) + "..." : body
+                return "Failed to send (HTTP \(statusCode)). Details: \(trimmedBody)"
+            }
+            return "Failed to send (HTTP \(statusCode)). Check Patchy logs for details."
+        }
     }
 
     func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {

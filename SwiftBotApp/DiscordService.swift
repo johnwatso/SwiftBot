@@ -368,6 +368,10 @@ actor DiscordService {
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
+    func fetchChannel(channelId: String, token: String) async throws -> [String: DiscordJSON] {
+        try await messageRESTClient.fetchChannel(channelId: channelId, token: token)
+    }
+
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
         try await messageRESTClient.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }

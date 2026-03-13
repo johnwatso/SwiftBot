@@ -261,6 +261,26 @@ struct DiscordMessageRESTClient {
         }
     }
 
+    func fetchChannel(channelId: String, token: String) async throws -> [String: DiscordJSON] {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to fetch channel",
+                    "statusCode": (response as? HTTPURLResponse)?.statusCode ?? -1,
+                    "responseBody": responseBody
+                ]
+            )
+        }
+        return try JSONDecoder().decode([String: DiscordJSON].self, from: data)
+    }
+
     func createDirectMessageChannel(userId: String, token: String) async throws -> String {
         var req = URLRequest(url: restBase.appendingPathComponent("users/@me/channels"))
         req.httpMethod = "POST"

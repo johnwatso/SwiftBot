@@ -252,7 +252,7 @@ actor CertificateManager {
             }
 
             do {
-                tokenIsValid = try await provider.verifyAPIToken()
+                tokenIsValid = await provider.verifyAPIToken()
                 if tokenIsValid, let zone = try await provider.findZone(for: normalizedDomain) {
                     zoneFound = true
                     matchedZoneID = zone.id
@@ -434,7 +434,7 @@ actor CertificateManager {
         }
 
         let provider = CloudflareDNSProvider(apiToken: trimmedToken)
-        let tokenIsValid = try await provider.verifyAPIToken()
+        let tokenIsValid = await provider.verifyAPIToken()
         guard tokenIsValid else {
             throw Error.inactiveCloudflareToken
         }
@@ -550,7 +550,7 @@ actor CertificateManager {
         let provider = CloudflareDNSProvider(apiToken: trimmedToken)
 
         await progress(.verifyingCloudflareAccess)
-        let tokenIsValid = try await provider.verifyAPIToken()
+        let tokenIsValid = await provider.verifyAPIToken()
         guard tokenIsValid else {
             throw Error.inactiveCloudflareToken
         }
@@ -710,6 +710,17 @@ actor CertificateManager {
         progress: @escaping @MainActor @Sendable (AdminWebAutomaticHTTPSSetupEvent) -> Void,
         log: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> StoredCertificate {
+        // Background verify Cloudflare token to identify connectivity issues early without blocking
+        Task.detached {
+            if await dnsProvider.verifyAPIToken() {
+                #if DEBUG
+                print("Cloudflare: Token verified successfully in background.")
+                #endif
+            } else {
+                await log("⚠️ Cloudflare: Initial token verification timed out or failed. Certificate issuance will still be attempted.")
+            }
+        }
+
         let privateKey = P256.Signing.PrivateKey()
 
         await log("🔏 Provisioning Let's Encrypt certificate for \(domain)")

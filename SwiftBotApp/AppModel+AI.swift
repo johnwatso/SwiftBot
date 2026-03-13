@@ -286,7 +286,6 @@ extension AppModel {
         ]
 
         var payload: [String: Any] = [:]
-        var usingEmbedPayload = false
         if let rawEmbedJSON = embedJSON?.trimmingCharacters(in: .whitespacesAndNewlines),
            !rawEmbedJSON.isEmpty,
            let data = rawEmbedJSON.data(using: .utf8),
@@ -300,7 +299,6 @@ extension AppModel {
             if let allowedMentions {
                 payload["allowed_mentions"] = allowedMentions
             }
-            usingEmbedPayload = true
         } else {
             let fallbackBody = message.trimmingCharacters(in: .whitespacesAndNewlines)
             let content = [roleMentionText, fallbackBody].filter { !$0.isEmpty }.joined(separator: " ")
@@ -311,20 +309,18 @@ extension AppModel {
         }
 
         do {
-            let response = try await sendPayloadResponse(
+            _ = try await sendPayloadResponse(
                 channelId: channelId,
                 payload: payload,
                 action: "sendPatchyNotification"
             )
-            let mode = usingEmbedPayload ? "embed" : "fallback"
-            let detail = "Patchy send succeeded (\(mode), status=\(response.statusCode))."
-            logs.append("✅ \(detail)")
+            let detail = "Notification sent successfully."
+            logs.append("✅ Patchy: \(detail)")
             return (true, detail)
         } catch {
             let diagnostic = patchyErrorDiagnostic(from: error)
-            let detail = "Patchy send failed (\(usingEmbedPayload ? "embed" : "fallback")). \(diagnostic)"
-            logs.append("❌ \(detail)")
-            return (false, detail)
+            logs.append("❌ Patchy: \(diagnostic)")
+            return (false, diagnostic)
         }
     }
 
