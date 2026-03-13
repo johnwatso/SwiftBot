@@ -4879,9 +4879,10 @@ final class AppModel: ObservableObject {
 
     func startUptimeTicker() {
         uptimeTask?.cancel()
-        uptimeTask = Task {
+        uptimeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self = self else { return }
                 await MainActor.run {
                     if let startedAt = self.uptime?.startedAt {
                         self.uptime = UptimeInfo(startedAt: startedAt)
@@ -5205,9 +5206,9 @@ final class AppModel: ObservableObject {
 
     func scheduleDiscordCacheSave() {
         discordCacheSaveTask?.cancel()
-        discordCacheSaveTask = Task {
+        discordCacheSaveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self = self else { return }
             do {
                 let snapshot = await self.discordCache.currentSnapshot()
                 try await discordCacheStore.save(snapshot)
