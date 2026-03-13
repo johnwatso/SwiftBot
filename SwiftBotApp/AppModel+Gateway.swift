@@ -14,8 +14,8 @@ extension AppModel {
                 guard let self else { return }
                 self.recordGatewayEvent(named: eventName)
             },
-            onMessageCreate: { [weak self] raw in
-                await self?.handleMessageCreate(raw)
+            onMessageCreate: { [weak self] event in
+                await self?.handleMessageCreate(event)
             },
             onMessageReactionAdd: { [weak self] raw in
                 await self?.handleMessageReactionAdd(raw)
@@ -23,8 +23,8 @@ extension AppModel {
             onInteractionCreate: { [weak self] event in
                 await self?.handleInteractionCreate(event)
             },
-            onVoiceStateUpdate: { [weak self] raw in
-                await self?.handleVoiceStateUpdateDispatch(raw)
+            onVoiceStateUpdate: { [weak self] event in
+                await self?.handleVoiceStateUpdateDispatch(event)
             },
             onReady: { [weak self] event, shouldRegisterSlashCommands in
                 await self?.handleReadyDispatch(event, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
@@ -52,9 +52,9 @@ extension AppModel {
         lastGatewayEventName = eventName
     }
 
-    private func handleVoiceStateUpdateDispatch(_ raw: DiscordJSON?) async {
+    private func handleVoiceStateUpdateDispatch(_ event: GatewayVoiceStateUpdateEvent) async {
         voiceStateEventCount += 1
-        await handleVoiceStateUpdate(raw)
+        await handleVoiceStateUpdate(event)
     }
 
     private func handleReadyDispatch(_ event: GatewayReadyEvent, shouldRegisterSlashCommands: Bool) async {
@@ -224,34 +224,21 @@ extension AppModel {
         }
     }
 
-    func handleMessageCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(content)? = map["content"],
-              case let .object(author)? = map["author"],
-              case let .string(username)? = author["username"],
-              case let .string(channelId)? = map["channel_id"]
-        else { return }
-
-        let userId: String = {
-            if case let .string(id)? = author["id"] { return id }
-            return "unknown-user"
-        }()
-        if case let .string(avatarHash)? = author["avatar"], !avatarHash.isEmpty {
+    func handleMessageCreate(_ event: GatewayMessageCreateEvent) async {
+        let map = event.rawMap
+        let content = event.content
+        let username = event.username
+        let channelId = event.channelID
+        let userId = event.userID
+        if let avatarHash = event.avatarHash, !avatarHash.isEmpty {
             userAvatarHashById[userId] = avatarHash
         }
-        let messageId: String = {
-            if case let .string(id)? = map["id"] { return id }
-            return UUID().uuidString
-        }()
-        let isBot = (author["bot"] == .bool(true))
+        let messageId = event.messageID
+        let isBot = event.isBot
         let channelType = await resolvedChannelType(from: map, channelID: channelId)
         let isDMChannel = (channelType == 1 || channelType == 3)
         let isGuildTextChannel = (channelType == 0)
-
-        let guildID: String? = {
-            if case let .string(id)? = map["guild_id"] { return id }
-            return nil
-        }()
+        let guildID = event.guildID
         await upsertDiscordCacheFromMessage(
             map: map,
             guildID: guildID,
@@ -880,13 +867,11 @@ extension AppModel {
         }
     }
 
-    func handleVoiceStateUpdate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(userId)? = map["user_id"],
-              case let .string(guildId)? = map["guild_id"]
-        else { return }
-
+    func handleVoiceStateUpdate(_ event: GatewayVoiceStateUpdateEvent) async {
         let allowPrimarySideEffects = shouldProcessPrimaryGatewayActions
+        let map = event.rawMap
+        let userId = event.userID
+        let guildId = event.guildID
 
         let key = "\(guildId)-\(userId)"
         let now = Date()
@@ -901,8 +886,7 @@ extension AppModel {
 
         lastVoiceStateAt = now
 
-        let channelId: String?
-        if case let .string(cid)? = map["channel_id"] { channelId = cid } else { channelId = nil }
+        let channelId = event.channelID
 
         if let newChannel = channelId {
             // Idempotency: ignore mute/deaf-only updates (channel unchanged). Only fire on channel transitions.

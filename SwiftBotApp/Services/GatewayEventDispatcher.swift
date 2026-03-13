@@ -35,6 +35,19 @@ struct GatewayGuildDeleteEvent: Sendable {
     let guildID: String
 }
 
+struct GatewayMessageCreateEvent {
+    let rawMap: [String: DiscordJSON]
+    let content: String
+    let author: [String: DiscordJSON]
+    let username: String
+    let channelID: String
+    let userID: String
+    let guildID: String?
+    let messageID: String
+    let isBot: Bool
+    let avatarHash: String?
+}
+
 struct GatewayInteractionCreateEvent {
     let interactionID: String
     let interactionToken: String
@@ -56,9 +69,18 @@ struct GatewayMemberLeaveEvent: Sendable {
     let username: String
 }
 
+struct GatewayVoiceStateUpdateEvent {
+    let rawMap: [String: DiscordJSON]
+    let guildID: String
+    let userID: String
+    let channelID: String?
+}
+
 actor GatewayEventDispatcher {
     typealias EventRecorder = (String) async -> Void
+    typealias MessageCreateHandler = (GatewayMessageCreateEvent) async -> Void
     typealias PayloadHandler = (DiscordJSON?) async -> Void
+    typealias VoiceStateUpdateHandler = (GatewayVoiceStateUpdateEvent) async -> Void
     typealias ReadyHandler = (GatewayReadyEvent, Bool) async -> Void
     typealias GuildCreateHandler = (GatewayGuildCreateEvent) async -> Void
     typealias ChannelCreateHandler = (GatewayChannelCreateEvent) async -> Void
@@ -68,10 +90,10 @@ actor GatewayEventDispatcher {
     typealias MemberLeaveHandler = (GatewayMemberLeaveEvent) async -> Void
 
     private let onEventReceived: EventRecorder
-    private let onMessageCreate: PayloadHandler
+    private let onMessageCreate: MessageCreateHandler
     private let onMessageReactionAdd: PayloadHandler
     private let onInteractionCreate: InteractionCreateHandler
-    private let onVoiceStateUpdate: PayloadHandler
+    private let onVoiceStateUpdate: VoiceStateUpdateHandler
     private let onReady: ReadyHandler
     private let onGuildCreate: GuildCreateHandler
     private let onChannelCreate: ChannelCreateHandler
@@ -81,10 +103,10 @@ actor GatewayEventDispatcher {
 
     init(
         onEventReceived: @escaping EventRecorder,
-        onMessageCreate: @escaping PayloadHandler,
+        onMessageCreate: @escaping MessageCreateHandler,
         onMessageReactionAdd: @escaping PayloadHandler,
         onInteractionCreate: @escaping InteractionCreateHandler,
-        onVoiceStateUpdate: @escaping PayloadHandler,
+        onVoiceStateUpdate: @escaping VoiceStateUpdateHandler,
         onReady: @escaping ReadyHandler,
         onGuildCreate: @escaping GuildCreateHandler,
         onChannelCreate: @escaping ChannelCreateHandler,
@@ -113,7 +135,8 @@ actor GatewayEventDispatcher {
         switch eventName {
         case "MESSAGE_CREATE":
             guard shouldProcessPrimaryGatewayActions else { return }
-            await onMessageCreate(payload.d)
+            guard let messageCreateEvent = parseMessageCreateEvent(from: payload.d) else { return }
+            await onMessageCreate(messageCreateEvent)
         case "MESSAGE_REACTION_ADD":
             guard shouldProcessPrimaryGatewayActions else { return }
             await onMessageReactionAdd(payload.d)
@@ -122,7 +145,8 @@ actor GatewayEventDispatcher {
             guard let interactionCreateEvent = parseInteractionCreateEvent(from: payload.d) else { return }
             await onInteractionCreate(interactionCreateEvent)
         case "VOICE_STATE_UPDATE":
-            await onVoiceStateUpdate(payload.d)
+            guard let voiceStateUpdateEvent = parseVoiceStateUpdateEvent(from: payload.d) else { return }
+            await onVoiceStateUpdate(voiceStateUpdateEvent)
         case "READY":
             guard let readyEvent = parseReadyEvent(from: payload.d) else { return }
             await onReady(readyEvent, shouldProcessPrimaryGatewayActions)
@@ -249,6 +273,33 @@ actor GatewayEventDispatcher {
         )
     }
 
+    private func parseMessageCreateEvent(from raw: DiscordJSON?) -> GatewayMessageCreateEvent? {
+        guard case let .object(map)? = raw,
+              case let .string(content)? = map["content"],
+              case let .object(author)? = map["author"],
+              let username = stringValue(for: "username", in: author),
+              let channelID = stringValue(for: "channel_id", in: map) else {
+            return nil
+        }
+
+        let userID = stringValue(for: "id", in: author) ?? "unknown-user"
+        let messageID = stringValue(for: "id", in: map) ?? UUID().uuidString
+        let isBot = author["bot"] == .bool(true)
+
+        return GatewayMessageCreateEvent(
+            rawMap: map,
+            content: content,
+            author: author,
+            username: username,
+            channelID: channelID,
+            userID: userID,
+            guildID: stringValue(for: "guild_id", in: map),
+            messageID: messageID,
+            isBot: isBot,
+            avatarHash: stringValue(for: "avatar", in: author)
+        )
+    }
+
     private func parseMemberJoinEvent(from raw: DiscordJSON?) -> GatewayMemberJoinEvent? {
         guard case let .object(map)? = raw,
               case let .object(user)? = map["user"],
@@ -294,6 +345,21 @@ actor GatewayEventDispatcher {
             guildID: guildID,
             userID: userID,
             username: username
+        )
+    }
+
+    private func parseVoiceStateUpdateEvent(from raw: DiscordJSON?) -> GatewayVoiceStateUpdateEvent? {
+        guard case let .object(map)? = raw,
+              let userID = stringValue(for: "user_id", in: map),
+              let guildID = stringValue(for: "guild_id", in: map) else {
+            return nil
+        }
+
+        return GatewayVoiceStateUpdateEvent(
+            rawMap: map,
+            guildID: guildID,
+            userID: userID,
+            channelID: stringValue(for: "channel_id", in: map)
         )
     }
 
