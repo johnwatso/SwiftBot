@@ -1,8 +1,15 @@
 import Foundation
 
 struct DiscordMessageRESTClient {
+    static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
+
     let session: URLSession
     let restBase: URL
+
+    init(session: URLSession, restBase: URL = DiscordMessageRESTClient.defaultRestBase) {
+        self.session = session
+        self.restBase = restBase
+    }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
         _ = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
