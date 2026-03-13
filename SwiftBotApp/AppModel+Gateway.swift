@@ -12,7 +12,7 @@ extension AppModel {
         GatewayEventDispatcher(
             onEventReceived: { [weak self] eventName in
                 guard let self else { return }
-                await self.recordGatewayEvent(named: eventName)
+                self.recordGatewayEvent(named: eventName)
             },
             onMessageCreate: { [weak self] raw in
                 await self?.handleMessageCreate(raw)
@@ -26,14 +26,14 @@ extension AppModel {
             onVoiceStateUpdate: { [weak self] raw in
                 await self?.handleVoiceStateUpdateDispatch(raw)
             },
-            onReady: { [weak self] raw, shouldRegisterSlashCommands in
-                await self?.handleReadyDispatch(raw, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
+            onReady: { [weak self] event, shouldRegisterSlashCommands in
+                await self?.handleReadyDispatch(event, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
             },
-            onGuildCreate: { [weak self] raw in
-                await self?.handleGuildCreateDispatch(raw)
+            onGuildCreate: { [weak self] event in
+                await self?.handleGuildCreate(event)
             },
-            onChannelCreate: { [weak self] raw in
-                await self?.handleChannelCreate(raw)
+            onChannelCreate: { [weak self] event in
+                await self?.handleChannelCreate(event)
             },
             onMemberJoin: { [weak self] raw in
                 await self?.handleMemberJoin(raw)
@@ -41,8 +41,8 @@ extension AppModel {
             onMemberLeave: { [weak self] raw in
                 await self?.handleMemberLeave(raw)
             },
-            onGuildDelete: { [weak self] raw in
-                await self?.handleGuildDelete(raw)
+            onGuildDelete: { [weak self] event in
+                await self?.handleGuildDelete(event)
             }
         )
     }
@@ -57,38 +57,24 @@ extension AppModel {
         await handleVoiceStateUpdate(raw)
     }
 
-    private func handleReadyDispatch(_ raw: DiscordJSON?, shouldRegisterSlashCommands: Bool) async {
+    private func handleReadyDispatch(_ event: GatewayReadyEvent, shouldRegisterSlashCommands: Bool) async {
         readyEventCount += 1
         connectionDiagnostics.lastGatewayCloseCode = nil
-        updateBotIdentity(from: raw)
-        await handleReady(raw)
+        updateBotIdentity(event.identity)
+        await handleReady(event)
         logs.append("READY received")
         if shouldRegisterSlashCommands {
             await registerSlashCommandsIfNeeded()
         }
     }
 
-    private func handleGuildCreateDispatch(_ raw: DiscordJSON?) async {
-        guildCreateEventCount += 1
-        await handleGuildCreate(raw)
-    }
-
-    private func updateBotIdentity(from raw: DiscordJSON?) {
-        guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"] else { return }
-
-        if case let .string(id)? = user["id"] {
-            botUserId = id
-        }
-        if case let .string(username)? = user["username"] {
+    private func updateBotIdentity(_ identity: GatewayBotIdentity?) {
+        botUserId = identity?.id
+        if let username = identity?.username {
             botUsername = username
         }
-        if case let .string(discriminator)? = user["discriminator"] {
-            botDiscriminator = discriminator != "0" ? discriminator : nil
-        }
-        if case let .string(avatarHash)? = user["avatar"] {
-            botAvatarHash = avatarHash
-        }
+        botDiscriminator = identity?.discriminator
+        botAvatarHash = identity?.avatarHash
     }
 
     func handleMeshSync(_ payload: MeshSyncPayload) async {
@@ -1182,22 +1168,9 @@ extension AppModel {
             .replacingOccurrences(of: "{toChannelName}", with: channelDisplayName(guildId: guildId, channelId: resolvedToChannelId))
     }
 
-    func handleReady(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw else { return }
-        guard case let .array(guilds)? = map["guilds"] else { return }
-
-        for guild in guilds {
-            guard case let .object(guildMap) = guild,
-                  case let .string(guildId)? = guildMap["id"]
-            else { continue }
-
-            let guildName: String?
-            if case let .string(name)? = guildMap["name"] {
-                guildName = name
-            } else {
-                guildName = nil
-            }
-            await discordCache.upsertGuild(id: guildId, name: guildName)
+    func handleReady(_ event: GatewayReadyEvent) async {
+        for guild in event.guilds {
+            await discordCache.upsertGuild(id: guild.id, name: guild.name)
         }
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
