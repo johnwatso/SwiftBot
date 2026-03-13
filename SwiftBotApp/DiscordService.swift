@@ -378,6 +378,7 @@ actor DiscordService {
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
     private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
+    private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
     private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
     private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
 
@@ -1204,34 +1205,7 @@ actor DiscordService {
     }
 
     func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return (false, "Token is empty.")
-        }
-
-        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
-        req.httpMethod = "GET"
-        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
-
-        do {
-            let (data, response) = try await session.data(for: req)
-            guard let http = response as? HTTPURLResponse else {
-                return (false, "Discord returned an invalid response.")
-            }
-            if (200..<300).contains(http.statusCode) {
-                return (true, "Valid token")
-            }
-            if http.statusCode == 401 {
-                return (false, "Unauthorized (401). Token is invalid or revoked.")
-            }
-            let body = String(data: data, encoding: .utf8) ?? ""
-            if body.isEmpty {
-                return (false, "Discord API returned HTTP \(http.statusCode).")
-            }
-            return (false, "Discord API returned HTTP \(http.statusCode): \(body)")
-        } catch {
-            return (false, "Token validation request failed: \(error.localizedDescription)")
-        }
+        await identityRESTClient.validateBotToken(token)
     }
 
     /// Returns the guild owner_id for permission-sensitive commands.
@@ -1248,28 +1222,11 @@ actor DiscordService {
             return nil
         }
 
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)"))
-        req.httpMethod = "GET"
-        req.timeoutInterval = 10
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-
-        do {
-            let (data, response) = try await identitySession.data(for: req)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-            guard
-                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let ownerID = json["owner_id"] as? String,
-                !ownerID.isEmpty
-            else {
-                return nil
-            }
+        if let ownerID = await identityRESTClient.fetchGuildOwnerID(guildID: trimmedGuildID, token: token) {
             guildOwnerIdByGuild[trimmedGuildID] = ownerID
             return ownerID
-        } catch {
-            return nil
         }
+        return nil
     }
 
     /// Returns role IDs for a guild member using GET /guilds/{guild.id}/members/{user.id}.
@@ -1282,25 +1239,7 @@ actor DiscordService {
         guard let token = botToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
             return nil
         }
-
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)/members/\(trimmedUserID)"))
-        req.httpMethod = "GET"
-        req.timeoutInterval = 10
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-
-        do {
-            let (data, response) = try await identitySession.data(for: req)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let roles = json["roles"] as? [String] else {
-                return nil
-            }
-            return roles
-        } catch {
-            return nil
-        }
+        return await identityRESTClient.fetchGuildMemberRoleIDs(guildID: trimmedGuildID, userID: trimmedUserID, token: token)
     }
 
     private func startHeartbeat() {
@@ -1643,18 +1582,7 @@ actor DiscordService {
     }
 
     func removeOwnReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
-        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(emoji)/@me"))
-        req.httpMethod = "DELETE"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let responseBody = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(
-                domain: "DiscordService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to remove reaction", "responseBody": responseBody]
-            )
-        }
+        try await messageRESTClient.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
 
     func pinMessage(channelId: String, messageId: String, token: String) async throws {
@@ -2022,22 +1950,8 @@ actor DiscordService {
 
     func sendDM(userId: String, content: String) async throws {
         guard let token = botToken else { return }
-        
-        // 1. Create DM channel
-        var req = URLRequest(url: restBase.appendingPathComponent("users/@me/channels"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["recipient_id": userId])
-        
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let channelId = json["id"] as? String else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
-        }
-        
-        // 2. Send message to that channel
+
+        let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
         try await sendMessage(channelId: channelId, content: content, token: token)
     }
 
