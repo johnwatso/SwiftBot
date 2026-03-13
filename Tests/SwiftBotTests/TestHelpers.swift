@@ -12,7 +12,7 @@ extension ClusterCoordinator {
     }
 
     func testNormalizedBaseURL(_ raw: String) -> String? {
-        normalizedBaseURL(raw)
+        normalizedBaseURL(raw, defaultPort: leaderPort)
     }
 
     func testProcessHTTPRequest(_ data: Data) async -> Data {

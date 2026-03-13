@@ -784,7 +784,7 @@ final class CertificateManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            tunnel,
+            tunnel.tunnel,
             .init(
                 accountID: "account-456",
                 id: "tunnel-789",
@@ -792,9 +792,10 @@ final class CertificateManagerTests: XCTestCase {
                 token: "token-abc"
             )
         )
+        XCTAssertFalse(tunnel.alreadyExists)
 
         try await client.configureTunnel(
-            tunnel,
+            tunnel.tunnel,
             hostname: "swiftbot.example.com",
             originURL: "http://127.0.0.1:38888"
         )
