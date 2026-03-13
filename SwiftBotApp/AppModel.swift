@@ -1641,10 +1641,7 @@ final class AppModel: ObservableObject {
 
         let matchedRules = ruleEngine.evaluateRules(event: event)
         for rule in matchedRules {
-            var context = PipelineContext()
-            for action in rule.processedActions {
-                await service.execute(action: action, for: event, context: &context)
-            }
+            _ = await service.executeRulePipeline(actions: rule.processedActions, for: event, isDirectMessage: event.isDirectMessage)
         }
     }
 
@@ -4819,10 +4816,7 @@ final class AppModel: ObservableObject {
 
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
-            var context = PipelineContext()
-            for action in rule.processedActions {
-                await service.execute(action: action, for: ruleEvent, context: &context)
-            }
+            _ = await service.executeRulePipeline(actions: rule.processedActions, for: ruleEvent, isDirectMessage: ruleEvent.isDirectMessage)
         }
 
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "🚪 \(username) left the server"))

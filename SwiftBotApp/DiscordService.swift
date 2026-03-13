@@ -2050,27 +2050,35 @@ actor DiscordService {
         }
 
         for ruleResult in ruleActions {
-            var context = PipelineContext()
-            context.isDirectMessage = ruleResult.isDM
-            context.triggerGuildId = event.triggerGuildId
-            context.triggerChannelId = event.triggerChannelId
-            context.triggerMessageId = event.triggerMessageId
-            
-            discordLogger.debug("Executing rule pipeline: \(ruleResult.actions.count) blocks. Initial context: \(context)")
-            
-            for (index, action) in ruleResult.actions.enumerated() {
-                await execute(action: action, for: event, context: &context)
-                discordLogger.debug("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
-            }
-            
-            // Mark message as handled if any action produced output
-            if context.eventHandled, let messageId = event.triggerMessageId {
-                markMessageHandledByRules(messageId: messageId)
-                discordLogger.debug("Message \(messageId) handled by rule actions - AI reply will be skipped")
-            }
-            
-            discordLogger.debug("Rule pipeline execution complete.")
+            _ = await executeRulePipeline(actions: ruleResult.actions, for: event, isDirectMessage: ruleResult.isDM)
         }
+    }
+
+    func executeRulePipeline(
+        actions: [Action],
+        for event: VoiceRuleEvent,
+        isDirectMessage: Bool
+    ) async -> PipelineContext {
+        var context = PipelineContext()
+        context.isDirectMessage = isDirectMessage
+        context.triggerGuildId = event.triggerGuildId
+        context.triggerChannelId = event.triggerChannelId
+        context.triggerMessageId = event.triggerMessageId
+
+        discordLogger.debug("Executing rule pipeline: \(actions.count) blocks. Initial context: \(context)")
+
+        for (index, action) in actions.enumerated() {
+            await execute(action: action, for: event, context: &context)
+            discordLogger.debug("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
+        }
+
+        if context.eventHandled, let messageId = event.triggerMessageId {
+            markMessageHandledByRules(messageId: messageId)
+            discordLogger.debug("Message \(messageId) handled by rule actions - AI reply will be skipped")
+        }
+
+        discordLogger.debug("Rule pipeline execution complete.")
+        return context
     }
 
     private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
