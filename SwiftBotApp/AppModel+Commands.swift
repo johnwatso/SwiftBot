@@ -69,10 +69,6 @@ extension AppModel {
         )
     }
 
-    func unknown(_ channelId: String) async -> Bool {
-        await send(channelId, "❓ I don't know that command! Type \(effectivePrefix())help to see all available commands.")
-    }
-
     func generateImageCommand(
         prompt: String,
         userId: String,
