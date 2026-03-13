@@ -377,6 +377,7 @@ actor DiscordService {
     private var guildOwnerIdByGuild: [String: String] = [:]
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
+    private lazy var guildRESTClient = DiscordGuildRESTClient(session: session, restBase: restBase)
     private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
@@ -2207,84 +2208,27 @@ actor DiscordService {
     }
 
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)/roles/\(roleId)"))
-        req.httpMethod = "PUT"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to add role"])
-        }
+        try await guildRESTClient.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func removeRole(guildId: String, userId: String, roleId: String, token: String) async throws {
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)/roles/\(roleId)"))
-        req.httpMethod = "DELETE"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to remove role"])
-        }
+        try await guildRESTClient.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func timeoutMember(guildId: String, userId: String, durationSeconds: Int, token: String) async throws {
-        let until = Date().addingTimeInterval(TimeInterval(durationSeconds))
-        let formatter = ISO8601DateFormatter()
-        let body: [String: Any] = ["communication_disabled_until": formatter.string(from: until)]
-        
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"))
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to timeout member"])
-        }
+        try await guildRESTClient.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
     }
 
     func kickMember(guildId: String, userId: String, reason: String, token: String) async throws {
-        var components = URLComponents(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"), resolvingAgainstBaseURL: false)
-        if !reason.isEmpty {
-            components?.queryItems = [URLQueryItem(name: "reason", value: reason)]
-        }
-        guard let url = components?.url else { return }
-        
-        var req = URLRequest(url: url)
-        req.httpMethod = "DELETE"
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to kick member"])
-        }
+        try await guildRESTClient.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
     }
 
     func moveMember(guildId: String, userId: String, channelId: String, token: String) async throws {
-        let body: [String: Any] = ["channel_id": channelId.isEmpty ? NSNull() : channelId]
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)"))
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to move member"])
-        }
+        try await guildRESTClient.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
     }
 
     func createChannel(guildId: String, name: String, token: String) async throws {
-        let body: [String: Any] = ["name": name, "type": 0] // Text channel
-        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/channels"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create channel"])
-        }
+        try await guildRESTClient.createChannel(guildId: guildId, name: name, token: token)
     }
 
     func sendWebhook(url: String, content: String) async throws {
