@@ -1,9 +1,29 @@
 import Foundation
 
 struct DiscordIdentityRESTClient {
+    static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
+
+    static func makeIdentitySession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }
+
     let session: URLSession
     let identitySession: URLSession
     let restBase: URL
+
+    init(
+        session: URLSession,
+        identitySession: URLSession = DiscordIdentityRESTClient.makeIdentitySession(),
+        restBase: URL = DiscordIdentityRESTClient.defaultRestBase
+    ) {
+        self.session = session
+        self.identitySession = identitySession
+        self.restBase = restBase
+    }
 
     func validateBotTokenRich(_ token: String) async -> DiscordService.TokenValidationResult {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
