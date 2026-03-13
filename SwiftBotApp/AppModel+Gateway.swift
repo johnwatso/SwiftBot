@@ -20,8 +20,8 @@ extension AppModel {
             onMessageReactionAdd: { [weak self] raw in
                 await self?.handleMessageReactionAdd(raw)
             },
-            onInteractionCreate: { [weak self] raw in
-                await self?.handleInteractionCreate(raw)
+            onInteractionCreate: { [weak self] event in
+                await self?.handleInteractionCreate(event)
             },
             onVoiceStateUpdate: { [weak self] raw in
                 await self?.handleVoiceStateUpdateDispatch(raw)
@@ -35,11 +35,11 @@ extension AppModel {
             onChannelCreate: { [weak self] event in
                 await self?.handleChannelCreate(event)
             },
-            onMemberJoin: { [weak self] raw in
-                await self?.handleMemberJoin(raw)
+            onMemberJoin: { [weak self] event in
+                await self?.handleMemberJoin(event)
             },
-            onMemberLeave: { [weak self] raw in
-                await self?.handleMemberLeave(raw)
+            onMemberLeave: { [weak self] event in
+                await self?.handleMemberLeave(event)
             },
             onGuildDelete: { [weak self] event in
                 await self?.handleGuildDelete(event)
@@ -439,20 +439,13 @@ extension AppModel {
         await handleBugReactionAdd(raw: map)
     }
 
-    func handleInteractionCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw else { return }
-        guard case let .string(interactionID)? = map["id"],
-              case let .string(interactionToken)? = map["token"] else { return }
-        guard case let .int(kind)? = map["type"], kind == 2 else { return } // 2 = application command
-        guard case let .object(data)? = map["data"],
-              case let .string(commandName)? = data["name"] else { return }
-
+    func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
-        let context = interactionContext(from: map)
+        let context = interactionContext(from: event.rawMap)
         do {
             try await service.respondToInteraction(
-                interactionID: interactionID,
-                interactionToken: interactionToken,
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
                 payload: ["type": 5]
             )
         } catch {
@@ -463,8 +456,8 @@ extension AppModel {
         let response: SlashResponsePayload
         if settings.commandsEnabled && settings.slashCommandsEnabled {
             response = await executeSlashCommand(
-                command: commandName.lowercased(),
-                data: data,
+                command: event.commandName.lowercased(),
+                data: event.data,
                 context: context
             )
         } else {
@@ -478,9 +471,9 @@ extension AppModel {
             )
         }
         stats.commandsRun += 1
-        let slashCommandForLog = formatSlashCommandForLog(name: commandName, data: data)
+        let slashCommandForLog = formatSlashCommandForLog(name: event.commandName, data: event.data)
         let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
-        let slashExecutionDetails = await commandExecutionDetails(for: commandName.lowercased())
+        let slashExecutionDetails = await commandExecutionDetails(for: event.commandName.lowercased())
         commandLog.insert(CommandLogEntry(
             time: Date(),
             user: context.username,
@@ -506,7 +499,7 @@ extension AppModel {
             }
             try await service.editOriginalInteractionResponse(
                 applicationID: applicationID,
-                interactionToken: interactionToken,
+                interactionToken: event.interactionToken,
                 payload: payload
             )
         } catch {

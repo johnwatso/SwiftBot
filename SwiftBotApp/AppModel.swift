@@ -4676,7 +4676,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - P0.5: Member join welcome
 
-    func handleMemberJoin(_ raw: DiscordJSON?) async {
+    func handleMemberJoin(_ event: GatewayMemberJoinEvent) async {
         // Legacy settings path still active for backward compatibility.
         // New config: use a "Member Joined" trigger rule in Actions instead.
         let legacyEnabled = settings.behavior.memberJoinWelcomeEnabled &&
@@ -4684,15 +4684,9 @@ final class AppModel: ObservableObject {
         let hasRules = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .memberJoined }
         guard legacyEnabled || hasRules else { return }
 
-        guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"],
-              case let .string(userId)? = user["id"]
-        else { return }
-
-        let guildId: String
-        if case let .string(gid)? = map["guild_id"] { guildId = gid } else { return }
-
         let now = Date()
+        let guildId = event.guildID
+        let userId = event.userID
 
         // Increment member count for this guild (best-effort; sourced from GUILD_CREATE).
         let memberCount = (guildMemberCounts[guildId] ?? 0) + 1
@@ -4729,15 +4723,8 @@ final class AppModel: ObservableObject {
             recentMemberJoins = Dictionary(uniqueKeysWithValues: Array(pruned.prefix(500)))
         }
 
-        let rawUsername: String
-        if case let .string(name)? = user["global_name"] ?? user["username"] {
-            rawUsername = name
-        } else {
-            rawUsername = "Unknown"
-        }
-
         // Template sanitization: neutralize @everyone and @here to prevent mass-ping abuse.
-        let safeUsername = rawUsername
+        let safeUsername = event.rawUsername
             .replacingOccurrences(of: "@everyone", with: "@​everyone")
             .replacingOccurrences(of: "@here", with: "@​here")
 
@@ -4752,15 +4739,6 @@ final class AppModel: ObservableObject {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             _ = await send(channelId, message)
         }
-
-        let joinedAt: Date? = {
-            if case let .string(dateStr)? = map["joined_at"] {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                return formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr)
-            }
-            return nil
-        }()
 
         // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
         let ruleEvent = VoiceRuleEvent(
@@ -4784,7 +4762,7 @@ final class AppModel: ObservableObject {
             triggerUserId: userId,
             isDirectMessage: false,
             authorIsBot: nil,
-            joinedAt: joinedAt
+            joinedAt: event.joinedAt
         )
         let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
         for rule in matchedRules {
@@ -4806,24 +4784,17 @@ final class AppModel: ObservableObject {
         logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
     }
 
-    func handleMemberLeave(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .object(user)? = map["user"],
-              case let .string(userId)? = user["id"],
-              case let .string(guildId)? = map["guild_id"]
-        else { return }
-
+    func handleMemberLeave(_ event: GatewayMemberLeaveEvent) async {
         let now = Date()
+        let guildId = event.guildID
+        let userId = event.userID
         
         // Best-effort member count decrement
         if let count = guildMemberCounts[guildId] {
             guildMemberCounts[guildId] = max(0, count - 1)
         }
 
-        let username: String = {
-            if case let .string(name)? = user["global_name"] ?? user["username"] { return name }
-            return "Unknown"
-        }()
+        let username = event.username
 
         let ruleEvent = VoiceRuleEvent(
             kind: .memberLeave,
