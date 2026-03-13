@@ -377,6 +377,7 @@ actor DiscordService {
     private var guildOwnerIdByGuild: [String: String] = [:]
     private var finalsWeaponAliasCache: [String: String] = [:]
     private var finalsWeaponAliasCacheAt: Date?
+    private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
@@ -1343,7 +1344,11 @@ actor DiscordService {
     }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
-        _ = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        try await messageRESTClient.sendMessage(channelId: channelId, content: content, token: token)
     }
 
     func registerGlobalApplicationCommands(
@@ -1620,16 +1625,11 @@ actor DiscordService {
     }
 
     func sendMessageReturningID(channelId: String, content: String, token: String) async throws -> String {
-        let response = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
-        guard let data = response.responseBody.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode(DiscordMessageEnvelope.self, from: data) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse Discord message id"]
-            )
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        return decoded.id
+        return try await messageRESTClient.sendMessageReturningID(channelId: channelId, content: content, token: token)
     }
 
     @discardableResult
@@ -1638,62 +1638,11 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw NSError(
-                domain: "DiscordService",
-                code: -1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Invalid response",
-                    "statusCode": -1,
-                    "responseBody": ""
-                ]
-            )
-        }
-
-        let responseBody = String(data: data, encoding: .utf8) ?? ""
-
-        if http.statusCode == 429 {
-            throw NSError(
-                domain: "DiscordService",
-                code: 429,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Rate limited",
-                    "statusCode": http.statusCode,
-                    "responseBody": responseBody
-                ]
-            )
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw NSError(
-                domain: "DiscordService",
-                code: http.statusCode,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to send message",
-                    "statusCode": http.statusCode,
-                    "responseBody": responseBody
-                ]
-            )
-        }
-        return (http.statusCode, responseBody)
+        return try await messageRESTClient.sendMessage(channelId: channelId, payload: payload, token: token)
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
-        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["content": content])
-        let (_, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to edit message"])
-        }
+        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
     func fetchMessage(channelId: String, messageId: String, token: String) async throws -> [String: DiscordJSON] {
