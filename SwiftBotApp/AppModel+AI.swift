@@ -168,7 +168,7 @@ extension AppModel {
 
     func fetchMessage(channelId: String, messageId: String) async -> [String: DiscordJSON]? {
         do {
-            return try await service.fetchMessage(channelId: channelId, messageId: messageId, token: settings.token)
+            return try await messageRESTClient.fetchMessage(channelId: channelId, messageId: messageId, token: settings.token)
         } catch {
             return nil
         }
@@ -176,7 +176,7 @@ extension AppModel {
 
     func fetchRecentMessages(channelId: String, limit: Int = 30) async -> [[String: DiscordJSON]] {
         do {
-            return try await service.fetchRecentMessages(channelId: channelId, limit: limit, token: settings.token)
+            return try await messageRESTClient.fetchRecentMessages(channelId: channelId, limit: limit, token: settings.token)
         } catch {
             return []
         }

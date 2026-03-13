@@ -444,6 +444,7 @@ final class AppModel: ObservableObject {
     let discordHTTPSession = URLSession(configuration: .default)
     lazy var aiService = DiscordAIService(session: discordHTTPSession)
     lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
+    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordHTTPSession)
     lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
     lazy var service = DiscordService(
         session: discordHTTPSession,

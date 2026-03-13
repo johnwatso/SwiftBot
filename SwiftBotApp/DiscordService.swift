@@ -403,14 +403,6 @@ actor DiscordService {
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
-    func fetchMessage(channelId: String, messageId: String, token: String) async throws -> [String: DiscordJSON] {
-        try await messageRESTClient.fetchMessage(channelId: channelId, messageId: messageId, token: token)
-    }
-
-    func fetchRecentMessages(channelId: String, limit: Int, token: String) async throws -> [[String: DiscordJSON]] {
-        try await messageRESTClient.fetchRecentMessages(channelId: channelId, limit: limit, token: token)
-    }
-
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
         try await messageRESTClient.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
