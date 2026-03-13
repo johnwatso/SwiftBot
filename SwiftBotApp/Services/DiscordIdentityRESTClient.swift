@@ -89,4 +89,42 @@ struct DiscordIdentityRESTClient {
             return nil
         }
     }
+
+    func resolveClientID(token: String) async -> String? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("oauth2/applications/@me"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let appID = json["id"] as? String else {
+                return nil
+            }
+            return appID
+        } catch {
+            return nil
+        }
+    }
+
+    func restHealthProbe(token: String) async -> (isOK: Bool, httpStatus: Int?, rateLimitRemaining: Int?) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return (false, nil, nil) }
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 10
+        do {
+            let (_, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return (false, nil, nil) }
+            let remaining = (http.value(forHTTPHeaderField: "X-RateLimit-Remaining"))
+                .flatMap { Int($0) }
+            return (http.statusCode == 200, http.statusCode, remaining)
+        } catch {
+            return (false, nil, nil)
+        }
+    }
 }

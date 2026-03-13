@@ -1136,20 +1136,9 @@ actor DiscordService {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return fallbackUserID }
 
-        var req = URLRequest(url: restBase.appendingPathComponent("oauth2/applications/@me"))
-        req.httpMethod = "GET"
-        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
-
-        do {
-            let (data, response) = try await identitySession.data(for: req)
-            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let appID = json["id"] as? String {
-                discordLogger.info("Resolved client_id from /oauth2/applications/@me")
-                return appID
-            }
-        } catch {
-            discordLogger.warning("client_id resolution failed, using fallback: \(error.localizedDescription, privacy: .public)")
+        if let appID = await identityRESTClient.resolveClientID(token: trimmed) {
+            discordLogger.info("Resolved client_id from /oauth2/applications/@me")
+            return appID
         }
 
         // Fallback: use the user ID from /users/@me (same value for bots).
@@ -1188,20 +1177,7 @@ actor DiscordService {
     /// Runs a REST health probe against GET /users/@me.
     /// Returns: ok flag, HTTP status code, and the X-RateLimit-Remaining header value.
     func restHealthProbe(token: String) async -> (isOK: Bool, httpStatus: Int?, rateLimitRemaining: Int?) {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return (false, nil, nil) }
-        var req = URLRequest(url: URL(string: "https://discord.com/api/v10/users/@me")!)
-        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
-        req.timeoutInterval = 10
-        do {
-            let (_, response) = try await identitySession.data(for: req)
-            guard let http = response as? HTTPURLResponse else { return (false, nil, nil) }
-            let remaining = (http.value(forHTTPHeaderField: "X-RateLimit-Remaining"))
-                .flatMap { Int($0) }
-            return (http.statusCode == 200, http.statusCode, remaining)
-        } catch {
-            return (false, nil, nil)
-        }
+        await identityRESTClient.restHealthProbe(token: token)
     }
 
     func validateBotToken(_ token: String) async -> (isValid: Bool, message: String) {
