@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct AdminWebPublicAccessRuntimeStatus: Sendable, Equatable {
     enum State: String, Sendable {
@@ -57,6 +58,7 @@ actor TunnelManager: TunnelProvider {
         "/opt/homebrew/bin/cloudflared"
     ]
 
+    private let osLogger = Logger(subsystem: "com.swiftbot", category: "security")
     private var desiredConfiguration: TunnelRuntimeConfiguration?
     private var process: Process?
     private var restartTask: Task<Void, Never>?
@@ -165,7 +167,7 @@ actor TunnelManager: TunnelProvider {
                 if let output = String(data: data, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                    !output.isEmpty {
-                    print("TunnelManager:", output)
+                    self.osLogger.debug("TunnelManager: \(output)")
                 }
                 #endif
             }

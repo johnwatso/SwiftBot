@@ -1,10 +1,12 @@
 import Foundation
 import Crypto
+import OSLog
 import SwiftASN1
 import X509
 import Darwin
 
 actor CertificateManager {
+    private let logger = Logger(subsystem: "com.swiftbot", category: "security")
     enum ValidationStatus: String, Sendable {
         case pending
         case success
@@ -244,10 +246,7 @@ actor CertificateManager {
 
             if !normalizedDomain.isEmpty {
                 #if DEBUG
-                print("HTTPS Validation")
-                print("Hostname:", normalizedDomain)
-                print("Detected zone:", detectedZone ?? "Unavailable")
-                print("Querying Cloudflare zone:", detectedZone ?? "Unavailable")
+                logger.debug("HTTPS Validation — hostname: \(normalizedDomain), detected zone: \(detectedZone ?? "Unavailable")")
                 #endif
             }
 
@@ -714,7 +713,7 @@ actor CertificateManager {
         Task.detached {
             if await dnsProvider.verifyAPIToken() {
                 #if DEBUG
-                print("Cloudflare: Token verified successfully in background.")
+                self.logger.debug("Cloudflare: Token verified successfully in background.")
                 #endif
             } else {
                 await log("⚠️ Cloudflare: Initial token verification timed out or failed. Certificate issuance will still be attempted.")

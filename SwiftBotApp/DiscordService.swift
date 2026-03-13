@@ -17,6 +17,7 @@ actor DiscordService {
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
     private let session: URLSession
+    private let identitySession: URLSession
     private var botToken: String?
     private var ruleEngine: RuleEngine?
     private var voiceRuleStateStore = VoiceRuleStateStore()
@@ -88,23 +89,22 @@ actor DiscordService {
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
 
-    /// Dedicated session for Discord identity probes (/users/@me, /oauth2/applications/@me).
-    /// Short timeout, no caching — token never cached locally.
-    private static let identitySessionConfig: URLSessionConfiguration = {
+    private static func makeDefaultIdentitySession() -> URLSession {
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 10
         c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         c.urlCache = nil
-        return c
-    }()
-    private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
+        return URLSession(configuration: c)
+    }
 
     init(
         session: URLSession = URLSession(configuration: .default),
+        identitySession: URLSession = DiscordService.makeDefaultIdentitySession(),
         aiService: DiscordAIService? = nil,
         wikiLookupService: WikiLookupService? = nil
     ) {
         self.session = session
+        self.identitySession = identitySession
         self.aiService = aiService ?? DiscordAIService(session: session)
         self.wikiLookupService = wikiLookupService ?? WikiLookupService(session: session)
     }
@@ -152,10 +152,14 @@ actor DiscordService {
     }
 
     private func handleInboundGatewayPayload(_ payload: GatewayPayload) async {
-        seedChannelTypesIfNeeded(payload)
-        seedGuildNameIfNeeded(payload)
-        seedVoiceChannelsIfNeeded(payload)
-        seedVoiceStateIfNeeded(payload)
+        // Run independent seed operations in parallel for faster gateway event processing.
+        // These operate on disjoint state, so no synchronization is needed.
+        async let seedChannelTypes = seedChannelTypesIfNeeded(payload)
+        async let seedGuildName = seedGuildNameIfNeeded(payload)
+        async let seedVoiceChannels = seedVoiceChannelsIfNeeded(payload)
+        async let seedVoiceState = seedVoiceStateIfNeeded(payload)
+        // Wait for all seed operations to complete
+        await (seedChannelTypes, seedGuildName, seedVoiceChannels, seedVoiceState)
         await processRuleActionsIfNeeded(payload)
         await onPayload?(payload)
     }
@@ -464,7 +468,7 @@ actor DiscordService {
         await messageRESTClient.triggerTyping(channelId: channelId, token: token)
     }
 
-    private func seedGuildNameIfNeeded(_ payload: GatewayPayload) {
+    private func seedGuildNameIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
@@ -473,7 +477,7 @@ actor DiscordService {
         guildNamesById[guildId] = guildName
     }
 
-    private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) {
+    private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
@@ -499,7 +503,7 @@ actor DiscordService {
         }
     }
 
-    private func seedChannelTypesIfNeeded(_ payload: GatewayPayload) {
+    private func seedChannelTypesIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0 else { return }
         switch payload.t {
         case "GUILD_CREATE":
@@ -535,7 +539,7 @@ actor DiscordService {
         }
     }
 
-    private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) {
+    private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
