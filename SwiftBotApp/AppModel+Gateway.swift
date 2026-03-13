@@ -88,14 +88,16 @@ extension AppModel {
 
         // Idempotent merge.
         for record in payload.conversations {
-            await conversationStore.appendIfNotExists(
-                scope: record.scope,
-                messageID: record.id,
+            let message = Message(
+                id: record.id,
+                channelID: record.scope.id,
                 userID: record.userID,
+                username: "",
                 content: record.content,
-                role: record.role,
-                timestamp: record.timestamp
+                timestamp: record.timestamp,
+                role: record.role
             )
+            await conversationStore.appendIfNotExists(message)
         }
 
         // Merge image usage counts
