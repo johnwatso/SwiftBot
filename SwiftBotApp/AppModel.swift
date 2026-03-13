@@ -4861,68 +4861,41 @@ final class AppModel: ObservableObject {
         logs.append("Member leave handled for \(username)")
     }
 
-    func handleGuildCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(guildId)? = map["id"]
-        else { return }
-
-        if case let .int(count)? = map["member_count"] {
-            guildMemberCounts[guildId] = count
+    func handleGuildCreate(_ event: GatewayGuildCreateEvent) async {
+        guildCreateEventCount += 1
+        if let memberCount = event.memberCount {
+            guildMemberCounts[event.guildID] = memberCount
         }
 
-        let guildName: String?
-        if case let .string(name)? = map["name"] {
-            guildName = name
-        } else {
-            guildName = nil
-        }
-
-        await discordCache.upsertGuild(id: guildId, name: guildName)
-        await discordCache.setGuildVoiceChannels(guildID: guildId, channels: parseVoiceChannels(from: map))
-        await discordCache.setGuildTextChannels(guildID: guildId, channels: parseTextChannels(from: map))
-        await discordCache.setGuildRoles(guildID: guildId, roles: parseRoles(from: map))
-        await discordCache.mergeChannelTypes(parseChannelTypes(from: map))
-        await cacheGuildMembers(from: map)
+        await discordCache.upsertGuild(id: event.guildID, name: event.guildName)
+        await discordCache.setGuildVoiceChannels(guildID: event.guildID, channels: parseVoiceChannels(from: event.rawMap))
+        await discordCache.setGuildTextChannels(guildID: event.guildID, channels: parseTextChannels(from: event.rawMap))
+        await discordCache.setGuildRoles(guildID: event.guildID, roles: parseRoles(from: event.rawMap))
+        await discordCache.mergeChannelTypes(parseChannelTypes(from: event.rawMap))
+        await cacheGuildMembers(from: event.rawMap)
         await syncPublishedDiscordCacheFromService()
-        await syncVoicePresenceFromGuildSnapshot(guildId: guildId, guildMap: map)
+        await syncVoicePresenceFromGuildSnapshot(guildId: event.guildID, guildMap: event.rawMap)
         scheduleDiscordCacheSave()
         await registerSlashCommandsIfNeeded()
     }
 
-    func handleChannelCreate(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(channelId)? = map["id"],
-              case let .int(type)? = map["type"]
-        else { return }
-
-        let guildId: String? = {
-            if case let .string(id)? = map["guild_id"] { return id }
-            return nil
-        }()
-        await discordCache.setChannelType(channelID: channelId, type: type)
-        let name: String = {
-            if case let .string(value)? = map["name"] { return value }
-            return type == 1 ? "Direct Message" : (type == 3 ? "Group DM" : "Channel")
-        }()
+    func handleChannelCreate(_ event: GatewayChannelCreateEvent) async {
+        await discordCache.setChannelType(channelID: event.channelID, type: event.type)
         await discordCache.upsertChannel(
-            guildID: guildId,
-            channelID: channelId,
-            name: name,
-            type: type
+            guildID: event.guildID,
+            channelID: event.channelID,
+            name: event.name,
+            type: event.type
         )
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
     }
 
-    func handleGuildDelete(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw,
-              case let .string(guildId)? = map["id"]
-        else { return }
-
-        await discordCache.removeGuild(id: guildId)
+    func handleGuildDelete(_ event: GatewayGuildDeleteEvent) async {
+        await discordCache.removeGuild(id: event.guildID)
         await syncPublishedDiscordCacheFromService()
-        activeVoice.removeAll { $0.guildId == guildId }
-        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(guildId)-") }
+        activeVoice.removeAll { $0.guildId == event.guildID }
+        joinTimes = joinTimes.filter { !$0.key.hasPrefix("\(event.guildID)-") }
         scheduleDiscordCacheSave()
     }
 
