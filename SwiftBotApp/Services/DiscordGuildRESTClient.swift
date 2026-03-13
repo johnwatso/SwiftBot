@@ -1,8 +1,72 @@
 import Foundation
 
 struct DiscordGuildRESTClient {
+    static let defaultRestBase = URL(string: "https://discord.com/api/v10")!
+
     let session: URLSession
     let restBase: URL
+
+    init(
+        session: URLSession,
+        restBase: URL = DiscordGuildRESTClient.defaultRestBase
+    ) {
+        self.session = session
+        self.restBase = restBase
+    }
+
+    func fetchGuildOwnerID(guildID: String, token: String) async -> String? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !trimmedToken.isEmpty else { return nil }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 10
+        req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let ownerID = json["owner_id"] as? String,
+                !ownerID.isEmpty
+            else {
+                return nil
+            }
+            return ownerID
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchGuildMemberRoleIDs(guildID: String, userID: String, token: String) async -> [String]? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !trimmedUserID.isEmpty, !trimmedToken.isEmpty else { return nil }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)/members/\(trimmedUserID)"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 10
+        req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await session.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let roles = json["roles"] as? [String] else {
+                return nil
+            }
+            return roles
+        } catch {
+            return nil
+        }
+    }
 
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/members/\(userId)/roles/\(roleId)"))
