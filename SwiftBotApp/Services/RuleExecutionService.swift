@@ -1,6 +1,6 @@
 import Foundation
 
-final class RuleExecutionService {
+actor RuleExecutionService {
     struct Dependencies {
         let sendMessage: (_ channelId: String, _ content: String, _ token: String) async throws -> Void
         let sendPayloadMessage: (_ channelId: String, _ payload: [String: Any], _ token: String) async throws -> Void

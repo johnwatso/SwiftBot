@@ -510,6 +510,23 @@ final class AppModel: ObservableObject {
     @Published var botAvatarHash: String?
     @Published var userAvatarHashById: [String: String] = [:]
     @Published var guildAvatarHashByMemberKey: [String: String] = [:]
+    // Max cache entries to prevent unbounded memory growth during extended operation
+    private let maxAvatarCacheCount = 1000
+
+    private func cacheUserAvatar(_ hash: String, for userId: String) {
+        userAvatarHashById[userId] = hash
+        if userAvatarHashById.count > maxAvatarCacheCount {
+            userAvatarHashById.keys.prefix(200).forEach { userAvatarHashById.removeValue(forKey: $0) }
+        }
+    }
+
+    private func cacheGuildAvatar(_ hash: String, for key: String) {
+        guildAvatarHashByMemberKey[key] = hash
+        if guildAvatarHashByMemberKey.count > maxAvatarCacheCount {
+            guildAvatarHashByMemberKey.keys.prefix(200).forEach { guildAvatarHashByMemberKey.removeValue(forKey: $0) }
+        }
+    }
+    
     @Published var mediaLibrarySettings = MediaLibrarySettings()
     @Published var mediaExportJobs: [MediaExportJob] = []
     var lastSlashRegistrationAt: Date?
@@ -5120,14 +5137,14 @@ final class AppModel: ObservableObject {
                case let .object(user)? = member["user"],
                case let .string(avatarHash)? = user["avatar"],
                !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
                 if case let .string(guildAvatarHash)? = member["avatar"], !guildAvatarHash.isEmpty {
-                    guildAvatarHashByMemberKey["\(guildId)-\(userId)"] = guildAvatarHash
+                    cacheGuildAvatar(guildAvatarHash, for: "\(guildId)-\(userId)")
                 }
             } else if case let .object(user)? = stateMap["user"],
                       case let .string(avatarHash)? = user["avatar"],
                       !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
             }
 
             let username = await voiceDisplayName(from: stateMap, userId: userId)
@@ -5166,7 +5183,7 @@ final class AppModel: ObservableObject {
                   case let .string(userId)? = user["id"] else { continue }
 
             if case let .string(avatarHash)? = user["avatar"], !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
             }
 
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {

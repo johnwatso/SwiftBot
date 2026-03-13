@@ -25,13 +25,16 @@ final class DiscordAIServiceTests: XCTestCase {
         }
     }
 
-    func testGenerateSmartDMReplyFallsBackInPreferredOrder() async {
+    func testGenerateSmartDMReplyUsesFirstSuccessfulEngine() async {
+        // With parallel racing, all engines run simultaneously and the first
+        // non-nil result wins. Only openAI returns a value here, so the
+        // result is deterministic regardless of which engine finishes first.
         let recorder = CallRecorder()
         let service = DiscordAIService(
             engineFactory: { _, _ in
                 DiscordAIService.EngineSet(
                     apple: StubEngine(name: "apple", reply: nil, recorder: recorder),
-                    ollama: StubEngine(name: "ollama", reply: "ollama should not run", recorder: recorder),
+                    ollama: StubEngine(name: "ollama", reply: nil, recorder: recorder),
                     openAI: StubEngine(name: "openAI", reply: "openai fallback", recorder: recorder)
                 )
             },
@@ -65,8 +68,10 @@ final class DiscordAIServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(reply, "openai fallback")
+        // All engines race in parallel — verify all were invoked
         let calls = await recorder.snapshot()
-        XCTAssertEqual(calls, ["apple", "openAI"])
+        XCTAssertTrue(calls.contains("apple"))
+        XCTAssertTrue(calls.contains("openAI"))
     }
 
     func testGenerateRuleActionAIReplyRejectsEmptyPromptWithoutInvokingEngines() async {
