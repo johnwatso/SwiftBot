@@ -1079,55 +1079,26 @@ actor DiscordService {
     /// Returns a rich result including bot identity on success.
     /// Token is never logged; OSLog uses privacy: .private throughout.
     func validateBotTokenRich(_ token: String) async -> TokenValidationResult {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return TokenValidationResult(isValid: false, userId: nil, username: nil,
-                                         discriminator: nil, avatarURL: nil,
-                                         errorCategory: .invalidToken,
-                                         errorMessage: "Token is empty.")
+        let result = await identityRESTClient.validateBotTokenRich(token)
+        if result.isValid {
+            discordLogger.info("Token validation succeeded for user \(result.userId ?? "unknown", privacy: .private)")
+            return result
         }
 
-        var req = URLRequest(url: restBase.appendingPathComponent("users/@me"))
-        req.httpMethod = "GET"
-        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
-
-        do {
-            let (data, response) = try await identitySession.data(for: req)
-            guard let http = response as? HTTPURLResponse else {
-                discordLogger.warning("Token validation: invalid response (no HTTPURLResponse)")
-                return .failure(.networkFailure)
-            }
-
-            switch http.statusCode {
-            case 200..<300:
-                // Parse bot identity from response.
-                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-                let userId   = json?["id"] as? String
-                let username = json?["username"] as? String
-                let discrim  = json?["discriminator"] as? String
-                let avatarHash = json?["avatar"] as? String
-                var avatarURL: URL?
-                if let uid = userId, let hash = avatarHash, !hash.isEmpty {
-                    avatarURL = URL(string: "https://cdn.discordapp.com/avatars/\(uid)/\(hash).png")
-                }
-                discordLogger.info("Token validation succeeded for user \(userId ?? "unknown", privacy: .private)")
-                return TokenValidationResult(isValid: true, userId: userId, username: username,
-                                             discriminator: discrim, avatarURL: avatarURL,
-                                             errorCategory: nil, errorMessage: "Valid token")
-            case 401:
-                discordLogger.warning("Token validation: 401 unauthorized")
-                return .failure(.invalidToken)
-            case 429:
-                discordLogger.warning("Token validation: 429 rate limited")
-                return .failure(.rateLimited)
-            default:
-                discordLogger.warning("Token validation: unexpected HTTP \(http.statusCode, privacy: .public)")
-                return .failure(.serverError(http.statusCode))
-            }
-        } catch {
-            discordLogger.warning("Token validation: network failure — \(error.localizedDescription, privacy: .public)")
-            return .failure(.networkFailure)
+        switch result.errorCategory {
+        case .invalidToken:
+            discordLogger.warning("Token validation: 401 unauthorized")
+        case .rateLimited:
+            discordLogger.warning("Token validation: 429 rate limited")
+        case .serverError(let statusCode):
+            discordLogger.warning("Token validation: unexpected HTTP \(statusCode, privacy: .public)")
+        case .networkFailure:
+            discordLogger.warning("Token validation: network failure")
+        case nil:
+            discordLogger.warning("Token validation failed without an error category")
         }
+
+        return result
     }
 
     /// Resolves the bot's application client_id via /oauth2/applications/@me.
