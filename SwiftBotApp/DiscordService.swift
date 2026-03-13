@@ -365,6 +365,10 @@ actor DiscordService {
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
@@ -373,22 +377,42 @@ actor DiscordService {
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: addReaction blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
 
     func removeOwnReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: removeOwnReaction blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
 
     func pinMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: pinMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func unpinMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: unpinMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.unpinMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: createThreadFromMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: token)
     }
 
@@ -400,7 +424,11 @@ actor DiscordService {
         filename: String,
         token: String
     ) async throws -> String {
-        try await messageRESTClient.sendMessageWithImage(
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessageWithImage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        return try await messageRESTClient.sendMessageWithImage(
             channelId: channelId,
             content: content,
             imageData: imageData,
@@ -417,6 +445,10 @@ actor DiscordService {
         filename: String,
         token: String
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessageWithImage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.editMessageWithImage(
             channelId: channelId,
             messageId: messageId,
@@ -710,6 +742,10 @@ actor DiscordService {
     }
 
     func sendDM(userId: String, content: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendDM blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         guard let token = botToken else { return }
 
         let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
@@ -717,34 +753,66 @@ actor DiscordService {
     }
 
     func deleteMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: deleteMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.deleteMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: addRole blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func removeRole(guildId: String, userId: String, roleId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: removeRole blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func timeoutMember(guildId: String, userId: String, durationSeconds: Int, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: timeoutMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
     }
 
     func kickMember(guildId: String, userId: String, reason: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: kickMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
     }
 
     func moveMember(guildId: String, userId: String, channelId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: moveMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
     }
 
     func createChannel(guildId: String, name: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: createChannel blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.createChannel(guildId: guildId, name: name, token: token)
     }
 
     func sendWebhook(url: String, content: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendWebhook blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await interactionRESTClient.sendWebhook(url: url, content: content)
     }
 
