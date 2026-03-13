@@ -53,19 +53,14 @@ actor RuleExecutionService {
         context.triggerChannelId = event.triggerChannelId
         context.triggerMessageId = event.triggerMessageId
 
-        dependencies.debugLog("Executing rule pipeline: \(actions.count) blocks. Initial context: \(context)")
-
-        for (index, action) in actions.enumerated() {
+        for action in actions {
             await execute(action: action, for: event, context: &context, token: token)
-            dependencies.debugLog("  [\(index)] Executed \(action.type.rawValue). Updated context: \(context)")
         }
 
         if context.eventHandled, let messageId = event.triggerMessageId {
             markMessageHandledByRules(messageId: messageId)
-            dependencies.debugLog("Message \(messageId) handled by rule actions - AI reply will be skipped")
         }
 
-        dependencies.debugLog("Rule pipeline execution complete.")
         return context
     }
 
