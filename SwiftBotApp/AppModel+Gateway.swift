@@ -474,6 +474,7 @@ extension AppModel {
         ), at: 0)
 
         guard let applicationID = botUserId, !applicationID.isEmpty else { return }
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
         do {
             var payload: [String: Any] = [:]
             if let content = response.content {
@@ -523,6 +524,8 @@ extension AppModel {
         guard let appID = botUserId, !appID.isEmpty else { return }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "registerSlashCommands", log: { logs.append($0) }) else { return }
+        
         let slashEnabled = settings.commandsEnabled && settings.slashCommandsEnabled
         if lastSlashCommandsEnabledState != slashEnabled {
             lastSlashRegistrationAt = nil
