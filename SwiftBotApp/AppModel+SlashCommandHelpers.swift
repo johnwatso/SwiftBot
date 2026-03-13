@@ -41,30 +41,4 @@ extension AppModel {
             return isCommandEnabled(name: name, surface: "slash")
         }
     }
-
-    func slashOptionString(named name: String, in data: [String: DiscordJSON]) -> String? {
-        guard case let .array(options)? = data["options"] else { return nil }
-        for option in options {
-            guard case let .object(map) = option,
-                  case let .string(optionName)? = map["name"],
-                  optionName == name else { continue }
-            if case let .string(value)? = map["value"] {
-                return value
-            }
-        }
-        return nil
-    }
-
-    func slashOptionChannelID(named name: String, in data: [String: DiscordJSON]) -> String? {
-        guard case let .array(options)? = data["options"] else { return nil }
-        for option in options {
-            guard case let .object(map) = option,
-                  case let .string(optionName)? = map["name"],
-                  optionName == name else { continue }
-            if case let .string(value)? = map["value"] {
-                return value
-            }
-        }
-        return nil
-    }
 }
