@@ -118,7 +118,7 @@ extension AppModel {
             voiceLog = Array(remoteVoiceLog.prefix(200))
         }
         if let remoteActiveVoice = payload.activeVoice {
-            activeVoice = remoteActiveVoice
+            await replaceVoicePresence(remoteActiveVoice)
         }
         if payload.configFilesChanged, settings.clusterMode == .standby {
             await pullConfigFilesFromLeader()
@@ -873,91 +873,81 @@ extension AppModel {
         let userId = event.userID
         let guildId = event.guildID
 
-        let key = "\(guildId)-\(userId)"
         let now = Date()
-        let previous = activeVoice.first(where: { $0.userId == userId && $0.guildId == guildId })
         if let avatarHash = avatarHashFromVoicePayload(map), !avatarHash.isEmpty {
             userAvatarHashById[userId] = avatarHash
         }
+        let memberKey = "\(guildId)-\(userId)"
         if let guildAvatarHash = guildAvatarHashFromVoicePayload(map), !guildAvatarHash.isEmpty {
-            guildAvatarHashByMemberKey[key] = guildAvatarHash
+            guildAvatarHashByMemberKey[memberKey] = guildAvatarHash
         }
         let displayName = await voiceDisplayName(from: map, userId: userId)
 
         lastVoiceStateAt = now
 
         let channelId = event.channelID
+        let channelName = channelId.map { channelDisplayName(guildId: guildId, channelId: $0) } ?? ""
+        let transition = await voicePresenceStore.applyVoiceStateUpdate(
+            guildID: guildId,
+            userID: userId,
+            displayName: displayName,
+            channelID: channelId,
+            channelName: channelName,
+            now: now
+        )
+        activeVoice = await voicePresenceStore.snapshot()
 
-        if let newChannel = channelId {
-            // Idempotency: ignore mute/deaf-only updates (channel unchanged). Only fire on channel transitions.
-            if let previous, previous.channelId == newChannel { return }
+        switch transition {
+        case .ignored:
+            break
+        case .unchanged:
+            return
+        case .joined(let next):
+            stats.voiceJoins += 1
+            lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
+            addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
+            voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
 
-            let next = VoiceMemberPresence(
-                id: key,
-                userId: userId,
-                username: displayName,
-                guildId: guildId,
-                channelId: newChannel,
-                channelName: channelDisplayName(guildId: guildId, channelId: newChannel),
-                joinedAt: joinTimes[key] ?? now
-            )
-
-            if let previous {
-                if previous.channelId != newChannel {
-                    let elapsed = formatDuration(from: joinTimes[key] ?? previous.joinedAt, to: now)
-                    stats.voiceLeaves += 1
-                    lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
-                    addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
-                    voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
-
-                    if allowPrimarySideEffects,
-                       (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel)) {
-                        let message = renderNotificationTemplate(
-                            settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
-                            username: displayName,
-                            guildId: guildId,
-                            channelId: newChannel,
-                            fromChannelId: previous.channelId,
-                            toChannelId: newChannel
-                        )
-                        _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move,
-                            displayName: displayName, channelName: next.channelName,
-                            fromChannelName: previous.channelName)
-                    }
-                }
-                activeVoice.removeAll { $0.id == previous.id }
-            } else {
-                joinTimes[key] = now
-                stats.voiceJoins += 1
-                lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
-                addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
-                voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
-
-                if allowPrimarySideEffects,
-                   shouldNotifyVoiceEvent(guildId: guildId, channelId: newChannel) {
-                    let message = renderNotificationTemplate(
-                        settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
-                        username: displayName,
-                        guildId: guildId,
-                        channelId: newChannel,
-                        fromChannelId: nil,
-                        toChannelId: newChannel
-                    )
-                    _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
-                        displayName: displayName, channelName: next.channelName)
-                }
-                if allowPrimarySideEffects {
-                    await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: newChannel))
-                }
+            if allowPrimarySideEffects,
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
+                let message = renderNotificationTemplate(
+                    settings.guildSettings[guildId]?.joinNotificationTemplate ?? GuildSettings().joinNotificationTemplate,
+                    username: displayName,
+                    guildId: guildId,
+                    channelId: next.channelId,
+                    fromChannelId: nil,
+                    toChannelId: next.channelId
+                )
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .join,
+                    displayName: displayName, channelName: next.channelName)
             }
-
-            activeVoice.append(next)
-        } else if let previous {
-            let start = joinTimes[key] ?? previous.joinedAt
-            let elapsed = formatDuration(from: start, to: now)
+            if allowPrimarySideEffects {
+                await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: next.channelId))
+            }
+        case .moved(let previous, let next, let startedAt):
+            let elapsed = formatDuration(from: startedAt, to: now)
             stats.voiceLeaves += 1
-            activeVoice.removeAll { $0.id == previous.id }
-            joinTimes[key] = nil
+            lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
+            addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
+            voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
+
+            if allowPrimarySideEffects,
+               (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId)) {
+                let message = renderNotificationTemplate(
+                    settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
+                    username: displayName,
+                    guildId: guildId,
+                    channelId: next.channelId,
+                    fromChannelId: previous.channelId,
+                    toChannelId: next.channelId
+                )
+                _ = await sendVoiceNotification(guildId: guildId, message: message, event: .move,
+                    displayName: displayName, channelName: next.channelName,
+                    fromChannelName: previous.channelName)
+            }
+        case .left(let previous, let startedAt):
+            let elapsed = formatDuration(from: startedAt, to: now)
+            stats.voiceLeaves += 1
             lastVoiceStateSummary = "LEAVE \(previous.username) <- \(previous.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
@@ -975,7 +965,7 @@ extension AppModel {
                 _ = await sendVoiceNotification(guildId: guildId, message: message, event: .leave,
                     displayName: previous.username, channelName: previous.channelName, duration: elapsed)
             }
-            let elapsedSec = Int(now.timeIntervalSince(joinTimes[key] ?? previous.joinedAt))
+            let elapsedSec = Int(now.timeIntervalSince(startedAt))
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
             }
