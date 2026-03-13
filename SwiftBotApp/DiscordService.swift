@@ -16,17 +16,7 @@ actor DiscordService {
 
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
-    private var socket: URLSessionWebSocketTask?
-    private var heartbeatTask: Task<Void, Never>?
-    private var heartbeatSentAt: Date?
-    private var receiveTask: Task<Void, Never>?
-    private var reconnectTask: Task<Void, Never>?
-    private var heartbeatInterval: UInt64 = 41_250_000_000
-    private var sequence: Int?
-    private var sessionId: String?
     private var botToken: String?
-    private var reconnectAttempts = 0
-    private var userInitiatedDisconnect = false
     private var ruleEngine: RuleEngine?
     private var voiceRuleStateStore = VoiceRuleStateStore()
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
@@ -92,6 +82,8 @@ actor DiscordService {
         )
     )
     private lazy var wikiLookupService = WikiLookupService(session: session)
+    private lazy var gatewayConnection = DiscordGatewayConnection(session: session, gatewayURL: gatewayURL)
+    private var gatewayCallbacksConfigured = false
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
@@ -134,6 +126,34 @@ actor DiscordService {
 
     func setOnGatewayClose(_ handler: @escaping (Int) async -> Void) {
         onGatewayClose = handler
+    }
+
+    private func ensureGatewayCallbacksConfigured() async {
+        guard !gatewayCallbacksConfigured else { return }
+
+        await gatewayConnection.setOnPayload { [weak self] payload in
+            guard let self else { return }
+            await self.handleInboundGatewayPayload(payload)
+        }
+        await gatewayConnection.setOnConnectionState { [weak self] state in
+            await self?.onConnectionState?(state)
+        }
+        await gatewayConnection.setOnHeartbeatLatency { [weak self] latencyMs in
+            await self?.onHeartbeatLatency?(latencyMs)
+        }
+        await gatewayConnection.setOnGatewayClose { [weak self] code in
+            await self?.onGatewayClose?(code)
+        }
+        gatewayCallbacksConfigured = true
+    }
+
+    private func handleInboundGatewayPayload(_ payload: GatewayPayload) async {
+        seedChannelTypesIfNeeded(payload)
+        seedGuildNameIfNeeded(payload)
+        seedVoiceChannelsIfNeeded(payload)
+        seedVoiceStateIfNeeded(payload)
+        await processRuleActionsIfNeeded(payload)
+        await onPayload?(payload)
     }
 
     func setRuleEngine(_ engine: RuleEngine) {
@@ -226,128 +246,19 @@ actor DiscordService {
             return
         }
         discordLogger.info("Gateway connect initiated")
-        userInitiatedDisconnect = false
-        reconnectTask?.cancel()
-        reconnectTask = nil
-        reconnectAttempts = 0
         botToken = normalizedToken
-        await openGatewayConnection(token: normalizedToken, isReconnect: false)
+        await ensureGatewayCallbacksConfigured()
+        await gatewayConnection.connect(token: normalizedToken)
     }
 
-    func disconnect() {
+    func disconnect() async {
         discordLogger.info("Gateway disconnect requested (user-initiated)")
-        userInitiatedDisconnect = true
-        reconnectTask?.cancel()
-        reconnectTask = nil
-        heartbeatTask?.cancel()
-        receiveTask?.cancel()
-        socket?.cancel(with: .normalClosure, reason: nil)
-        socket = nil
+        await ensureGatewayCallbacksConfigured()
+        await gatewayConnection.disconnect()
         botToken = nil
         voiceRuleStateStore.clearAll()
         voiceChannelNamesByGuild.removeAll()
         channelTypeById.removeAll()
-        Task { await onConnectionState?(.stopped) }
-    }
-
-    private func receiveLoop(token: String) async {
-        while !Task.isCancelled, let socket {
-            do {
-                let message = try await socket.receive()
-                if case .string(let text) = message,
-                   let payload = try? JSONDecoder().decode(GatewayPayload.self, from: Data(text.utf8)) {
-                    sequence = payload.s ?? sequence
-                    await handleGatewayPayload(payload, token: token)
-                    seedChannelTypesIfNeeded(payload)
-                    seedGuildNameIfNeeded(payload)
-                    seedVoiceChannelsIfNeeded(payload)
-                    seedVoiceStateIfNeeded(payload)
-                    await processRuleActionsIfNeeded(payload)
-                    await onPayload?(payload)
-                }
-            } catch {
-                // Capture Discord gateway close code (4004, 4014, etc.) before reconnect.
-                let closeRawValue = socket.closeCode.rawValue
-                if closeRawValue != 1000, closeRawValue > 0 {
-                    await onGatewayClose?(closeRawValue)
-                }
-                await scheduleReconnect(
-                    reason: "Gateway receive failed: \(error.localizedDescription)"
-                )
-                break
-            }
-        }
-    }
-
-    private func handleGatewayPayload(_ payload: GatewayPayload, token: String) async {
-        switch payload.op {
-        case 10:
-            if case let .object(hello)? = payload.d,
-               case let .double(interval)? = hello["heartbeat_interval"] {
-                heartbeatInterval = UInt64(interval * 1_000_000)
-            }
-            reconnectAttempts = 0
-            reconnectTask?.cancel()
-            reconnectTask = nil
-            await identify(token: token)
-            startHeartbeat()
-            await onConnectionState?(.running)
-        case 1:
-            await sendHeartbeat()
-        case 7:
-            await scheduleReconnect(reason: "Gateway requested reconnect (op 7)")
-        case 9:
-            await identify(token: token)
-        case 11:
-            if let sent = heartbeatSentAt {
-                let latencyMs = max(1, Int((Date().timeIntervalSince(sent) * 1000).rounded()))
-                heartbeatSentAt = nil
-                await onHeartbeatLatency?(latencyMs)
-            }
-        default:
-            break
-        }
-    }
-
-    private func openGatewayConnection(token: String, isReconnect: Bool) async {
-        if isReconnect {
-            await onConnectionState?(.reconnecting)
-        } else {
-            await onConnectionState?(.connecting)
-        }
-        heartbeatTask?.cancel()
-        receiveTask?.cancel()
-        socket?.cancel(with: .goingAway, reason: nil)
-
-        let task = session.webSocketTask(with: gatewayURL)
-        socket = task
-        task.resume()
-        receiveTask = Task { await self.receiveLoop(token: token) }
-    }
-
-    private func scheduleReconnect(reason: String) async {
-        guard !userInitiatedDisconnect else { return }
-        guard reconnectTask == nil else { return }
-        guard let token = botToken, !token.isEmpty else { return }
-
-        reconnectAttempts += 1
-        let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
-        await onConnectionState?(.reconnecting)
-
-        reconnectTask = Task { [weak self] in
-            guard let self else { return }
-            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
-            guard !Task.isCancelled else { return }
-            await self.reconnectTaskDidFire(token: token)
-        }
-        _ = reason
-    }
-
-    private func reconnectTaskDidFire(token: String) async {
-        reconnectTask = nil
-        guard !userInitiatedDisconnect else { return }
-        guard botToken == token else { return }
-        await openGatewayConnection(token: token, isReconnect: true)
     }
 
     // MARK: - Onboarding: Token Validation & Invite Generation
@@ -507,48 +418,6 @@ actor DiscordService {
             return nil
         }
         return await identityRESTClient.fetchGuildMemberRoleIDs(guildID: trimmedGuildID, userID: trimmedUserID, token: token)
-    }
-
-    private func startHeartbeat() {
-        heartbeatTask?.cancel()
-        heartbeatTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: heartbeatInterval)
-                await sendHeartbeat()
-            }
-        }
-    }
-
-    private func sendHeartbeat() async {
-        heartbeatSentAt = Date()
-        let payload: [String: Any] = ["op": 1, "d": sequence as Any]
-        await sendRaw(payload)
-    }
-
-    private func identify(token: String) async {
-        let presence: [String: Any] = [
-            "since": NSNull(),
-            "activities": [[
-                "name": "Hello! Ping me for help",
-                "type": 0
-            ]],
-            "status": "online",
-            "afk": false
-        ]
-
-        // Intents:
-        // - guilds (1), guild members (2), guild voice states (128), guild presences (256),
-        // - guild messages (512), guild message reactions (1024), guild message typing (2048),
-        // - direct messages (4096), direct message reactions (8192), message content (32768)
-        let intents = 49_027
-
-        let identify: [String: Any] = [
-            "token": token,
-            "intents": intents,
-            "properties": ["$os": "macOS", "$browser": "SwiftBot", "$device": "SwiftBot"],
-            "presence": presence
-        ]
-        await sendRaw(["op": 2, "d": identify])
     }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
@@ -1060,27 +929,7 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: updatePresence blocked — outputAllowed is false (node is not Primary).")
             return
         }
-        let payload: [String: Any] = [
-            "op": 3,
-            "d": [
-                "since": NSNull(),
-                "activities": [["name": text, "type": 0]],
-                "status": "online",
-                "afk": false
-            ]
-        ]
-        await sendRaw(payload)
-    }
-
-    private func sendRaw(_ dictionary: [String: Any]) async {
-        guard let socket else { return }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: dictionary)
-            if let text = String(data: data, encoding: .utf8) {
-                try await socket.send(.string(text))
-            }
-        } catch {
-            // noop, routed to reconnect by receive loop if needed.
-        }
+        await ensureGatewayCallbacksConfigured()
+        await gatewayConnection.sendPresence(text: text)
     }
 }
