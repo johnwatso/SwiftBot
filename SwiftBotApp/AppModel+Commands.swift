@@ -2659,13 +2659,7 @@ extension AppModel {
         let payload: [String: Any] = [
             "embeds": [embed]
         ]
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessage(embed)", log: { logs.append($0) }) else { return false }
-        do {
-            _ = try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
-            return true
-        } catch {
-            return false
-        }
+        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(embed)")
     }
 
     func formattedWeaponStats(

@@ -11,6 +11,30 @@ extension AppModel {
         case noReply             // Engine returned nil — caller may use its own fallback.
     }
 
+    private func sendPayloadResponse(
+        channelId: String,
+        payload: [String: Any],
+        action: String
+    ) async throws -> (statusCode: Int, responseBody: String) {
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+            throw NSError(domain: "AppModel", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked by ActionDispatcher"])
+        }
+        return try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
+    }
+
+    func sendPayload(
+        channelId: String,
+        payload: [String: Any],
+        action: String
+    ) async -> Bool {
+        do {
+            _ = try await sendPayloadResponse(channelId: channelId, payload: payload, action: action)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func sendTypingIndicator(_ channelId: String) async {
         await service.triggerTyping(channelId: channelId, token: settings.token)
     }
@@ -102,13 +126,7 @@ extension AppModel {
     }
 
     func send(_ channelId: String, _ message: String) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendMessage", log: { logs.append($0) }) else { return false }
-        do {
-            try await service.sendMessage(channelId: channelId, content: message, token: settings.token)
-            return true
-        } catch {
-            return false
-        }
+        await sendPayload(channelId: channelId, payload: ["content": message], action: "sendMessage")
     }
 
     func sendMessageReturningID(channelId: String, content: String) async -> String? {
@@ -121,17 +139,7 @@ extension AppModel {
     }
 
     func sendEmbed(_ channelId: String, embed: [String: Any]) async -> Bool {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendEmbed", log: { logs.append($0) }) else { return false }
-        do {
-            _ = try await service.sendMessage(
-                channelId: channelId,
-                payload: ["embeds": [embed]],
-                token: settings.token
-            )
-            return true
-        } catch {
-            return false
-        }
+        await sendPayload(channelId: channelId, payload: ["embeds": [embed]], action: "sendEmbed")
     }
 
     func editMessage(channelId: String, messageId: String, content: String) async -> Bool {
@@ -301,7 +309,11 @@ extension AppModel {
         }
 
         do {
-            let response = try await service.sendMessage(channelId: channelId, payload: payload, token: token)
+            let response = try await sendPayloadResponse(
+                channelId: channelId,
+                payload: payload,
+                action: "sendPatchyNotification"
+            )
             let mode = usingEmbedPayload ? "embed" : "fallback"
             let detail = "Patchy send succeeded (\(mode), status=\(response.statusCode))."
             logs.append("✅ \(detail)")
