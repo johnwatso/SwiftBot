@@ -444,6 +444,7 @@ final class AppModel: ObservableObject {
     let discordHTTPSession = URLSession(configuration: .default)
     lazy var aiService = DiscordAIService(session: discordHTTPSession)
     lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
+    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordHTTPSession)
     lazy var messageRESTClient = DiscordMessageRESTClient(session: discordHTTPSession)
     lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
     lazy var service = DiscordService(
@@ -458,6 +459,7 @@ final class AppModel: ObservableObject {
     let clusterStatusService = ClusterStatusPollingService()
     let ruleEngine: RuleEngine
     let wikiContextCache = WikiContextCache()
+    var guildOwnerIdByGuild: [String: String] = [:]
     var serviceCallbacksConfigured = false
     lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
     lazy var commandProcessor = makeCommandProcessor()

@@ -1710,7 +1710,7 @@ extension AppModel {
 
         // Fallback for events that don't include `member` (e.g. some reaction payloads):
         // fetch member role IDs via REST and match against known admin role names.
-        if let memberRoleIDs = await service.guildMemberRoleIDs(guildID: guildId, userID: userId) {
+        if let memberRoleIDs = await guildMemberRoleIDs(guildID: guildId, userID: userId) {
             let adminRoleIDs = Set(
                 (availableRolesByServer[guildId] ?? [])
                     .filter { role in
@@ -1739,8 +1739,39 @@ extension AppModel {
     }
 
     func isGuildOwner(userId: String, guildId: String) async -> Bool {
-        guard let ownerId = await service.guildOwnerID(guildID: guildId) else { return false }
+        guard let ownerId = await guildOwnerID(guildID: guildId) else { return false }
         return ownerId == userId
+    }
+
+    func guildOwnerID(guildID: String) async -> String? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty else { return nil }
+
+        if let cached = guildOwnerIdByGuild[trimmedGuildID], !cached.isEmpty {
+            return cached
+        }
+
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return nil }
+
+        if let ownerID = await guildRESTClient.fetchGuildOwnerID(guildID: trimmedGuildID, token: token) {
+            guildOwnerIdByGuild[trimmedGuildID] = ownerID
+            return ownerID
+        }
+        return nil
+    }
+
+    func guildMemberRoleIDs(guildID: String, userID: String) async -> [String]? {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !trimmedUserID.isEmpty, !token.isEmpty else { return nil }
+
+        return await guildRESTClient.fetchGuildMemberRoleIDs(
+            guildID: trimmedGuildID,
+            userID: trimmedUserID,
+            token: token
+        )
     }
 
     func hasAdministratorPermission(raw: [String: DiscordJSON]) -> Bool {
