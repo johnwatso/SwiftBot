@@ -451,6 +451,7 @@ final class AppModel: ObservableObject {
     let wikiContextCache = WikiContextCache()
     var serviceCallbacksConfigured = false
     lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
+    lazy var commandProcessor = makeCommandProcessor()
     let voicePresenceStore = VoicePresenceStore()
     var uptimeTask: Task<Void, Never>?
     var discordCacheSaveTask: Task<Void, Never>?

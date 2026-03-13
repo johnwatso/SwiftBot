@@ -58,119 +58,15 @@ extension AppModel {
         raw: [String: DiscordJSON],
         bypassSystemToggles: Bool = false
     ) async -> Bool {
-        let tokens = commandText.split(separator: " ").map(String.init)
-        guard let command = tokens.first?.lowercased() else { return false }
-        if !bypassSystemToggles {
-            guard settings.commandsEnabled else {
-                return await send(channelId, "⛔ Commands are disabled in command settings.")
-            }
-            guard settings.prefixCommandsEnabled else {
-                return await send(channelId, "⛔ Prefix commands are disabled in command settings.")
-            }
-        }
-        let canonicalCommand = canonicalPrefixCommandName(command)
-        guard isCommandEnabled(name: canonicalCommand, surface: "prefix") else {
-            return await send(channelId, "⛔ `\(effectivePrefix())\(canonicalCommand)` is disabled in command settings.")
-        }
-
-        let prefix = effectivePrefix()
-
-        switch command {
-        case "help":
-            let catalog = buildHelpCatalog(prefix: prefix)
-            let renderer = HelpRenderer(prefix: prefix, helpSettings: settings.help)
-            let targetCommand = tokens.dropFirst().first?.lowercased()
-
-            // `!help <command>` — send detailed text reply (with examples).
-            if let target = targetCommand {
-                if let entry = catalog.entry(for: target) {
-                    return await send(channelId, renderer.detail(for: entry))
-                } else {
-                    return await send(channelId, "❓ Unknown command `\(prefix)\(target)`. Type `\(prefix)help` for a full list.")
-                }
-            }
-
-            // `!help` — send embed overview.
-            // Smart/Hybrid: attempt AI-generated intro for embed description; embed fields are always catalog-sourced.
-            var aiIntro: String? = nil
-            if settings.help.mode != .classic {
-                let msg = Message(
-                    channelID: channelId,
-                    userID: "help-request",
-                    username: "user",
-                    content: "Write a short intro for a SwiftBot help embed.",
-                    role: .user
-                )
-                aiIntro = await service.generateHelpReply(messages: [msg], systemPrompt: renderer.aiIntroPrompt(catalog: catalog))
-            }
-
-            let embed = renderer.embedOverview(catalog: catalog, aiDescription: aiIntro)
-            return await sendEmbed(channelId, embed: embed)
-        case "ping":
-            return await send(channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
-        case "roll":
-            guard tokens.count >= 2, let output = rollDice(tokens[1]) else { return await unknown(channelId) }
-            return await send(channelId, output)
-        case "8ball":
-            let responses = ["Yes.", "No.", "It is certain.", "Ask again later.", "Very doubtful."]
-            return await send(channelId, "🎱 \(responses.randomElement()!)")
-        case "poll":
-            return await send(channelId, "📊 Poll created! Add reactions to vote.")
-        case "image", "imagine":
-            let prompt = tokens.dropFirst().joined(separator: " ")
-            let userId = authorId(from: raw) ?? "unknown-user"
-            return await generateImageCommand(
-                prompt: prompt,
-                userId: userId,
+        await commandProcessor.executePrefixCommand(
+            .init(
+                commandText: commandText,
                 username: username,
-                channelId: channelId
+                channelId: channelId,
+                raw: raw,
+                bypassSystemToggles: bypassSystemToggles
             )
-        case "userinfo":
-            return await send(channelId, "👤 User: \(username)")
-        case "cluster", "worker":
-            let action = tokens.dropFirst().first?.lowercased() ?? "status"
-            return await clusterCommand(action: action, channelId: channelId)
-        case "setchannel":
-            return await setNotificationChannel(for: raw, currentChannelId: channelId)
-        case "ignorechannel":
-            return await updateIgnoredChannels(tokens: tokens, raw: raw, responseChannelId: channelId)
-        case "notifystatus":
-            return await notifyStatus(raw: raw, responseChannelId: channelId)
-        case "debug":
-            guard await canRunDebugCommand(raw: raw) else {
-                return await send(channelId, "⛔ `\(effectivePrefix())debug` is restricted to server owners or admins.")
-            }
-            // Force a fresh mesh snapshot so /debug reflects current reachability,
-            // even if periodic polling is behind.
-            await pollClusterStatus()
-            clusterSnapshot = await cluster.currentSnapshot()
-            return await sendEmbed(channelId, embed: debugSummaryEmbed())
-        case "bugreport":
-            return await send(channelId, bugReportText(for: raw))
-        case "weekly":
-            let report = weeklyPlugin?.snapshotSummary() ?? "No data yet."
-            return await send(channelId, report)
-        case "meta":
-            if let result = await service.fetchFinalsMetaFromSkycoach() {
-                return await send(channelId, result)
-            }
-            return await send(channelId, "Couldn't fetch meta data right now. Source: https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds")
-        default:
-            if let resolvedWikiCommand = resolveWikiCommand(named: command) {
-                guard settings.wikiBot.isEnabled else {
-                    return await send(channelId, "📘 WikiBridge is disabled. Enable it from the WikiBridge page.")
-                }
-                let query = tokens.dropFirst().joined(separator: " ")
-                return await performWikiLookup(
-                    command: resolvedWikiCommand.command,
-                    source: resolvedWikiCommand.source,
-                    query: query,
-                    channelId: channelId
-                )
-            }
-            _ = await unknown(channelId)
-            return false
-        }
+        )
     }
 
     func unknown(_ channelId: String) async -> Bool {
