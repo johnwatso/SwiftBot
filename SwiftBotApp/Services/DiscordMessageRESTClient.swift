@@ -85,6 +85,43 @@ struct DiscordMessageRESTClient {
         }
     }
 
+    func fetchMessage(channelId: String, messageId: String, token: String) async throws -> [String: DiscordJSON] {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch message", "responseBody": responseBody]
+            )
+        }
+        return try JSONDecoder().decode([String: DiscordJSON].self, from: data)
+    }
+
+    func fetchRecentMessages(channelId: String, limit: Int, token: String) async throws -> [[String: DiscordJSON]] {
+        var components = URLComponents(url: restBase.appendingPathComponent("channels/\(channelId)/messages"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "limit", value: String(max(1, min(100, limit))))]
+        guard let url = components?.url else {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid messages URL"])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch recent messages", "responseBody": responseBody]
+            )
+        }
+        return try JSONDecoder().decode([[String: DiscordJSON]].self, from: data)
+    }
+
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
         let encodedEmoji = emoji.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? emoji
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/reactions/\(encodedEmoji)/@me"))
