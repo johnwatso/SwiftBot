@@ -5,7 +5,7 @@ struct GeneralPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
     @State private var showRunSetupPrompt = false
-    
+
     // Discord Authentication State (Moved from Discord tab)
     @State private var showToken = false
     @State private var transientToastMessage: String?

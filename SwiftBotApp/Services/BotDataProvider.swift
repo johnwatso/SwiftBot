@@ -9,7 +9,7 @@ protocol BotDataProvider: ObservableObject {
     var changePublisher: AnyPublisher<Void, Never> { get }
 
     // MARK: - State Properties
-    
+
     var settings: BotSettings { get }
     var status: BotStatus { get }
     var stats: StatCounter { get }
@@ -24,22 +24,22 @@ protocol BotDataProvider: ObservableObject {
     var availableRolesByServer: [String: [GuildRole]] { get }
     var clusterSnapshot: ClusterSnapshot { get }
     var clusterNodes: [ClusterNodeStatus] { get }
-    
+
     // MARK: - Bot Info
-    
+
     var botUsername: String { get }
     var botAvatarURL: URL? { get }
     func avatarURL(forUserId userId: String, guildId: String?) -> URL?
     func fallbackAvatarURL(forUserId userId: String) -> URL?
-    
+
     // MARK: - Rules
-    
+
     var rules: [Rule] { get }
     func upsertRule(_ rule: Rule) async throws
     func deleteRule(_ id: UUID) async throws
-    
+
     // MARK: - Patchy
-    
+
     var patchyLastCycleAt: Date? { get }
     var patchyIsCycleRunning: Bool { get }
     var patchyDebugLogs: [String] { get }
@@ -49,9 +49,9 @@ protocol BotDataProvider: ObservableObject {
     func togglePatchyTargetEnabled(_ id: UUID) async throws
     func sendPatchyTest(targetID: UUID) async throws
     func runPatchyManualCheck() async throws
-    
+
     // MARK: - Lifecycle & Actions
-    
+
     func refresh() async
     func saveSettings(_ settings: BotSettings) async throws
     func startBot() async throws
@@ -68,9 +68,9 @@ final class AnyBotDataProvider: ObservableObject, BotDataProvider {
     private var changeCancellable: AnyCancellable?
 
     nonisolated(unsafe) let objectWillChange = ObservableObjectPublisher()
-    
+
     // MARK: - BotDataProvider Properties (forwarded)
-    
+
     var settings: BotSettings { _base.settings }
     var status: BotStatus { _base.status }
     var stats: StatCounter { _base.stats }
@@ -92,70 +92,70 @@ final class AnyBotDataProvider: ObservableObject, BotDataProvider {
     var patchyIsCycleRunning: Bool { _base.patchyIsCycleRunning }
     var patchyDebugLogs: [String] { _base.patchyDebugLogs }
     var changePublisher: AnyPublisher<Void, Never> { objectWillChange.eraseToAnyPublisher() }
-    
+
     // MARK: - Initialization
-    
+
     init(_ base: any BotDataProvider) {
         self._base = base
         self.changeCancellable = base.changePublisher.sink { [weak self] in
             self?.objectWillChange.send()
         }
     }
-    
+
     // MARK: - BotDataProvider Methods (forwarded)
-    
+
     func avatarURL(forUserId userId: String, guildId: String?) -> URL? {
         _base.avatarURL(forUserId: userId, guildId: guildId)
     }
-    
+
     func fallbackAvatarURL(forUserId userId: String) -> URL? {
         _base.fallbackAvatarURL(forUserId: userId)
     }
-    
+
     func upsertRule(_ rule: Rule) async throws {
         try await _base.upsertRule(rule)
     }
-    
+
     func deleteRule(_ id: UUID) async throws {
         try await _base.deleteRule(id)
     }
-    
+
     func addPatchyTarget(_ target: PatchySourceTarget) async throws {
         try await _base.addPatchyTarget(target)
     }
-    
+
     func updatePatchyTarget(_ target: PatchySourceTarget) async throws {
         try await _base.updatePatchyTarget(target)
     }
-    
+
     func deletePatchyTarget(_ id: UUID) async throws {
         try await _base.deletePatchyTarget(id)
     }
-    
+
     func togglePatchyTargetEnabled(_ id: UUID) async throws {
         try await _base.togglePatchyTargetEnabled(id)
     }
-    
+
     func sendPatchyTest(targetID: UUID) async throws {
         try await _base.sendPatchyTest(targetID: targetID)
     }
-    
+
     func runPatchyManualCheck() async throws {
         try await _base.runPatchyManualCheck()
     }
-    
+
     func refresh() async {
         await _base.refresh()
     }
-    
+
     func saveSettings(_ settings: BotSettings) async throws {
         try await _base.saveSettings(settings)
     }
-    
+
     func startBot() async throws {
         try await _base.startBot()
     }
-    
+
     func stopBot() async throws {
         try await _base.stopBot()
     }

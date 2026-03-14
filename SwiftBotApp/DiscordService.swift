@@ -561,7 +561,7 @@ actor DiscordService {
 
     private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0 else { return }
-        
+
         // Prevent standby nodes from executing rule actions
         guard outputAllowed else { return }
 

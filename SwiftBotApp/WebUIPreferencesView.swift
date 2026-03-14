@@ -106,7 +106,7 @@ struct InternetAccessConfigurationSection: View {
     @State private var isDisabling = false
     @State private var setupFeedback: InternetAccessFeedback?
     @State private var setupProgress: InternetAccessSetupProgress?
-    @State private var lastError: Error? = nil
+    @State private var lastError: Error?
     @State private var showingReRunSetupConfirmation = false
     @State private var showingNonPrimaryWarning = false
 
@@ -114,7 +114,7 @@ struct InternetAccessConfigurationSection: View {
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
     @State private var isVerifyingToken = false
     @State private var hasVerifiedToken = false
-    @State private var tokenVerificationTask: Task<Void, Never>? = nil
+    @State private var tokenVerificationTask: Task<Void, Never>?
 
     private var selectedZone: CloudflareDNSProvider.ZoneSummary? {
         availableZones.first(where: { $0.id == app.settings.adminWebUI.selectedZoneID })
@@ -124,7 +124,7 @@ struct InternetAccessConfigurationSection: View {
         if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled {
             return app.adminWebPublicAccessURL()?.absoluteString ?? ""
         }
-        
+
         let hostname = app.settings.adminWebUI.normalizedHostname
         return hostname.isEmpty ? "" : "https://\(hostname)"
     }
@@ -237,7 +237,7 @@ struct InternetAccessConfigurationSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Cloudflare API Token")
                     .font(.subheadline.weight(.medium))
-                
+
                 HStack(spacing: 8) {
                     SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
                         .textFieldStyle(.roundedBorder)
@@ -247,7 +247,7 @@ struct InternetAccessConfigurationSection: View {
                             availableZones = []
                             app.settings.adminWebUI.selectedZoneID = ""
                         }
-                    
+
                     if !hasVerifiedToken {
                         Button {
                             verifyToken()
@@ -265,7 +265,7 @@ struct InternetAccessConfigurationSection: View {
                             .foregroundStyle(.green)
                     }
                 }
-                
+
                 Text("Stored securely in your macOS Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -274,7 +274,7 @@ struct InternetAccessConfigurationSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Hostname")
                     .font(.subheadline.weight(.medium))
-                
+
                 // Inline hostname editor: [subdomain] . [zone ▼]
                 HStack(spacing: 6) {
                     TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
@@ -287,11 +287,11 @@ struct InternetAccessConfigurationSection: View {
                                 app.settings.adminWebUI.subdomain = filtered
                             }
                         }
-                    
+
                     Text(".")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    
+
                     Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
                         if availableZones.isEmpty {
                             if !app.settings.adminWebUI.selectedZoneName.isEmpty {
@@ -315,10 +315,10 @@ struct InternetAccessConfigurationSection: View {
                             app.settings.adminWebUI.selectedZoneName = zone.name
                         }
                     }
-                    
+
                     Spacer()
                 }
-                
+
                 // Live URL preview
                 HStack(spacing: 4) {
                     Text("SwiftBot will be available at:")
@@ -342,12 +342,12 @@ struct InternetAccessConfigurationSection: View {
                                 .font(.headline)
                                 .fontWeight(.semibold)
                         }
-                        
+
                         Text(publicURLString)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
-                        
+
                         HStack(spacing: 10) {
                             Button {
                                 openURL()
@@ -364,7 +364,7 @@ struct InternetAccessConfigurationSection: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
-                            
+
                             Button {
                                 showingReRunSetupConfirmation = true
                             } label: {
@@ -477,8 +477,8 @@ struct InternetAccessConfigurationSection: View {
             }
         } message: {
             let primaryHost = app.settings.clusterLeaderAddress
-            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead."
-            
+            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead." // swiftlint:disable:this line_length
+
             if !primaryHost.isEmpty {
                 Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
             } else {
@@ -489,20 +489,20 @@ struct InternetAccessConfigurationSection: View {
 
     private func verifyToken() {
         guard !isVerifyingToken else { return }
-        
+
         isVerifyingToken = true
         setupFeedback = nil
         tokenVerificationTask?.cancel()
-        
+
         tokenVerificationTask = Task { @MainActor in
             do {
                 let zones = try await app.verifyCloudflareTokenAndListZones(token: app.settings.adminWebUI.cloudflareAPIToken)
                 guard !Task.isCancelled else { return }
-                
+
                 self.availableZones = zones
                 self.hasVerifiedToken = true
                 self.isVerifyingToken = false
-                
+
                 // Auto-select if only one zone
                 if zones.count == 1, let firstZone = zones.first {
                     app.settings.adminWebUI.selectedZoneID = firstZone.id
@@ -522,14 +522,14 @@ struct InternetAccessConfigurationSection: View {
 
     private func enable(forceReplaceDNS: Bool = false) {
         guard !isEnabling else { return }
-        
+
         let fullHostname: String
         if !app.settings.adminWebUI.selectedZoneID.isEmpty, !app.settings.adminWebUI.subdomain.isEmpty, let zone = selectedZone {
             fullHostname = "\(app.settings.adminWebUI.subdomain.lowercased()).\(zone.name)"
         } else {
             fullHostname = app.settings.adminWebUI.normalizedHostname
         }
-        
+
         guard !fullHostname.isEmpty else {
             setupFeedback = InternetAccessFeedback(status: .warning, message: "Configure a hostname first.")
             return
@@ -714,7 +714,7 @@ private struct InternetAccessSetupProgress {
             setItem(id: "enable-access", status: .warning, detail: "Starting Cloudflare tunnel…")
         case .cloudflareTunnelStarted:
             setItem(id: "enable-access", status: .success, detail: "Internet Access enabled.")
-        case .internetAccessEnabled(_):
+        case .internetAccessEnabled:
             break
         }
     }
@@ -809,9 +809,9 @@ struct AdminWebAuthenticationSection: View {
 
         // Handle existing path in base URL (e.g. proxy subpath)
         if !components.path.isEmpty && components.path != "/" {
-            let base_path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let sub_path = path.hasPrefix("/") ? path : "/" + path
-            components.path = base_path + sub_path
+            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+            let subPath = path.hasPrefix("/") ? path : "/" + path
+            components.path = basePath + subPath
         } else {
             components.path = path
         }
@@ -1092,7 +1092,6 @@ struct AdminWebLaunchControls: View {
         }
     }
 }
-
 
 private extension CertificateManager.ValidationStatus {
     var color: Color {

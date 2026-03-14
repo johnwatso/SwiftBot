@@ -148,13 +148,13 @@ extension AppModel {
         let nodes = await cluster.registeredNodeInfo()
         guard !nodes.isEmpty else { return }
         let currentTerm = await cluster.currentLeaderTerm()
-        
+
         let payload = MeshSyncPayload(
             conversations: [],
             imageUsage: settings.openAIImageUsageByUserMonth,
             leaderTerm: currentTerm
         )
-        
+
         for (_, baseURL) in nodes {
             _ = await cluster.pushConversationsToSingleNode(baseURL, payload)
         }
@@ -288,8 +288,8 @@ extension AppModel {
                     currentUserID: userId,
                     currentContent: content
                 )
-                
-                var serverName: String? = nil
+
+                var serverName: String?
                 if let gid = guildID {
                     serverName = await discordCache.guildName(for: gid)
                 }
@@ -372,7 +372,7 @@ extension AppModel {
                     currentUserID: userId,
                     currentContent: prompt
                 )
-                var serverName: String? = nil
+                var serverName: String?
                 if let gid = guildID {
                     serverName = await discordCache.guildName(for: gid)
                 }
@@ -527,7 +527,7 @@ extension AppModel {
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "registerSlashCommands", log: { logs.append($0) }) else { return }
-        
+
         let slashEnabled = settings.commandsEnabled && settings.slashCommandsEnabled
         if lastSlashCommandsEnabledState != slashEnabled {
             lastSlashRegistrationAt = nil
@@ -579,7 +579,7 @@ extension AppModel {
                 logs.append("✅ Slash commands disabled and cleared for \(guildRegisteredCount) guild(s)")
             }
         } else if guildIds.isEmpty,
-                  (lastSlashRegistrationAt == nil || now.timeIntervalSince(lastSlashRegistrationAt!) >= 300) {
+                  lastSlashRegistrationAt == nil || now.timeIntervalSince(lastSlashRegistrationAt!) >= 300 {
             do {
                 try await service.registerGlobalApplicationCommands(
                     applicationID: appID,
@@ -705,7 +705,7 @@ extension AppModel {
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
 
             if allowPrimarySideEffects,
-               (shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId)) {
+               shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
                 let message = renderNotificationTemplate(
                     settings.guildSettings[guildId]?.moveNotificationTemplate ?? GuildSettings().moveNotificationTemplate,
                     username: displayName,
@@ -916,6 +916,5 @@ extension AppModel {
         scheduleDiscordCacheSave()
         // GUILD_MEMBER_ADD is now handled via handleMemberJoin (P0.5).
     }
-
 
 }

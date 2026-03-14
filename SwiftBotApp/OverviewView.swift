@@ -8,7 +8,7 @@ struct OverviewView: View {
     /// The bot data provider (injected via environment from unified shell)
     @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
-    
+
     var onOpenSwiftMesh: (() -> Void)?
     @AppStorage("overview.metric.order.v1") private var metricOrderStorage = ""
     @AppStorage("overview.metric.hidden.v1") private var metricHiddenStorage = ""
@@ -34,7 +34,7 @@ struct OverviewView: View {
     }
 
     // MARK: - Data Access via Provider
-    
+
     private var settings: BotSettings { provider.settings }
     private var status: BotStatus { provider.status }
     private var stats: StatCounter { provider.stats }

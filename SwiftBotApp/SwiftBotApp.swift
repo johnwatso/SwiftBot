@@ -172,7 +172,7 @@ struct SwiftBotApp: App {
 
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "swiftbot" else { return }
-        
+
         switch url.host {
         case "auth":
             handleAuthDeepLink(url)
@@ -184,7 +184,7 @@ struct SwiftBotApp: App {
     private func handleAuthDeepLink(_ url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let queryItems = components.queryItems else { return }
-        
+
         // Extract session token from deep link: swiftbot://auth?session=<token>
         if let sessionToken = queryItems.first(where: { $0.name == "session" })?.value,
            !sessionToken.isEmpty {

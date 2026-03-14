@@ -3,347 +3,453 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		080011223344556677AABBCE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07080011223344556677AABB /* SettingsView.swift */; };
-		08DCC0CBE7324CA3B5253825 /* Models/RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */; };
-		0A6B7D101122334455667788 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 0A6B7D201122334455667788 /* Resources */; };
-		11223344556677AABBCCDDFF /* CommonUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0011223344556677AABBCCDD /* CommonUI.swift */; };
-		11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D441122334455667788 /* ClusterCoordinator.swift */; };
-		11C22D551122334455667788 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C22D661122334455667788 /* AdminWebServer.swift */; };
-		11D1A1B2C3D4E5F607182930 /* Services/CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182931 /* Services/CommandProcessor.swift */; };
-		11D1A1B2C3D4E5F607182932 /* Services/DiscordAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182933 /* Services/DiscordAIService.swift */; };
-		11D1A1B2C3D4E5F607182934 /* Services/DiscordGatewayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182935 /* Services/DiscordGatewayConnection.swift */; };
-		11D1A1B2C3D4E5F607182936 /* Services/DiscordGuildRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182937 /* Services/DiscordGuildRESTClient.swift */; };
-		11D1A1B2C3D4E5F607182938 /* Services/DiscordIdentityRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182939 /* Services/DiscordIdentityRESTClient.swift */; };
-		11D1A1B2C3D4E5F60718293A /* Services/DiscordInteractionRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F60718293B /* Services/DiscordInteractionRESTClient.swift */; };
-		11D1A1B2C3D4E5F60718293C /* Services/DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F60718293D /* Services/DiscordMessageRESTClient.swift */; };
-		11D1A1B2C3D4E5F60718293E /* Services/GatewayEventDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F60718293F /* Services/GatewayEventDispatcher.swift */; };
-		11D1A1B2C3D4E5F607182940 /* Services/RuleExecutionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182941 /* Services/RuleExecutionService.swift */; };
-		11D1A1B2C3D4E5F607182942 /* Services/VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182943 /* Services/VoicePresenceStore.swift */; };
-		11D1A1B2C3D4E5F607182944 /* Services/VoiceRuleStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182945 /* Services/VoiceRuleStateStore.swift */; };
-		11D1A1B2C3D4E5F607182946 /* Services/WikiLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11D1A1B2C3D4E5F607182947 /* Services/WikiLookupService.swift */; };
-		1F7A11C22D33445566778899 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1F7A11C22D33445566778898 /* Sparkle */; };
-		20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */; };
-		212CE68E56C348E2B16F8E20 /* Models/EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2038AEE60943658748C2A8 /* Models/EventBus.swift */; };
-		222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */; };
-		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
-		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
-		2D93A1C4B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */; };
-		2E1AB44CA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */; };
-		2FB770B8A11D22E33F44C550 /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */; };
-		346EE31F9E1D4CB28BCE37A8 /* Models/BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7436E2097EB456B85B3138E /* Models/BotSettings.swift */; };
-		3B969F2C6A7C429B9E9392E0 /* SwiftBotApp/ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */; };
-		4310D51BEC4040248D9F8E66 /* Models/KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */; };
-		45BDC95CDE8D4005A5A70F85 /* SwiftBotApp/StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */; };
-		49AEED7B963B4B6F842F7A10 /* SwiftBotApp/RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */; };
-		4B164E69FD8746C58CA0E842 /* Models/ClusterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0870D97E081745428605B82E /* Models/ClusterModels.swift */; };
-		5125A5586D3B4765960059A3 /* Models/AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */; };
-		538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35480F12EB2C7DFB546BD550 /* RootView.swift */; };
-		5AEC748EA501439CBE3442FC /* SwiftBotApp/OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */; };
-		5B1E9801A1B2C3D4E5F60718 /* VoiceRuleListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */; };
-		5B2FA002B2C3D4E5F6071901 /* EmptyRuleOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */; };
-		6F1B40D1A2B3C4D5E6F70819 /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D0A2B3C4D5E6F70819 /* AppModel+Gateway.swift */; };
-		6F1B40D3A2B3C4D5E6F70819 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D2A2B3C4D5E6F70819 /* AppModel+Commands.swift */; };
-		6F1B40D5A2B3C4D5E6F70819 /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D4A2B3C4D5E6F70819 /* AppModel+AI.swift */; };
-		6F1B40D7A2B3C4D5E6F70819 /* AppModel+CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D6A2B3C4D5E6F70819 /* AppModel+CommandProcessor.swift */; };
-		6F1B40D9A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D8A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift */; };
-		AB32B2AEE754434283311E56 /* AppModel+Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E2C94CD671B4FF1B53E0E01 /* AppModel+Media.swift */; };
-		6E00FB54496F46AEA8E4E3CE /* AppModel+BotLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0360C1B274834BFFA134D842 /* AppModel+BotLifecycle.swift */; };
-		A71F38FA5B6D492D96110EE5 /* AppModel+AdminWeb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85615EB8C640459B8480BE2E /* AppModel+AdminWeb.swift */; };
-		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
-		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
-		77516EDB305B452A9063B036 /* Models/BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */; };
-		829DC28FA2E7429B93795C74 /* Models/DiscordCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */; };
-		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
-		8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */; };
-		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
-		A01010101010101010101001 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101001 /* RemoteModeRootView.swift */; };
-		A01010101010101010101002 /* Services/RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101002 /* Services/RemoteModels.swift */; };
-		A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101003 /* Services/RemoteAPI.swift */; };
-		A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101004 /* Services/RemoteControlService.swift */; };
-		A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101005 /* Services/BotDataProvider.swift */; };
-		A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101006 /* Services/LocalBotProvider.swift */; };
-		A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01010101010101010101007 /* Services/RemoteBotProvider.swift */; };
-		A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556701 /* Security/CertificateManager.swift */; };
-		A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556702 /* Security/ACMEClient.swift */; };
-		A1B2C3D40111223344556603 /* Security/CloudflareDNSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */; };
-		A1B2C3D40111223344556604 /* Security/CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */; };
-		A1B2C3D40111223344556605 /* Security/TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40111223344556705 /* Security/TunnelManager.swift */; };
-		A1B2C3D40111223344556A01 /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556901 /* X509 */; };
-		A1B2C3D40111223344556A02 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556902 /* Crypto */; };
-		A1B2C3D40111223344556A03 /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556903 /* SwiftASN1 */; };
-		A1B2C3D40111223344556A04 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556904 /* NIOCore */; };
-		A1B2C3D40111223344556A05 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556905 /* NIOPosix */; };
-		A1B2C3D40111223344556A06 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40111223344556906 /* NIOSSL */; };
-		A2B3C4D5E6F7080911223345 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */; };
-		A7B810001122334455667788 /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B811001122334455667788 /* PatchyView.swift */; };
-		A7B812001122334455667788 /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B813001122334455667788 /* PatchyViewModel.swift */; };
-		AA1000011122334455667701 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667701 /* PreferencesView.swift */; };
-		AA1000011122334455667702 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667702 /* GeneralPreferencesView.swift */; };
-		AA1000011122334455667703 /* DiscordPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667703 /* DiscordPreferencesView.swift */; };
-		AA1000011122334455667704 /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667704 /* MeshPreferencesView.swift */; };
-		AA1000011122334455667705 /* WebUIPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667705 /* WebUIPreferencesView.swift */; };
-		AA1000011122334455667706 /* UpdatesPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667706 /* UpdatesPreferencesView.swift */; };
-		AA1000011122334455667707 /* AdvancedPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2000011122334455667707 /* AdvancedPreferencesView.swift */; };
-		B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708001122A3 /* CommandsView.swift */; };
-		B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F6C2021122334455667788 /* SchemaSettings.swift */; };
-		C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */; };
-		C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F70112233445566778 /* SwiftMeshView.swift */; };
-		D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C50102030405060708 /* DiagnosticsView.swift */; };
-		D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */; };
-		D4E5F607080011223344556B /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6070800112233445C /* LogsView.swift */; };
-		D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */; };
-		E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C1A9010102030405060708 /* WikiBridgeView.swift */; };
-		EBEDA37ACA12477FB8096E6D /* SwiftBotApp/SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */; };
-		F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9564766EDA4C18D06A84BCB /* Persistence.swift */; };
-		F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */; };
-		F607080011223344556677AD /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607080011223344556677 /* AIBotsView.swift */; };
-		F6B4A085F1EF4FC8B45EA1A5 /* Models/GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */; };
+		0005740627E44E41BFB0B69B /* UpdatesPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */; };
+		00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */; };
+		085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */; };
+		0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */; };
+		0F8391EF95A66EB768F81BA8 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */; };
+		10688115A610483DA3FBB1A5 /* BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB947E7E83CAEC7FAECF7D09 /* BotDataProvider.swift */; };
+		126B88FAE40D80657EB4FE78 /* WikiLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */; };
+		12E4267A46ED7C52DDBF535B /* AppModel+BotLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D72EB30017C9118909755079 /* AppModel+BotLifecycle.swift */; };
+		13EC6A8C3526F1B617A9C146 /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C516D7E2A82E384871ADA77 /* TunnelManager.swift */; };
+		15272B7A21973431AB9E8263 /* AppModel+Cluster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7E1662299F69697912A63E /* AppModel+Cluster.swift */; };
+		16BAB36AC9A670AE9B8375EE /* AppModel+AdminWeb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */; };
+		1D30EB61BE0A3E76319F3871 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C5788F384AF1C5CEC1A7137 /* main.swift */; };
+		1E0F9DE242BF278D48AB932D /* OnboardingRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42D35BA34860F043C661478F /* OnboardingRootView.swift */; };
+		21F0F51F5739E8BA2E0E6978 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A84E95FDE31E5E752C2E2F /* Persistence.swift */; };
+		22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */; };
+		26001C9AFAE18FF56EA4BCDD /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = 6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */; };
+		27EBD03F4CDFA5B4F8A76F38 /* DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */; };
+		2C30A3ECEFEBB1D412442557 /* MediaLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */; };
+		2D75FD3C65BC54A6F1EEA2AA /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */; };
+		2F717839189B088E0B4DA26C /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */; };
+		32EF85D74938EFC99D68448B /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A902D75D3824989E0F053C6B /* HelpEngine.swift */; };
+		3427FDD6B8F160DBA04F79E1 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */; };
+		35714FE14D2FFB4A4A8B34B6 /* AppModel+CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C510CF282F7E3B9D9A55415A /* AppModel+CommandProcessor.swift */; };
+		37247A9D640138A5CBF8F161 /* OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72DBCA95A64DF3580BEB869 /* OnboardingStyles.swift */; };
+		382736874A4ABFC372B65199 /* GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7DC12FFA9EC621A265D2A0C /* GatewayModels.swift */; };
+		3A84CA8872264B04238C0992 /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */; };
+		3C569F8CE14C8C41CA1C6246 /* AppModel+DiscordEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */; };
+		3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */; };
+		3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */; };
+		403C97BE65696647F37FFD89 /* IntelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316BE5EE23ADB08FD4042070 /* IntelService.swift */; };
+		40EEEB0FC47E27A70C5D25AF /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 7C341BA99920552C7CDA9D24 /* Sparkle */; };
+		440F6A5F62FD1B7714FD1A2E /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */; };
+		4440417E51C60D48DDE07270 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A94E05BFB8B12D551FBD96 /* Models.swift */; };
+		4816D705CD69FA14D1641610 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EABA6DDB19D3312394B5D72 /* SettingsView.swift */; };
+		4EB0A5E6CC96AD52F65A20C0 /* CacheKeyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */; };
+		52D688DC1DDA87CD00D7A749 /* DiscordGuildRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2912532FD0E1F2D6462C3B /* DiscordGuildRESTClient.swift */; };
+		5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */; };
+		566EE7D8A59E9C9890359374 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */; };
+		5799D01A37C0C70F209DEE50 /* AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40B1CD3E3726DBE1AA70765 /* AIModels.swift */; };
+		58E683E4B09BA7F0510C4D2B /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */; };
+		5C11B6D31A6225BC9D878539 /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53B8C017D812B376BF24D61 /* MeshPreferencesView.swift */; };
+		5CA7B51148541E5E468552C3 /* DiscordAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F49E09077B173A9D9C851 /* DiscordAIService.swift */; };
+		5D25AD1C212F4CC9B5C90DD5 /* DiscordPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */; };
+		5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */; };
+		61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FD42789A025FD409C081463 /* AppModel+Patchy.swift */; };
+		61FE77A534CAE8A1DB129DD6 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985814A00309DEBC6C7FD35F /* OverviewView.swift */; };
+		63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */; };
+		647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */; };
+		65F8E1C9E4E603B4E420DCE9 /* CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */; };
+		6685B7E80DABB0ACEE4BE071 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5AEB32046AFF5E8525A5B458 /* NIOCore */; };
+		6923C1DFC02F72C9F6A307AC /* RemoteAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F5F3F20E9067B456E84EB6 /* RemoteAPI.swift */; };
+		6B8F2B6980D8C3FA13D9CAC3 /* CloudflareDNSProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */; };
+		6CF94F13C717C0AB955A7215 /* DiscordInteractionRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750574541041BF7D66545F68 /* DiscordInteractionRESTClient.swift */; };
+		6D555B0AE68DA044A57A4093 /* VoiceRuleStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */; };
+		6E8FB330BD0BE5ADFCA0FC6B /* MediaThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDACC9B9F1633073834BE07 /* MediaThumbnailCache.swift */; };
+		7071FF33C237742C35AB7082 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */; };
+		7132DFC658401903B85DC61D /* CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */; };
+		7894B179A8B556313CC7492A /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */; };
+		795E1B910968188CC57BA263 /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059780457BD592C5364C934 /* RemoteControlService.swift */; };
+		7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB32D13A6D673323296304C /* AdminWebServer.swift */; };
+		7A8F1F65E34BD4BFFE7BCAA9 /* AdvancedPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */; };
+		7B1416030084F25AC03D0B84 /* AppModel+SlashCommandHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */; };
+		831BDE04FBF99D4CD415BD88 /* WikiBridgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8B9FF78E7B196891AF7A7F /* WikiBridgeView.swift */; };
+		8754C1BE68873E719DB6E909 /* ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */; };
+		8764933B1A2D5429FEC2FAA5 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB38D25572DE04143F91B8B2 /* RootView.swift */; };
+		8830FFC6D53A953574FE99AF /* AppModel+VoicePresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */; };
+		889466FAF399CB465ED1C45B /* WebUIPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC29827C8F3269A4F23E561 /* WebUIPreferencesView.swift */; };
+		8B5F8E571AC8FB3BCD79EC99 /* CommonUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 065E8C11350B1294C20F9B3A /* CommonUI.swift */; };
+		8B909CD9FA439A5575ED2EAF /* DiscordCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C706274351683F9F2B98EFC6 /* DiscordCache.swift */; };
+		8FDF1380E0C0369F9570C5D4 /* StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */; };
+		91FF3FB5CA902BC308D4B6F2 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */; };
+		93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */; };
+		9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 1C81108D7CF200AA2750ED17 /* NIOSSL */; };
+		9A07952399C3531240BD87FB /* DiscordIdentityRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */; };
+		9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7962859CFEF723E67BD800C /* AppModel+Media.swift */; };
+		9C5DCB5C183F3BCFF236095E /* AMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87A43A58BBA036A9646BCAC /* AMDService.swift */; };
+		9C70C57B9C4A44DC95FB0C56 /* SteamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBC0B8ABE120213D32A8F9F /* SteamService.swift */; };
+		9D8268E43E33B6ADEDDCFD7E /* CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC9C07D51639D96FE0038EA /* CommandProcessor.swift */; };
+		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
+		A5CBEE32EC1247802A9F689E /* VoiceRuleListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */; };
+		AB311B611EAF20CED07A34FD /* BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C883C3445CFB25BE95819B5 /* BotStateModels.swift */; };
+		AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */; };
+		ACE122B57907AC0B3FBD616F /* VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F319382F183BB1612580B30 /* VoicePresenceStore.swift */; };
+		B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */; };
+		B0ECA01493988DD4BBE0840D /* DiscordGatewayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 460C93A6D305EACF834AA7E4 /* DiscordGatewayConnection.swift */; };
+		B6B3280ACF4438511C36A188 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */; };
+		BD731E0515669EE345148385 /* VersionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346C818F5054314C6BF97DC5 /* VersionStore.swift */; };
+		BF9824A4094CDC175299AA63 /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 7DF22120B86D527EE31A4E83 /* NIOPosix */; };
+		C0A3E25F664C72E666E3D3F2 /* EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CA49D19240EC6B6DB7C08C /* EventBus.swift */; };
+		C1AFBA55AC265D22F80521D2 /* VoiceActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */; };
+		C2531026993F1B1C6B25F226 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */; };
+		C36B35143B0B2A8DBD9AD6ED /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 81D226FCC037CE475B1850B7 /* X509 */; };
+		C73139C0B46A9ACEEF9C5177 /* ClusterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322D9081CEE7191A61086D90 /* ClusterModels.swift */; };
+		C73223597C2FE00574A04193 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9386EDF3092943C62265C4E /* ReleaseNotes.swift */; };
+		CB1B41CE58ED74524B73FAA5 /* RuleExecutionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */; };
+		CB267C81149E545799E3E0E4 /* LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */; };
+		D78CB841C27860D437A41E36 /* RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031F4D5F167A067542123F0C /* RemoteBotProvider.swift */; };
+		DB9E21A6521C07EDC9461565 /* NVIDIAService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */; };
+		DC03C1EA8B4FEBC1E2BE90A7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA9BA187B549800BA8A345C /* AppModel.swift */; };
+		DC360305E4A3D50E81B2F576 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 1840331BC8F2A1886D5014FF /* Crypto */; };
+		DEEBB36AAE69806B0DE44641 /* RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F8451B9C919529C86CD289 /* RemoteModels.swift */; };
+		DEED6A6AE95EB1E4BD68B09F /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C156C1770937C834073B637 /* SchemaSettings.swift */; };
+		EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8964B98159AC25452C4423DF /* SwiftBot.icon */; };
+		EBF4ED30124502DB72B90F79 /* EmbedFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726607C6AA014293B0C7794D /* EmbedFormatter.swift */; };
+		F18225F9C4A1405093180E0D /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */; };
+		F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */; };
+		F2CD5289AC48F48DAD2E96CD /* EmptyRuleOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D0CC3569144419991BD125 /* EmptyRuleOnboardingView.swift */; };
+		F3AC4F30295DAC412A25E885 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EC99CA7ACBDFF1217B6525B /* LogsView.swift */; };
+		F88E9E996F631AB24753F151 /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553AAF747AF590A5486827AA /* AIBotsView.swift */; };
+		F8B5C3B9C16141D761050DD6 /* ACMEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8828FF064E45A0519FB1640E /* ACMEClient.swift */; };
+		FB161956DA013471E5BF80FF /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 8568A65A0821C78B3A7007CA /* Resources */; };
+		FD624ED4D70CFAF9D943F0B5 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */; };
+		FDA57E1FBBE210E213A9292B /* RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0011223344556677AABBCCDD /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
-		010969C7B6435248430DD012 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		07080011223344556677AABB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		0870D97E081745428605B82E /* Models/ClusterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ClusterModels.swift; sourceTree = "<group>"; };
-		0A6B7D201122334455667788 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
-		0B3205CAA1A44F7E79578277 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
-		11C22D441122334455667788 /* ClusterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterCoordinator.swift; sourceTree = "<group>"; };
-		11C22D661122334455667788 /* AdminWebServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebServer.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182931 /* Services/CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/CommandProcessor.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182933 /* Services/DiscordAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordAIService.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182935 /* Services/DiscordGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordGatewayConnection.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182937 /* Services/DiscordGuildRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordGuildRESTClient.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182939 /* Services/DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F60718293B /* Services/DiscordInteractionRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordInteractionRESTClient.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F60718293D /* Services/DiscordMessageRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DiscordMessageRESTClient.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F60718293F /* Services/GatewayEventDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/GatewayEventDispatcher.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182941 /* Services/RuleExecutionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RuleExecutionService.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182943 /* Services/VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/VoicePresenceStore.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182945 /* Services/VoiceRuleStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/VoiceRuleStateStore.swift; sourceTree = "<group>"; };
-		11D1A1B2C3D4E5F607182947 /* Services/WikiLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/WikiLookupService.swift; sourceTree = "<group>"; };
-		142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/ModeSelectionView.swift; sourceTree = "<group>"; };
-		199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/RemoteSetupView.swift; sourceTree = "<group>"; };
-		2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/SwiftMeshSetupView.swift; sourceTree = "<group>"; };
-		27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AIModels.swift; sourceTree = "<group>"; };
-		2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SlashCommandHelpers.swift"; sourceTree = "<group>"; };
-		2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
-		2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTypes.swift; sourceTree = "<group>"; };
-		35480F12EB2C7DFB546BD550 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		44A31413B04848EB75D50EFA /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5015DDB02F554EF200618C6D /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SwiftBot.icon; sourceTree = SOURCE_ROOT; };
-		5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SwiftBot-Info.plist"; sourceTree = "<group>"; };
-		50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/GatewayModels.swift; sourceTree = "<group>"; };
-		5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleListView.swift; sourceTree = "<group>"; };
-		5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
-		6337960E98AEBC0A19A67531 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
-		6F1B40D0A2B3C4D5E6F70819 /* AppModel+Gateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Gateway.swift"; sourceTree = "<group>"; };
-		6F1B40D2A2B3C4D5E6F70819 /* AppModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Commands.swift"; sourceTree = "<group>"; };
-		6F1B40D4A2B3C4D5E6F70819 /* AppModel+AI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AI.swift"; sourceTree = "<group>"; };
-		6F1B40D6A2B3C4D5E6F70819 /* AppModel+CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+CommandProcessor.swift"; sourceTree = "<group>"; };
-		6F1B40D8A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
-		7E2C94CD671B4FF1B53E0E01 /* AppModel+Media.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Media.swift"; sourceTree = "<group>"; };
-		0360C1B274834BFFA134D842 /* AppModel+BotLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+BotLifecycle.swift"; sourceTree = "<group>"; };
-		85615EB8C640459B8480BE2E /* AppModel+AdminWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWeb.swift"; sourceTree = "<group>"; };
-		7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/BotStateModels.swift; sourceTree = "<group>"; };
-		7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/KeychainHelper.swift; sourceTree = "<group>"; };
-		8D8E9F101122334455667788 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
-		8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
-		8F2038AEE60943658748C2A8 /* Models/EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/EventBus.swift; sourceTree = "<group>"; };
-		A1B2C3D40111223344556701 /* Security/CertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CertificateManager.swift; sourceTree = "<group>"; };
-		A1B2C3D40111223344556702 /* Security/ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/ACMEClient.swift; sourceTree = "<group>"; };
-		A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareDNSProvider.swift; sourceTree = "<group>"; };
-		A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/CloudflareTunnelClient.swift; sourceTree = "<group>"; };
-		A1B2C3D40111223344556705 /* Security/TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Security/TunnelManager.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60708001122A3 /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
-		A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
-		A7B811001122334455667788 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
-		A7B813001122334455667788 /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
-		AA2000011122334455667701 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667702 /* GeneralPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralPreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667703 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667704 /* MeshPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667705 /* WebUIPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebUIPreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667706 /* UpdatesPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesPreferencesView.swift; sourceTree = "<group>"; };
-		AA2000011122334455667707 /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
-		ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/RuleEngineModels.swift; sourceTree = "<group>"; };
-		AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/DiscordCache.swift; sourceTree = "<group>"; };
-		B01010101010101010101001 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
-		B01010101010101010101002 /* Services/RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteModels.swift; sourceTree = "<group>"; };
-		B01010101010101010101003 /* Services/RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteAPI.swift; sourceTree = "<group>"; };
-		B01010101010101010101004 /* Services/RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteControlService.swift; sourceTree = "<group>"; };
-		B01010101010101010101005 /* Services/BotDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/BotDataProvider.swift; sourceTree = "<group>"; };
-		B01010101010101010101006 /* Services/LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalBotProvider.swift; sourceTree = "<group>"; };
-		B01010101010101010101007 /* Services/RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RemoteBotProvider.swift; sourceTree = "<group>"; };
-		B4F6C2021122334455667788 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
-		B7436E2097EB456B85B3138E /* Models/BotSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/BotSettings.swift; sourceTree = "<group>"; };
-		C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		C3D4E5F6070800112233445C /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
-		C3D4E5F70112233445566778 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
-		D1A2B3C50102030405060708 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
-		D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
-		D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
-		DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/StandaloneSetupView.swift; sourceTree = "<group>"; };
-		E4C1A9010102030405060708 /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
-		E5F607080011223344556677 /* AIBotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBotsView.swift; sourceTree = "<group>"; };
-		EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp.swift; sourceTree = "<group>"; };
-		EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingRootView.swift; sourceTree = "<group>"; };
-		F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
-		F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
-		F9564766EDA4C18D06A84BCB /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		031F4D5F167A067542123F0C /* RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteBotProvider.swift; sourceTree = "<group>"; };
+		03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
+		065E8C11350B1294C20F9B3A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
+		0D7E1662299F69697912A63E /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
+		1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NVIDIAService.swift; sourceTree = "<group>"; };
+		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
+		1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
+		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
+		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
+		322D9081CEE7191A61086D90 /* ClusterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterModels.swift; sourceTree = "<group>"; };
+		33D0CC3569144419991BD125 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
+		346C818F5054314C6BF97DC5 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
+		3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralPreferencesView.swift; sourceTree = "<group>"; };
+		38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
+		3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
+		3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Commands.swift"; sourceTree = "<group>"; };
+		40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupService.swift; sourceTree = "<group>"; };
+		42D35BA34860F043C661478F /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingRootView.swift; sourceTree = "<group>"; };
+		44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
+		44F5F3F20E9067B456E84EB6 /* RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPI.swift; sourceTree = "<group>"; };
+		44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesPreferencesView.swift; sourceTree = "<group>"; };
+		460C93A6D305EACF834AA7E4 /* DiscordGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGatewayConnection.swift; sourceTree = "<group>"; };
+		46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		4AB32D13A6D673323296304C /* AdminWebServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebServer.swift; sourceTree = "<group>"; };
+		4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
+		4C5788F384AF1C5CEC1A7137 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterCoordinator.swift; sourceTree = "<group>"; };
+		5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp.swift; sourceTree = "<group>"; };
+		553AAF747AF590A5486827AA /* AIBotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBotsView.swift; sourceTree = "<group>"; };
+		56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleListView.swift; sourceTree = "<group>"; };
+		5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Gateway.swift"; sourceTree = "<group>"; };
+		5C516D7E2A82E384871ADA77 /* TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
+		5C883C3445CFB25BE95819B5 /* BotStateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotStateModels.swift; sourceTree = "<group>"; };
+		5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandaloneSetupView.swift; sourceTree = "<group>"; };
+		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
+		6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
+		6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
+		6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		6EC99CA7ACBDFF1217B6525B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
+		7059780457BD592C5364C934 /* RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlService.swift; sourceTree = "<group>"; };
+		726607C6AA014293B0C7794D /* EmbedFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedFormatter.swift; sourceTree = "<group>"; };
+		74A94E05BFB8B12D551FBD96 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		750574541041BF7D66545F68 /* DiscordInteractionRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordInteractionRESTClient.swift; sourceTree = "<group>"; };
+		788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateItem.swift; sourceTree = "<group>"; };
+		7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
+		7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheKeyBuilder.swift; sourceTree = "<group>"; };
+		7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSource.swift; sourceTree = "<group>"; };
+		7FD42789A025FD409C081463 /* AppModel+Patchy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Patchy.swift"; sourceTree = "<group>"; };
+		818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshSetupView.swift; sourceTree = "<group>"; };
+		82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
+		855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventDispatcher.swift; sourceTree = "<group>"; };
+		8568A65A0821C78B3A7007CA /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = SwiftBotApp/Resources; sourceTree = SOURCE_ROOT; };
+		8828FF064E45A0519FB1640E /* ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEClient.swift; sourceTree = "<group>"; };
+		8964B98159AC25452C4423DF /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = SwiftBot.icon; sourceTree = "<group>"; };
+		8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionView.swift; sourceTree = "<group>"; };
+		8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
+		8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWeb.swift"; sourceTree = "<group>"; };
+		8FC29827C8F3269A4F23E561 /* WebUIPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebUIPreferencesView.swift; sourceTree = "<group>"; };
+		91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBotProvider.swift; sourceTree = "<group>"; };
+		95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
+		985814A00309DEBC6C7FD35F /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryIndexer.swift; sourceTree = "<group>"; };
+		9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleStateStore.swift; sourceTree = "<group>"; };
+		9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SlashCommandHelpers.swift"; sourceTree = "<group>"; };
+		9BBC0B8ABE120213D32A8F9F /* SteamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteamService.swift; sourceTree = "<group>"; };
+		9C8B9FF78E7B196891AF7A7F /* WikiBridgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiBridgeView.swift; sourceTree = "<group>"; };
+		9DA9BA187B549800BA8A345C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		9EABA6DDB19D3312394B5D72 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
+		A2402E98DBD749BAE72E6B33 /* BotSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotSettings.swift; sourceTree = "<group>"; };
+		A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AI.swift"; sourceTree = "<group>"; };
+		A40B1CD3E3726DBE1AA70765 /* AIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIModels.swift; sourceTree = "<group>"; };
+		A53B8C017D812B376BF24D61 /* MeshPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPreferencesView.swift; sourceTree = "<group>"; };
+		A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTypes.swift; sourceTree = "<group>"; };
+		A902D75D3824989E0F053C6B /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
+		B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManager.swift; sourceTree = "<group>"; };
+		B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+WikiBridge.swift"; sourceTree = "<group>"; };
+		BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClient.swift; sourceTree = "<group>"; };
+		C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareTunnelClient.swift; sourceTree = "<group>"; };
+		C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
+		C510CF282F7E3B9D9A55415A /* AppModel+CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+CommandProcessor.swift"; sourceTree = "<group>"; };
+		C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
+		C706274351683F9F2B98EFC6 /* DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCache.swift; sourceTree = "<group>"; };
+		C7962859CFEF723E67BD800C /* AppModel+Media.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Media.swift"; sourceTree = "<group>"; };
+		C87A43A58BBA036A9646BCAC /* AMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AMDService.swift; sourceTree = "<group>"; };
+		CA5F49E09077B173A9D9C851 /* DiscordAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordAIService.swift; sourceTree = "<group>"; };
+		D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
+		D72EB30017C9118909755079 /* AppModel+BotLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+BotLifecycle.swift"; sourceTree = "<group>"; };
+		D7DC12FFA9EC621A265D2A0C /* GatewayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayModels.swift; sourceTree = "<group>"; };
+		D9386EDF3092943C62265C4E /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
+		DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInUpdateSources.swift; sourceTree = "<group>"; };
+		DB2912532FD0E1F2D6462C3B /* DiscordGuildRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGuildRESTClient.swift; sourceTree = "<group>"; };
+		DEDACC9B9F1633073834BE07 /* MediaThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaThumbnailCache.swift; sourceTree = "<group>"; };
+		E5A84E95FDE31E5E752C2E2F /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleEngineModels.swift; sourceTree = "<group>"; };
+		E72DBCA95A64DF3580BEB869 /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStyles.swift; sourceTree = "<group>"; };
+		F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleExecutionService.swift; sourceTree = "<group>"; };
+		F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordEvents.swift"; sourceTree = "<group>"; };
+		F6CA49D19240EC6B6DB7C08C /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
+		FB38D25572DE04143F91B8B2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		FB947E7E83CAEC7FAECF7D09 /* BotDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotDataProvider.swift; sourceTree = "<group>"; };
+		FCC9C07D51639D96FE0038EA /* CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandProcessor.swift; sourceTree = "<group>"; };
+		FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		1F7A11C22D33445566778897 /* Frameworks */ = {
+		F293869C698841B60583C607 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1F7A11C22D33445566778899 /* Sparkle in Frameworks */,
-				2A8C10001122334455667788 /* UpdateEngine in Frameworks */,
-				A1B2C3D40111223344556A01 /* X509 in Frameworks */,
-				A1B2C3D40111223344556A02 /* Crypto in Frameworks */,
-				A1B2C3D40111223344556A03 /* SwiftASN1 in Frameworks */,
-				A1B2C3D40111223344556A04 /* NIOCore in Frameworks */,
-				A1B2C3D40111223344556A05 /* NIOPosix in Frameworks */,
-				A1B2C3D40111223344556A06 /* NIOSSL in Frameworks */,
+				40EEEB0FC47E27A70C5D25AF /* Sparkle in Frameworks */,
+				C36B35143B0B2A8DBD9AD6ED /* X509 in Frameworks */,
+				DC360305E4A3D50E81B2F576 /* Crypto in Frameworks */,
+				26001C9AFAE18FF56EA4BCDD /* SwiftASN1 in Frameworks */,
+				6685B7E80DABB0ACEE4BE071 /* NIOCore in Frameworks */,
+				BF9824A4094CDC175299AA63 /* NIOPosix in Frameworks */,
+				9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		23AB887A5919EB91B14F0046 = {
+		00B77F31D8E3A1FCEE8DCAB0 /* SwiftBotApp */ = {
 			isa = PBXGroup;
 			children = (
-				5015DDB42F55851D00618C6D /* SwiftBot-Info.plist */,
-				5015DDB02F554EF200618C6D /* SwiftBot.icon */,
-				B1576087F628D0A5598994F5 /* SwiftBotApp */,
-				94552BCD00E80365B7E02046 /* Products */,
-				50F7585F2F6294510052287C /* Recovered References */,
+				2FBE2483DB8EF8B9175CCA8C /* Models */,
+				89E4B71C538DFBEB2E0DF64F /* Security */,
+				E6833AE29324F7856596A38C /* Services */,
+				307C4D83D7FFE2C98F8E99FE /* UpdateEngine */,
+				4AB32D13A6D673323296304C /* AdminWebServer.swift */,
+				82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */,
+				553AAF747AF590A5486827AA /* AIBotsView.swift */,
+				9DA9BA187B549800BA8A345C /* AppModel.swift */,
+				8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */,
+				A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */,
+				D72EB30017C9118909755079 /* AppModel+BotLifecycle.swift */,
+				0D7E1662299F69697912A63E /* AppModel+Cluster.swift */,
+				C510CF282F7E3B9D9A55415A /* AppModel+CommandProcessor.swift */,
+				3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */,
+				F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */,
+				3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */,
+				5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */,
+				C7962859CFEF723E67BD800C /* AppModel+Media.swift */,
+				7FD42789A025FD409C081463 /* AppModel+Patchy.swift */,
+				9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */,
+				6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */,
+				B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */,
+				A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */,
+				A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */,
+				4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */,
+				8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */,
+				065E8C11350B1294C20F9B3A /* CommonUI.swift */,
+				1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */,
+				03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */,
+				38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */,
+				33D0CC3569144419991BD125 /* EmptyRuleOnboardingView.swift */,
+				3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */,
+				A902D75D3824989E0F053C6B /* HelpEngine.swift */,
+				6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */,
+				6EC99CA7ACBDFF1217B6525B /* LogsView.swift */,
+				C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */,
+				A53B8C017D812B376BF24D61 /* MeshPreferencesView.swift */,
+				74A94E05BFB8B12D551FBD96 /* Models.swift */,
+				8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */,
+				42D35BA34860F043C661478F /* OnboardingRootView.swift */,
+				E72DBCA95A64DF3580BEB869 /* OnboardingStyles.swift */,
+				6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */,
+				985814A00309DEBC6C7FD35F /* OverviewView.swift */,
+				44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */,
+				7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */,
+				E5A84E95FDE31E5E752C2E2F /* Persistence.swift */,
+				3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */,
+				C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */,
+				95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */,
+				FB38D25572DE04143F91B8B2 /* RootView.swift */,
+				2C156C1770937C834073B637 /* SchemaSettings.swift */,
+				9EABA6DDB19D3312394B5D72 /* SettingsView.swift */,
+				5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */,
+				5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */,
+				818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */,
+				4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */,
+				44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */,
+				D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */,
+				56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */,
+				8FC29827C8F3269A4F23E561 /* WebUIPreferencesView.swift */,
+				9C8B9FF78E7B196891AF7A7F /* WikiBridgeView.swift */,
+			);
+			path = SwiftBotApp;
+			sourceTree = "<group>";
+		};
+		0B81279A83B1440C3CEC4A11 /* SparklePublisher */ = {
+			isa = PBXGroup;
+			children = (
+				4C5788F384AF1C5CEC1A7137 /* main.swift */,
+			);
+			name = SparklePublisher;
+			path = Tools/SparklePublisher;
+			sourceTree = "<group>";
+		};
+		2FBE2483DB8EF8B9175CCA8C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A40B1CD3E3726DBE1AA70765 /* AIModels.swift */,
+				A2402E98DBD749BAE72E6B33 /* BotSettings.swift */,
+				5C883C3445CFB25BE95819B5 /* BotStateModels.swift */,
+				322D9081CEE7191A61086D90 /* ClusterModels.swift */,
+				C706274351683F9F2B98EFC6 /* DiscordCache.swift */,
+				F6CA49D19240EC6B6DB7C08C /* EventBus.swift */,
+				D7DC12FFA9EC621A265D2A0C /* GatewayModels.swift */,
+				46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */,
+				99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */,
+				DEDACC9B9F1633073834BE07 /* MediaThumbnailCache.swift */,
+				E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		307C4D83D7FFE2C98F8E99FE /* UpdateEngine */ = {
+			isa = PBXGroup;
+			children = (
+				C87A43A58BBA036A9646BCAC /* AMDService.swift */,
+				DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */,
+				7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */,
+				726607C6AA014293B0C7794D /* EmbedFormatter.swift */,
+				316BE5EE23ADB08FD4042070 /* IntelService.swift */,
+				1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */,
+				D9386EDF3092943C62265C4E /* ReleaseNotes.swift */,
+				9BBC0B8ABE120213D32A8F9F /* SteamService.swift */,
+				A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */,
+				788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */,
+				7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */,
+				346C818F5054314C6BF97DC5 /* VersionStore.swift */,
+			);
+			path = UpdateEngine;
+			sourceTree = "<group>";
+		};
+		5862010FC4698115F0427E7E = {
+			isa = PBXGroup;
+			children = (
+				0B81279A83B1440C3CEC4A11 /* SparklePublisher */,
+				00B77F31D8E3A1FCEE8DCAB0 /* SwiftBotApp */,
+				8568A65A0821C78B3A7007CA /* Resources */,
+				8964B98159AC25452C4423DF /* SwiftBot.icon */,
+				A63029345405694029040AF9 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		50F7585F2F6294510052287C /* Recovered References */ = {
+		89E4B71C538DFBEB2E0DF64F /* Security */ = {
 			isa = PBXGroup;
 			children = (
-				EA77BCA23D894E4E98F5B874 /* SwiftBotApp/OnboardingRootView.swift */,
-				142D6839427040358B4FBA90 /* SwiftBotApp/ModeSelectionView.swift */,
-				DE30A3D04296486A87AFEC73 /* SwiftBotApp/StandaloneSetupView.swift */,
-				2338A77A835B45B3963A71D7 /* SwiftBotApp/SwiftMeshSetupView.swift */,
-				199651172D924276B1B7FA3B /* SwiftBotApp/RemoteSetupView.swift */,
-				F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */,
+				8828FF064E45A0519FB1640E /* ACMEClient.swift */,
+				B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */,
+				1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */,
+				C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */,
+				5C516D7E2A82E384871ADA77 /* TunnelManager.swift */,
 			);
-			name = "Recovered References";
+			path = Security;
 			sourceTree = "<group>";
 		};
-		94552BCD00E80365B7E02046 /* Products */ = {
+		A63029345405694029040AF9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				44A31413B04848EB75D50EFA /* SwiftBot.app */,
+				253ED8DD86B265E94F6ABDE2 /* SparklePublisher */,
+				FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		B1576087F628D0A5598994F5 /* SwiftBotApp */ = {
+		E6833AE29324F7856596A38C /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				6337960E98AEBC0A19A67531 /* AppModel.swift */,
-				11C22D661122334455667788 /* AdminWebServer.swift */,
-				A2B3C4D5E6F7080911223344 /* MediaExportCoordinator.swift */,
-				11D1A1B2C3D4E5F607182931 /* Services/CommandProcessor.swift */,
-				11D1A1B2C3D4E5F607182933 /* Services/DiscordAIService.swift */,
-				11D1A1B2C3D4E5F607182935 /* Services/DiscordGatewayConnection.swift */,
-				11D1A1B2C3D4E5F607182937 /* Services/DiscordGuildRESTClient.swift */,
-				11D1A1B2C3D4E5F607182939 /* Services/DiscordIdentityRESTClient.swift */,
-				11D1A1B2C3D4E5F60718293B /* Services/DiscordInteractionRESTClient.swift */,
-				11D1A1B2C3D4E5F60718293D /* Services/DiscordMessageRESTClient.swift */,
-				11D1A1B2C3D4E5F60718293F /* Services/GatewayEventDispatcher.swift */,
-				11D1A1B2C3D4E5F607182941 /* Services/RuleExecutionService.swift */,
-				11D1A1B2C3D4E5F607182943 /* Services/VoicePresenceStore.swift */,
-				11D1A1B2C3D4E5F607182945 /* Services/VoiceRuleStateStore.swift */,
-				11D1A1B2C3D4E5F607182947 /* Services/WikiLookupService.swift */,
-				B01010101010101010101002 /* Services/RemoteModels.swift */,
-				B01010101010101010101003 /* Services/RemoteAPI.swift */,
-				B01010101010101010101004 /* Services/RemoteControlService.swift */,
-				B01010101010101010101005 /* Services/BotDataProvider.swift */,
-				B01010101010101010101006 /* Services/LocalBotProvider.swift */,
-				B01010101010101010101007 /* Services/RemoteBotProvider.swift */,
-				A1B2C3D40111223344556701 /* Security/CertificateManager.swift */,
-				A1B2C3D40111223344556702 /* Security/ACMEClient.swift */,
-				A1B2C3D40111223344556703 /* Security/CloudflareDNSProvider.swift */,
-				A1B2C3D40111223344556704 /* Security/CloudflareTunnelClient.swift */,
-				A1B2C3D40111223344556705 /* Security/TunnelManager.swift */,
-				2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */,
-				2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */,
-				6F1B40D0A2B3C4D5E6F70819 /* AppModel+Gateway.swift */,
-				6F1B40D2A2B3C4D5E6F70819 /* AppModel+Commands.swift */,
-				6F1B40D4A2B3C4D5E6F70819 /* AppModel+AI.swift */,
-				6F1B40D6A2B3C4D5E6F70819 /* AppModel+CommandProcessor.swift */,
-				6F1B40D8A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift */,
-				7E2C94CD671B4FF1B53E0E01 /* AppModel+Media.swift */,
-				0360C1B274834BFFA134D842 /* AppModel+BotLifecycle.swift */,
-				85615EB8C640459B8480BE2E /* AppModel+AdminWeb.swift */,
-				2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */,
-				8D8E9F101122334455667788 /* AppUpdater.swift */,
-				8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */,
-				11C22D441122334455667788 /* ClusterCoordinator.swift */,
-				A7B811001122334455667788 /* PatchyView.swift */,
-				A7B813001122334455667788 /* PatchyViewModel.swift */,
-				EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */,
-				0B3205CAA1A44F7E79578277 /* DiscordService.swift */,
-				010969C7B6435248430DD012 /* Models.swift */,
-				27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */,
-				B7436E2097EB456B85B3138E /* Models/BotSettings.swift */,
-				7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */,
-				0870D97E081745428605B82E /* Models/ClusterModels.swift */,
-				AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */,
-				8F2038AEE60943658748C2A8 /* Models/EventBus.swift */,
-				50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */,
-				7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */,
-				ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */,
-				F9564766EDA4C18D06A84BCB /* Persistence.swift */,
-				B4F6C2021122334455667788 /* SchemaSettings.swift */,
-				C3D4E5F70112233445566778 /* SwiftMeshView.swift */,
-				D1A2B3C50102030405060708 /* DiagnosticsView.swift */,
-				D6E7F8091A2B3C4D5E6F7081 /* IntelligenceGlowBorder.swift */,
-				E4C1A9010102030405060708 /* WikiBridgeView.swift */,
-				5B2FA001B2C3D4E5F6071900 /* EmptyRuleOnboardingView.swift */,
-				5B1E9800A1B2C3D4E5F60718 /* VoiceRuleListView.swift */,
-				0A6B7D201122334455667788 /* Resources */,
-				35480F12EB2C7DFB546BD550 /* RootView.swift */,
-				B01010101010101010101001 /* RemoteModeRootView.swift */,
-				C1D2E3F4A5B6C7D8E9F00111 /* OnboardingView.swift */,
-				D2E3F4A5B6C7D8E9F0011223 /* OverviewView.swift */,
-				F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */,
-				A1B2C3D4E5F60708001122A3 /* CommandsView.swift */,
-				C3D4E5F6070800112233445C /* LogsView.swift */,
-				E5F607080011223344556677 /* AIBotsView.swift */,
-				07080011223344556677AABB /* SettingsView.swift */,
-				0011223344556677AABBCCDD /* CommonUI.swift */,
-				AA2000011122334455667701 /* PreferencesView.swift */,
-				AA2000011122334455667702 /* GeneralPreferencesView.swift */,
-				AA2000011122334455667703 /* DiscordPreferencesView.swift */,
-				AA2000011122334455667704 /* MeshPreferencesView.swift */,
-				AA2000011122334455667705 /* WebUIPreferencesView.swift */,
-				AA2000011122334455667706 /* UpdatesPreferencesView.swift */,
-				AA2000011122334455667707 /* AdvancedPreferencesView.swift */,
+				FB947E7E83CAEC7FAECF7D09 /* BotDataProvider.swift */,
+				FCC9C07D51639D96FE0038EA /* CommandProcessor.swift */,
+				CA5F49E09077B173A9D9C851 /* DiscordAIService.swift */,
+				460C93A6D305EACF834AA7E4 /* DiscordGatewayConnection.swift */,
+				DB2912532FD0E1F2D6462C3B /* DiscordGuildRESTClient.swift */,
+				694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */,
+				750574541041BF7D66545F68 /* DiscordInteractionRESTClient.swift */,
+				BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */,
+				855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */,
+				91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */,
+				44F5F3F20E9067B456E84EB6 /* RemoteAPI.swift */,
+				031F4D5F167A067542123F0C /* RemoteBotProvider.swift */,
+				7059780457BD592C5364C934 /* RemoteControlService.swift */,
+				24F8451B9C919529C86CD289 /* RemoteModels.swift */,
+				F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */,
+				2F319382F183BB1612580B30 /* VoicePresenceStore.swift */,
+				9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */,
+				40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */,
 			);
-			path = SwiftBotApp;
+			path = Services;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		38CB9D1B9F4C791831BD4560 /* SwiftBot */ = {
+		0D7DDDF6C0A646EE75388F7A /* SparklePublisher */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 54E3BB8F01147895EA783B3E /* Build configuration list for PBXNativeTarget "SwiftBot" */;
+			buildConfigurationList = C7B407BF6C5684434BD1EC2E /* Build configuration list for PBXNativeTarget "SparklePublisher" */;
 			buildPhases = (
-				1F7A11C22D33445566778897 /* Frameworks */,
-				0A6B7D301122334455667788 /* Resources */,
-				E7C6ACB1EED7DC017665578C /* Sources */,
+				636A1D79BE93FB259BDDCC12 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SparklePublisher;
+			packageProductDependencies = (
+			);
+			productName = SparklePublisher;
+			productReference = 253ED8DD86B265E94F6ABDE2 /* SparklePublisher */;
+			productType = "com.apple.product-type.tool";
+		};
+		4643F3EE1229139DEE939C6D /* SwiftBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600BF58B2C21E331EF3C6827 /* Build configuration list for PBXNativeTarget "SwiftBot" */;
+			buildPhases = (
+				EDC393728F949C02F79D0365 /* SwiftLint */,
+				5368ECB2922C2BD7F185C8C3 /* Sources */,
+				868F2384A7DC075A8C4D7176 /* Resources */,
+				F293869C698841B60583C607 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -351,168 +457,304 @@
 			);
 			name = SwiftBot;
 			packageProductDependencies = (
-				1F7A11C22D33445566778898 /* Sparkle */,
-				2A8C10101122334455667788 /* UpdateEngine */,
-				A1B2C3D40111223344556901 /* X509 */,
-				A1B2C3D40111223344556902 /* Crypto */,
-				A1B2C3D40111223344556903 /* SwiftASN1 */,
-				A1B2C3D40111223344556904 /* NIOCore */,
-				A1B2C3D40111223344556905 /* NIOPosix */,
-				A1B2C3D40111223344556906 /* NIOSSL */,
+				7C341BA99920552C7CDA9D24 /* Sparkle */,
+				81D226FCC037CE475B1850B7 /* X509 */,
+				1840331BC8F2A1886D5014FF /* Crypto */,
+				6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */,
+				5AEB32046AFF5E8525A5B458 /* NIOCore */,
+				7DF22120B86D527EE31A4E83 /* NIOPosix */,
+				1C81108D7CF200AA2750ED17 /* NIOSSL */,
 			);
 			productName = SwiftBot;
-			productReference = 44A31413B04848EB75D50EFA /* SwiftBot.app */;
+			productReference = FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		3BD77BC016D6E32A8E693A59 /* Project object */ = {
+		C0066AD18713AFCF7B5EAC62 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					4643F3EE1229139DEE939C6D = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
 			};
-			buildConfigurationList = 81CA7B1A81AF2F66208AC01D /* Build configuration list for PBXProject "SwiftBot" */;
-			compatibilityVersion = "Xcode 14.0";
+			buildConfigurationList = 1FC61DD7AA6DAC1A0330856E /* Build configuration list for PBXProject "SwiftBot" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
 				en,
 			);
-			mainGroup = 23AB887A5919EB91B14F0046;
+			mainGroup = 5862010FC4698115F0427E7E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */,
-				A1B2C3D40111223344556801 /* XCRemoteSwiftPackageReference "swift-certificates" */,
-				A1B2C3D40111223344556802 /* XCRemoteSwiftPackageReference "swift-crypto" */,
-				A1B2C3D40111223344556803 /* XCRemoteSwiftPackageReference "swift-asn1" */,
-				A1B2C3D40111223344556804 /* XCRemoteSwiftPackageReference "swift-nio" */,
-				A1B2C3D40111223344556805 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
+				D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */,
+				7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */,
+				3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */,
+				8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */,
+				53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */,
+				084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A63029345405694029040AF9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				38CB9D1B9F4C791831BD4560 /* SwiftBot */,
+				0D7DDDF6C0A646EE75388F7A /* SparklePublisher */,
+				4643F3EE1229139DEE939C6D /* SwiftBot */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		0A6B7D301122334455667788 /* Resources */ = {
+		868F2384A7DC075A8C4D7176 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9A8B7C601122334455667788 /* SwiftBot.icon in Resources */,
-				0A6B7D101122334455667788 /* Resources in Resources */,
+				FB161956DA013471E5BF80FF /* Resources in Resources */,
+				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		EDC393728F949C02F79D0365 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which swiftlint > /dev/null; then swiftlint; fi";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
-		E7C6ACB1EED7DC017665578C /* Sources */ = {
+		5368ECB2922C2BD7F185C8C3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5AEC748EA501439CBE3442FC /* SwiftBotApp/OnboardingRootView.swift in Sources */,
-				3B969F2C6A7C429B9E9392E0 /* SwiftBotApp/ModeSelectionView.swift in Sources */,
-				45BDC95CDE8D4005A5A70F85 /* SwiftBotApp/StandaloneSetupView.swift in Sources */,
-				EBEDA37ACA12477FB8096E6D /* SwiftBotApp/SwiftMeshSetupView.swift in Sources */,
-				49AEED7B963B4B6F842F7A10 /* SwiftBotApp/RemoteSetupView.swift in Sources */,
-				222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */,
-				259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */,
-				11C22D551122334455667788 /* AdminWebServer.swift in Sources */,
-				A1B2C3D40111223344556601 /* Security/CertificateManager.swift in Sources */,
-				A1B2C3D40111223344556602 /* Security/ACMEClient.swift in Sources */,
-				A1B2C3D40111223344556603 /* Security/CloudflareDNSProvider.swift in Sources */,
-				A1B2C3D40111223344556604 /* Security/CloudflareTunnelClient.swift in Sources */,
-				A1B2C3D40111223344556605 /* Security/TunnelManager.swift in Sources */,
-				2D93A1C4B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift in Sources */,
-				2E1AB44CA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift in Sources */,
-				6F1B40D1A2B3C4D5E6F70819 /* AppModel+Gateway.swift in Sources */,
-				6F1B40D3A2B3C4D5E6F70819 /* AppModel+Commands.swift in Sources */,
-				6F1B40D5A2B3C4D5E6F70819 /* AppModel+AI.swift in Sources */,
-				6F1B40D7A2B3C4D5E6F70819 /* AppModel+CommandProcessor.swift in Sources */,
-				6F1B40D9A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift in Sources */,
-				AB32B2AEE754434283311E56 /* AppModel+Media.swift in Sources */,
-				6E00FB54496F46AEA8E4E3CE /* AppModel+BotLifecycle.swift in Sources */,
-				A71F38FA5B6D492D96110EE5 /* AppModel+AdminWeb.swift in Sources */,
-				2FB770B8A11D22E33F44C550 /* AppModelTypes.swift in Sources */,
-				A2B3C4D5E6F7080911223345 /* MediaExportCoordinator.swift in Sources */,
-				11D1A1B2C3D4E5F607182930 /* Services/CommandProcessor.swift in Sources */,
-				11D1A1B2C3D4E5F607182932 /* Services/DiscordAIService.swift in Sources */,
-				11D1A1B2C3D4E5F607182934 /* Services/DiscordGatewayConnection.swift in Sources */,
-				11D1A1B2C3D4E5F607182936 /* Services/DiscordGuildRESTClient.swift in Sources */,
-				11D1A1B2C3D4E5F607182938 /* Services/DiscordIdentityRESTClient.swift in Sources */,
-				11D1A1B2C3D4E5F60718293A /* Services/DiscordInteractionRESTClient.swift in Sources */,
-				11D1A1B2C3D4E5F60718293C /* Services/DiscordMessageRESTClient.swift in Sources */,
-				11D1A1B2C3D4E5F60718293E /* Services/GatewayEventDispatcher.swift in Sources */,
-				11D1A1B2C3D4E5F607182940 /* Services/RuleExecutionService.swift in Sources */,
-				11D1A1B2C3D4E5F607182942 /* Services/VoicePresenceStore.swift in Sources */,
-				11D1A1B2C3D4E5F607182944 /* Services/VoiceRuleStateStore.swift in Sources */,
-				11D1A1B2C3D4E5F607182946 /* Services/WikiLookupService.swift in Sources */,
-				8D8E9F001122334455667788 /* AppUpdater.swift in Sources */,
-				8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */,
-				A7B810001122334455667788 /* PatchyView.swift in Sources */,
-				A7B812001122334455667788 /* PatchyViewModel.swift in Sources */,
-				11C22D331122334455667788 /* ClusterCoordinator.swift in Sources */,
-				20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */,
-				73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */,
-				75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */,
-				5125A5586D3B4765960059A3 /* Models/AIModels.swift in Sources */,
-				346EE31F9E1D4CB28BCE37A8 /* Models/BotSettings.swift in Sources */,
-				77516EDB305B452A9063B036 /* Models/BotStateModels.swift in Sources */,
-				4B164E69FD8746C58CA0E842 /* Models/ClusterModels.swift in Sources */,
-				829DC28FA2E7429B93795C74 /* Models/DiscordCache.swift in Sources */,
-				212CE68E56C348E2B16F8E20 /* Models/EventBus.swift in Sources */,
-				F6B4A085F1EF4FC8B45EA1A5 /* Models/GatewayModels.swift in Sources */,
-				4310D51BEC4040248D9F8E66 /* Models/KeychainHelper.swift in Sources */,
-				08DCC0CBE7324CA3B5253825 /* Models/RuleEngineModels.swift in Sources */,
-				F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */,
-				B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */,
-				C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */,
-				538A5B6B3E4166EE17B3A077 /* RootView.swift in Sources */,
-				A01010101010101010101001 /* RemoteModeRootView.swift in Sources */,
-				C1D2E3F4A5B6C7D8E9F00112 /* OnboardingView.swift in Sources */,
-				D6E7F8091A2B3C4D5E6F7082 /* IntelligenceGlowBorder.swift in Sources */,
-				D2E3F4A5B6C7D8E9F0011224 /* OverviewView.swift in Sources */,
-				A01010101010101010101002 /* Services/RemoteModels.swift in Sources */,
-				A01010101010101010101003 /* Services/RemoteAPI.swift in Sources */,
-				A01010101010101010101004 /* Services/RemoteControlService.swift in Sources */,
-				A01010101010101010101005 /* Services/BotDataProvider.swift in Sources */,
-				A01010101010101010101006 /* Services/LocalBotProvider.swift in Sources */,
-				A01010101010101010101007 /* Services/RemoteBotProvider.swift in Sources */,
-				F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */,
-				B2C3D4E5F60708001122334A /* CommandsView.swift in Sources */,
-				D4E5F607080011223344556B /* LogsView.swift in Sources */,
-				F607080011223344556677AD /* AIBotsView.swift in Sources */,
-				080011223344556677AABBCE /* SettingsView.swift in Sources */,
-				11223344556677AABBCCDDFF /* CommonUI.swift in Sources */,
-				AA1000011122334455667701 /* PreferencesView.swift in Sources */,
-				AA1000011122334455667702 /* GeneralPreferencesView.swift in Sources */,
-				AA1000011122334455667703 /* DiscordPreferencesView.swift in Sources */,
-				AA1000011122334455667704 /* MeshPreferencesView.swift in Sources */,
-				AA1000011122334455667705 /* WebUIPreferencesView.swift in Sources */,
-				AA1000011122334455667706 /* UpdatesPreferencesView.swift in Sources */,
-				AA1000011122334455667707 /* AdvancedPreferencesView.swift in Sources */,
-				5B2FA002B2C3D4E5F6071901 /* EmptyRuleOnboardingView.swift in Sources */,
-				5B1E9801A1B2C3D4E5F60718 /* VoiceRuleListView.swift in Sources */,
-				D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */,
-				E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */,
+				F8B5C3B9C16141D761050DD6 /* ACMEClient.swift in Sources */,
+				F88E9E996F631AB24753F151 /* AIBotsView.swift in Sources */,
+				5799D01A37C0C70F209DEE50 /* AIModels.swift in Sources */,
+				9C5DCB5C183F3BCFF236095E /* AMDService.swift in Sources */,
+				7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */,
+				7A8F1F65E34BD4BFFE7BCAA9 /* AdvancedPreferencesView.swift in Sources */,
+				F18225F9C4A1405093180E0D /* AppModel+AI.swift in Sources */,
+				16BAB36AC9A670AE9B8375EE /* AppModel+AdminWeb.swift in Sources */,
+				12E4267A46ED7C52DDBF535B /* AppModel+BotLifecycle.swift in Sources */,
+				15272B7A21973431AB9E8263 /* AppModel+Cluster.swift in Sources */,
+				35714FE14D2FFB4A4A8B34B6 /* AppModel+CommandProcessor.swift in Sources */,
+				566EE7D8A59E9C9890359374 /* AppModel+Commands.swift in Sources */,
+				3C569F8CE14C8C41CA1C6246 /* AppModel+DiscordEvents.swift in Sources */,
+				7071FF33C237742C35AB7082 /* AppModel+DiscordParsers.swift in Sources */,
+				7894B179A8B556313CC7492A /* AppModel+Gateway.swift in Sources */,
+				9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */,
+				61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */,
+				7B1416030084F25AC03D0B84 /* AppModel+SlashCommandHelpers.swift in Sources */,
+				8830FFC6D53A953574FE99AF /* AppModel+VoicePresence.swift in Sources */,
+				5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */,
+				DC03C1EA8B4FEBC1E2BE90A7 /* AppModel.swift in Sources */,
+				3A84CA8872264B04238C0992 /* AppModelTypes.swift in Sources */,
+				63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */,
+				10688115A610483DA3FBB1A5 /* BotDataProvider.swift in Sources */,
+				A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */,
+				AB311B611EAF20CED07A34FD /* BotStateModels.swift in Sources */,
+				93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */,
+				4EB0A5E6CC96AD52F65A20C0 /* CacheKeyBuilder.swift in Sources */,
+				7132DFC658401903B85DC61D /* CertificateManager.swift in Sources */,
+				6B8F2B6980D8C3FA13D9CAC3 /* CloudflareDNSProvider.swift in Sources */,
+				65F8E1C9E4E603B4E420DCE9 /* CloudflareTunnelClient.swift in Sources */,
+				58E683E4B09BA7F0510C4D2B /* ClusterCoordinator.swift in Sources */,
+				C73139C0B46A9ACEEF9C5177 /* ClusterModels.swift in Sources */,
+				9D8268E43E33B6ADEDDCFD7E /* CommandProcessor.swift in Sources */,
+				91FF3FB5CA902BC308D4B6F2 /* CommandsView.swift in Sources */,
+				8B5F8E571AC8FB3BCD79EC99 /* CommonUI.swift in Sources */,
+				2D75FD3C65BC54A6F1EEA2AA /* DiagnosticsView.swift in Sources */,
+				5CA7B51148541E5E468552C3 /* DiscordAIService.swift in Sources */,
+				8B909CD9FA439A5575ED2EAF /* DiscordCache.swift in Sources */,
+				B0ECA01493988DD4BBE0840D /* DiscordGatewayConnection.swift in Sources */,
+				52D688DC1DDA87CD00D7A749 /* DiscordGuildRESTClient.swift in Sources */,
+				9A07952399C3531240BD87FB /* DiscordIdentityRESTClient.swift in Sources */,
+				6CF94F13C717C0AB955A7215 /* DiscordInteractionRESTClient.swift in Sources */,
+				27EBD03F4CDFA5B4F8A76F38 /* DiscordMessageRESTClient.swift in Sources */,
+				5D25AD1C212F4CC9B5C90DD5 /* DiscordPreferencesView.swift in Sources */,
+				0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */,
+				EBF4ED30124502DB72B90F79 /* EmbedFormatter.swift in Sources */,
+				F2CD5289AC48F48DAD2E96CD /* EmptyRuleOnboardingView.swift in Sources */,
+				C0A3E25F664C72E666E3D3F2 /* EventBus.swift in Sources */,
+				5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */,
+				382736874A4ABFC372B65199 /* GatewayModels.swift in Sources */,
+				00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */,
+				32EF85D74938EFC99D68448B /* HelpEngine.swift in Sources */,
+				403C97BE65696647F37FFD89 /* IntelService.swift in Sources */,
+				3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */,
+				440F6A5F62FD1B7714FD1A2E /* KeychainHelper.swift in Sources */,
+				CB267C81149E545799E3E0E4 /* LocalBotProvider.swift in Sources */,
+				F3AC4F30295DAC412A25E885 /* LogsView.swift in Sources */,
+				3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */,
+				2C30A3ECEFEBB1D412442557 /* MediaLibraryIndexer.swift in Sources */,
+				6E8FB330BD0BE5ADFCA0FC6B /* MediaThumbnailCache.swift in Sources */,
+				5C11B6D31A6225BC9D878539 /* MeshPreferencesView.swift in Sources */,
+				8754C1BE68873E719DB6E909 /* ModeSelectionView.swift in Sources */,
+				4440417E51C60D48DDE07270 /* Models.swift in Sources */,
+				DB9E21A6521C07EDC9461565 /* NVIDIAService.swift in Sources */,
+				1E0F9DE242BF278D48AB932D /* OnboardingRootView.swift in Sources */,
+				37247A9D640138A5CBF8F161 /* OnboardingStyles.swift in Sources */,
+				C2531026993F1B1C6B25F226 /* OnboardingView.swift in Sources */,
+				61FE77A534CAE8A1DB129DD6 /* OverviewView.swift in Sources */,
+				2F717839189B088E0B4DA26C /* PatchyView.swift in Sources */,
+				085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */,
+				21F0F51F5739E8BA2E0E6978 /* Persistence.swift in Sources */,
+				0F8391EF95A66EB768F81BA8 /* PreferencesView.swift in Sources */,
+				C73223597C2FE00574A04193 /* ReleaseNotes.swift in Sources */,
+				6923C1DFC02F72C9F6A307AC /* RemoteAPI.swift in Sources */,
+				D78CB841C27860D437A41E36 /* RemoteBotProvider.swift in Sources */,
+				795E1B910968188CC57BA263 /* RemoteControlService.swift in Sources */,
+				FD624ED4D70CFAF9D943F0B5 /* RemoteModeRootView.swift in Sources */,
+				DEEBB36AAE69806B0DE44641 /* RemoteModels.swift in Sources */,
+				3427FDD6B8F160DBA04F79E1 /* RemoteSetupView.swift in Sources */,
+				8764933B1A2D5429FEC2FAA5 /* RootView.swift in Sources */,
+				FDA57E1FBBE210E213A9292B /* RuleEngineModels.swift in Sources */,
+				CB1B41CE58ED74524B73FAA5 /* RuleExecutionService.swift in Sources */,
+				DEED6A6AE95EB1E4BD68B09F /* SchemaSettings.swift in Sources */,
+				4816D705CD69FA14D1641610 /* SettingsView.swift in Sources */,
+				8FDF1380E0C0369F9570C5D4 /* StandaloneSetupView.swift in Sources */,
+				9C70C57B9C4A44DC95FB0C56 /* SteamService.swift in Sources */,
+				B6B3280ACF4438511C36A188 /* SwiftBotApp.swift in Sources */,
+				F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */,
+				22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */,
+				13EC6A8C3526F1B617A9C146 /* TunnelManager.swift in Sources */,
+				AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */,
+				B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */,
+				647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */,
+				0005740627E44E41BFB0B69B /* UpdatesPreferencesView.swift in Sources */,
+				BD731E0515669EE345148385 /* VersionStore.swift in Sources */,
+				C1AFBA55AC265D22F80521D2 /* VoiceActionsView.swift in Sources */,
+				ACE122B57907AC0B3FBD616F /* VoicePresenceStore.swift in Sources */,
+				A5CBEE32EC1247802A9F689E /* VoiceRuleListView.swift in Sources */,
+				6D555B0AE68DA044A57A4093 /* VoiceRuleStateStore.swift in Sources */,
+				889466FAF399CB465ED1C45B /* WebUIPreferencesView.swift in Sources */,
+				831BDE04FBF99D4CD415BD88 /* WikiBridgeView.swift in Sources */,
+				126B88FAE40D80657EB4FE78 /* WikiLookupService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		636A1D79BE93FB259BDDCC12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D30EB61BE0A3E76319F3871 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		19DDEE98357561AC9EA8526F /* Debug */ = {
+		357DF8D0FCB875B119AC18D3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 196000;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SwiftBot-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftBot;
+				INFOPLIST_KEY_CFBundleName = SwiftBot;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_LSMinimumSystemVersion = 26.0;
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SwiftBot needs local network access to reach other leader/worker SwiftBots";
+				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
+				INFOPLIST_KEY_SUFeedURL = "https://johnwatso.github.io/SwiftBot/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "rxaJsfCpTKtpqRubSfkJwKnztT5S8RHsdAueuT+jKck=";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.9.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
+				PRODUCT_NAME = SwiftBot;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		4249029B0E9B3339C4E84513 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.sparklepublisher;
+				PRODUCT_NAME = SparklePublisher;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		A2A3F35BA4A6C9C688D09CC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.sparklepublisher;
+				PRODUCT_NAME = SparklePublisher;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		C453F006AB578F6E38216F4A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -543,11 +785,116 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F7397A1EB1237FED3772A19C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 196000;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SwiftBot-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftBot;
+				INFOPLIST_KEY_CFBundleName = SwiftBot;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_LSMinimumSystemVersion = 26.0;
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SwiftBot needs local network access to reach other leader/worker SwiftBots";
+				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
+				INFOPLIST_KEY_SUFeedURL = "https://johnwatso.github.io/SwiftBot/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "rxaJsfCpTKtpqRubSfkJwKnztT5S8RHsdAueuT+jKck=";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.9.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
+				PRODUCT_NAME = SwiftBot;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		FE95460722C79A6DFD94B6D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -566,298 +913,134 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.john.swiftbot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
-		};
-		293E5BAB59887771C0591595 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.john.swiftbot;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.9;
-			};
-			name = Release;
-		};
-		814B5B590EA2D69F135BB12A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "SwiftBot-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = SwiftBot;
-				INFOPLIST_KEY_CFBundleName = SwiftBot;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_LSMinimumSystemVersion = 26.0;
-				INFOPLIST_KEY_NSHighResolutionCapable = YES;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SwiftBot needs local network access to reach other leader/worker SwiftBots";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://johnwatso.github.io/SwiftBot/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "rxaJsfCpTKtpqRubSfkJwKnztT5S8RHsdAueuT+jKck=";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
-				PRODUCT_NAME = SwiftBot;
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
-				SDKROOT = macosx;
-			};
-			name = Debug;
-		};
-		C6AE148F24F0271FED0E29FE /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGNING_ALLOWED = YES;
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "SwiftBot-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = SwiftBot;
-				INFOPLIST_KEY_CFBundleName = SwiftBot;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
-				INFOPLIST_KEY_LSMinimumSystemVersion = 26.0;
-				INFOPLIST_KEY_NSHighResolutionCapable = YES;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SwiftBot needs local network access to reach other leader/worker SwiftBots";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://johnwatso.github.io/SwiftBot/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "rxaJsfCpTKtpqRubSfkJwKnztT5S8RHsdAueuT+jKck=";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
-				PRODUCT_NAME = SwiftBot;
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
-				SDKROOT = macosx;
-			};
-			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		54E3BB8F01147895EA783B3E /* Build configuration list for PBXNativeTarget "SwiftBot" */ = {
+		1FC61DD7AA6DAC1A0330856E /* Build configuration list for PBXProject "SwiftBot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				814B5B590EA2D69F135BB12A /* Debug */,
-				C6AE148F24F0271FED0E29FE /* Release */,
+				FE95460722C79A6DFD94B6D7 /* Debug */,
+				C453F006AB578F6E38216F4A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		81CA7B1A81AF2F66208AC01D /* Build configuration list for PBXProject "SwiftBot" */ = {
+		600BF58B2C21E331EF3C6827 /* Build configuration list for PBXNativeTarget "SwiftBot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				19DDEE98357561AC9EA8526F /* Debug */,
-				293E5BAB59887771C0591595 /* Release */,
+				357DF8D0FCB875B119AC18D3 /* Debug */,
+				F7397A1EB1237FED3772A19C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7B407BF6C5684434BD1EC2E /* Build configuration list for PBXNativeTarget "SparklePublisher" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4249029B0E9B3339C4E84513 /* Debug */,
+				A2A3F35BA4A6C9C688D09CC6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Sources/UpdateEngine;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
-		1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.8.0;
-			};
-		};
-		A1B2C3D40111223344556801 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-certificates.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.9.0;
-			};
-		};
-		A1B2C3D40111223344556802 /* XCRemoteSwiftPackageReference "swift-crypto" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-crypto.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.12.3;
-			};
-		};
-		A1B2C3D40111223344556803 /* XCRemoteSwiftPackageReference "swift-asn1" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-asn1.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.1.0;
-			};
-		};
-		A1B2C3D40111223344556804 /* XCRemoteSwiftPackageReference "swift-nio" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-nio.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.80.0;
-			};
-		};
-		A1B2C3D40111223344556805 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
+		084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-nio-ssl.git";
 			requirement = {
-				kind = upToNextMajorVersion;
+				kind = upToNextMinorVersion;
 				minimumVersion = 2.30.0;
+			};
+		};
+		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-certificates.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.9.0;
+			};
+		};
+		53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 2.80.0;
+			};
+		};
+		7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-asn1.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.1.0;
+			};
+		};
+		8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-crypto.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 3.12.3;
+			};
+		};
+		D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 2.8.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		1F7A11C22D33445566778898 /* Sparkle */ = {
+		1840331BC8F2A1886D5014FF /* Crypto */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
-		2A8C10101122334455667788 /* UpdateEngine */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */;
-			productName = UpdateEngine;
-		};
-		A1B2C3D40111223344556901 /* X509 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556801 /* XCRemoteSwiftPackageReference "swift-certificates" */;
-			productName = X509;
-		};
-		A1B2C3D40111223344556902 /* Crypto */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556802 /* XCRemoteSwiftPackageReference "swift-crypto" */;
+			package = 8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */;
 			productName = Crypto;
 		};
-		A1B2C3D40111223344556903 /* SwiftASN1 */ = {
+		1C81108D7CF200AA2750ED17 /* NIOSSL */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556803 /* XCRemoteSwiftPackageReference "swift-asn1" */;
-			productName = SwiftASN1;
+			package = 084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
+			productName = NIOSSL;
 		};
-		A1B2C3D40111223344556904 /* NIOCore */ = {
+		5AEB32046AFF5E8525A5B458 /* NIOCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556804 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			package = 53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOCore;
 		};
-		A1B2C3D40111223344556905 /* NIOPosix */ = {
+		6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556804 /* XCRemoteSwiftPackageReference "swift-nio" */;
+			package = 7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */;
+			productName = SwiftASN1;
+		};
+		7C341BA99920552C7CDA9D24 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		7DF22120B86D527EE31A4E83 /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOPosix;
 		};
-		A1B2C3D40111223344556906 /* NIOSSL */ = {
+		81D226FCC037CE475B1850B7 /* X509 */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D40111223344556805 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
-			productName = NIOSSL;
+			package = 3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */;
+			productName = X509;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 3BD77BC016D6E32A8E693A59 /* Project object */;
+	rootObject = C0066AD18713AFCF7B5EAC62 /* Project object */;
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 struct DiscordCacheSnapshot: Codable, Hashable {
-    var updatedAt: Date = Date()
+    var updatedAt = Date()
     var connectedServers: [String: String] = [:]
     var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
