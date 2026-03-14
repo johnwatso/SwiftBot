@@ -347,6 +347,7 @@ actor AdminWebServer {
         var redirectPath: String
         var allowedUserIDs: [String]
         var remoteAccessToken: String
+        var devFeaturesEnabled: Bool
     }
 
     private struct HTTPRequest {
@@ -407,7 +408,8 @@ actor AdminWebServer {
         localAuthPassword: "",
         redirectPath: "/auth/discord/callback",
         allowedUserIDs: [],
-        remoteAccessToken: ""
+        remoteAccessToken: "",
+        devFeaturesEnabled: false
     )
     private var listener: NWListener?
     private var nioChannel: Channel?
@@ -1710,10 +1712,12 @@ actor AdminWebServer {
             config.localAuthEnabled &&
             !config.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !config.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let devFeaturesEnabled = config.devFeaturesEnabled
 
         return jsonResponse([
             "discordEnabled": discordConfigured,
-            "localEnabled": localEnabled
+            "localEnabled": localEnabled && devFeaturesEnabled,
+            "devFeaturesEnabled": devFeaturesEnabled
         ])
     }
 

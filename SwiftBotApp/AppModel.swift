@@ -3354,7 +3354,8 @@ final class AppModel: ObservableObject {
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
-            remoteAccessToken: settings.remoteAccessToken
+            remoteAccessToken: settings.remoteAccessToken,
+            devFeaturesEnabled: settings.devFeaturesEnabled
         )
 
         let runtimeState = await adminWebServer.configure(

@@ -154,12 +154,12 @@ actor DiscordService {
     private func handleInboundGatewayPayload(_ payload: GatewayPayload) async {
         // Run independent seed operations in parallel for faster gateway event processing.
         // These operate on disjoint state, so no synchronization is needed.
-        async let seedChannelTypes = seedChannelTypesIfNeeded(payload)
-        async let seedGuildName = seedGuildNameIfNeeded(payload)
-        async let seedVoiceChannels = seedVoiceChannelsIfNeeded(payload)
-        async let seedVoiceState = seedVoiceStateIfNeeded(payload)
-        // Wait for all seed operations to complete
-        await (seedChannelTypes, seedGuildName, seedVoiceChannels, seedVoiceState)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.seedChannelTypesIfNeeded(payload) }
+            group.addTask { await self.seedGuildNameIfNeeded(payload) }
+            group.addTask { await self.seedVoiceChannelsIfNeeded(payload) }
+            group.addTask { await self.seedVoiceStateIfNeeded(payload) }
+        }
         await processRuleActionsIfNeeded(payload)
         await onPayload?(payload)
     }
