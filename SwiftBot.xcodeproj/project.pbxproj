@@ -11,6 +11,7 @@
 		00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */; };
 		085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */; };
 		0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */; };
+		0E6027F2B5CEEDF280B843D4 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1886F81C765D477A60E46CBD /* AnalyticsView.swift */; };
 		0F8391EF95A66EB768F81BA8 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */; };
 		10688115A610483DA3FBB1A5 /* BotDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB947E7E83CAEC7FAECF7D09 /* BotDataProvider.swift */; };
 		126B88FAE40D80657EB4FE78 /* WikiLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */; };
@@ -82,6 +83,7 @@
 		93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */; };
 		9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 1C81108D7CF200AA2750ED17 /* NIOSSL */; };
 		9A07952399C3531240BD87FB /* DiscordIdentityRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */; };
+		9A7E4ACD026F52C74EF01C9F /* VoiceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */; };
 		9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7962859CFEF723E67BD800C /* AppModel+Media.swift */; };
 		9C5DCB5C183F3BCFF236095E /* AMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87A43A58BBA036A9646BCAC /* AMDService.swift */; };
 		9C70C57B9C4A44DC95FB0C56 /* SteamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBC0B8ABE120213D32A8F9F /* SteamService.swift */; };
@@ -127,11 +129,12 @@
 		03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
 		065E8C11350B1294C20F9B3A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		0D7E1662299F69697912A63E /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
+		1886F81C765D477A60E46CBD /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
 		1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NVIDIAService.swift; sourceTree = "<group>"; };
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
@@ -164,6 +167,7 @@
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		6A7A4945675389627AFBFB2F /* admin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = admin; path = SwiftBotApp/Resources/admin; sourceTree = SOURCE_ROOT; };
 		6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
+		6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSessionStore.swift; sourceTree = "<group>"; };
 		6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
 		6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		6EC99CA7ACBDFF1217B6525B /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
@@ -261,6 +265,7 @@
 				4AB32D13A6D673323296304C /* AdminWebServer.swift */,
 				82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */,
 				553AAF747AF590A5486827AA /* AIBotsView.swift */,
+				1886F81C765D477A60E46CBD /* AnalyticsView.swift */,
 				9DA9BA187B549800BA8A345C /* AppModel.swift */,
 				8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */,
 				A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */,
@@ -417,6 +422,7 @@
 				F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */,
 				2F319382F183BB1612580B30 /* VoicePresenceStore.swift */,
 				9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */,
+				6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */,
 				40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */,
 			);
 			path = Services;
@@ -476,7 +482,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 1630;
 				TargetAttributes = {
 					4643F3EE1229139DEE939C6D = {
 						DevelopmentTeam = "";
@@ -557,6 +563,7 @@
 				9C5DCB5C183F3BCFF236095E /* AMDService.swift in Sources */,
 				7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */,
 				7A8F1F65E34BD4BFFE7BCAA9 /* AdvancedPreferencesView.swift in Sources */,
+				0E6027F2B5CEEDF280B843D4 /* AnalyticsView.swift in Sources */,
 				F18225F9C4A1405093180E0D /* AppModel+AI.swift in Sources */,
 				16BAB36AC9A670AE9B8375EE /* AppModel+AdminWeb.swift in Sources */,
 				12E4267A46ED7C52DDBF535B /* AppModel+BotLifecycle.swift in Sources */,
@@ -651,6 +658,7 @@
 				ACE122B57907AC0B3FBD616F /* VoicePresenceStore.swift in Sources */,
 				A5CBEE32EC1247802A9F689E /* VoiceRuleListView.swift in Sources */,
 				6D555B0AE68DA044A57A4093 /* VoiceRuleStateStore.swift in Sources */,
+				9A7E4ACD026F52C74EF01C9F /* VoiceSessionStore.swift in Sources */,
 				889466FAF399CB465ED1C45B /* WebUIPreferencesView.swift in Sources */,
 				831BDE04FBF99D4CD415BD88 /* WikiBridgeView.swift in Sources */,
 				126B88FAE40D80657EB4FE78 /* WikiLookupService.swift in Sources */,
@@ -676,7 +684,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 197000;
+				CURRENT_PROJECT_VERSION = 196000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -703,7 +711,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.7;
+				MARKETING_VERSION = 1.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -723,7 +731,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -740,7 +747,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -757,7 +763,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -788,7 +793,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -805,7 +809,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -820,7 +823,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 197000;
+				CURRENT_PROJECT_VERSION = 196000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -847,7 +850,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.7;
+				MARKETING_VERSION = 1.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -867,7 +870,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -898,7 +900,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -922,7 +923,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;

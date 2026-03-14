@@ -70,6 +70,7 @@ struct UnifiedRootView: View {
                 case .logs: LogsView()
                 case .aiBots: AIBotsView()
                 case .diagnostics: DiagnosticsView()
+                case .analytics: AnalyticsView()
                 case .swiftMesh: SwiftMeshView()
                 }
             }
@@ -221,6 +222,7 @@ struct DashboardSidebar: View {
 
                     SidebarSection(title: "System") {
                         SidebarRow(item: .aiBots, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarRow(item: .analytics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .diagnostics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                         SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
                     }

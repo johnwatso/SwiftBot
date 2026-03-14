@@ -196,6 +196,9 @@ extension AppModel {
     }
 
     func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {
+        // Ensure voice session store is loaded before looking up persisted join times
+        await voiceSessionStore.waitForLoad()
+        
         guard case let .array(voiceStates)? = guildMap["voice_states"] else { return }
 
         let now = Date()
@@ -222,7 +225,8 @@ extension AppModel {
 
             let username = await voiceDisplayName(from: stateMap, userId: userId)
             let key = "\(guildId)-\(userId)"
-            let joinedAt = now
+            // Use persisted join time if available so durations survive restarts
+            let joinedAt = await voiceSessionStore.persistedJoinDate(guildId: guildId, userId: userId) ?? now
 
             snapshot.append(
                 VoiceMemberPresence(
@@ -238,6 +242,7 @@ extension AppModel {
         }
 
         activeVoice = await voicePresenceStore.syncGuildSnapshot(guildId, members: snapshot)
+        await voiceSessionStore.reconcileOnStartup(currentVoiceMembers: snapshot, now: now)
     }
 
     func cacheGuildMembers(from guildMap: [String: DiscordJSON]) async {

@@ -149,6 +149,7 @@ final class AppModel: ObservableObject {
     lazy var gatewayEventDispatcher = makeGatewayEventDispatcher()
     lazy var commandProcessor = makeCommandProcessor()
     let voicePresenceStore = VoicePresenceStore()
+    let voiceSessionStore = VoiceSessionStore()
     var uptimeTask: Task<Void, Never>?
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?
@@ -297,6 +298,7 @@ final class AppModel: ObservableObject {
         Task {
             await startRateLimitCleanupTask()
 
+            await voiceSessionStore.load()
             var loadedSettings = await store.load()
             let loadedMeshSettings = await swiftMeshConfigStore.load()
             let loadedMediaSettings = await mediaLibraryConfigStore.load()

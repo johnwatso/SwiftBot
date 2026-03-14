@@ -9,6 +9,8 @@ enum SwiftBotStorage {
     static let swiftMeshConfigFileName = "swiftmesh-config.json"
     static let clusterStateFileName = "cluster_state.json"
     static let mediaLibraryConfigFileName = "media-library.json"
+    static let voiceActiveSessionsFileName = "voice-active-sessions.json"
+    static let voiceSessionHistoryFileName = "voice-session-history.json"
 
     static func folderURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

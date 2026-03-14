@@ -680,6 +680,7 @@ extension AppModel {
             lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
+            await voiceSessionStore.recordJoin(userId: userId, username: displayName, guildId: guildId, channelId: next.channelId, channelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
                shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
@@ -703,6 +704,7 @@ extension AppModel {
             lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
+            await voiceSessionStore.recordChannelSwitch(userId: userId, username: displayName, guildId: guildId, newChannelId: next.channelId, newChannelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
                shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) || shouldNotifyVoiceEvent(guildId: guildId, channelId: next.channelId) {
@@ -724,6 +726,7 @@ extension AppModel {
             lastVoiceStateSummary = "LEAVE \(previous.username) <- \(previous.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
             voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
+            await voiceSessionStore.recordLeave(userId: userId, guildId: guildId, at: now)
 
             if allowPrimarySideEffects,
                shouldNotifyVoiceEvent(guildId: guildId, channelId: previous.channelId) {
