@@ -88,14 +88,16 @@ extension AppModel {
 
         // Idempotent merge.
         for record in payload.conversations {
-            await conversationStore.appendIfNotExists(
-                scope: record.scope,
-                messageID: record.id,
+            let message = Message(
+                id: record.id,
+                channelID: record.scope.id,
                 userID: record.userID,
+                username: "",
                 content: record.content,
-                role: record.role,
-                timestamp: record.timestamp
+                timestamp: record.timestamp,
+                role: record.role
             )
+            await conversationStore.appendIfNotExists(message)
         }
 
         // Merge image usage counts
@@ -202,10 +204,11 @@ extension AppModel {
     }
 
     func startRateLimitCleanupTask() async {
-        Task {
+        Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000) // 60 seconds
                 if Task.isCancelled { break }
+                guard let self = self else { return }
                 await MainActor.run {
                     self.cleanupRateLimitCache()
                 }
@@ -473,6 +476,7 @@ extension AppModel {
         ), at: 0)
 
         guard let applicationID = botUserId, !applicationID.isEmpty else { return }
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
         do {
             var payload: [String: Any] = [:]
             if let content = response.content {
@@ -522,6 +526,8 @@ extension AppModel {
         guard let appID = botUserId, !appID.isEmpty else { return }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
+        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "registerSlashCommands", log: { logs.append($0) }) else { return }
+        
         let slashEnabled = settings.commandsEnabled && settings.slashCommandsEnabled
         if lastSlashCommandsEnabledState != slashEnabled {
             lastSlashRegistrationAt = nil

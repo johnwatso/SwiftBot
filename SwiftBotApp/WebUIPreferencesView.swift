@@ -831,6 +831,7 @@ struct AdminWebAuthenticationSection: View {
                 redirectURL: redirectURL(for: "discord")
             )
 
+            if app.settings.devFeaturesEnabled {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: "lock.shield")
@@ -877,6 +878,7 @@ struct AdminWebAuthenticationSection: View {
             }
             .padding(14)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } // devFeaturesEnabled (Local Fallback)
 
             if app.settings.devFeaturesEnabled {
                 OAuthProviderCard(

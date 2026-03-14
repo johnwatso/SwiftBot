@@ -4,8 +4,18 @@ extension AppModel {
     func makeCommandProcessor() -> CommandProcessor {
         CommandProcessor(
             dependencies: .init(
-                configuration: { [unowned self] in
-                    .init(
+                configuration: { [weak self] in
+                    guard let self else {
+                        return .init(
+                            commandsEnabled: false,
+                            prefixCommandsEnabled: false,
+                            slashCommandsEnabled: false,
+                            wikiEnabled: false,
+                            prefix: "/",
+                            helpSettings: .init()
+                        )
+                    }
+                    return .init(
                         commandsEnabled: self.settings.commandsEnabled,
                         prefixCommandsEnabled: self.settings.prefixCommandsEnabled,
                         slashCommandsEnabled: self.settings.slashCommandsEnabled,
@@ -14,73 +24,84 @@ extension AppModel {
                         helpSettings: self.settings.help
                     )
                 },
-                canonicalPrefixCommandName: { [unowned self] name in
-                    self.canonicalPrefixCommandName(name)
+                canonicalPrefixCommandName: { [weak self] name in
+                    self?.canonicalPrefixCommandName(name) ?? name
                 },
-                isCommandEnabled: { [unowned self] name, surface in
-                    self.isCommandEnabled(name: name, surface: surface)
+                isCommandEnabled: { [weak self] name, surface in
+                    self?.isCommandEnabled(name: name, surface: surface) ?? false
                 },
-                buildHelpCatalog: { [unowned self] prefix in
-                    self.buildHelpCatalog(prefix: prefix)
+                buildHelpCatalog: { [weak self] prefix in
+                    self?.buildHelpCatalog(prefix: prefix) ?? CommandCatalog(entries: [])
                 },
-                send: { [unowned self] channelId, message in
-                    await self.send(channelId, message)
+                send: { [weak self] channelId, message in
+                    guard let self else { return false }
+                    return await self.send(channelId, message)
                 },
-                sendEmbed: { [unowned self] channelId, embed in
-                    await self.sendEmbed(channelId, embed: embed)
+                sendEmbed: { [weak self] channelId, embed in
+                    guard let self else { return false }
+                    return await self.sendEmbed(channelId, embed: embed)
                 },
-                generateHelpReply: { [unowned self] messages, systemPrompt in
-                    await self.aiService.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
+                generateHelpReply: { [weak self] messages, systemPrompt in
+                    guard let self else { return nil }
+                    return await self.aiService.generateHelpReply(messages: messages, systemPrompt: systemPrompt)
                 },
-                rollDice: { [unowned self] notation in
-                    self.rollDice(notation)
+                rollDice: { [weak self] notation in
+                    self?.rollDice(notation) ?? ""
                 },
-                generateImageCommand: { [unowned self] prompt, userId, username, channelId in
-                    await self.generateImageCommand(
+                generateImageCommand: { [weak self] prompt, userId, username, channelId in
+                    guard let self else { return false }
+                    return await self.generateImageCommand(
                         prompt: prompt,
                         userId: userId,
                         username: username,
                         channelId: channelId
                     )
                 },
-                authorId: { [unowned self] raw in
-                    self.authorId(from: raw)
+                authorId: { [weak self] raw in
+                    self?.authorId(from: raw) ?? ""
                 },
-                clusterCommand: { [unowned self] action, channelId in
-                    await self.clusterCommand(action: action, channelId: channelId)
+                clusterCommand: { [weak self] action, channelId in
+                    guard let self else { return false }
+                    return await self.clusterCommand(action: action, channelId: channelId)
                 },
-                setNotificationChannel: { [unowned self] raw, channelId in
-                    await self.setNotificationChannel(for: raw, currentChannelId: channelId)
+                setNotificationChannel: { [weak self] raw, channelId in
+                    guard let self else { return false }
+                    return await self.setNotificationChannel(for: raw, currentChannelId: channelId)
                 },
-                updateIgnoredChannels: { [unowned self] tokens, raw, channelId in
-                    await self.updateIgnoredChannels(tokens: tokens, raw: raw, responseChannelId: channelId)
+                updateIgnoredChannels: { [weak self] tokens, raw, channelId in
+                    guard let self else { return false }
+                    return await self.updateIgnoredChannels(tokens: tokens, raw: raw, responseChannelId: channelId)
                 },
-                notifyStatus: { [unowned self] raw, channelId in
-                    await self.notifyStatus(raw: raw, responseChannelId: channelId)
+                notifyStatus: { [weak self] raw, channelId in
+                    guard let self else { return false }
+                    return await self.notifyStatus(raw: raw, responseChannelId: channelId)
                 },
-                canRunDebugCommand: { [unowned self] raw in
-                    await self.canRunDebugCommand(raw: raw)
+                canRunDebugCommand: { [weak self] raw in
+                    await self?.canRunDebugCommand(raw: raw) ?? false
                 },
-                refreshDebugSnapshot: { [unowned self] in
+                refreshDebugSnapshot: { [weak self] in
+                    guard let self else { return }
                     await self.pollClusterStatus()
                     self.clusterSnapshot = await self.cluster.currentSnapshot()
                 },
-                debugSummaryEmbed: { [unowned self] in
-                    self.debugSummaryEmbed()
+                debugSummaryEmbed: { [weak self] in
+                    self?.debugSummaryEmbed() ?? .init()
                 },
-                bugReportText: { [unowned self] raw in
-                    self.bugReportText(for: raw)
+                bugReportText: { [weak self] raw in
+                    self?.bugReportText(for: raw) ?? ""
                 },
-                weeklySummary: { [unowned self] in
-                    self.weeklyPlugin?.snapshotSummary() ?? "No data yet."
+                weeklySummary: { [weak self] in
+                    self?.weeklyPlugin?.snapshotSummary() ?? "No data yet."
                 },
-                fetchFinalsMeta: { [unowned self] in
-                    await self.wikiLookupService.fetchFinalsMetaFromSkycoach()
+                fetchFinalsMeta: { [weak self] in
+                    guard let self else { return nil }
+                    return await self.wikiLookupService.fetchFinalsMetaFromSkycoach()
                 },
-                resolveWikiCommand: { [unowned self] name in
-                    self.resolveWikiCommand(named: name).map { ($0.source, $0.command) }
+                resolveWikiCommand: { [weak self] name in
+                    self?.resolveWikiCommand(named: name).map { ($0.source, $0.command) }
                 },
-                defaultWikiCommand: { [unowned self] in
+                defaultWikiCommand: { [weak self] in
+                    guard let self else { return nil }
                     for source in self.orderedEnabledWikiSources() {
                         if let first = source.commands.first(where: \.enabled) {
                             return (source: source, command: first)
@@ -88,24 +109,27 @@ extension AppModel {
                     }
                     return nil
                 },
-                performWikiLookup: { [unowned self] command, source, query, channelId in
-                    await self.performWikiLookup(
+                performWikiLookup: { [weak self] command, source, query, channelId in
+                    guard let self else { return false }
+                    return await self.performWikiLookup(
                         command: command,
                         source: source,
                         query: query,
                         channelId: channelId
                     )
                 },
-                handleLogABugSlash: { [unowned self] raw, username, channelId, errorText in
-                    await self.handleLogABugSlash(
+                handleLogABugSlash: { [weak self] raw, username, channelId, errorText in
+                    guard let self else { return (ok: false, message: "Bug report failed: app unavailable.") }
+                    return await self.handleLogABugSlash(
                         raw: raw,
                         username: username,
                         channelId: channelId,
                         errorText: errorText
                     )
                 },
-                handleFeatureRequestSlash: { [unowned self] raw, username, channelId, featureText, reasonText in
-                    await self.handleFeatureRequestSlash(
+                handleFeatureRequestSlash: { [weak self] raw, username, channelId, featureText, reasonText in
+                    guard let self else { return (ok: false, message: "Feature request failed: app unavailable.") }
+                    return await self.handleFeatureRequestSlash(
                         raw: raw,
                         username: username,
                         channelId: channelId,
@@ -113,8 +137,9 @@ extension AppModel {
                         reasonText: reasonText
                     )
                 },
-                lookupFinalsWiki: { [unowned self] query in
-                    await self.wikiLookupService.lookupFinalsWiki(query: query)
+                lookupFinalsWiki: { [weak self] query in
+                    guard let self else { return nil }
+                    return await self.wikiLookupService.lookupFinalsWiki(query: query)
                 }
             )
         )

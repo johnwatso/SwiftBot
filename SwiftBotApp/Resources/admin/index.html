@@ -1796,7 +1796,7 @@
         </p>
         <div class="auth-card glass">
           <div class="auth-stack">
-            <p>Authenticate with Discord or use the local fallback for testing.</p>
+            <p id="authPromptText">Authenticate with Discord.</p>
             <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width:100%;">Sign in with Discord</a>
             <div id="authDivider" class="auth-divider">or</div>
             <form id="localAuthForm" class="auth-form">
@@ -2369,6 +2369,7 @@
       const discordButton = document.getElementById('discordAuthButton');
       const localForm = document.getElementById('localAuthForm');
       const divider = document.getElementById('authDivider');
+      const promptText = document.getElementById('authPromptText');
       if (discordButton) {
         discordButton.style.display = authOptions.discordEnabled ? '' : 'none';
       }
@@ -2377,6 +2378,11 @@
       }
       if (divider) {
         divider.style.display = authOptions.discordEnabled && authOptions.localEnabled ? '' : 'none';
+      }
+      if (promptText) {
+        promptText.textContent = authOptions.localEnabled
+          ? 'Authenticate with Discord or use the local fallback for testing.'
+          : 'Authenticate with Discord.';
       }
     }
 
