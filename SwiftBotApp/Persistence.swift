@@ -366,7 +366,7 @@ final class LogStore: ObservableObject {
 
     func append(_ line: String) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.contains("ViewBridge to RemoteViewService Terminated") || 
+        if trimmed.contains("ViewBridge to RemoteViewService Terminated") ||
            trimmed.contains("NSViewBridgeErrorCanceled") {
             return
         }

@@ -115,7 +115,7 @@ final class RuleEngine {
     private var cancellable: AnyCancellable?
     private var _activeRules: [Rule] = []
     private let lock = NSLock()
-    
+
     private var activeRules: [Rule] {
         get {
             lock.lock()
@@ -250,12 +250,12 @@ final class PluginManager {
 
 final class WeeklySummaryPlugin: BotPlugin {
     let name = "WeeklySummary"
-    
+
     private var tokens: [SubscriptionToken] = []
     private var voiceDurations: [String: Int] = [:] // userId -> accumulated seconds
-    
+
     init() {}
-    
+
     func register(on bus: EventBus) async {
         let joinToken = await bus.subscribe(VoiceJoined.self) { _ in
             // No-op for accumulation; could log here if needed
@@ -268,25 +268,25 @@ final class WeeklySummaryPlugin: BotPlugin {
         }
         tokens.append(leftToken)
     }
-    
+
     func unregister(from bus: EventBus) async {
         for token in tokens {
             await bus.unsubscribe(token)
         }
         tokens.removeAll()
     }
-    
+
     func snapshotSummary() -> String {
         let sortedUsers = voiceDurations.sorted { $0.value > $1.value }
         guard !sortedUsers.isEmpty else {
             return "No voice activity recorded yet."
         }
-        
+
         let summaryLines = sortedUsers.prefix(5).map { userId, seconds in
             let minutes = seconds / 60
             return "\(userId): \(minutes) minute\(minutes == 1 ? "" : "s")"
         }
-        
+
         return "Weekly Voice Summary:\n" + summaryLines.joined(separator: "\n")
     }
 }
@@ -415,7 +415,7 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
     case mediaPath = "{media.path}"
     case mediaSource = "{media.source}"
     case mediaNode = "{media.node}"
-    
+
     var displayName: String {
         switch self {
         case .user: return "User"
@@ -448,7 +448,7 @@ enum ContextVariable: String, CaseIterable, Codable, Hashable {
         case .mediaNode: return "Media Node"
         }
     }
-    
+
     var category: String {
         switch self {
         case .user, .userId, .username, .userNickname, .userMention:
@@ -477,7 +477,7 @@ extension Set where Element == ContextVariable {
     /// Returns a user-friendly description of the required context (Task 1)
     var friendlyRequirement: String {
         if self.isEmpty { return "" }
-        
+
         // Priority based on trigger types
         if self.contains(where: { $0.category == "Message" || $0.category == "Reaction" }) {
             return "a message trigger"
@@ -488,7 +488,7 @@ extension Set where Element == ContextVariable {
         if self.contains(where: { $0.category == "User" }) {
             return "a user trigger"
         }
-        
+
         return "additional context"
     }
 }
@@ -537,7 +537,7 @@ enum DiscordPermission: String, CaseIterable, Codable, Hashable {
     case sendMessagesInThreads = "SEND_MESSAGES_IN_THREADS"
     case useEmbeddedActivities = "USE_EMBEDDED_ACTIVITIES"
     case moderateMembers = "MODERATE_MEMBERS"
-    
+
     var displayName: String {
         switch self {
         case .createInstantInvite: return "Create Invite"
@@ -582,7 +582,7 @@ enum DiscordPermission: String, CaseIterable, Codable, Hashable {
         case .moderateMembers: return "Timeout Members"
         }
     }
-    
+
     var bitValue: UInt64 {
         switch self {
         case .createInstantInvite: return 1 << 0
@@ -703,7 +703,7 @@ enum TriggerType: String, CaseIterable, Identifiable, Codable {
         case .mediaAdded: return "Media Added"
         }
     }
-    
+
     /// Variables provided by this trigger type
     var providedVariables: Set<ContextVariable> {
         switch self {
@@ -770,7 +770,7 @@ enum ConditionType: String, CaseIterable, Identifiable, Codable {
         case .channelType: return "number.square"
         }
     }
-    
+
     /// Variables required to evaluate this condition
     var requiredVariables: Set<ContextVariable> {
         switch self {
@@ -813,7 +813,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case delay = "Delay"
     case setVariable = "Set Variable"
     case randomChoice = "Random"
-    
+
     // New Modifier Types
     case replyToTrigger = "Reply To Trigger Message"
     case mentionUser = "Mention User"
@@ -821,7 +821,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
     case disableMention = "Disable User Mentions"
     case sendToChannel = "Send To Channel"
     case sendToDM = "Send To DM"
-    
+
     // AI Types
     case generateAIResponse = "Generate AI Response"
     case summariseMessage = "Summarise Message"
@@ -862,7 +862,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
         case .rewriteMessage: return "pencil"
         }
     }
-    
+
     /// Variables required by this action type
     var requiredVariables: Set<ContextVariable> {
         switch self {
@@ -879,7 +879,7 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return []
         }
     }
-    
+
     /// Variables provided/output by this action type
     var outputVariables: Set<ContextVariable> {
         switch self {
@@ -893,14 +893,14 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return [.aiEntities]
         case .rewriteMessage:
             return [.aiRewrite]
-        case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole, 
+        case .sendMessage, .sendDM, .deleteMessage, .addReaction, .addRole,
              .removeRole, .timeoutMember, .kickMember, .moveMember, .createChannel, .webhook,
              .setStatus, .addLogEntry, .delay, .setVariable, .randomChoice, .replyToTrigger,
              .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
             return []
         }
     }
-    
+
     /// Discord permissions required for this action
     var requiredPermissions: Set<DiscordPermission> {
         switch self {
@@ -924,13 +924,13 @@ enum ActionType: String, CaseIterable, Identifiable, Codable {
             return [.manageWebhooks]
         }
     }
-    
+
     /// Category for block library organization
     var category: BlockCategory {
         switch self {
         case .replyToTrigger, .disableMention, .sendToChannel, .sendToDM, .mentionUser, .mentionRole:
             return .messaging
-        case .sendMessage, .sendDM, .addReaction, .deleteMessage, .createChannel, .webhook, 
+        case .sendMessage, .sendDM, .addReaction, .deleteMessage, .createChannel, .webhook,
              .addLogEntry, .setStatus, .delay, .setVariable, .randomChoice:
             return .actions
         case .generateAIResponse, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage:
@@ -996,7 +996,7 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var replyWithAI: Bool = false
     var message: String = "🔊 <@{userId}> connected to <#{channelId}>"
     var statusText: String = "Voice notifier active"
-    
+
     // New fields for extended action types
     var dmContent: String = ""              // For sendDM
     var emoji: String = "👍"                // For addReaction
@@ -1012,17 +1012,17 @@ struct RuleAction: Identifiable, Codable, Equatable {
     var variableValue: String = ""          // For setVariable
     var randomOptions: [String] = []        // For randomChoice
     var deleteDelaySeconds: Int = 0         // For deleteMessage (delayed delete)
-    
+
     // AI Processing block fields
     var categories: String = ""              // For classifyMessage (comma-separated categories)
     var entityTypes: String = ""             // For extractEntities (comma-separated entity types)
     var rewriteStyle: String = ""            // For rewriteMessage (style description)
-    
+
     // Unified Send Message content source (replaces replyWithAI, etc.)
     var contentSource: ContentSource = .custom
-    
+
     // Message destination mode (per UX spec: replyToTrigger, sameChannel, specificChannel)
-    var destinationMode: MessageDestination? = nil
+    var destinationMode: MessageDestination?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1087,23 +1087,23 @@ struct RuleAction: Identifiable, Codable, Equatable {
         categories = try container.decodeIfPresent(String.self, forKey: .categories) ?? ""
         entityTypes = try container.decodeIfPresent(String.self, forKey: .entityTypes) ?? ""
         rewriteStyle = try container.decodeIfPresent(String.self, forKey: .rewriteStyle) ?? ""
-        
+
         // Decode contentSource with legacy migration
         let decodedContentSource = try container.decodeIfPresent(ContentSource.self, forKey: .contentSource)
         let decodedReplyWithAI = try container.decodeIfPresent(Bool.self, forKey: .replyWithAI) ?? false
-        
+
         // Migration: replyWithAI true -> contentSource = aiResponse
         if decodedContentSource == nil && decodedReplyWithAI && type == .sendMessage {
             contentSource = .aiResponse
         } else {
             contentSource = decodedContentSource ?? .custom
         }
-        
+
         // Decode destinationMode with legacy migration
         let decodedDestinationMode = try container.decodeIfPresent(MessageDestination.self, forKey: .destinationMode)
         let decodedReplyToTrigger = try container.decodeIfPresent(Bool.self, forKey: .replyToTriggerMessage) ?? false
         let hasExplicitChannel = !(try container.decodeIfPresent(String.self, forKey: .channelId) ?? "").isEmpty
-        
+
         // Migration logic per UX spec:
         // - Existing destinationMode -> keep it
         // - Legacy replyToTriggerMessage=true -> replyToTrigger
@@ -1166,7 +1166,7 @@ enum ContentSource: String, Codable, CaseIterable {
     case aiClassification = "ai.classification"
     case aiEntities = "ai.entities"
     case aiRewrite = "ai.rewrite"
-    
+
     var displayName: String {
         switch self {
         case .custom: return "Custom Message"
@@ -1184,7 +1184,7 @@ enum MessageDestination: String, Codable, CaseIterable {
     case replyToTrigger = "replyToTrigger"
     case sameChannel = "sameChannel"
     case specificChannel = "specificChannel"
-    
+
     var displayName: String {
         switch self {
         case .replyToTrigger: return "Reply to Trigger"
@@ -1220,7 +1220,7 @@ extension MessageDestination {
 typealias Action = RuleAction
 
 struct Rule: Identifiable, Codable, Equatable {
-    var id: UUID = UUID()
+    var id = UUID()
     var name: String = "New Action"
     var trigger: TriggerType?
     var conditions: [Condition] = []
@@ -1279,17 +1279,17 @@ struct Rule: Identifiable, Codable, Equatable {
     }
 
     // MARK: - Codable Migration
-    
+
     /// Coding keys for Rule
     enum CodingKeys: String, CodingKey {
         case id, name, trigger, conditions, modifiers, actions, aiBlocks, isEnabled
         case triggerServerId, triggerVoiceChannelId, triggerMessageContains, replyToDMs, includeStageChannels
     }
-    
+
     /// Custom decoder that migrates legacy properties and separates AI blocks from actions
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         trigger = try container.decodeIfPresent(TriggerType.self, forKey: .trigger)
@@ -1298,38 +1298,38 @@ struct Rule: Identifiable, Codable, Equatable {
         actions = try container.decode([RuleAction].self, forKey: .actions)
         aiBlocks = try container.decodeIfPresent([RuleAction].self, forKey: .aiBlocks) ?? []
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
-        
+
         // Legacy properties - keep for backwards compatibility but migrate to conditions
         triggerServerId = try container.decodeIfPresent(String.self, forKey: .triggerServerId) ?? ""
         triggerVoiceChannelId = try container.decodeIfPresent(String.self, forKey: .triggerVoiceChannelId) ?? ""
         triggerMessageContains = try container.decodeIfPresent(String.self, forKey: .triggerMessageContains) ?? ""
         replyToDMs = try container.decodeIfPresent(Bool.self, forKey: .replyToDMs) ?? false
         includeStageChannels = try container.decodeIfPresent(Bool.self, forKey: .includeStageChannels) ?? true
-        
+
         // Migration: Convert legacy trigger properties to filter conditions
         // Only add if not already present to avoid duplicates on repeated saves
         var migratedConditions: [Condition] = []
-        
+
         // Migrate triggerServerId -> Condition.server
         if !triggerServerId.isEmpty && !conditions.contains(where: { $0.type == .server }) {
             migratedConditions.append(Condition(type: .server, value: triggerServerId))
         }
-        
+
         // Migrate triggerVoiceChannelId -> Condition.voiceChannel
         if !triggerVoiceChannelId.isEmpty && !conditions.contains(where: { $0.type == .voiceChannel }) {
             migratedConditions.append(Condition(type: .voiceChannel, value: triggerVoiceChannelId))
         }
-        
+
         // Migrate triggerMessageContains -> Condition.messageContains
         if !triggerMessageContains.isEmpty && triggerMessageContains != "up to?" && !conditions.contains(where: { $0.type == .messageContains }) {
             migratedConditions.append(Condition(type: .messageContains, value: triggerMessageContains))
         }
-        
+
         // Append migrated conditions to existing conditions
         if !migratedConditions.isEmpty {
             conditions.append(contentsOf: migratedConditions)
         }
-        
+
         // Migration: Move AI blocks from actions to aiBlocks for backwards compatibility
         let aiBlockTypes: [ActionType] = [.generateAIResponse, .summariseMessage, .classifyMessage, .extractEntities, .rewriteMessage]
         let (aiBlocksFromActions, remainingActions) = actions.reduce(into: ([RuleAction](), [RuleAction]())) { result, action in
@@ -1362,17 +1362,17 @@ struct Rule: Identifiable, Codable, Equatable {
     /// AI Processing → Message Modifiers → Actions
     var processedActions: [RuleAction] {
         var pipeline: [RuleAction] = []
-        
+
         // 1. AI Processing blocks first
         pipeline.append(contentsOf: aiBlocks)
-        
+
         // 2. Message Modifiers
         pipeline.append(contentsOf: modifiers)
-        
+
         // 3. Actions (excluding AI blocks and extracting embedded modifiers)
         for action in actions {
             var actionWithModifiers = action
-            
+
             // Legacy: replyWithAI toggle creates an AI block
             if action.type == .sendMessage && action.replyWithAI && action.contentSource == .custom {
                 var aiBlock = RuleAction()
@@ -1381,7 +1381,7 @@ struct Rule: Identifiable, Codable, Equatable {
                 pipeline.insert(aiBlock, at: aiBlocks.count)
                 actionWithModifiers.replyWithAI = false
             }
-            
+
             // Extract reply-to-trigger as a modifier
             if action.type == .sendMessage && action.replyToTriggerMessage && action.destinationMode == nil {
                 var replyBlock = RuleAction()
@@ -1389,7 +1389,7 @@ struct Rule: Identifiable, Codable, Equatable {
                 pipeline.append(replyBlock)
                 actionWithModifiers.replyToTriggerMessage = false
             }
-            
+
             // Extract mention disable as a modifier
             if !action.mentionUser { // Default was true in legacy
                 var disableMentionBlock = RuleAction()
@@ -1397,10 +1397,10 @@ struct Rule: Identifiable, Codable, Equatable {
                 pipeline.append(disableMentionBlock)
                 actionWithModifiers.mentionUser = true // Reset so we don't repeat
             }
-            
+
             pipeline.append(actionWithModifiers)
         }
-        
+
         return pipeline
     }
 
@@ -1418,13 +1418,13 @@ struct Rule: Identifiable, Codable, Equatable {
         case .mediaAdded: return "When new media is detected"
         }
     }
-    
+
     /// Returns any blocks that are incompatible with the current trigger
     var incompatibleBlocks: [UUID] {
         guard let trigger = trigger else { return [] }
         let available = trigger.providedVariables
         var ids: [UUID] = []
-        
+
         for condition in conditions {
             if !condition.type.requiredVariables.isSubset(of: available) {
                 ids.append(condition.id)
@@ -1447,10 +1447,10 @@ struct Rule: Identifiable, Codable, Equatable {
         guard let trigger = trigger, !isEditingTrigger else {
             return []
         }
-        
+
         var issues: [ValidationIssue] = []
         let availableVariables = trigger.providedVariables
-        
+
         // Check conditions for variable availability
         for condition in conditions {
             let requiredVars = condition.type.requiredVariables
@@ -1488,7 +1488,7 @@ struct Rule: Identifiable, Codable, Equatable {
                 ))
             }
         }
-        
+
         // Check actions for variable availability and permissions
         for action in actions {
             let requiredVars = action.type.requiredVariables
@@ -1501,7 +1501,7 @@ struct Rule: Identifiable, Codable, Equatable {
                     blockId: action.id
                 ))
             }
-            
+
             // Task 5: Prevent empty Send Message actions
             if action.type == .sendMessage,
                action.contentSource == .custom,
@@ -1524,7 +1524,7 @@ struct Rule: Identifiable, Codable, Equatable {
                     blockId: action.id
                 ))
             }
-            
+
             // Check permissions (warnings, not errors - bot may have permissions)
             let requiredPerms = action.type.requiredPermissions
             if !requiredPerms.isEmpty {
@@ -1549,17 +1549,17 @@ struct Rule: Identifiable, Codable, Equatable {
 
             return issues
     }
-    
+
     /// Checks if rule has any blocking errors
     var hasBlockingErrors: Bool {
         validationIssues.contains { $0.severity == .error }
     }
-    
+
     /// Returns just the errors (not warnings)
     var validationErrors: [ValidationIssue] {
         validationIssues.filter { $0.severity == .error }
     }
-    
+
     /// Returns just the warnings
     var validationWarnings: [ValidationIssue] {
         validationIssues.filter { $0.severity == .warning }
@@ -1573,18 +1573,18 @@ struct ValidationIssue: Identifiable, Hashable {
     let message: String
     let blockType: BlockType
     let blockId: UUID
-    
+
     enum ValidationSeverity: String, Codable, CaseIterable {
         case warning = "Warning"
         case error = "Error"
-        
+
         var icon: String {
             switch self {
             case .warning: return "exclamationmark.triangle"
             case .error: return "xmark.octagon"
             }
         }
-        
+
         var color: String {
             switch self {
             case .warning: return "orange"
@@ -1592,7 +1592,7 @@ struct ValidationIssue: Identifiable, Hashable {
             }
         }
     }
-    
+
     enum BlockType: String, Codable, CaseIterable {
         case rule = "Rule"
         case trigger = "Trigger"

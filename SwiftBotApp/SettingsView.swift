@@ -77,7 +77,7 @@ struct GeneralSettingsView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Bot Token")
                                 .font(.subheadline.weight(.medium))
-                            
+
                             HStack(spacing: 10) {
                                 Group {
                                     if showToken {
@@ -89,7 +89,7 @@ struct GeneralSettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
                                 .disabled(isFailoverManagedNode)
-                                
+
                                 Button {
                                     showToken.toggle()
                                 } label: {
@@ -99,7 +99,7 @@ struct GeneralSettingsView: View {
                                 .buttonStyle(.plain)
                                 .help(showToken ? "Hide token" : "Show token")
                             }
-                            
+
                             Text("Create a bot in the Discord Developer Portal and paste its token here.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -121,7 +121,7 @@ struct GeneralSettingsView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(!canGenerateInviteLink || inviteActionInProgress)
-                            
+
                             if inviteActionInProgress {
                                 ProgressView()
                                     .controlSize(.small)
@@ -513,7 +513,7 @@ struct GeneralSettingsView: View {
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     settingsToggleRow("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
-                    
+
                     if app.settings.adminWebUI.enabled {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Port")
@@ -534,7 +534,7 @@ struct GeneralSettingsView: View {
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     settingsToggleRow("Internet Access (Cloudflare)", isOn: $app.settings.adminWebUI.internetAccessEnabled)
-                    
+
                     if app.settings.adminWebUI.internetAccessEnabled {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Subdomain")
@@ -560,7 +560,7 @@ struct GeneralSettingsView: View {
                         Toggle("", isOn: $source.isEnabled)
                             .toggleStyle(.switch)
                             .labelsHidden()
-                        
+
                         VStack(alignment: .leading, spacing: 4) {
                             TextField("Source Name", text: $source.name)
                                 .font(.subheadline.weight(.semibold))
@@ -586,9 +586,9 @@ struct GeneralSettingsView: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        
+
                         Spacer()
-                        
+
                         Button {
                             app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
                         } label: {
@@ -600,7 +600,7 @@ struct GeneralSettingsView: View {
                     .padding(12)
                     .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                
+
                 Button {
                     app.mediaLibrarySettings.sources.append(MediaLibrarySource(name: "New Source", rootPath: ""))
                 } label: {
@@ -691,7 +691,7 @@ private struct SettingsDisclosureCard<Content: View>: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
                             .font(.headline.weight(.bold))
-                        
+
                         if !isExpanded {
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(summaryLines, id: \.self) { line in
@@ -702,9 +702,9 @@ private struct SettingsDisclosureCard<Content: View>: View {
                             }
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .bold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
@@ -719,7 +719,7 @@ private struct SettingsDisclosureCard<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Divider()
                         .padding(.horizontal, 24)
-                    
+
                     content()
                         .padding(24)
                         .disabled(contentDisabled)

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct PreferencesView: View {
     @EnvironmentObject var app: AppModel
-    
+
     // Persist selected tab to fix toolbar rendering issues
     @AppStorage("swiftbot.preferences.selectedTab")
     private var selectedTab = 0
@@ -96,7 +96,7 @@ struct PreferencesView: View {
 // Separate view to handle window closing without affecting PreferencesView identity
 private struct PreferencesWindowCloser: View {
     @EnvironmentObject var app: AppModel
-    
+
     var body: some View {
         EmptyView()
             .onChange(of: app.isOnboardingComplete) { oldValue, newValue in
