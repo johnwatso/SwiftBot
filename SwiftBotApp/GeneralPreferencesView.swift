@@ -181,8 +181,23 @@ struct GeneralPreferencesView: View {
                                 .buttonStyle(.bordered)
                             }
 
-                            TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
-                                .textFieldStyle(.roundedBorder)
+                            HStack {
+                                TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
+                                    .textFieldStyle(.roundedBorder)
+                                Button {
+                                    let panel = NSOpenPanel()
+                                    panel.canChooseFiles = false
+                                    panel.canChooseDirectories = true
+                                    panel.allowsMultipleSelection = false
+                                    panel.prompt = "Choose"
+                                    if panel.runModal() == .OK, let url = panel.url {
+                                        source.rootPath = url.path
+                                    }
+                                } label: {
+                                    Image(systemName: "folder")
+                                }
+                                .buttonStyle(.bordered)
+                            }
 
                             TextField(
                                 "mp4, mov, m4v",

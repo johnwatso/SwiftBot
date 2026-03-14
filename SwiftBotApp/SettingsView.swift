@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var app: AppModel
@@ -564,10 +565,26 @@ struct GeneralSettingsView: View {
                             TextField("Source Name", text: $source.name)
                                 .font(.subheadline.weight(.semibold))
                                 .textFieldStyle(.plain)
-                            TextField("Path", text: $source.rootPath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textFieldStyle(.plain)
+                            HStack(spacing: 4) {
+                                TextField("Path", text: $source.rootPath)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .textFieldStyle(.plain)
+                                Button {
+                                    let panel = NSOpenPanel()
+                                    panel.canChooseFiles = false
+                                    panel.canChooseDirectories = true
+                                    panel.allowsMultipleSelection = false
+                                    panel.prompt = "Choose"
+                                    if panel.runModal() == .OK, let url = panel.url {
+                                        source.rootPath = url.path
+                                    }
+                                } label: {
+                                    Image(systemName: "folder")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                         
                         Spacer()
