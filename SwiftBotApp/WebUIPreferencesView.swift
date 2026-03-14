@@ -477,7 +477,7 @@ struct InternetAccessConfigurationSection: View {
             }
         } message: {
             let primaryHost = app.settings.clusterLeaderAddress
-            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead."
+            let message = "This SwiftBot instance is running as a Worker node in a SwiftMesh cluster.\n\nWeb UI configuration changes made here will NOT be synchronized to the Primary node.\n\nFor consistent configuration, it is recommended to access the Web UI through the Primary SwiftBot instance instead." // swiftlint:disable:this line_length
             
             if !primaryHost.isEmpty {
                 Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
@@ -809,9 +809,9 @@ struct AdminWebAuthenticationSection: View {
 
         // Handle existing path in base URL (e.g. proxy subpath)
         if !components.path.isEmpty && components.path != "/" {
-            let base_path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let sub_path = path.hasPrefix("/") ? path : "/" + path
-            components.path = base_path + sub_path
+            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+            let subPath = path.hasPrefix("/") ? path : "/" + path
+            components.path = basePath + subPath
         } else {
             components.path = path
         }

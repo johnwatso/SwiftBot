@@ -15,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4643F3EE1229139DEE939C6D"
-               BuildableName = "SwiftBot.app"
-               BlueprintName = "SwiftBot"
+               BlueprintIdentifier = "0D7DDDF6C0A646EE75388F7A"
+               BuildableName = "SparklePublisher"
+               BlueprintName = "SparklePublisher"
                ReferencedContainer = "container:SwiftBot.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -32,16 +32,14 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4643F3EE1229139DEE939C6D"
-            BuildableName = "SwiftBot.app"
-            BlueprintName = "SwiftBot"
+            BlueprintIdentifier = "0D7DDDF6C0A646EE75388F7A"
+            BuildableName = "SparklePublisher"
+            BlueprintName = "SparklePublisher"
             ReferencedContainer = "container:SwiftBot.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
       </Testables>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -57,9 +55,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4643F3EE1229139DEE939C6D"
-            BuildableName = "SwiftBot.app"
-            BlueprintName = "SwiftBot"
+            BlueprintIdentifier = "0D7DDDF6C0A646EE75388F7A"
+            BuildableName = "SparklePublisher"
+            BlueprintName = "SparklePublisher"
             ReferencedContainer = "container:SwiftBot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -76,14 +74,12 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4643F3EE1229139DEE939C6D"
-            BuildableName = "SwiftBot.app"
-            BlueprintName = "SwiftBot"
+            BlueprintIdentifier = "0D7DDDF6C0A646EE75388F7A"
+            BuildableName = "SparklePublisher"
+            BlueprintName = "SparklePublisher"
             ReferencedContainer = "container:SwiftBot.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

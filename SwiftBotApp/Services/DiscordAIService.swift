@@ -297,6 +297,7 @@ struct OpenAIImageEngine {
 
     private struct ImageGenerationResponse: Decodable {
         struct ImageData: Decodable {
+            // swiftlint:disable:next identifier_name
             let b64_json: String?
         }
 

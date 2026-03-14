@@ -1987,9 +1987,9 @@ actor AdminWebServer {
         
         // Handle existing path in base URL (e.g. proxy subpath)
         if !components.path.isEmpty && components.path != "/" {
-            let base_path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let sub_path = path.hasPrefix("/") ? path : "/" + path
-            components.path = base_path + sub_path
+            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+            let subPath = path.hasPrefix("/") ? path : "/" + path
+            components.path = basePath + subPath
         } else {
             components.path = path
         }
