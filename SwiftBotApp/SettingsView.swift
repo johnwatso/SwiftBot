@@ -8,19 +8,11 @@ struct GeneralSettingsView: View {
     @AppStorage("settings.swiftmesh.expanded.v1") private var isSwiftMeshExpanded = false
     @AppStorage("settings.media.expanded.v1") private var isMediaExpanded = false
     @AppStorage("settings.webui.expanded.v1") private var isWebUIExpanded = false
-    @State private var settingsSnapshot = AppPreferencesSnapshot()
+    @State private var autoSaveTask: Task<Void, Never>? = nil
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
     @State private var showRunSetupPrompt = false
-
-    private var hasUnsavedChanges: Bool {
-        currentSettingsSnapshot != settingsSnapshot
-    }
-
-    private var currentSettingsSnapshot: AppPreferencesSnapshot {
-        app.createPreferencesSnapshot()
-    }
 
     private var isFailoverManagedNode: Bool {
         app.settings.clusterMode == .worker || app.settings.clusterMode == .standby
@@ -230,7 +222,6 @@ struct GeneralSettingsView: View {
                 )
             }
             .padding(24)
-            .padding(.bottom, 80)
         }
         .overlay(alignment: .topTrailing) {
             if let message = transientToastMessage {
@@ -248,20 +239,13 @@ struct GeneralSettingsView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges {
-                StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
-                    app.saveSettings()
-                    withAnimation {
-                        settingsSnapshot = currentSettingsSnapshot
-                    }
-                }
-                .padding(.trailing, 22)
-                .padding(.bottom, 18)
+        .onChange(of: app.createPreferencesSnapshot()) { _, _ in
+            autoSaveTask?.cancel()
+            autoSaveTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                app.saveSettings()
             }
-        }
-        .onAppear {
-            settingsSnapshot = currentSettingsSnapshot
         }
     }
 

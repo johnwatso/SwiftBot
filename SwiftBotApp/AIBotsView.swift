@@ -66,6 +66,10 @@ struct AIBotsView: View {
             }
         }
         .onChange(of: app.settings.ollamaBaseURL) { _, _ in
+            // Only probe Ollama if it's enabled
+            if app.settings.ollamaEnabled {
+                app.detectOllamaModel()
+            }
             Task { await app.refreshAIStatus() }
         }
         .onChange(of: app.settings.openAIAPIKey) { _, _ in
