@@ -30,7 +30,6 @@
 		212CE68E56C348E2B16F8E20 /* Models/EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2038AEE60943658748C2A8 /* Models/EventBus.swift */; };
 		222494946C4E49E09016F964 /* SwiftBotApp/OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */; };
 		259ADBC5CA9C03B29493726F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6337960E98AEBC0A19A67531 /* AppModel.swift */; };
-		2A8C10001122334455667788 /* UpdateEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 2A8C10101122334455667788 /* UpdateEngine */; };
 		2D93A1C4B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D93A1C3B5E6F708192A3B4C /* AppModel+SlashCommandHelpers.swift */; };
 		2E1AB44CA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1AB44BA953D8D1C2F83AC2 /* AppModel+DiscordParsers.swift */; };
 		2FB770B8A11D22E33F44C550 /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB770B7A11D22E33F44C550 /* AppModelTypes.swift */; };
@@ -108,6 +107,18 @@
 		F4A5B6C7D8E9F001122334A6 /* VoiceActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */; };
 		F607080011223344556677AD /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607080011223344556677 /* AIBotsView.swift */; };
 		F6B4A085F1EF4FC8B45EA1A5 /* Models/GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */; };
+		UE0001AA11BB22CC33DD4411 /* UpdateEngine/AMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0001AA11BB22CC33DD4401 /* UpdateEngine/AMDService.swift */; };
+		UE0002AA11BB22CC33DD4412 /* UpdateEngine/BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0002AA11BB22CC33DD4402 /* UpdateEngine/BuiltInUpdateSources.swift */; };
+		UE0003AA11BB22CC33DD4413 /* UpdateEngine/CacheKeyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0003AA11BB22CC33DD4403 /* UpdateEngine/CacheKeyBuilder.swift */; };
+		UE0004AA11BB22CC33DD4414 /* UpdateEngine/EmbedFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0004AA11BB22CC33DD4404 /* UpdateEngine/EmbedFormatter.swift */; };
+		UE0005AA11BB22CC33DD4415 /* UpdateEngine/IntelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0005AA11BB22CC33DD4405 /* UpdateEngine/IntelService.swift */; };
+		UE0006AA11BB22CC33DD4416 /* UpdateEngine/NVIDIAService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0006AA11BB22CC33DD4406 /* UpdateEngine/NVIDIAService.swift */; };
+		UE0007AA11BB22CC33DD4417 /* UpdateEngine/ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0007AA11BB22CC33DD4407 /* UpdateEngine/ReleaseNotes.swift */; };
+		UE0008AA11BB22CC33DD4418 /* UpdateEngine/SteamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0008AA11BB22CC33DD4408 /* UpdateEngine/SteamService.swift */; };
+		UE0009AA11BB22CC33DD4419 /* UpdateEngine/UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE0009AA11BB22CC33DD4409 /* UpdateEngine/UpdateChecker.swift */; };
+		UE000AAA11BB22CC33DD441A /* UpdateEngine/UpdateItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE000AAA11BB22CC33DD440A /* UpdateEngine/UpdateItem.swift */; };
+		UE000BAA11BB22CC33DD441B /* UpdateEngine/UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE000BAA11BB22CC33DD440B /* UpdateEngine/UpdateSource.swift */; };
+		UE000CAA11BB22CC33DD441C /* UpdateEngine/VersionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = UE000CAA11BB22CC33DD440C /* UpdateEngine/VersionStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -206,6 +217,18 @@
 		F2206311680E46EFA928E726 /* SwiftBotApp/OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBotApp/OnboardingStyles.swift; sourceTree = "<group>"; };
 		F4A5B6C7D8E9F001122334A5 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
 		F9564766EDA4C18D06A84BCB /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		UE0001AA11BB22CC33DD4401 /* UpdateEngine/AMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/AMDService.swift"; sourceTree = "<group>"; };
+		UE0002AA11BB22CC33DD4402 /* UpdateEngine/BuiltInUpdateSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/BuiltInUpdateSources.swift"; sourceTree = "<group>"; };
+		UE0003AA11BB22CC33DD4403 /* UpdateEngine/CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/CacheKeyBuilder.swift"; sourceTree = "<group>"; };
+		UE0004AA11BB22CC33DD4404 /* UpdateEngine/EmbedFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/EmbedFormatter.swift"; sourceTree = "<group>"; };
+		UE0005AA11BB22CC33DD4405 /* UpdateEngine/IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/IntelService.swift"; sourceTree = "<group>"; };
+		UE0006AA11BB22CC33DD4406 /* UpdateEngine/NVIDIAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/NVIDIAService.swift"; sourceTree = "<group>"; };
+		UE0007AA11BB22CC33DD4407 /* UpdateEngine/ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/ReleaseNotes.swift"; sourceTree = "<group>"; };
+		UE0008AA11BB22CC33DD4408 /* UpdateEngine/SteamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/SteamService.swift"; sourceTree = "<group>"; };
+		UE0009AA11BB22CC33DD4409 /* UpdateEngine/UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/UpdateChecker.swift"; sourceTree = "<group>"; };
+		UE000AAA11BB22CC33DD440A /* UpdateEngine/UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/UpdateItem.swift"; sourceTree = "<group>"; };
+		UE000BAA11BB22CC33DD440B /* UpdateEngine/UpdateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/UpdateSource.swift"; sourceTree = "<group>"; };
+		UE000CAA11BB22CC33DD440C /* UpdateEngine/VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UpdateEngine/VersionStore.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -214,7 +237,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				1F7A11C22D33445566778899 /* Sparkle in Frameworks */,
-				2A8C10001122334455667788 /* UpdateEngine in Frameworks */,
 				A1B2C3D40111223344556A01 /* X509 in Frameworks */,
 				A1B2C3D40111223344556A02 /* Crypto in Frameworks */,
 				A1B2C3D40111223344556A03 /* SwiftASN1 in Frameworks */,
@@ -348,8 +370,28 @@
 				AA2000011122334455667705 /* WebUIPreferencesView.swift */,
 				AA2000011122334455667706 /* UpdatesPreferencesView.swift */,
 				AA2000011122334455667707 /* AdvancedPreferencesView.swift */,
+				UE00GRPAA11BB22CC33DD4400 /* UpdateEngine */,
 			);
 			path = SwiftBotApp;
+			sourceTree = "<group>";
+		};
+		UE00GRPAA11BB22CC33DD4400 /* UpdateEngine */ = {
+			isa = PBXGroup;
+			children = (
+				UE0001AA11BB22CC33DD4401 /* UpdateEngine/AMDService.swift */,
+				UE0002AA11BB22CC33DD4402 /* UpdateEngine/BuiltInUpdateSources.swift */,
+				UE0003AA11BB22CC33DD4403 /* UpdateEngine/CacheKeyBuilder.swift */,
+				UE0004AA11BB22CC33DD4404 /* UpdateEngine/EmbedFormatter.swift */,
+				UE0005AA11BB22CC33DD4405 /* UpdateEngine/IntelService.swift */,
+				UE0006AA11BB22CC33DD4406 /* UpdateEngine/NVIDIAService.swift */,
+				UE0007AA11BB22CC33DD4407 /* UpdateEngine/ReleaseNotes.swift */,
+				UE0008AA11BB22CC33DD4408 /* UpdateEngine/SteamService.swift */,
+				UE0009AA11BB22CC33DD4409 /* UpdateEngine/UpdateChecker.swift */,
+				UE000AAA11BB22CC33DD440A /* UpdateEngine/UpdateItem.swift */,
+				UE000BAA11BB22CC33DD440B /* UpdateEngine/UpdateSource.swift */,
+				UE000CAA11BB22CC33DD440C /* UpdateEngine/VersionStore.swift */,
+			);
+			name = UpdateEngine;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -370,7 +412,6 @@
 			name = SwiftBot;
 			packageProductDependencies = (
 				1F7A11C22D33445566778898 /* Sparkle */,
-				2A8C10101122334455667788 /* UpdateEngine */,
 				A1B2C3D40111223344556901 /* X509 */,
 				A1B2C3D40111223344556902 /* Crypto */,
 				A1B2C3D40111223344556903 /* SwiftASN1 */,
@@ -403,7 +444,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */,
 				A1B2C3D40111223344556801 /* XCRemoteSwiftPackageReference "swift-certificates" */,
 				A1B2C3D40111223344556802 /* XCRemoteSwiftPackageReference "swift-crypto" */,
 				A1B2C3D40111223344556803 /* XCRemoteSwiftPackageReference "swift-asn1" */,
@@ -526,6 +566,18 @@
 				5B1E9801A1B2C3D4E5F60718 /* VoiceRuleListView.swift in Sources */,
 				D1A2B3C40102030405060708 /* DiagnosticsView.swift in Sources */,
 				E4C1A9000102030405060708 /* WikiBridgeView.swift in Sources */,
+				UE0001AA11BB22CC33DD4411 /* UpdateEngine/AMDService.swift in Sources */,
+				UE0002AA11BB22CC33DD4412 /* UpdateEngine/BuiltInUpdateSources.swift in Sources */,
+				UE0003AA11BB22CC33DD4413 /* UpdateEngine/CacheKeyBuilder.swift in Sources */,
+				UE0004AA11BB22CC33DD4414 /* UpdateEngine/EmbedFormatter.swift in Sources */,
+				UE0005AA11BB22CC33DD4415 /* UpdateEngine/IntelService.swift in Sources */,
+				UE0006AA11BB22CC33DD4416 /* UpdateEngine/NVIDIAService.swift in Sources */,
+				UE0007AA11BB22CC33DD4417 /* UpdateEngine/ReleaseNotes.swift in Sources */,
+				UE0008AA11BB22CC33DD4418 /* UpdateEngine/SteamService.swift in Sources */,
+				UE0009AA11BB22CC33DD4419 /* UpdateEngine/UpdateChecker.swift in Sources */,
+				UE000AAA11BB22CC33DD441A /* UpdateEngine/UpdateItem.swift in Sources */,
+				UE000BAA11BB22CC33DD441B /* UpdateEngine/UpdateSource.swift in Sources */,
+				UE000CAA11BB22CC33DD441C /* UpdateEngine/VersionStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -782,13 +834,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Sources/UpdateEngine;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -845,11 +890,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1F7A11C22D33445566778896 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
-		};
-		2A8C10101122334455667788 /* UpdateEngine */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2A8C10201122334455667788 /* XCLocalSwiftPackageReference "Sources/UpdateEngine" */;
-			productName = UpdateEngine;
 		};
 		A1B2C3D40111223344556901 /* X509 */ = {
 			isa = XCSwiftPackageProductDependency;

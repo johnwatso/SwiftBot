@@ -1,5 +1,4 @@
 import Foundation
-import UpdateEngine
 
 struct PatchyFetchResult: Sendable {
     let sourceName: String
