@@ -526,21 +526,42 @@ actor DiscordAIService {
         guard finalMessages.contains(where: { $0.role == .user }) else { return nil }
 
         let engines = engineFactory(configuration, systemPrompt)
-        for engine in orderedEngines(preferred: configuration.preferredProvider, engines: engines) {
-            if let reply = await engine.generate(messages: finalMessages) {
-                let cleaned = cleanOutput(reply)
-                let normalized: String
-                if let username {
-                    normalized = stripLeadingSpeakerPrefix(cleaned, username: username)
-                } else {
-                    normalized = cleaned
-                }
-                if !normalized.isEmpty {
-                    return normalized
+        let ordered = orderedEngines(preferred: configuration.preferredProvider, engines: engines)
+
+        // Race all AI engines in parallel — fastest successful response wins.
+        // Preference order determines starting order, not priority.
+        return await withTaskGroup(of: (Int, String?).self) { group in
+            for (index, engine) in ordered.enumerated() {
+                group.addTask { [self, username] in
+                    let reply = await engine.generate(messages: finalMessages)
+                    // Clean the reply
+                    guard let cleaned = reply.map({ cleanOutput($0) }), !cleaned.isEmpty else {
+                        return (index, nil)
+                    }
+                    // Strip speaker prefix if needed
+                    let normalized: String
+                    if let username {
+                        normalized = stripLeadingSpeakerPrefix(cleaned, username: username)
+                    } else {
+                        normalized = cleaned
+                    }
+                    return (index, normalized.isEmpty ? nil : normalized)
                 }
             }
+            
+            // Collect first non-nil result
+            var bestResult: (index: Int, reply: String)? = nil
+            
+            for await (index, result) in group {
+                if let result {
+                    bestResult = (index, result)
+                    group.cancelAll()
+                    break
+                }
+            }
+            
+            return bestResult?.reply
         }
-        return nil
     }
 
     private func orderedEngines(preferred: AIProviderPreference, engines: EngineSet) -> [any AIEngine] {
@@ -558,7 +579,7 @@ actor DiscordAIService {
         await ollamaModelResolver(baseURL, preferredModel)
     }
 
-    private func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
+    private nonisolated func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let speaker = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !speaker.isEmpty else { return trimmed }

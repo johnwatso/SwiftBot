@@ -2115,7 +2115,7 @@ extension AppModel {
         currentContent: String
     ) async -> (messages: [Message], wikiContext: String) {
         let maxHistory = 8
-        var recent = await conversationStore.recentMessages(for: scope, limit: maxHistory)
+        var recent = await conversationStore.recentMessages(in: scope, limit: maxHistory)
         
         if !currentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             recent.append(

@@ -29,31 +29,6 @@ enum ViewMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct BugAutoFixPendingApproval {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-}
-
-struct BugAutoFixPendingStart {
-    let bugMessageID: String
-    let channelID: String
-    let guildID: String
-    let sourceRepoPath: String
-    let isolatedRepoPath: String
-    let branch: String
-    let updateChannelID: String
-    let version: String
-    let build: String
-    let requestedByUserID: String
-}
-
 private struct AdminWebCertificateRenewalConfiguration: Equatable {
     let enabled: Bool
     let domain: String
@@ -442,14 +417,34 @@ final class AppModel: ObservableObject {
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
-    let discordHTTPSession = URLSession(configuration: .default)
-    lazy var aiService = DiscordAIService(session: discordHTTPSession)
-    lazy var identityRESTClient = DiscordIdentityRESTClient(session: discordHTTPSession)
-    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordHTTPSession)
-    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordHTTPSession)
-    lazy var wikiLookupService = WikiLookupService(session: discordHTTPSession)
+    
+    /// Shared session for general Discord REST API calls (gateway, guild, message operations).
+    /// Uses default configuration for connection pooling and reuse.
+    let discordRESTSession = URLSession(configuration: .default)
+    
+    /// Dedicated session for Discord identity/token validation calls.
+    /// Uses ephemeral configuration: no disk cache, no credential storage, short timeout.
+    /// This ensures token validation responses are never cached and credentials aren't persisted.
+    private static let identitySessionConfig: URLSessionConfiguration = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 10
+        c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        c.urlCache = nil
+        return c
+    }()
+    let identitySession = URLSession(configuration: AppModel.identitySessionConfig)
+    
+    lazy var aiService = DiscordAIService(session: discordRESTSession)
+    lazy var identityRESTClient = DiscordIdentityRESTClient(
+        session: discordRESTSession,
+        identitySession: identitySession
+    )
+    lazy var guildRESTClient = DiscordGuildRESTClient(session: discordRESTSession)
+    lazy var messageRESTClient = DiscordMessageRESTClient(session: discordRESTSession)
+    lazy var wikiLookupService = WikiLookupService(session: discordRESTSession)
     lazy var service = DiscordService(
-        session: discordHTTPSession,
+        session: discordRESTSession,
+        identitySession: identitySession,
         aiService: aiService,
         wikiLookupService: wikiLookupService
     )
@@ -510,6 +505,23 @@ final class AppModel: ObservableObject {
     @Published var botAvatarHash: String?
     @Published var userAvatarHashById: [String: String] = [:]
     @Published var guildAvatarHashByMemberKey: [String: String] = [:]
+    // Max cache entries to prevent unbounded memory growth during extended operation
+    private let maxAvatarCacheCount = 1000
+
+    private func cacheUserAvatar(_ hash: String, for userId: String) {
+        userAvatarHashById[userId] = hash
+        if userAvatarHashById.count > maxAvatarCacheCount {
+            userAvatarHashById.keys.prefix(200).forEach { userAvatarHashById.removeValue(forKey: $0) }
+        }
+    }
+
+    private func cacheGuildAvatar(_ hash: String, for key: String) {
+        guildAvatarHashByMemberKey[key] = hash
+        if guildAvatarHashByMemberKey.count > maxAvatarCacheCount {
+            guildAvatarHashByMemberKey.keys.prefix(200).forEach { guildAvatarHashByMemberKey.removeValue(forKey: $0) }
+        }
+    }
+    
     @Published var mediaLibrarySettings = MediaLibrarySettings()
     @Published var mediaExportJobs: [MediaExportJob] = []
     var lastSlashRegistrationAt: Date?
@@ -736,15 +748,16 @@ final class AppModel: ObservableObject {
                 return await self.localMediaFrameResponse(itemID: itemID, atSeconds: seconds)
             },
                 conversationFetcher: { [weak self] fromRecordID, limit in
-                    guard let self else { return ([], false) }
+                    guard let self, let fromRecordID else { return ([], false) }
                     return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
                 },
                 onPromotion: { [weak self] in
                     guard let self else { return }
-                    // When promoted to leader, start connecting to Discord.
+                    // Promoted to Primary — enable Discord output. If already connected
+                    // in passive standby mode, no reconnect is needed; output gate flips instantly.
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        logs.append("🚀 Promoted to Primary. Connecting to Discord...")
+                        logs.append("🚀 Promoted to Primary.")
                         Task { await self.connectDiscordAfterPromotion() }
                     }
                 }
@@ -2244,6 +2257,9 @@ final class AppModel: ObservableObject {
 
         let runtimeMode = await cluster.currentSnapshot().mode
         if runtimeMode == .standby {
+            // Block all Discord output — standby observes events for live dashboard
+            // but must not respond until promoted to Primary.
+            await service.setOutputAllowed(false)
             logs.append("Fail Over mode active. Connecting to Discord in passive mode; live work remains delegated/primary-only.")
         }
 
@@ -2262,6 +2278,18 @@ final class AppModel: ObservableObject {
     }
 
     func connectDiscordAfterPromotion() async {
+        // Allow output immediately — the gateway connection is already live if this
+        // node was running in standby (passive) mode. Avoid reconnecting if already
+        // connected to prevent the brief downtime a disconnect/reconnect would cause.
+        await service.setOutputAllowed(true)
+
+        if status == .running {
+            // Already connected and receiving events — just flip the output gate.
+            logs.append("✅ Output enabled. Now responding as Primary.")
+            return
+        }
+
+        // Not yet connected (e.g. fresh start without prior standby connection).
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if settings.token != normalizedToken {
             settings.token = normalizedToken
@@ -3326,7 +3354,8 @@ final class AppModel: ObservableObject {
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
-            remoteAccessToken: settings.remoteAccessToken
+            remoteAccessToken: settings.remoteAccessToken,
+            devFeaturesEnabled: settings.devFeaturesEnabled
         )
 
         let runtimeState = await adminWebServer.configure(
@@ -4478,7 +4507,7 @@ final class AppModel: ObservableObject {
         let currentTerm = await cluster.currentLeaderTerm()
         for (nodeName, baseURL) in nodes {
             let cursor = await cluster.currentReplicationCursor(for: nodeName)
-            let fromID = cursor?.lastSentRecordID
+            let fromID = cursor?.lastSentRecordID ?? ""
             let (records, hasMore) = await conversationStore.recordsSince(fromRecordID: fromID, limit: 500)
             let lastID = records.last?.id
             let payload = MeshSyncPayload(
@@ -4862,9 +4891,10 @@ final class AppModel: ObservableObject {
 
     func startUptimeTicker() {
         uptimeTask?.cancel()
-        uptimeTask = Task {
+        uptimeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self = self else { return }
                 await MainActor.run {
                     if let startedAt = self.uptime?.startedAt {
                         self.uptime = UptimeInfo(startedAt: startedAt)
@@ -5120,14 +5150,14 @@ final class AppModel: ObservableObject {
                case let .object(user)? = member["user"],
                case let .string(avatarHash)? = user["avatar"],
                !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
                 if case let .string(guildAvatarHash)? = member["avatar"], !guildAvatarHash.isEmpty {
-                    guildAvatarHashByMemberKey["\(guildId)-\(userId)"] = guildAvatarHash
+                    cacheGuildAvatar(guildAvatarHash, for: "\(guildId)-\(userId)")
                 }
             } else if case let .object(user)? = stateMap["user"],
                       case let .string(avatarHash)? = user["avatar"],
                       !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
             }
 
             let username = await voiceDisplayName(from: stateMap, userId: userId)
@@ -5166,7 +5196,7 @@ final class AppModel: ObservableObject {
                   case let .string(userId)? = user["id"] else { continue }
 
             if case let .string(avatarHash)? = user["avatar"], !avatarHash.isEmpty {
-                userAvatarHashById[userId] = avatarHash
+                cacheUserAvatar(avatarHash, for: userId)
             }
 
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
@@ -5188,9 +5218,9 @@ final class AppModel: ObservableObject {
 
     func scheduleDiscordCacheSave() {
         discordCacheSaveTask?.cancel()
-        discordCacheSaveTask = Task {
+        discordCacheSaveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self = self else { return }
             do {
                 let snapshot = await self.discordCache.currentSnapshot()
                 try await discordCacheStore.save(snapshot)

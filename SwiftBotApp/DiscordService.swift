@@ -17,6 +17,7 @@ actor DiscordService {
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
     private let restBase = URL(string: "https://discord.com/api/v10")!
     private let session: URLSession
+    private let identitySession: URLSession
     private var botToken: String?
     private var ruleEngine: RuleEngine?
     private var voiceRuleStateStore = VoiceRuleStateStore()
@@ -31,50 +32,50 @@ actor DiscordService {
     private lazy var ruleExecutionService = RuleExecutionService(
         aiService: aiService,
         dependencies: .init(
-            sendMessage: { [unowned self] channelId, content, token in
-                try await self.sendMessage(channelId: channelId, content: content, token: token)
+            sendMessage: { [weak self] channelId, content, token in
+                try await self?.sendMessage(channelId: channelId, content: content, token: token)
             },
-            sendPayloadMessage: { [unowned self] channelId, payload, token in
-                _ = try await self.sendMessage(channelId: channelId, payload: payload, token: token)
+            sendPayloadMessage: { [weak self] channelId, payload, token in
+                _ = try await self?.sendMessage(channelId: channelId, payload: payload, token: token)
             },
-            sendDM: { [unowned self] userId, content in
-                try await self.sendDM(userId: userId, content: content)
+            sendDM: { [weak self] userId, content in
+                try await self?.sendDM(userId: userId, content: content)
             },
-            addReaction: { [unowned self] channelId, messageId, emoji, token in
-                try await self.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
+            addReaction: { [weak self] channelId, messageId, emoji, token in
+                try await self?.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
             },
-            deleteMessage: { [unowned self] channelId, messageId, token in
-                try await self.deleteMessage(channelId: channelId, messageId: messageId, token: token)
+            deleteMessage: { [weak self] channelId, messageId, token in
+                try await self?.deleteMessage(channelId: channelId, messageId: messageId, token: token)
             },
-            addRole: { [unowned self] guildId, userId, roleId, token in
-                try await self.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            addRole: { [weak self] guildId, userId, roleId, token in
+                try await self?.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
             },
-            removeRole: { [unowned self] guildId, userId, roleId, token in
-                try await self.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            removeRole: { [weak self] guildId, userId, roleId, token in
+                try await self?.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
             },
-            timeoutMember: { [unowned self] guildId, userId, durationSeconds, token in
-                try await self.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
+            timeoutMember: { [weak self] guildId, userId, durationSeconds, token in
+                try await self?.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
             },
-            kickMember: { [unowned self] guildId, userId, reason, token in
-                try await self.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
+            kickMember: { [weak self] guildId, userId, reason, token in
+                try await self?.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
             },
-            moveMember: { [unowned self] guildId, userId, channelId, token in
-                try await self.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
+            moveMember: { [weak self] guildId, userId, channelId, token in
+                try await self?.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
             },
-            createChannel: { [unowned self] guildId, name, token in
-                try await self.createChannel(guildId: guildId, name: name, token: token)
+            createChannel: { [weak self] guildId, name, token in
+                try await self?.createChannel(guildId: guildId, name: name, token: token)
             },
-            sendWebhook: { [unowned self] url, content in
-                try await self.sendWebhook(url: url, content: content)
+            sendWebhook: { [weak self] url, content in
+                try await self?.sendWebhook(url: url, content: content)
             },
-            updatePresence: { [unowned self] text in
-                await self.updatePresence(text: text)
+            updatePresence: { [weak self] text in
+                await self?.updatePresence(text: text)
             },
-            resolveChannelName: { [unowned self] guildId, channelId in
-                await self.resolvedChannelName(guildId: guildId, channelId: channelId)
+            resolveChannelName: { [weak self] guildId, channelId in
+                await self?.resolvedChannelName(guildId: guildId, channelId: channelId) ?? "Unknown"
             },
-            resolveGuildName: { [unowned self] guildId in
-                await self.guildNamesById[guildId]
+            resolveGuildName: { [weak self] guildId in
+                await self?.guildNamesById[guildId]
             },
             debugLog: { [discordLogger] message in
                 discordLogger.debug("\(message, privacy: .public)")
@@ -88,23 +89,22 @@ actor DiscordService {
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     private var historyProvider: HistoryProvider?
 
-    /// Dedicated session for Discord identity probes (/users/@me, /oauth2/applications/@me).
-    /// Short timeout, no caching — token never cached locally.
-    private static let identitySessionConfig: URLSessionConfiguration = {
+    private static func makeDefaultIdentitySession() -> URLSession {
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 10
         c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         c.urlCache = nil
-        return c
-    }()
-    private let identitySession = URLSession(configuration: DiscordService.identitySessionConfig)
+        return URLSession(configuration: c)
+    }
 
     init(
         session: URLSession = URLSession(configuration: .default),
+        identitySession: URLSession = DiscordService.makeDefaultIdentitySession(),
         aiService: DiscordAIService? = nil,
         wikiLookupService: WikiLookupService? = nil
     ) {
         self.session = session
+        self.identitySession = identitySession
         self.aiService = aiService ?? DiscordAIService(session: session)
         self.wikiLookupService = wikiLookupService ?? WikiLookupService(session: session)
     }
@@ -152,10 +152,14 @@ actor DiscordService {
     }
 
     private func handleInboundGatewayPayload(_ payload: GatewayPayload) async {
-        seedChannelTypesIfNeeded(payload)
-        seedGuildNameIfNeeded(payload)
-        seedVoiceChannelsIfNeeded(payload)
-        seedVoiceStateIfNeeded(payload)
+        // Run independent seed operations in parallel for faster gateway event processing.
+        // These operate on disjoint state, so no synchronization is needed.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.seedChannelTypesIfNeeded(payload) }
+            group.addTask { await self.seedGuildNameIfNeeded(payload) }
+            group.addTask { await self.seedVoiceChannelsIfNeeded(payload) }
+            group.addTask { await self.seedVoiceStateIfNeeded(payload) }
+        }
         await processRuleActionsIfNeeded(payload)
         await onPayload?(payload)
     }
@@ -169,8 +173,8 @@ actor DiscordService {
     }
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
-    func wasMessageHandledByRules(messageId: String) -> Bool {
-        ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
+    func wasMessageHandledByRules(messageId: String) async -> Bool {
+        await ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
     }
 
     func connect(token: String) async {
@@ -365,6 +369,10 @@ actor DiscordService {
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
@@ -373,22 +381,42 @@ actor DiscordService {
     }
 
     func addReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: addReaction blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
 
     func removeOwnReaction(channelId: String, messageId: String, emoji: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: removeOwnReaction blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.removeOwnReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
     }
 
     func pinMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: pinMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func unpinMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: unpinMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.unpinMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: createThreadFromMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: token)
     }
 
@@ -400,7 +428,11 @@ actor DiscordService {
         filename: String,
         token: String
     ) async throws -> String {
-        try await messageRESTClient.sendMessageWithImage(
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessageWithImage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        return try await messageRESTClient.sendMessageWithImage(
             channelId: channelId,
             content: content,
             imageData: imageData,
@@ -417,6 +449,10 @@ actor DiscordService {
         filename: String,
         token: String
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessageWithImage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.editMessageWithImage(
             channelId: channelId,
             messageId: messageId,
@@ -432,7 +468,7 @@ actor DiscordService {
         await messageRESTClient.triggerTyping(channelId: channelId, token: token)
     }
 
-    private func seedGuildNameIfNeeded(_ payload: GatewayPayload) {
+    private func seedGuildNameIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
@@ -441,7 +477,7 @@ actor DiscordService {
         guildNamesById[guildId] = guildName
     }
 
-    private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) {
+    private func seedVoiceChannelsIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
@@ -467,7 +503,7 @@ actor DiscordService {
         }
     }
 
-    private func seedChannelTypesIfNeeded(_ payload: GatewayPayload) {
+    private func seedChannelTypesIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0 else { return }
         switch payload.t {
         case "GUILD_CREATE":
@@ -503,7 +539,7 @@ actor DiscordService {
         }
     }
 
-    private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) {
+    private func seedVoiceStateIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0, payload.t == "GUILD_CREATE" else { return }
         guard case let .object(guildMap)? = payload.d,
               case let .string(guildId)? = guildMap["id"],
@@ -525,6 +561,9 @@ actor DiscordService {
 
     private func processRuleActionsIfNeeded(_ payload: GatewayPayload) async {
         guard payload.op == 0 else { return }
+        
+        // Prevent standby nodes from executing rule actions
+        guard outputAllowed else { return }
 
         let event: VoiceRuleEvent?
         switch payload.t {
@@ -707,6 +746,10 @@ actor DiscordService {
     }
 
     func sendDM(userId: String, content: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendDM blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         guard let token = botToken else { return }
 
         let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
@@ -714,34 +757,66 @@ actor DiscordService {
     }
 
     func deleteMessage(channelId: String, messageId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: deleteMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.deleteMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: addRole blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func removeRole(guildId: String, userId: String, roleId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: removeRole blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
     func timeoutMember(guildId: String, userId: String, durationSeconds: Int, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: timeoutMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
     }
 
     func kickMember(guildId: String, userId: String, reason: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: kickMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
     }
 
     func moveMember(guildId: String, userId: String, channelId: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: moveMember blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
     }
 
     func createChannel(guildId: String, name: String, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: createChannel blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await guildRESTClient.createChannel(guildId: guildId, name: name, token: token)
     }
 
     func sendWebhook(url: String, content: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendWebhook blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await interactionRESTClient.sendWebhook(url: url, content: content)
     }
 
