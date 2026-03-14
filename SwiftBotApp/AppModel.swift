@@ -753,10 +753,11 @@ final class AppModel: ObservableObject {
                 },
                 onPromotion: { [weak self] in
                     guard let self else { return }
-                    // When promoted to leader, start connecting to Discord.
+                    // Promoted to Primary — enable Discord output. If already connected
+                    // in passive standby mode, no reconnect is needed; output gate flips instantly.
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        logs.append("🚀 Promoted to Primary. Connecting to Discord...")
+                        logs.append("🚀 Promoted to Primary.")
                         Task { await self.connectDiscordAfterPromotion() }
                     }
                 }
@@ -2256,6 +2257,9 @@ final class AppModel: ObservableObject {
 
         let runtimeMode = await cluster.currentSnapshot().mode
         if runtimeMode == .standby {
+            // Block all Discord output — standby observes events for live dashboard
+            // but must not respond until promoted to Primary.
+            await service.setOutputAllowed(false)
             logs.append("Fail Over mode active. Connecting to Discord in passive mode; live work remains delegated/primary-only.")
         }
 
@@ -2274,6 +2278,18 @@ final class AppModel: ObservableObject {
     }
 
     func connectDiscordAfterPromotion() async {
+        // Allow output immediately — the gateway connection is already live if this
+        // node was running in standby (passive) mode. Avoid reconnecting if already
+        // connected to prevent the brief downtime a disconnect/reconnect would cause.
+        await service.setOutputAllowed(true)
+
+        if status == .running {
+            // Already connected and receiving events — just flip the output gate.
+            logs.append("✅ Output enabled. Now responding as Primary.")
+            return
+        }
+
+        // Not yet connected (e.g. fresh start without prior standby connection).
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if settings.token != normalizedToken {
             settings.token = normalizedToken
