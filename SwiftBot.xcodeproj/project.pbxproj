@@ -46,6 +46,7 @@
 		5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */; };
 		566EE7D8A59E9C9890359374 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */; };
 		5799D01A37C0C70F209DEE50 /* AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40B1CD3E3726DBE1AA70765 /* AIModels.swift */; };
+		587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */ = {isa = PBXBuildFile; fileRef = 6A7A4945675389627AFBFB2F /* admin */; };
 		58E683E4B09BA7F0510C4D2B /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */; };
 		5C11B6D31A6225BC9D878539 /* MeshPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53B8C017D812B376BF24D61 /* MeshPreferencesView.swift */; };
 		5CA7B51148541E5E468552C3 /* DiscordAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5F49E09077B173A9D9C851 /* DiscordAIService.swift */; };
@@ -117,7 +118,6 @@
 		F3AC4F30295DAC412A25E885 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EC99CA7ACBDFF1217B6525B /* LogsView.swift */; };
 		F88E9E996F631AB24753F151 /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553AAF747AF590A5486827AA /* AIBotsView.swift */; };
 		F8B5C3B9C16141D761050DD6 /* ACMEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8828FF064E45A0519FB1640E /* ACMEClient.swift */; };
-		FB161956DA013471E5BF80FF /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 8568A65A0821C78B3A7007CA /* Resources */; };
 		FD624ED4D70CFAF9D943F0B5 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */; };
 		FDA57E1FBBE210E213A9292B /* RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */; };
 /* End PBXBuildFile section */
@@ -131,7 +131,7 @@
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
@@ -162,6 +162,7 @@
 		5C883C3445CFB25BE95819B5 /* BotStateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotStateModels.swift; sourceTree = "<group>"; };
 		5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandaloneSetupView.swift; sourceTree = "<group>"; };
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
+		6A7A4945675389627AFBFB2F /* admin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = admin; path = SwiftBotApp/Resources/admin; sourceTree = SOURCE_ROOT; };
 		6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
 		6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
 		6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -178,7 +179,6 @@
 		818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshSetupView.swift; sourceTree = "<group>"; };
 		82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedPreferencesView.swift; sourceTree = "<group>"; };
 		855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventDispatcher.swift; sourceTree = "<group>"; };
-		8568A65A0821C78B3A7007CA /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = SwiftBotApp/Resources; sourceTree = SOURCE_ROOT; };
 		8828FF064E45A0519FB1640E /* ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEClient.swift; sourceTree = "<group>"; };
 		8964B98159AC25452C4423DF /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = SwiftBot.icon; sourceTree = "<group>"; };
 		8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionView.swift; sourceTree = "<group>"; };
@@ -370,7 +370,7 @@
 			children = (
 				0B81279A83B1440C3CEC4A11 /* SparklePublisher */,
 				00B77F31D8E3A1FCEE8DCAB0 /* SwiftBotApp */,
-				8568A65A0821C78B3A7007CA /* Resources */,
+				6A7A4945675389627AFBFB2F /* admin */,
 				8964B98159AC25452C4423DF /* SwiftBot.icon */,
 				A63029345405694029040AF9 /* Products */,
 			);
@@ -476,7 +476,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					4643F3EE1229139DEE939C6D = {
 						DevelopmentTeam = "";
@@ -517,8 +517,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FB161956DA013471E5BF80FF /* Resources in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
+				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -671,12 +671,12 @@
 		357DF8D0FCB875B119AC18D3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
+				CURRENT_PROJECT_VERSION = 197000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -703,7 +703,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
+				MARKETING_VERSION = 1.9.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -723,6 +723,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -739,6 +740,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -755,6 +757,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -785,6 +788,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -801,6 +805,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -810,12 +815,12 @@
 		F7397A1EB1237FED3772A19C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
+				CURRENT_PROJECT_VERSION = 197000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -842,7 +847,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
+				MARKETING_VERSION = 1.9.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -862,6 +867,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -892,6 +898,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -915,6 +922,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -958,7 +966,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-nio-ssl.git";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 2.30.0;
 			};
 		};
@@ -966,7 +974,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-certificates.git";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 1.9.0;
 			};
 		};
@@ -974,7 +982,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-nio.git";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 2.80.0;
 			};
 		};
@@ -982,7 +990,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-asn1.git";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 1.1.0;
 			};
 		};
@@ -990,7 +998,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-crypto.git";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 3.12.3;
 			};
 		};
@@ -998,7 +1006,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
 			requirement = {
-				kind = upToNextMinorVersion;
+				kind = upToNextMajorVersion;
 				minimumVersion = 2.8.0;
 			};
 		};
