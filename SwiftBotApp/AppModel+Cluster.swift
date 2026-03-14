@@ -271,7 +271,7 @@ extension AppModel {
             return
         }
 
-        if (settings.clusterMode == .worker || settings.clusterMode == .standby),
+        if settings.clusterMode == .worker || settings.clusterMode == .standby,
            let remoteNodes = await fetchRemoteLeaderNodesIfAvailable() {
             await applyClusterNodes(remoteNodes)
             return
@@ -426,7 +426,7 @@ extension AppModel {
             )
         ]
 
-        if (settings.clusterMode == .worker || settings.clusterMode == .standby),
+        if settings.clusterMode == .worker || settings.clusterMode == .standby,
            !settings.clusterLeaderAddress.isEmpty {
             let host = URL(string: settings.clusterLeaderAddress)?.host ?? "Primary"
             nodes.append(

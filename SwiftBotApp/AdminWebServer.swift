@@ -196,11 +196,11 @@ struct AdminWebActionsPayload: Codable {
     let servers: [AdminWebSimpleOption]
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
     let voiceChannelsByServer: [String: [AdminWebSimpleOption]]
-    
+
     /// Server-driven metadata for generic WEBUI rendering
     /// This replaces hard-coded assumptions with dynamic configuration
     let builderMetadata: AdminWebBuilderMetadata
-    
+
     /// Deprecated: Kept for backwards compatibility with older WEBUI versions
     /// New WEBUI should use builderMetadata instead
     let conditionTypes: [String]
@@ -571,7 +571,7 @@ actor AdminWebServer {
         loadPersistedSessions()
         let previous = self.config
         self.config = config
-        
+
         // Refresh the active public base URL so OAuth redirect URIs pick up config changes immediately.
         self.activePublicBaseURL = resolvedPublicBaseURL(usingTLS: activeTransportUsesTLS)
 
@@ -1433,7 +1433,7 @@ actor AdminWebServer {
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
             return jsonResponse(["ok": true])
-            
+
         // MARK: - OAuth Authentication
         //
         // The Discord OAuth routes are currently used for SwiftBot Remote
@@ -1691,7 +1691,7 @@ actor AdminWebServer {
         guard let session = authenticatedSession(for: request) else {
             return unauthorizedResponse()
         }
-        
+
         return jsonResponse([
             "user": session.username,
             "discordUserID": session.userID,
@@ -1725,17 +1725,17 @@ actor AdminWebServer {
         guard authenticatedSession(for: request) != nil else {
             return unauthorizedResponse()
         }
-        
+
         // Get status info for Discord connection state
         let status = await statusProvider?()
         let discordConnected = status?.botStatus == "online" || status?.botStatus == "connected"
-        
+
         // Get config info for cluster details
         let config = await configProvider?()
         let clusterMode = config?.swiftMesh.mode ?? "standalone"
         let nodeName = config?.swiftMesh.nodeName ?? "SwiftBot"
         let meshEnabled = config?.general.webUIEnabled ?? false
-        
+
         return jsonResponse([
             "nodeName": nodeName,
             "version": "1.0",
@@ -1752,7 +1752,7 @@ actor AdminWebServer {
            session.expiresAt > Date() {
             return session
         }
-        
+
         // Then try Bearer token (Remote client)
         if let authorization = request.headers["authorization"],
            authorization.hasPrefix("Bearer ") {
@@ -1762,7 +1762,7 @@ actor AdminWebServer {
                 return session
             }
         }
-        
+
         return nil
     }
 
@@ -1965,14 +1965,14 @@ actor AdminWebServer {
         var resolvedBase = activePublicBaseURL.isEmpty
             ? resolvedPublicBaseURL(usingTLS: config.https != nil)
             : activePublicBaseURL
-        
+
         // Ensure scheme exists
         if !resolvedBase.isEmpty && !resolvedBase.contains("://") {
             resolvedBase = "https://" + resolvedBase
         }
-        
+
         let path = config.redirectPath.hasPrefix("/") ? config.redirectPath : "/" + config.redirectPath
-        
+
         Task {
             await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(path)'")
         }
@@ -1984,7 +1984,7 @@ actor AdminWebServer {
             }
             return fallback
         }
-        
+
         // Handle existing path in base URL (e.g. proxy subpath)
         if !components.path.isEmpty && components.path != "/" {
             let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
@@ -1993,13 +1993,13 @@ actor AdminWebServer {
         } else {
             components.path = path
         }
-        
+
         let result = components.url?.absoluteString ?? (resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path))
-        
+
         Task {
             await logger?("[OAuth] Resulting redirectURI: \(result)")
         }
-        
+
         return result
     }
 
@@ -2205,30 +2205,22 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
         return 0
     }
 }
-import Foundation
-
-// MARK: - Server-Driven Metadata for WEBUI Action Builder
-// This file defines the canonical contract exposed by the backend
-// to enable generic, resilient WEBUI rendering without hard-coded assumptions.
-
-/// Complete metadata payload for the WEBUI action builder
-/// This replaces hard-coded assumptions in the WEBUI with server-driven configuration
 struct AdminWebBuilderMetadata: Codable {
     /// Available trigger types with full metadata
     let triggers: [AdminWebTriggerMetadata]
-    
+
     /// Available condition/filter types with full metadata
     let conditions: [AdminWebBlockMetadata]
-    
+
     /// Available block types organized by category
     let categories: [AdminWebCategoryMetadata]
-    
+
     /// All available action/modifier/AI blocks with full metadata
     let blocks: [AdminWebBlockMetadata]
-    
+
     /// All available context variables for templating
     let variables: [AdminWebVariableMetadata]
-    
+
     /// Version of the metadata schema for forward compatibility
     let schemaVersion: Int
 }
@@ -2249,22 +2241,22 @@ struct AdminWebBlockMetadata: Codable {
     let symbol: String          // SF Symbol name
     let category: String        // Category ID (e.g., "actions", "ai")
     let description: String?    // Optional help text
-    
+
     /// Variables required for this block to function
     let requiredVariables: [String]
-    
+
     /// Variables this block populates in context
     let outputVariables: [String]
-    
+
     /// Field definitions for configuring this block
     let fields: [AdminWebFieldMetadata]
-    
+
     /// Whether this block produces Discord output
     let producesOutput: Bool
-    
+
     /// Whether this block is an AI processing block
     let isAIBlock: Bool
-    
+
     /// Whether this block is a message modifier
     let isModifier: Bool
 }
@@ -2296,7 +2288,7 @@ struct AdminWebFieldMetadata: Codable {
     let defaultValue: String?   // Optional default value
     let description: String?    // Optional help text
     let placeholder: String?    // Optional placeholder text
-    
+
     /// For picker/dropdown fields, the source of options
     let optionsSource: AdminWebOptionsSource?
 }
@@ -2368,7 +2360,7 @@ extension ConditionType {
             isModifier: false
         )
     }
-    
+
     private var conditionDescription: String? {
         switch self {
         case .server: return "Only trigger in a specific server"
@@ -2388,7 +2380,7 @@ extension ConditionType {
         case .channelType: return "Only trigger for specific channel types"
         }
     }
-    
+
     private var conditionFieldMetadata: [AdminWebFieldMetadata] {
         switch self {
         case .server:
@@ -2546,22 +2538,22 @@ extension ActionType {
             isModifier: self.isModifier
         )
     }
-    
+
     /// Whether this action type produces Discord output
     private var producesOutput: Bool {
         switch self {
         case .sendMessage, .sendDM, .addReaction, .deleteMessage,
-             .addRole, .removeRole, .timeoutMember, .kickMember, 
+             .addRole, .removeRole, .timeoutMember, .kickMember,
              .moveMember, .createChannel, .webhook, .setStatus, .addLogEntry:
             return true
-        case .generateAIResponse, .summariseMessage, .classifyMessage, 
-             .extractEntities, .rewriteMessage, .delay, .setVariable, 
+        case .generateAIResponse, .summariseMessage, .classifyMessage,
+             .extractEntities, .rewriteMessage, .delay, .setVariable,
              .randomChoice, .replyToTrigger, .mentionUser, .mentionRole,
              .disableMention, .sendToChannel, .sendToDM:
             return false
         }
     }
-    
+
     /// Whether this is an AI processing block
     private var isAIBlock: Bool {
         switch self {
@@ -2572,18 +2564,18 @@ extension ActionType {
             return false
         }
     }
-    
+
     /// Whether this is a message modifier
     private var isModifier: Bool {
         switch self {
-        case .replyToTrigger, .mentionUser, .mentionRole, 
+        case .replyToTrigger, .mentionUser, .mentionRole,
              .disableMention, .sendToChannel, .sendToDM:
             return true
         default:
             return false
         }
     }
-    
+
     /// Field metadata for each action type
     private var fieldMetadata: [AdminWebFieldMetadata] {
         switch self {
@@ -2640,11 +2632,11 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .sendDM:
             // Send DM is now a routing modifier only - content comes from Send Message action
             return []
-            
+
         case .generateAIResponse:
             return [
                 AdminWebFieldMetadata(
@@ -2658,7 +2650,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .summariseMessage:
             return [
                 AdminWebFieldMetadata(
@@ -2672,7 +2664,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .classifyMessage:
             return [
                 AdminWebFieldMetadata(
@@ -2686,7 +2678,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .extractEntities:
             return [
                 AdminWebFieldMetadata(
@@ -2700,7 +2692,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .rewriteMessage:
             return [
                 AdminWebFieldMetadata(
@@ -2714,7 +2706,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .addReaction:
             return [
                 AdminWebFieldMetadata(
@@ -2728,7 +2720,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .addRole, .removeRole:
             return [
                 AdminWebFieldMetadata(
@@ -2742,7 +2734,7 @@ extension ActionType {
                     optionsSource: .roles
                 )
             ]
-            
+
         case .timeoutMember:
             return [
                 AdminWebFieldMetadata(
@@ -2756,7 +2748,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .kickMember:
             return [
                 AdminWebFieldMetadata(
@@ -2770,7 +2762,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .moveMember:
             return [
                 AdminWebFieldMetadata(
@@ -2784,7 +2776,7 @@ extension ActionType {
                     optionsSource: .voiceChannels
                 )
             ]
-            
+
         case .createChannel:
             return [
                 AdminWebFieldMetadata(
@@ -2798,7 +2790,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .webhook:
             return [
                 AdminWebFieldMetadata(
@@ -2822,7 +2814,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .delay:
             return [
                 AdminWebFieldMetadata(
@@ -2836,7 +2828,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .setVariable:
             return [
                 AdminWebFieldMetadata(
@@ -2860,7 +2852,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .setStatus:
             return [
                 AdminWebFieldMetadata(
@@ -2874,7 +2866,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .addLogEntry:
             return [
                 AdminWebFieldMetadata(
@@ -2888,7 +2880,7 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         case .deleteMessage:
             return [
                 AdminWebFieldMetadata(
@@ -2902,17 +2894,17 @@ extension ActionType {
                     optionsSource: nil
                 )
             ]
-            
+
         // Modifiers - no additional fields beyond the toggle
         case .replyToTrigger, .mentionUser, .mentionRole, .disableMention, .sendToChannel, .sendToDM:
             return []
-            
+
         case .randomChoice:
             // Random choice would need array of options - simplified for now
             return []
         }
     }
-    
+
     private var description: String? {
         switch self {
         case .sendMessage:
@@ -2941,7 +2933,7 @@ extension BlockCategory {
         let blockIds = ActionType.allCases
             .filter { $0.category == self }
             .map { $0.rawValue }
-        
+
         return AdminWebCategoryMetadata(
             id: self.rawValue,
             name: self.rawValue,
@@ -2951,7 +2943,7 @@ extension BlockCategory {
             order: self.displayOrder
         )
     }
-    
+
     private var displayOrder: Int {
         switch self {
         case .triggers: return 0
@@ -2962,7 +2954,7 @@ extension BlockCategory {
         case .moderation: return 5
         }
     }
-    
+
     private var description: String? {
         switch self {
         case .triggers:

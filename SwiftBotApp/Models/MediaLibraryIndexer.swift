@@ -11,7 +11,7 @@ actor MediaLibraryIndexer {
 
     private var cachedEntry: CacheEntry?
     private let cacheTTL: TimeInterval = 30
-    
+
     func cachedItem(for id: String) -> MediaLibraryItem? {
         cachedEntry?.payload.items.first(where: { $0.id == id })
     }

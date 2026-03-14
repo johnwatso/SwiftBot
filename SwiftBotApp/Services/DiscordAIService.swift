@@ -549,10 +549,10 @@ actor DiscordAIService {
                     return (index, normalized.isEmpty ? nil : normalized)
                 }
             }
-            
+
             // Collect first non-nil result
-            var bestResult: (index: Int, reply: String)? = nil
-            
+            var bestResult: (index: Int, reply: String)?
+
             for await (index, result) in group {
                 if let result {
                     bestResult = (index, result)
@@ -560,7 +560,7 @@ actor DiscordAIService {
                     break
                 }
             }
-            
+
             return bestResult?.reply
         }
     }
@@ -580,7 +580,7 @@ actor DiscordAIService {
         await ollamaModelResolver(baseURL, preferredModel)
     }
 
-    private nonisolated func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
+    nonisolated private func stripLeadingSpeakerPrefix(_ text: String, username: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let speaker = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !speaker.isEmpty else { return trimmed }

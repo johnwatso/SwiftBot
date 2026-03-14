@@ -1256,7 +1256,7 @@ extension AppModel {
         forceReplaceDNS: Bool = false
     ) async throws -> String {
         logs.append("=== Public Access Setup Started ===")
-        
+
         let hostname = effectiveAdminWebHostname()
         logs.append("Hostname: \(hostname)")
         guard !hostname.isEmpty else {
@@ -1461,15 +1461,15 @@ extension AppModel {
         guard !trimmedToken.isEmpty else {
             throw CertificateManager.Error.missingCloudflareToken
         }
-        
+
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
-        
+
         // First verify the token is valid by checking user info
         let isValid = await dnsProvider.verifyAPIToken()
         guard isValid else {
             throw CertificateManager.Error.inactiveCloudflareToken
         }
-        
+
         // Then list all available zones
         return try await dnsProvider.listZones()
     }
@@ -1479,7 +1479,7 @@ extension AppModel {
         forceReplaceDNS: Bool = false
     ) async throws -> String {
         logs.append("=== Internet Access Setup Started ===")
-        
+
         let hostname = effectiveAdminWebHostname()
         logs.append("Hostname: \(hostname)")
         guard !hostname.isEmpty else {
@@ -1625,7 +1625,7 @@ extension AppModel {
             return error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
         case let error as CloudflareTunnelClient.Error:
             let message = error.errorDescription ?? genericAdminWebPublicAccessFailureMessage
-            if message.localizedCaseInsensitiveContains("authentication") || 
+            if message.localizedCaseInsensitiveContains("authentication") ||
                message.localizedCaseInsensitiveContains("access denied") ||
                message.localizedCaseInsensitiveContains("permission") {
                 return "Cloudflare authentication failed. Ensure your API token has 'Cloudflare Tunnel: Edit' permissions."

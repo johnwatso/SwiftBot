@@ -32,8 +32,8 @@ final class AppModel: ObservableObject {
     @Published var workerConnectionTestStatus: String = "Not tested"
     @Published var workerConnectionTestIsSuccess = false
     @Published var workerConnectionTestInProgress = false
-    @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome? = nil
-    @Published var lastClusterStatusRefreshAt: Date? = nil
+    @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome?
+    @Published var lastClusterStatusRefreshAt: Date?
     @Published var appleIntelligenceOnline = false
     @Published var ollamaOnline = false
     @Published var openAIOnline = false
@@ -52,17 +52,17 @@ final class AppModel: ObservableObject {
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()
     /// Date after which another Test Connection is allowed (10s UI rate limit).
-    @Published var testConnectionCooldownUntil: Date? = nil
+    @Published var testConnectionCooldownUntil: Date?
 
     /// `true` once a valid token has been confirmed — gates the main dashboard.
     @Published var isOnboardingComplete: Bool = false
-    
+
     // MARK: - View Mode
-    
+
     /// The current view mode (local or remote dashboard). Persisted across launches.
     @AppStorage("swiftbot.viewMode")
     private var viewModeRaw: String = ViewMode.local.rawValue
-    
+
     var viewMode: ViewMode {
         get { ViewMode(rawValue: viewModeRaw) ?? .local }
         set {
@@ -70,15 +70,15 @@ final class AppModel: ObservableObject {
             updateProvider()
         }
     }
-    
+
     // MARK: - Bot Data Provider
-    
+
     /// The current data provider (local or remote). Views should use this instead of accessing AppModel directly.
     @Published var provider: AnyBotDataProvider?
-    
+
     private var localProvider: LocalBotProvider?
     private var localProviderBox: AnyBotDataProvider?
-    
+
     private func updateProvider() {
         if localProvider == nil {
             let localProvider = LocalBotProvider(app: self)
@@ -87,11 +87,11 @@ final class AppModel: ObservableObject {
         }
         provider = localProviderBox
     }
-    
+
     /// OAuth2 client ID resolved from a validated token; used to build the invite URL.
-    @Published var resolvedClientID: String? = nil
+    @Published var resolvedClientID: String?
     /// Result from the most recent rich token validation; exposed for onboarding UI error display.
-    @Published var lastTokenValidationResult: DiscordService.TokenValidationResult? = nil
+    @Published var lastTokenValidationResult: DiscordService.TokenValidationResult?
     let isBetaBuild: Bool = (Bundle.main.object(forInfoDictionaryKey: "ShipHookIsBetaBuild") as? Bool) ?? false
 
     var logs = LogStore()
@@ -106,11 +106,11 @@ final class AppModel: ObservableObject {
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
     let discordCache = DiscordCache()
-    
+
     /// Shared session for general Discord REST API calls (gateway, guild, message operations).
     /// Uses default configuration for connection pooling and reuse.
     let discordRESTSession = URLSession(configuration: .default)
-    
+
     /// Dedicated session for Discord identity/token validation calls.
     /// Uses ephemeral configuration: no disk cache, no credential storage, short timeout.
     /// This ensures token validation responses are never cached and credentials aren't persisted.
@@ -122,7 +122,7 @@ final class AppModel: ObservableObject {
         return c
     }()
     let identitySession = URLSession(configuration: AppModel.identitySessionConfig)
-    
+
     lazy var aiService = DiscordAIService(session: discordRESTSession)
     lazy var identityRESTClient = DiscordIdentityRESTClient(
         session: discordRESTSession,
@@ -165,10 +165,10 @@ final class AppModel: ObservableObject {
     let commandCooldown: TimeInterval = 3.0
     let maxMediaClipDurationSeconds: Double = 15 * 60
     let aiMemoryStopwords: Set<String> = [
-        "a","an","and","are","as","at","be","but","by","for","from","hey","how",
-        "i","if","in","into","is","it","its","me","my","of","on","or","our","so",
-        "that","the","their","them","then","there","these","they","this","to","up",
-        "use","was","we","what","when","where","which","who","why","with","you","your"
+        "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "hey", "how",
+        "i", "if", "in", "into", "is", "it", "its", "me", "my", "of", "on", "or", "our", "so",
+        "that", "the", "their", "them", "then", "there", "these", "they", "this", "to", "up",
+        "use", "was", "we", "what", "when", "where", "which", "who", "why", "with", "you", "your"
     ]
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
@@ -210,7 +210,7 @@ final class AppModel: ObservableObject {
             guildAvatarHashByMemberKey.keys.prefix(200).forEach { guildAvatarHashByMemberKey.removeValue(forKey: $0) }
         }
     }
-    
+
     @Published var mediaLibrarySettings = MediaLibrarySettings()
     @Published var mediaExportJobs: [MediaExportJob] = []
     var lastSlashRegistrationAt: Date?
@@ -337,7 +337,7 @@ final class AppModel: ObservableObject {
 
             settings = loadedSettings
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
-            
+
             // Initialize the appropriate data provider
             await MainActor.run {
                 self.updateProvider()
@@ -606,7 +606,6 @@ final class AppModel: ObservableObject {
         await cluster.pushSyncPayloadToNodes(payload)
     }
 
-
     // MARK: - Media (see AppModel+Media.swift)
 
     func detectOllamaModel() {
@@ -664,18 +663,13 @@ final class AppModel: ObservableObject {
         return settings.openAIAPIKey
     }
 
-
     // MARK: - Patchy (see AppModel+Patchy.swift)
-
 
     // MARK: - WikiBridge (see AppModel+WikiBridge.swift)
 
-
     // MARK: - Bot Lifecycle (see AppModel+BotLifecycle.swift)
 
-
     // MARK: - Admin Web Server (see AppModel+AdminWeb.swift)
-
 
     func stopBot() async {
         stopMediaMonitor()
@@ -706,18 +700,14 @@ final class AppModel: ObservableObject {
         logs.append("Bot stopped (SwiftMesh listener stopped)")
     }
 
-
     // MARK: - Cluster (see AppModel+Cluster.swift)
-
 
     // MARK: - P1b: Off-peak background mesh refresh
 
     /// Schedules a low-priority background activity (15 min / 5 min tolerance) that fires
     /// existing standby/worker sync paths when the system is idle (NSBackgroundActivityScheduler).
 
-
     /// Leader: push incremental conversation batches to each registered node using per-node cursors.
-
 
     var isWorkerServiceRunning: Bool {
         guard settings.clusterMode == .worker else { return false }
@@ -798,9 +788,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - P0.5: Member join welcome
 
-
     // MARK: - Discord Events (see AppModel+DiscordEvents.swift)
-
 
     func commandServerName(from map: [String: DiscordJSON]) -> String {
         guard case let .string(guildId)? = map["guild_id"] else {
@@ -928,8 +916,8 @@ final class MemoryViewModel: ObservableObject {
 struct WorkerConnectionTestOutcome {
     let message: String
     let isSuccess: Bool
-    var latencyMs: Double? = nil
-    var nodeName: String? = nil
+    var latencyMs: Double?
+    var nodeName: String?
 }
 
 enum WorkerReachabilityResult {
@@ -990,7 +978,6 @@ actor ClusterStatusPollingService {
         }
     }
 }
-
 
 // MARK: - Notification Names
 

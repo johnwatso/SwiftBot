@@ -7,13 +7,13 @@ struct ConnectionDiagnostics {
         case error(Int, String)
     }
 
-    var heartbeatLatencyMs: Int? = nil
+    var heartbeatLatencyMs: Int?
     var restHealth: RESTHealth = .unknown
-    var rateLimitRemaining: Int? = nil
-    var lastTestAt: Date? = nil
+    var rateLimitRemaining: Int?
+    var lastTestAt: Date?
     var lastTestMessage: String = ""
     /// Last non-normal WebSocket close code from Discord (e.g. 4004, 4014). Nil = no abnormal close.
-    var lastGatewayCloseCode: Int? = nil
+    var lastGatewayCloseCode: Int?
 }
 
 struct BinaryHTTPResponse: Sendable {
@@ -33,11 +33,11 @@ struct MediaLibrarySettings: Codable, Hashable {
     var sources: [MediaLibrarySource] = []
     var exportRootPath: String = ""
     var exportIncludeInLibrary: Bool = true
-    var exportSourceID: UUID? = nil
+    var exportSourceID: UUID?
 }
 
 struct MediaLibrarySource: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var name: String = "Gameplay"
     var rootPath: String = ""
     var isEnabled: Bool = true
@@ -156,20 +156,19 @@ struct MediaExportJobResponse: Codable, Hashable {
 
 // MARK: - View Mode
 
-
 enum ViewMode: String, Codable, CaseIterable, Identifiable {
     case local
     case remote
-    
+
     var id: String { rawValue }
-    
+
     var displayName: String {
         switch self {
         case .local: return "Local Dashboard"
         case .remote: return "Remote Dashboard"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .local: return "desktopcomputer"
@@ -183,7 +182,6 @@ struct AdminWebCertificateRenewalConfiguration: Equatable {
     let domain: String
     let cloudflareToken: String
 }
-
 
 // MARK: - Admin Web Setup Events & Errors
 
@@ -267,4 +265,3 @@ enum AdminWebPublicAccessError: LocalizedError {
 
 let genericAdminWebHTTPSSetupFailureMessage = "HTTPS setup couldn’t be completed. Verify Cloudflare access and DNS propagation, then try again."
 let genericAdminWebPublicAccessFailureMessage = "Public Access couldn’t be completed. Verify the hostname, Cloudflare access, and tunnel configuration, then try again."
-

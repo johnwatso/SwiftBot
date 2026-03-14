@@ -20,7 +20,7 @@ struct OnboardingGateView: View {
     @State private var step: Step = .choosePath
     @State private var tokenInput: String = ""
     @State private var showToken: Bool = false
-    @State private var inviteURL: String? = nil
+    @State private var inviteURL: String?
     @State private var inviteConfirmed: Bool = false
     @State private var isLoadingInviteURL: Bool = false
     @State private var inviteLoadFailed: Bool = false
@@ -595,4 +595,3 @@ struct OnboardingGateView: View {
         }
     }
 }
-

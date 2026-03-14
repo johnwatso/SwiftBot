@@ -11,7 +11,7 @@ struct ModeSelectionView: View {
             setupMode != .remote || app.remoteControlFeatureEnabled
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             ForEach(availableModes) { setupMode in
@@ -28,16 +28,16 @@ struct ModeSelectionView: View {
 private struct ModeSelectionButton: View {
     let mode: SetupMode
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: mode.icon)
                     .font(.title2)
-                
+
                 Text(mode.title)
                     .font(.headline)
-                
+
                 Text(mode.subtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -55,7 +55,7 @@ private struct ModeSelectionButton: View {
 
 #Preview {
     @Previewable @State var selectedMode: SetupMode?
-    
+
     ModeSelectionView(mode: $selectedMode)
         .padding()
         .frame(width: 500, height: 400)

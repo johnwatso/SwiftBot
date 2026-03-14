@@ -5,19 +5,19 @@ import SwiftUI
 struct StandaloneSetupView: View {
     @EnvironmentObject var app: AppModel
     let onBack: () -> Void
-    
+
     @State private var tokenInput: String = ""
     @State private var showToken: Bool = false
     @State private var step: StandaloneStep = .entry
-    @State private var inviteURL: String? = nil
+    @State private var inviteURL: String?
     @State private var inviteConfirmed: Bool = false
     @State private var isLoadingInviteURL: Bool = false
     @State private var inviteLoadFailed: Bool = false
-    
+
     private enum StandaloneStep {
         case entry, validating, confirmed, failed
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             // Token field
@@ -32,7 +32,7 @@ struct StandaloneSetupView: View {
                 .onboardingTextFieldStyle()
                 .font(.system(.body, design: .monospaced))
                 .disabled(step == .validating || step == .confirmed)
-                
+
                 Button {
                     showToken.toggle()
                 } label: {
@@ -43,7 +43,7 @@ struct StandaloneSetupView: View {
                 .accessibilityLabel(showToken ? "Hide token" : "Show token")
             }
             .frame(maxWidth: 560)
-            
+
             // Error
             if step == .failed, let result = app.lastTokenValidationResult {
                 Text(result.errorMessage)
@@ -52,7 +52,7 @@ struct StandaloneSetupView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 560)
             }
-            
+
             // Actions
             switch step {
             case .entry, .failed:
@@ -67,9 +67,9 @@ struct StandaloneSetupView: View {
             tokenInput = app.settings.token
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var actionButtons: some View {
         HStack(spacing: 12) {
             Button(action: onBack) {
@@ -77,7 +77,7 @@ struct StandaloneSetupView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
-            
+
             Button {
                 app.settings.launchMode = .standaloneBot
                 app.settings.token = tokenInput
@@ -95,7 +95,7 @@ struct StandaloneSetupView: View {
             .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
-    
+
     private var validatingView: some View {
         HStack(spacing: 10) {
             ProgressView()
@@ -106,7 +106,7 @@ struct StandaloneSetupView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Validating token, please wait")
     }
-    
+
     private var confirmedView: some View {
         VStack(spacing: 16) {
             if let result = app.lastTokenValidationResult {
@@ -118,17 +118,17 @@ struct StandaloneSetupView: View {
                 }
                 .font(.body)
             }
-            
+
             // Invite link states
             if isLoadingInviteURL {
                 loadingInviteView
             } else if inviteLoadFailed {
                 failedInviteView
             }
-            
+
             if let url = inviteURL {
                 inviteLinkView(url: url)
-                
+
                 Toggle(isOn: $inviteConfirmed) {
                     Text("I have invited SwiftBot already")
                         .font(.callout)
@@ -136,7 +136,7 @@ struct StandaloneSetupView: View {
                 .toggleStyle(.switch)
                 .frame(maxWidth: 560, alignment: .center)
             }
-            
+
             Button { app.completeOnboarding() } label: {
                 Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
                     .frame(minWidth: 200)
@@ -153,7 +153,7 @@ struct StandaloneSetupView: View {
             }
         }
     }
-    
+
     private var loadingInviteView: some View {
         HStack(spacing: 8) {
             ProgressView()
@@ -165,7 +165,7 @@ struct StandaloneSetupView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Generating invite link, please wait")
     }
-    
+
     private var failedInviteView: some View {
         Text("Could not generate an invite link. Your bot's client ID may not be available yet — you can invite the bot manually from the Discord Developer Portal.")
             .font(.callout)
@@ -173,13 +173,13 @@ struct StandaloneSetupView: View {
             .multilineTextAlignment(.center)
             .frame(maxWidth: 560)
     }
-    
+
     private func inviteLinkView(url: String) -> some View {
         VStack(spacing: 8) {
             Text("Invite your bot to a server:")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            
+
             HStack(spacing: 8) {
                 Button {
                     NSPasteboard.general.clearContents()
@@ -189,7 +189,7 @@ struct StandaloneSetupView: View {
                 }
                 .onboardingGlassButton()
                 .accessibilityHint("Copies the bot invite link to your clipboard")
-                
+
                 Button {
                     if let u = URL(string: url) {
                         NSWorkspace.shared.open(u)

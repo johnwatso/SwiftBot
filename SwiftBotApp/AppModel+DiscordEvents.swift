@@ -117,7 +117,7 @@ extension AppModel {
         let now = Date()
         let guildId = event.guildID
         let userId = event.userID
-        
+
         // Best-effort member count decrement
         if let count = guildMemberCounts[guildId] {
             guildMemberCounts[guildId] = max(0, count - 1)

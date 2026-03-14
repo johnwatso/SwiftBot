@@ -223,9 +223,9 @@ actor ConversationStore {
         messagesByScope.removeAll()
         emitUpdate()
     }
-    
+
     func summaries() -> [MemorySummary] {
-        messagesByScope.map { (scope, records) in
+        messagesByScope.map { scope, records in
             MemorySummary(
                 scope: scope,
                 messageCount: records.count,
@@ -233,7 +233,7 @@ actor ConversationStore {
             )
         }
     }
-    
+
     func allRecordsSorted() -> [MemoryRecord] {
         allMessages().sorted { $0.timestamp < $1.timestamp }
     }
@@ -269,7 +269,7 @@ actor ConversationStore {
         guard !existing.contains(where: { $0.id == messageID }) else { return }
         append(scope: scope, messageID: messageID, userID: userID, content: content, timestamp: timestamp, role: role)
     }
-    
+
     func recentMessages(in scope: MemoryScope, limit: Int) -> [MemoryRecord] {
         let messages = messagesByScope[scope] ?? []
         return messages.sorted { $0.timestamp > $1.timestamp }.prefix(limit).map { $0 }

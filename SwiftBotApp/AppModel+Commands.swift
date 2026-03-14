@@ -101,7 +101,7 @@ extension AppModel {
         let hardCap = max(limit, settings.openAIImageMonthlyHardCap)
         let usageKey = imageUsageKey(userID: userId)
         let used = settings.openAIImageUsageByUserMonth[usageKey] ?? 0
-        
+
         if limit > 0, used >= limit {
             return await send(
                 channelId,
@@ -137,7 +137,7 @@ extension AppModel {
         pruneOldImageUsageMonths()
         settings.openAIImageUsageByUserMonth[usageKey] = used + 1
         _ = await persistSettings()
-        
+
         // SwiftMesh: broadcast updated usage to other nodes
         if settings.clusterMode == .leader {
             await pushImageUsageToAllNodes()
@@ -2116,7 +2116,7 @@ extension AppModel {
     ) async -> (messages: [Message], wikiContext: String) {
         let maxHistory = 8
         var recent = await conversationStore.recentMessages(in: scope, limit: maxHistory)
-        
+
         if !currentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             recent.append(
                 MemoryRecord(
@@ -2153,7 +2153,7 @@ extension AppModel {
         let combinedContext = [wikiContext, aiMemoryContext]
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
-        
+
         return (conversationalMessages, combinedContext)
     }
 

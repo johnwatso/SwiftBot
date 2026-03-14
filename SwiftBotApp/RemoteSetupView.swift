@@ -5,15 +5,15 @@ import SwiftUI
 struct RemoteSetupView: View {
     @EnvironmentObject var app: AppModel
     let onBack: () -> Void
-    
+
     @State private var remoteAddressInput: String = ""
     @State private var step: RemoteStep = .setup
     @StateObject private var remoteTester = RemoteControlService()
-    
+
     private enum RemoteStep {
         case setup, authenticating, testing, confirmed, failed
     }
-    
+
     var body: some View {
         Group {
             switch step {
@@ -33,15 +33,15 @@ struct RemoteSetupView: View {
             handleAuthCompleted()
         }
     }
-    
+
     // MARK: - Setup Fields
-    
+
     private var remoteSetupFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             TextField("https://mybot.example.com", text: $remoteAddressInput)
                 .onboardingTextFieldStyle()
                 .frame(maxWidth: 560)
-            
+
             if let error = remoteTester.lastError, !error.isEmpty {
                 Text(error)
                     .font(.callout)
@@ -49,14 +49,14 @@ struct RemoteSetupView: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: 560, alignment: .leading)
             }
-            
+
             HStack(spacing: 12) {
                 Button(action: onBack) {
                     Label("Back", systemImage: "chevron.left")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                
+
                 Button {
                     startOAuthFlow()
                 } label: {
@@ -75,9 +75,9 @@ struct RemoteSetupView: View {
             remoteAddressInput = app.settings.remoteMode.primaryNodeAddress
         }
     }
-    
+
     // MARK: - OAuth Flow
-    
+
     private func startOAuthFlow() {
         let normalizedAddress = RemoteModeSettings.normalizeBaseURL(remoteAddressInput)
         guard var components = URLComponents(string: "\(normalizedAddress)/auth/discord/login") else {
@@ -91,25 +91,25 @@ struct RemoteSetupView: View {
             remoteTester.lastError = "Invalid server URL"
             return
         }
-        
+
         // Store the server address for later use
         app.updateRemoteModeConnection(
             primaryNodeAddress: normalizedAddress,
             accessToken: ""
         )
         remoteTester.lastError = nil
-        
+
         // Open OAuth URL in browser
         NSWorkspace.shared.open(authURL)
         step = .authenticating
     }
-    
+
     private func handleAuthCompleted() {
         guard step == .authenticating else { return }
-        
+
         // Update remote tester with new configuration
         remoteTester.updateConfiguration(app.settings.remoteMode)
-        
+
         // Test the connection
         step = .testing
         Task {
@@ -117,9 +117,9 @@ struct RemoteSetupView: View {
             step = ok ? .confirmed : .failed
         }
     }
-    
+
     // MARK: - Authenticating View
-    
+
     private var authenticatingView: some View {
         VStack(spacing: 16) {
             HStack(spacing: 10) {
@@ -128,13 +128,13 @@ struct RemoteSetupView: View {
                 Text("Waiting for Discord authentication…")
                     .foregroundStyle(.secondary)
             }
-            
+
             Text("Complete the login in your browser. The app will automatically continue once authenticated.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
-            
+
             Button { step = .setup } label: {
                 Label("Cancel", systemImage: "xmark")
             }
@@ -144,9 +144,9 @@ struct RemoteSetupView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Waiting for Discord authentication, please complete login in browser")
     }
-    
+
     // MARK: - Testing View
-    
+
     private var testingView: some View {
         HStack(spacing: 10) {
             ProgressView()
@@ -157,9 +157,9 @@ struct RemoteSetupView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Testing remote connection, please wait")
     }
-    
+
     // MARK: - Confirmed View
-    
+
     private var confirmedView: some View {
         VStack(spacing: 16) {
             HStack(spacing: 8) {
@@ -170,13 +170,13 @@ struct RemoteSetupView: View {
                 Text("Connected to \(remoteTester.status?.botUsername ?? "SwiftBot")")
                     .font(.body)
             }
-            
+
             if let latency = remoteTester.lastLatencyMs {
                 Text("Round-trip latency \(latency.formatted(.number.precision(.fractionLength(0)))) ms")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            
+
             // Display connection details
             VStack(alignment: .leading, spacing: 4) {
                 if let status = remoteTester.status {
@@ -188,7 +188,7 @@ struct RemoteSetupView: View {
                 }
             }
             .frame(maxWidth: 560, alignment: .leading)
-            
+
             Button {
                 app.completeRemoteModeOnboarding(
                     primaryNodeAddress: remoteAddressInput,
@@ -201,9 +201,9 @@ struct RemoteSetupView: View {
             .onboardingGlassButton()
         }
     }
-    
+
     // MARK: - Failed View
-    
+
     private var failedView: some View {
         VStack(spacing: 16) {
             if let error = remoteTester.lastError, !error.isEmpty {
@@ -213,14 +213,14 @@ struct RemoteSetupView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 560)
             }
-            
+
             HStack(spacing: 12) {
                 Button { step = .setup } label: {
                     Label("Try Again", systemImage: "arrow.counterclockwise")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                
+
                 Button(action: onBack) {
                     Label("Back", systemImage: "chevron.left")
                 }

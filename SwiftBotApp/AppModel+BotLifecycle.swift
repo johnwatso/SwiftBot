@@ -194,13 +194,13 @@ extension AppModel {
     func handleRemoteAuthSession(_ sessionToken: String) {
         // Store session token in Keychain for secure persistence
         KeychainHelper.save(sessionToken, account: "remote-session-token")
-        
+
         // Update the remote mode settings with the session token
         var currentMode = settings.remoteMode
         currentMode.accessToken = sessionToken
         settings.remoteMode = currentMode
         saveSettings()
-        
+
         // Post notification so UI can react to successful auth
         NotificationCenter.default.post(name: .remoteAuthSessionReceived, object: sessionToken)
     }
