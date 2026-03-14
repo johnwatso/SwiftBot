@@ -7,6 +7,11 @@ struct SwiftBotApp: App {
     @StateObject private var updater = AppUpdater()
 
     private func applyAppIconIfAvailable() {
+        // Only apply once, cache the result (prevents icon flash on settings save)
+        if NSApp.applicationIconImage != nil {
+            return
+        }
+        
         if let image = NSImage(named: "AppIcon") {
             NSApp.applicationIconImage = image
             return

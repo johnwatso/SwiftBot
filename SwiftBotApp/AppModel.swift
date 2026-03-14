@@ -609,6 +609,9 @@ final class AppModel: ObservableObject {
     // MARK: - Media (see AppModel+Media.swift)
 
     func detectOllamaModel() {
+        // Skip if Ollama is not enabled (prevents connection refused errors)
+        guard settings.ollamaEnabled else { return }
+        
         let base = normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
         Task {
             guard let model = await aiService.detectOllamaModel(baseURL: base) else {
@@ -634,7 +637,8 @@ final class AppModel: ObservableObject {
         let status = await aiService.currentAIStatus(
             ollamaBaseURL: normalizedOllamaBaseURL(from: settings.ollamaBaseURL),
             ollamaModelHint: settings.localAIModel,
-            openAIAPIKey: effectiveOpenAIAPIKey()
+            openAIAPIKey: effectiveOpenAIAPIKey(),
+            skipOllama: !settings.ollamaEnabled
         )
         appleIntelligenceOnline = status.appleOnline
         ollamaOnline = status.ollamaOnline

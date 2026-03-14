@@ -451,11 +451,17 @@ actor DiscordAIService {
     func currentAIStatus(
         ollamaBaseURL: String,
         ollamaModelHint: String?,
-        openAIAPIKey: String
+        openAIAPIKey: String,
+        skipOllama: Bool = false
     ) async -> (appleOnline: Bool, ollamaOnline: Bool, ollamaModel: String?, openAIOnline: Bool) {
         let appleOnline = appleAvailability()
-        let normalized = Self.normalizedOllamaBaseURL(ollamaBaseURL)
-        let model = await detectOllamaModel(baseURL: normalized, preferredModel: ollamaModelHint)
+        let model: String?
+        if skipOllama {
+            model = nil
+        } else {
+            let normalized = Self.normalizedOllamaBaseURL(ollamaBaseURL)
+            model = await detectOllamaModel(baseURL: normalized, preferredModel: ollamaModelHint)
+        }
         let openAIOnline = await openAIProbe(openAIAPIKey, "https://api.openai.com")
         return (appleOnline, model != nil, model, openAIOnline)
     }

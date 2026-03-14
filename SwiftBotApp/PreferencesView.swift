@@ -7,15 +7,7 @@ struct PreferencesView: View {
     @AppStorage("swiftbot.preferences.selectedTab")
     private var selectedTab = 0
 
-    @State private var settingsSnapshot = AppPreferencesSnapshot()
-
-    private var hasUnsavedChanges: Bool {
-        currentSettingsSnapshot != settingsSnapshot
-    }
-
-    private var currentSettingsSnapshot: AppPreferencesSnapshot {
-        app.createPreferencesSnapshot()
-    }
+    @State private var autoSaveTask: Task<Void, Never>? = nil
 
     var body: some View {
         Group {
@@ -63,29 +55,17 @@ struct PreferencesView: View {
                         }
                         .tag(4)
                 }
-                .overlay(alignment: .bottomTrailing) {
-                    if hasUnsavedChanges {
-                        StickySaveButton(label: "Save Settings", systemImage: "square.and.arrow.down.fill") {
-                            app.saveSettings()
-                            withAnimation {
-                                settingsSnapshot = currentSettingsSnapshot
-                            }
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 18)
-                    }
-                }
-                .onChange(of: currentSettingsSnapshot) { _, newSnapshot in
-                    if !hasUnsavedChanges {
-                        settingsSnapshot = newSnapshot
+                .onChange(of: app.createPreferencesSnapshot()) { _, _ in
+                    autoSaveTask?.cancel()
+                    autoSaveTask = Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        guard !Task.isCancelled else { return }
+                        app.saveSettings()
                     }
                 }
             }
         }
         .frame(width: 720, height: 480)
-        .onAppear {
-            settingsSnapshot = currentSettingsSnapshot
-        }
         .background(
             // Hidden view that observes onboarding state and closes window when complete
             PreferencesWindowCloser()
