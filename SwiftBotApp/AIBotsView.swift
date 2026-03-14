@@ -548,7 +548,6 @@ private struct EngineStatusStackView: View {
     }
     }
 
-
 private enum AIEngineStatus {
     case online
     case offline
@@ -580,7 +579,7 @@ private enum AIEngineStatus {
 struct MemoryOverviewView: View {
     @ObservedObject var viewModel: MemoryViewModel
     @State private var showClearAllConfirm = false
-    @State private var scopeToClear: MemoryScope? = nil
+    @State private var scopeToClear: MemoryScope?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

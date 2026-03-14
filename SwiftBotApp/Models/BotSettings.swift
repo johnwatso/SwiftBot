@@ -15,7 +15,6 @@ enum AITestOverrides {
 }
 #endif
 
-
 // MARK: - Core Models
 
 struct GuildSettings: Codable, Hashable {
@@ -56,7 +55,7 @@ struct AdminWebUISettings: Codable, Hashable {
     // Internal constants (not user-configurable)
     static let defaultBindHost = "127.0.0.1"
     static let defaultPort = 38888
-    
+
     var enabled: Bool = false
     var publicBaseURL: String = ""
     var internetAccessEnabled: Bool = false
@@ -65,7 +64,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var selectedZoneID: String = ""
     var selectedZoneName: String = ""
     var cloudflareAPIToken: String = ""
-    
+
     // Legacy compatibility - always returns fixed values
     var bindHost: String { Self.defaultBindHost }
     var port: Int { Self.defaultPort }
@@ -79,7 +78,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedCertificateFile: String = ""
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
-    
+
     // OAuth Providers (Discord is active, others are placeholders)
     var discordOAuth = OAuthProviderSettings()
     var appleOAuth = OAuthProviderSettings()
@@ -88,7 +87,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var localAuthEnabled: Bool = false
     var localAuthUsername: String = "admin"
     var localAuthPassword: String = ""
-    
+
     // Legacy compatibility - migrated to oauth providers
     var discordClientID: String { discordOAuth.clientID }
     var discordClientSecret: String { discordOAuth.clientSecret }
@@ -148,25 +147,25 @@ struct AdminWebUISettings: Codable, Hashable {
 
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
         publicBaseURL = try container.decodeIfPresent(String.self, forKey: .publicBaseURL) ?? ""
-        
+
         // Migration: prefer hostname
         hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? ""
         subdomain = try container.decodeIfPresent(String.self, forKey: .subdomain) ?? "swiftbot"
         selectedZoneID = try container.decodeIfPresent(String.self, forKey: .selectedZoneID) ?? ""
         selectedZoneName = try container.decodeIfPresent(String.self, forKey: .selectedZoneName) ?? ""
-        
+
         cloudflareAPIToken = try container.decodeIfPresent(String.self, forKey: .cloudflareAPIToken) ?? ""
-        
+
         // Migration: internetAccessEnabled replaces publicAccessEnabled
         let decodedInternetAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .internetAccessEnabled)
         let decodedPublicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled)
         internetAccessEnabled = decodedInternetAccessEnabled ?? decodedPublicAccessEnabled ?? false
-        
+
         publicAccessTunnelID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelID) ?? ""
         publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
         publicAccessTunnelAccountID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelAccountID) ?? ""
         publicAccessTunnelToken = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelToken) ?? ""
-        
+
         // OAuth Providers - decode or migrate from legacy fields
         discordOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .discordOAuth)
             ?? OAuthProviderSettings(
@@ -549,7 +548,7 @@ struct BotBehaviorSettings: Codable, Hashable {
 }
 
 struct WikiCommand: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var trigger: String = "!wiki"
     var endpoint: String = "search"
     var description: String = ""
@@ -594,20 +593,20 @@ struct WikiFormatting: Codable, Hashable {
 }
 
 struct WikiParsingRule: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var pageType: String = "weapon"
     var templateName: String = "Weapon"
 }
 
 struct WikiSource: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var name: String = "Wiki Source"
     var baseURL: String = "https://example.fandom.com"
     var apiPath: String = "/api.php"
     var enabled: Bool = true
     var isPrimary: Bool = false
     var commands: [WikiCommand] = []
-    var formatting: WikiFormatting = WikiFormatting()
+    var formatting = WikiFormatting()
     var parsingRules: [WikiParsingRule] = []
     var lastLookupAt: Date?
     var lastStatus: String = "Never used"
@@ -984,4 +983,3 @@ private extension String {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
-

@@ -18,7 +18,7 @@ struct SubscriptionToken: Hashable, Identifiable {
 final class EventBus {
     private actor Storage {
         private var subscribers: [ObjectIdentifier: [SubscriptionToken: (Any) async -> Void]] = [:]
-        
+
         func add(type: ObjectIdentifier, token: SubscriptionToken, handler: @escaping (Any) async -> Void) {
             if subscribers[type] != nil {
                 subscribers[type]![token] = handler
@@ -26,7 +26,7 @@ final class EventBus {
                 subscribers[type] = [token: handler]
             }
         }
-        
+
         func remove(token: SubscriptionToken) {
             for (key, var dict) in subscribers {
                 dict[token] = nil
@@ -37,15 +37,15 @@ final class EventBus {
                 }
             }
         }
-        
+
         func snapshotHandlers(for type: ObjectIdentifier) -> [(Any) async -> Void] {
             guard let dict = subscribers[type] else { return [] }
             return Array(dict.values)
         }
     }
-    
+
     private let storage = Storage()
-    
+
     /// Subscribes to events of the specified type.
     @discardableResult
     func subscribe<E: Event>(_ type: E.Type, handler: @escaping (E) async -> Void) async -> SubscriptionToken {
@@ -62,7 +62,7 @@ final class EventBus {
     func unsubscribe(_ token: SubscriptionToken) async {
         await storage.remove(token: token)
     }
-    
+
     /// Publishes an event to all subscribers of its type.
     func publish<E: Event>(_ event: E) async {
         let handlers = await storage.snapshotHandlers(for: ObjectIdentifier(E.self))
@@ -78,13 +78,6 @@ struct VoiceJoined: Event {
     let userId: String
     let username: String
     let channelId: String
-    
-    init(guildId: String, userId: String, username: String, channelId: String) {
-        self.guildId = guildId
-        self.userId = userId
-        self.username = username
-        self.channelId = channelId
-    }
 }
 
 /// An event signaling a user has left a voice channel.
@@ -94,14 +87,6 @@ struct VoiceLeft: Event {
     let username: String
     let channelId: String
     let durationSeconds: Int
-    
-    init(guildId: String, userId: String, username: String, channelId: String, durationSeconds: Int) {
-        self.guildId = guildId
-        self.userId = userId
-        self.username = username
-        self.channelId = channelId
-        self.durationSeconds = durationSeconds
-    }
 }
 
 /// An event signaling that a message was received.
@@ -112,13 +97,4 @@ struct MessageReceived: Event {
     let username: String
     let content: String
     let isDirectMessage: Bool
-    
-    init(guildId: String?, channelId: String, userId: String, username: String, content: String, isDirectMessage: Bool) {
-        self.guildId = guildId
-        self.channelId = channelId
-        self.userId = userId
-        self.username = username
-        self.content = content
-        self.isDirectMessage = isDirectMessage
-    }
 }

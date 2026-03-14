@@ -119,13 +119,13 @@ extension AppModel {
     func pullPatchyUpdate(targetID: UUID) {
         Task {
             guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
-            
+
             do {
                 resolveSteamNameIfNeeded(for: target)
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
-                
+
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
                     entry.lastCheckedAt = Date()
                     entry.lastStatus = mapped.statusSummary
@@ -437,7 +437,7 @@ extension AppModel {
         let body = (ns.userInfo["responseBody"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         // Try to parse Discord's specific error code from the JSON body
-        var discordCode: Int? = nil
+        var discordCode: Int?
         if let data = body.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let code = json["code"] as? Int {

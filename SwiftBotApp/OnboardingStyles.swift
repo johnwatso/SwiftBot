@@ -137,7 +137,7 @@ extension View {
                     .strokeBorder(.white.opacity(0.22), lineWidth: 1)
             )
     }
-    
+
     /// Glass-style button for onboarding actions
     func onboardingGlassButton() -> some View {
         self

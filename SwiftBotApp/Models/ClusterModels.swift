@@ -12,7 +12,7 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
 }
 
 struct PatchyDeliveryTarget: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var isEnabled: Bool = true
     var name: String = "Target"
     var serverId: String = ""
@@ -21,7 +21,7 @@ struct PatchyDeliveryTarget: Codable, Hashable, Identifiable {
 }
 
 struct PatchySourceTarget: Codable, Hashable, Identifiable {
-    var id: UUID = UUID()
+    var id = UUID()
     var isEnabled: Bool = true
     var source: PatchySourceKind = .nvidia
     var steamAppID: String = "570"

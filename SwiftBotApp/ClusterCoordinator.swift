@@ -92,7 +92,7 @@ actor ClusterCoordinator {
     private var wikiHandler: WikiHandler?
     private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
-    private var listenerActivePort: Int? = nil
+    private var listenerActivePort: Int?
     private var onSnapshot: (@Sendable (ClusterSnapshot) async -> Void)?
     private var onJobLog: JobLogHandler?
     private var onSync: SyncHandler?
@@ -778,7 +778,7 @@ actor ClusterCoordinator {
                 let headerData = buffer[..<headerRange.upperBound]
                 let contentLength = parseContentLength(headerData)
                 let bodyLength = buffer.count - headerRange.upperBound
-                
+
                 if contentLength > Self.maxHTTPRequestSize {
                     throw NWError.posix(.EMSGSIZE)
                 }
@@ -788,11 +788,11 @@ actor ClusterCoordinator {
                 }
             }
         }
-        
+
         if buffer.count >= Self.maxHTTPRequestSize {
             throw NWError.posix(.EMSGSIZE)
         }
-        
+
         return buffer
     }
 
@@ -1061,7 +1061,7 @@ actor ClusterCoordinator {
 
     private func monitorLeaderHealth(_ leaderBaseURL: String) async {
         guard mode == .standby else { return }
-        
+
         let isHealthy = await isWorkerReachable(leaderBaseURL)
         if isHealthy {
             if standbyHealthMisses > 0 {
@@ -1077,7 +1077,7 @@ actor ClusterCoordinator {
             snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
         meshLogger.warning("Primary health miss \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
             await publishSnapshot()
-            
+
             if standbyHealthMisses >= Self.standbyPromotionThreshold {
                 await promoteToLeader()
             }
@@ -1098,7 +1098,7 @@ actor ClusterCoordinator {
 
         // Persist the new term immediately so a restart cannot emit a stale term.
         await onTermChanged?(leaderTerm)
-        
+
         // Notify AppModel to start bot services
         await onPromotion?()
 
@@ -1114,20 +1114,20 @@ actor ClusterCoordinator {
 
         // Restart server as leader
         await restartServerIfNeeded()
-        
+
         // Notify workers of the new leader
         let workers = Array(registeredWorkers.values)
         if !workers.isEmpty {
             snapshot.diagnostics = "Promoted to Primary. Notifying \(workers.count) workers..."
             await publishSnapshot()
-            
+
             let payload = MeshLeaderChangedPayload(
                 term: leaderTerm,
                 leaderAddress: localWorkerAdvertisedBaseURL(),
                 leaderNodeName: nodeName,
                 sharedSecret: sharedSecret
             )
-            
+
             for worker in workers {
                 await notifyWorkerOfLeaderChange(worker, payload: payload)
             }
@@ -1391,7 +1391,7 @@ actor ClusterCoordinator {
               !host.isEmpty else {
             return nil
         }
-        
+
         // Mesh host guard: allow internet peers while still blocking obvious unsafe targets.
         if !isSSRFSafeHost(host) {
             return nil
@@ -1957,7 +1957,7 @@ actor ClusterCoordinator {
                 lastSeen: Date()
             )
         }
-        
+
         snapshot.diagnostics = "Synced worker registry (\(payload.workers.count) workers)"
         await publishSnapshot()
 
@@ -1994,7 +1994,7 @@ actor ClusterCoordinator {
         let limit = min(max(1, req.pageSize), Self.maxSyncBatchSize)
         let (records, hasMore) = await fetcher(req.fromRecordID, limit)
         let lastID = records.last?.id
-        
+
         // Also fetch current image usage if this is the last page (or just always for simplicity)
         let imageUsage = await meshHandler?("image-usage")
         let decodedUsage = imageUsage.flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) }

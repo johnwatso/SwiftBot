@@ -6,9 +6,9 @@ enum SetupMode: String, CaseIterable, Identifiable {
     case standalone
     case mesh
     case remote
-    
+
     var id: String { rawValue }
-    
+
     var title: String {
         switch self {
         case .standalone: return "Set Up Standalone Bot"
@@ -16,7 +16,7 @@ enum SetupMode: String, CaseIterable, Identifiable {
         case .remote: return "Connect to SwiftBot Remote"
         }
     }
-    
+
     var subtitle: String {
         switch self {
         case .standalone: return "Run SwiftBot locally on this Mac."
@@ -24,7 +24,7 @@ enum SetupMode: String, CaseIterable, Identifiable {
         case .remote: return "Control an existing SwiftBot node remotely. Beta feature."
         }
     }
-    
+
     var icon: String {
         switch self {
         case .standalone: return "server.rack"
@@ -38,16 +38,16 @@ enum SetupMode: String, CaseIterable, Identifiable {
 
 struct OnboardingRootView: View {
     @EnvironmentObject var app: AppModel
-    
+
     @State private var mode: SetupMode?
     @State private var movesForward: Bool = true
-    
+
     var body: some View {
         ZStack {
             SwiftBotGlassBackground()
             OnboardingAnimatedSymbolBackground()
                 .allowsHitTesting(false)
-            
+
             VStack(spacing: 32) {
                 // Icon + title (always visible)
                 VStack(spacing: 12) {
@@ -55,16 +55,16 @@ struct OnboardingRootView: View {
                         .resizable()
                         .frame(width: 80, height: 80)
                         .accessibilityHidden(true)
-                    
+
                     Text("Welcome to SwiftBot")
                         .font(.largeTitle.weight(.bold))
-                    
+
                     Text(stepSubtitle)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
-                
+
                 // Step content
                 ZStack {
                     switch mode {
@@ -101,16 +101,16 @@ struct OnboardingRootView: View {
         }
         .ignoresSafeArea()
     }
-    
+
     // MARK: - Navigation
-    
+
     private func navigateTo(_ newMode: SetupMode?) {
         movesForward = newMode != nil
         mode = newMode
     }
-    
+
     // MARK: - Subtitle
-    
+
     private var stepSubtitle: String {
         switch mode {
         case nil:

@@ -27,7 +27,7 @@ struct RootView: View {
             fallbackView
         }
     }
-    
+
     @ViewBuilder
     private var fallbackView: some View {
         ProgressView("Loading dashboard...")
@@ -115,7 +115,6 @@ private struct BetaBadgeView: View {
             .accessibilityLabel("Beta build")
     }
 }
-
 
 struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel

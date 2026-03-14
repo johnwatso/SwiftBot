@@ -735,8 +735,8 @@ struct RuleLibraryButton: View {
     let systemImage: String
     let accent: Color
     var isDisabled: Bool = false
-    var disabledReason: String? = nil
-    var dragItem: String? = nil
+    var disabledReason: String?
+    var dragItem: String?
     let action: () -> Void
 
     var body: some View {
@@ -891,7 +891,7 @@ struct ConditionsSectionView: View {
 struct ConditionRowView: View {
     @Binding var condition: Condition
     var isIncompatible: Bool = false
-    var missingContext: String? = nil
+    var missingContext: String?
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -906,7 +906,7 @@ struct ConditionRowView: View {
                 Label(condition.type.rawValue, systemImage: condition.type.symbol)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.cyan)
-                
+
                 if isIncompatible {
                     Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -915,7 +915,7 @@ struct ConditionRowView: View {
                 }
 
                 Spacer()
-                
+
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -1094,7 +1094,7 @@ struct ActionSectionView: View {
     let allModifiers: [Action]
     let currentTrigger: TriggerType?
     var isIncompatible: Bool = false
-    var missingContext: String? = nil
+    var missingContext: String?
 
     let serverIds: [String]
     let serverName: (String) -> String
@@ -1156,7 +1156,7 @@ struct ActionSectionView: View {
                 Label(action.type.rawValue, systemImage: action.type.symbol)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(category == .messaging ? .orange : .mint)
-                
+
                 if isIncompatible {
                     Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -1165,7 +1165,7 @@ struct ActionSectionView: View {
                 }
 
                 Spacer()
-                
+
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -1417,8 +1417,8 @@ struct EmptyRuleStateView: View {
     let icon: String
     let title: String
     let description: String
-    var onShowMe: (() -> Void)? = nil
-    var onContinue: (() -> Void)? = nil
+    var onShowMe: (() -> Void)?
+    var onContinue: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -1426,7 +1426,7 @@ struct EmptyRuleStateView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.yellow)
                 .symbolEffect(.bounce, value: true)
-            
+
             VStack(spacing: 8) {
                 Text(title)
                     .font(.title2.weight(.bold))
@@ -1649,7 +1649,7 @@ struct SearchableIDPicker: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            
+
             Button {
                 showPopover = true
             } label: {
@@ -1683,9 +1683,9 @@ struct SearchableIDPicker: View {
                 }
                 .padding(10)
                 .background(.white.opacity(0.05))
-                
+
                 Divider()
-                
+
                 if filteredItems.isEmpty {
                     Text("No results found")
                         .font(.caption)

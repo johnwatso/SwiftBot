@@ -12,4 +12,3 @@ struct UptimeInfo {
         return String(format: "%02dm %02ds", m, s)
     }
 }
-
