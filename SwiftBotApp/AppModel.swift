@@ -1095,7 +1095,8 @@ final class AppModel: ObservableObject {
                     contentType: contentType,
                     headers: [
                         "Accept-Ranges": "bytes",
-                        "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)"
+                        "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)",
+                        "Content-Length": "\(data.count)"
                     ],
                     body: data
                 )
