@@ -312,7 +312,7 @@ struct BotSettings: Codable, Hashable {
     var bugAutoFixRejectEmoji: String = "🛑"
     var bugAutoFixAllowedUsernames: [String] = []
     var aiMemoryNotes: [AIMemoryNote] = []
-    var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
+    var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
@@ -460,7 +460,7 @@ struct BotSettings: Codable, Hashable {
         bugAutoFixRejectEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixRejectEmoji) ?? "🛑"
         bugAutoFixAllowedUsernames = try container.decodeIfPresent([String].self, forKey: .bugAutoFixAllowedUsernames) ?? []
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
-        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation."
+        localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()

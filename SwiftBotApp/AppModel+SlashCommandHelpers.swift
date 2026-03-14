@@ -9,6 +9,7 @@ extension AppModel {
             ["name": "8ball", "description": "Ask the magic 8-ball", "type": 1, "options": [["type": 3, "name": "question", "description": "Your yes/no question", "required": true]]],
             ["name": "poll", "description": "Create a simple poll prompt", "type": 1, "options": [["type": 3, "name": "question", "description": "Poll question", "required": true]]],
             ["name": "userinfo", "description": "Show user info", "type": 1],
+            // swiftlint:disable:next line_length
             ["name": "cluster", "description": "Cluster status/probe/test", "type": 1, "options": [["type": 3, "name": "action", "description": "status | test | probe", "required": false, "choices": [["name": "status", "value": "status"], ["name": "test", "value": "test"], ["name": "probe", "value": "probe"]]]]],
             ["name": "debug", "description": "Admin diagnostics", "type": 1],
             ["name": "notifystatus", "description": "Show notification config status", "type": 1],

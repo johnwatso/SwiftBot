@@ -1,0 +1,139 @@
+# SwiftLint configuration for SwiftBot — macOS SwiftUI app
+# https://github.com/realm/SwiftLint
+
+# ── Opt-in rules ──────────────────────────────────────────────────────────────
+opt_in_rules:
+  - array_init
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - convenience_type
+  - discouraged_object_literal
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - enum_case_associated_values_count
+  - explicit_init
+  - fallthrough
+  - fatal_error_message
+  - file_header
+  - first_where
+  - flatmap_over_map_reduce
+  - identical_operands
+  - joined_default_parameter
+  - last_where
+  - legacy_multiple
+  - literal_expression_end_indentation
+  - lower_acl_than_parent
+  - modifier_order
+  - multiline_arguments
+  - multiline_function_chains
+  - multiline_literal_brackets
+  - multiline_parameters
+  - operator_usage_whitespace
+  - overridden_super_call
+  - pattern_matching_keywords
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - redundant_type_annotation
+  - single_test_class
+  - sorted_first_last
+  - toggle_bool
+  - unavailable_function
+  - unneeded_parentheses_in_closure_argument
+  - unowned_variable_capture
+  - untyped_error_in_catch
+  - vertical_parameter_alignment_on_call
+  - weak_delegate
+  - xct_specific_matcher
+  - yoda_condition
+
+# ── Disabled rules ─────────────────────────────────────────────────────────────
+disabled_rules:
+  # SwiftUI views routinely have long bodies — not meaningful to enforce here
+  - function_body_length
+  # SwiftUI previews and complex configurators often exceed the default
+  - closure_body_length
+  # Large model/view files are common in a single-module app
+  - file_length
+  # Long argument lists appear frequently in Discord model types
+  - function_parameter_count
+  # Force-unwrapping is sometimes appropriate in tests / unavoidable crash paths
+  - force_unwrapping
+  # SwiftUI DSL can have deeply nested closures
+  - nesting
+  # Type bodies are intentionally large in feature-rich model objects
+  - type_body_length
+  # Trailing commas in multi-line Swift are stylistic — not enforced
+  - trailing_comma
+  # HTTP routing switch statements are inherently high-complexity; not actionable
+  - cyclomatic_complexity
+
+# ── Rule configuration ─────────────────────────────────────────────────────────
+line_length:
+  warning: 150
+  error: 300
+  ignores_comments: true
+  ignores_urls: true
+  ignores_function_declarations: false
+  ignores_interpolated_strings: true
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 60
+    error: 80
+  excluded:
+    - id
+    - x
+    - y
+    - z
+    - op
+    - db
+    - ok
+    - to
+    - up
+
+type_name:
+  min_length: 3
+  max_length:
+    warning: 60
+    error: 80
+
+large_tuple:
+  warning: 3
+  error: 4
+
+multiline_arguments:
+  first_argument_location: any_line
+  only_enforce_after_first_closure_on_first_line: true
+
+enum_case_associated_values_count:
+  warning: 6
+  error: 8
+
+# ── Analyser rules (requires --enable-analyzer-rules flag) ────────────────────
+analyzer_rules:
+  - explicit_self
+  - unused_declaration
+  - unused_import
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+included:
+  - SwiftBotApp
+  - Tools
+
+excluded:
+  - .build
+  - DerivedData
+  - Pods
+  - SwiftBotApp/Resources
+  - Tests
+
+# ── Reporter ───────────────────────────────────────────────────────────────────
+reporter: xcode
