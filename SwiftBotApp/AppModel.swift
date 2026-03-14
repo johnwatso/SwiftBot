@@ -3,7 +3,6 @@ import AVFoundation
 import CryptoKit
 import Foundation
 import SwiftUI
-import UpdateEngine
 import Darwin
 
 @MainActor
