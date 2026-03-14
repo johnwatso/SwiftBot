@@ -46,6 +46,15 @@
 		6F1B40D9A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1B40D8A2B3C4D5E6F70819 /* AppModel+VoicePresence.swift */; };
 		73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B3205CAA1A44F7E79578277 /* DiscordService.swift */; };
 		75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010969C7B6435248430DD012 /* Models.swift */; };
+		5125A5586D3B4765960059A3 /* Models/AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */; };
+		346EE31F9E1D4CB28BCE37A8 /* Models/BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7436E2097EB456B85B3138E /* Models/BotSettings.swift */; };
+		77516EDB305B452A9063B036 /* Models/BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */; };
+		4B164E69FD8746C58CA0E842 /* Models/ClusterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0870D97E081745428605B82E /* Models/ClusterModels.swift */; };
+		829DC28FA2E7429B93795C74 /* Models/DiscordCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */; };
+		212CE68E56C348E2B16F8E20 /* Models/EventBus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2038AEE60943658748C2A8 /* Models/EventBus.swift */; };
+		F6B4A085F1EF4FC8B45EA1A5 /* Models/GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */; };
+		4310D51BEC4040248D9F8E66 /* Models/KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */; };
+		08DCC0CBE7324CA3B5253825 /* Models/RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */; };
 		8D8E9F001122334455667788 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E9F101122334455667788 /* AppUpdater.swift */; };
 		8E8D7C6B5A4F3E2D1C0B9A88 /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8D7C6B5A4F3E2D1C0B9A89 /* HelpEngine.swift */; };
 		9A8B7C601122334455667788 /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 5015DDB02F554EF200618C6D /* SwiftBot.icon */; };
@@ -95,6 +104,15 @@
 /* Begin PBXFileReference section */
 		0011223344556677AABBCCDD /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		010969C7B6435248430DD012 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/AIModels.swift"; sourceTree = "<group>"; };
+		B7436E2097EB456B85B3138E /* Models/BotSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/BotSettings.swift"; sourceTree = "<group>"; };
+		7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/BotStateModels.swift"; sourceTree = "<group>"; };
+		0870D97E081745428605B82E /* Models/ClusterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ClusterModels.swift"; sourceTree = "<group>"; };
+		AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/DiscordCache.swift"; sourceTree = "<group>"; };
+		8F2038AEE60943658748C2A8 /* Models/EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/EventBus.swift"; sourceTree = "<group>"; };
+		50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/GatewayModels.swift"; sourceTree = "<group>"; };
+		7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/KeychainHelper.swift"; sourceTree = "<group>"; };
+		ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/RuleEngineModels.swift"; sourceTree = "<group>"; };
 		07080011223344556677AABB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		0A6B7D201122334455667788 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		0B3205CAA1A44F7E79578277 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
@@ -268,6 +286,15 @@
 				EA30CC27A218AF533E2E4C0E /* SwiftBotApp.swift */,
 				0B3205CAA1A44F7E79578277 /* DiscordService.swift */,
 				010969C7B6435248430DD012 /* Models.swift */,
+				27EFCFFB1B1A45FABEAE7686 /* Models/AIModels.swift */,
+				B7436E2097EB456B85B3138E /* Models/BotSettings.swift */,
+				7D44391E12144C8A9215A079 /* Models/BotStateModels.swift */,
+				0870D97E081745428605B82E /* Models/ClusterModels.swift */,
+				AFA0F326F22A4CF2817AA2AB /* Models/DiscordCache.swift */,
+				8F2038AEE60943658748C2A8 /* Models/EventBus.swift */,
+				50331CC0992C4A59BFC07663 /* Models/GatewayModels.swift */,
+				7DEA97F20B664678BC69DB03 /* Models/KeychainHelper.swift */,
+				ACD8A97AEC9B4F4AAAEF2C7B /* Models/RuleEngineModels.swift */,
 				F9564766EDA4C18D06A84BCB /* Persistence.swift */,
 				B4F6C2021122334455667788 /* SchemaSettings.swift */,
 				C3D4E5F70112233445566778 /* SwiftMeshView.swift */,
@@ -423,6 +450,15 @@
 				20382A9EF51DD3FD3E6D9FA2 /* SwiftBotApp.swift in Sources */,
 				73BAC11337B101CC5C7AFCD2 /* DiscordService.swift in Sources */,
 				75F7879D2B8A080849E4D4A2 /* Models.swift in Sources */,
+				5125A5586D3B4765960059A3 /* Models/AIModels.swift in Sources */,
+				346EE31F9E1D4CB28BCE37A8 /* Models/BotSettings.swift in Sources */,
+				77516EDB305B452A9063B036 /* Models/BotStateModels.swift in Sources */,
+				4B164E69FD8746C58CA0E842 /* Models/ClusterModels.swift in Sources */,
+				829DC28FA2E7429B93795C74 /* Models/DiscordCache.swift in Sources */,
+				212CE68E56C348E2B16F8E20 /* Models/EventBus.swift in Sources */,
+				F6B4A085F1EF4FC8B45EA1A5 /* Models/GatewayModels.swift in Sources */,
+				4310D51BEC4040248D9F8E66 /* Models/KeychainHelper.swift in Sources */,
+				08DCC0CBE7324CA3B5253825 /* Models/RuleEngineModels.swift in Sources */,
 				F2BE0FA6AB43AF1AB21CD5D7 /* Persistence.swift in Sources */,
 				B4F6C2011122334455667788 /* SchemaSettings.swift in Sources */,
 				C3D4E5F60112233445566778 /* SwiftMeshView.swift in Sources */,
