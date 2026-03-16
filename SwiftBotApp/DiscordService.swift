@@ -87,7 +87,9 @@ actor DiscordService {
     private var gatewayCallbacksConfigured = false
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
+    typealias ActiveVoiceJoinDateProvider = @Sendable (_ guildId: String, _ userId: String) async -> Date?
     private var historyProvider: HistoryProvider?
+    private var activeVoiceJoinDateProvider: ActiveVoiceJoinDateProvider?
 
     private static func makeDefaultIdentitySession() -> URLSession {
         let c = URLSessionConfiguration.ephemeral
@@ -170,6 +172,10 @@ actor DiscordService {
 
     func setHistoryProvider(_ provider: @escaping HistoryProvider) {
         historyProvider = provider
+    }
+
+    func setActiveVoiceJoinDateProvider(_ provider: @escaping ActiveVoiceJoinDateProvider) {
+        activeVoiceJoinDateProvider = provider
     }
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
@@ -553,7 +559,8 @@ actor DiscordService {
                   case let .string(channelId)? = stateMap["channel_id"]
             else { continue }
 
-            members.append(VoiceRulePresenceSeed(userID: userId, channelID: channelId))
+            let joinedAt = await activeVoiceJoinDateProvider?(guildId, userId)
+            members.append(VoiceRulePresenceSeed(userID: userId, channelID: channelId, joinedAt: joinedAt))
         }
 
         voiceRuleStateStore.seedSnapshot(guildID: guildId, members: members, seededAt: Date())

@@ -379,6 +379,10 @@ final class AppModel: ObservableObject {
                 )
                 return messages
             }
+            await service.setActiveVoiceJoinDateProvider { [weak self] guildId, userId in
+                guard let self else { return nil }
+                return await self.voiceSessionStore.persistedJoinDate(guildId: guildId, userId: userId)
+            }
             await cluster.configureHandlers(
                 aiHandler: { [weak self] messages, serverName, channelName, wikiContext in
                     guard let self else { return nil }

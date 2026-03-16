@@ -3,6 +3,7 @@ import Foundation
 struct VoiceRulePresenceSeed {
     let userID: String
     let channelID: String
+    let joinedAt: Date?
 }
 
 enum VoiceRuleStateTransition {
@@ -25,7 +26,9 @@ struct VoiceRuleStateStore {
         for member in members {
             let key = "\(guildID)-\(member.userID)"
             channelByMemberKey[key] = member.channelID
-            joinTimeByMemberKey[key] = seededAt
+            if joinTimeByMemberKey[key] == nil {
+                joinTimeByMemberKey[key] = member.joinedAt ?? seededAt
+            }
         }
     }
 
