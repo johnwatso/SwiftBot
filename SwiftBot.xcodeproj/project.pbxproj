@@ -89,6 +89,7 @@
 		9C70C57B9C4A44DC95FB0C56 /* SteamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBC0B8ABE120213D32A8F9F /* SteamService.swift */; };
 		9D8268E43E33B6ADEDDCFD7E /* CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC9C07D51639D96FE0038EA /* CommandProcessor.swift */; };
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
+		A2C4E6F8B1D3A5C7E9F0B2D4 /* AppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = B1D3A5C7E9F0B2D4A2C4E6F8 /* AppIcon.png */; };
 		A5CBEE32EC1247802A9F689E /* VoiceRuleListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */; };
 		AB311B611EAF20CED07A34FD /* BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C883C3445CFB25BE95819B5 /* BotStateModels.swift */; };
 		AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */; };
@@ -134,7 +135,7 @@
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
@@ -208,6 +209,7 @@
 		A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTypes.swift; sourceTree = "<group>"; };
 		A902D75D3824989E0F053C6B /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
 		B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManager.swift; sourceTree = "<group>"; };
+		B1D3A5C7E9F0B2D4A2C4E6F8 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AppIcon.png; path = SwiftBotApp/Resources/AppIcon.png; sourceTree = SOURCE_ROOT; };
 		B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+WikiBridge.swift"; sourceTree = "<group>"; };
 		BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClient.swift; sourceTree = "<group>"; };
 		C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareTunnelClient.swift; sourceTree = "<group>"; };
@@ -376,6 +378,7 @@
 				0B81279A83B1440C3CEC4A11 /* SparklePublisher */,
 				00B77F31D8E3A1FCEE8DCAB0 /* SwiftBotApp */,
 				6A7A4945675389627AFBFB2F /* admin */,
+				B1D3A5C7E9F0B2D4A2C4E6F8 /* AppIcon.png */,
 				8964B98159AC25452C4423DF /* SwiftBot.icon */,
 				A63029345405694029040AF9 /* Products */,
 			);
@@ -525,6 +528,7 @@
 			files = (
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
 				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
+				A2C4E6F8B1D3A5C7E9F0B2D4 /* AppIcon.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -711,7 +715,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
+				MARKETING_VERSION = 1.9.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -850,7 +854,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.6;
+				MARKETING_VERSION = 1.9.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

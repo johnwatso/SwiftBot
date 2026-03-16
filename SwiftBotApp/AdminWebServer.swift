@@ -1683,7 +1683,7 @@ actor AdminWebServer {
         }
         return jsonResponse(
             ["ok": true],
-            headers: ["Set-Cookie": "swiftbot_admin_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]
+            headers: ["Set-Cookie": "swiftbot_admin_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"]
         )
     }
 
@@ -2035,7 +2035,7 @@ actor AdminWebServer {
     }
 
     private func sessionCookie(for sessionID: String) -> String {
-        "swiftbot_admin_session=\(sessionID); Path=/; HttpOnly; SameSite=Lax; Max-Age=\(Int(sessionTTL))"
+        "swiftbot_admin_session=\(sessionID); Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=\(Int(sessionTTL))"
     }
 
     private func pruneExpiredState() {
@@ -2097,10 +2097,17 @@ actor AdminWebServer {
         contentType: String = "text/plain; charset=utf-8",
         headers: [String: String] = [:]
     ) -> Data {
+        let normalizedHeaders = Dictionary(uniqueKeysWithValues: headers.map { ($0.key.lowercased(), $0.value) })
         var response = "HTTP/1.1 \(status)\r\n"
-        response += "Content-Length: \(body.count)\r\n"
-        response += "Content-Type: \(contentType)\r\n"
-        response += "Cache-Control: no-store\r\n"
+        if normalizedHeaders["content-length"] == nil {
+            response += "Content-Length: \(body.count)\r\n"
+        }
+        if normalizedHeaders["content-type"] == nil {
+            response += "Content-Type: \(contentType)\r\n"
+        }
+        if normalizedHeaders["cache-control"] == nil {
+            response += "Cache-Control: no-store\r\n"
+        }
         headers.forEach { key, value in
             response += "\(key): \(value)\r\n"
         }
@@ -2125,6 +2132,7 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
     private var buffer = Data()
     private var isProcessing = false
     private var hasWrittenResponse = false
+    private var processorTask: Task<Void, Never>?
 
     init(maxHTTPRequestSize: Int, processor: @escaping @Sendable (Data) async -> Data) {
         self.maxHTTPRequestSize = maxHTTPRequestSize
@@ -2152,11 +2160,16 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
         let requestData = buffer
         buffer.removeAll(keepingCapacity: false)
 
-        Task { [weak self] in
+        processorTask = Task { [weak self] in
             guard let self else { return }
             let response = await self.processor(requestData)
             self.writeResponse(response, context: context)
         }
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        processorTask?.cancel()
+        processorTask = nil
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
