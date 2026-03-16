@@ -173,24 +173,37 @@ extension AppModel {
             effectiveRange = (offset: 0, length: initialChunkLength)
         }
 
-        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType] in
+        let isRangeRequest = requestedRange != nil
+        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isRangeRequest] in
             do {
                 let handle = try FileHandle(forReadingFrom: fileURL)
                 defer { try? handle.close() }
 
                 try handle.seek(toOffset: effectiveRange.offset)
                 let data = try handle.read(upToCount: Int(effectiveRange.length)) ?? Data()
-                let end = effectiveRange.offset + UInt64(data.count) - 1
-                return BinaryHTTPResponse(
-                    status: "206 Partial Content",
-                    contentType: contentType,
-                    headers: [
-                        "Accept-Ranges": "bytes",
-                        "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)",
-                        "Content-Length": "\(data.count)"
-                    ],
-                    body: data
-                )
+                if isRangeRequest {
+                    let end = effectiveRange.offset + UInt64(data.count) - 1
+                    return BinaryHTTPResponse(
+                        status: "206 Partial Content",
+                        contentType: contentType,
+                        headers: [
+                            "Accept-Ranges": "bytes",
+                            "Content-Range": "bytes \(effectiveRange.offset)-\(end)/\(fileSize)",
+                            "Content-Length": "\(data.count)"
+                        ],
+                        body: data
+                    )
+                } else {
+                    return BinaryHTTPResponse(
+                        status: "200 OK",
+                        contentType: contentType,
+                        headers: [
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": "\(data.count)"
+                        ],
+                        body: data
+                    )
+                }
             } catch {
                 return BinaryHTTPResponse(
                     status: "500 Internal Server Error",

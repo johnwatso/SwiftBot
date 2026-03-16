@@ -2356,6 +2356,7 @@
       document.getElementById('appShell').classList.remove('active');
       document.getElementById('authScreen').classList.remove('hidden');
       applyAuthOptions();
+      loadAuthOptions();
     }
 
     function setAuthFeedback(message = '', kind = '') {
@@ -4840,6 +4841,9 @@
           probe.src = `${secondary.streamURL}${accessQuery}`;
           probe.preload = 'metadata';
           probe.addEventListener('loadedmetadata', () => {
+            probe.pause();
+            probe.removeAttribute('src');
+            probe.load();
             const duration = probe.duration || 300;
             const state = initTimelineState(duration, maxLen);
             if (mediaExportState.multiStartSeconds != null) {
