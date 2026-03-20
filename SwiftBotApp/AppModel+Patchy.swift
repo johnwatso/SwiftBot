@@ -140,6 +140,7 @@ extension AppModel {
                 }
                 persistSettingsQuietly()
                 appendPatchyLog("Pull [\(target.source.rawValue)] failed: \(diagnostic)")
+                appendPatchyErrorTraceIfPresent(error, context: "Pull [\(target.source.rawValue)]")
             }
         }
     }
@@ -433,8 +434,34 @@ extension AppModel {
 
     func patchyErrorDiagnostic(from error: Error) -> String {
         let ns = error as NSError
-        let statusCode = ns.userInfo["statusCode"] as? Int ?? ns.code
+        let explicitStatusCode = ns.userInfo["statusCode"] as? Int
+        let statusCode = explicitStatusCode ?? ns.code
         let body = (ns.userInfo["responseBody"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if ns.domain == NSURLErrorDomain {
+            switch ns.code {
+            case NSURLErrorNotConnectedToInternet:
+                return "Network appears offline. Check the internet connection and try again."
+            case NSURLErrorTimedOut:
+                return "Network request timed out while contacting the update source."
+            case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost, NSURLErrorDNSLookupFailed:
+                return "Could not reach the update source host. Please try again shortly."
+            default:
+                let localized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !localized.isEmpty {
+                    return "Network request failed: \(localized)"
+                }
+                return "Network request failed."
+            }
+        }
+
+        if explicitStatusCode == nil && body.isEmpty {
+            let localized = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !localized.isEmpty,
+               localized != "The operation couldn’t be completed." {
+                return localized
+            }
+        }
 
         // Try to parse Discord's specific error code from the JSON body
         var discordCode: Int?
@@ -462,6 +489,18 @@ extension AppModel {
                 return "Failed to send (HTTP \(statusCode)). Details: \(trimmedBody)"
             }
             return "Failed to send (HTTP \(statusCode)). Check Patchy logs for details."
+        }
+    }
+
+    func appendPatchyErrorTraceIfPresent(_ error: Error, context: String) {
+        let ns = error as NSError
+        guard let trace = ns.userInfo["amdDebugTrace"] as? String,
+              !trace.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        for line in trace.components(separatedBy: .newlines) where !line.isEmpty {
+            appendPatchyLog("\(context) debug: \(line)")
         }
     }
 
