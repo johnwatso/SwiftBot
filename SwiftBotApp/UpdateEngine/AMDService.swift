@@ -45,9 +45,11 @@ public struct AMDService: Sendable {
         let rawSitemap = String(data: sitemapData, encoding: .utf8) ?? ""
         let entries = parseSitemapEntries(from: rawSitemap)
 
-        guard let latestEntry = entries.max(by: { compareSitemapEntries($0, $1) < 0 }) else {
+        guard let latestSitemapEntry = entries.max(by: { compareSitemapEntries($0, $1) < 0 }) else {
             throw AMDServiceError.noReleaseNotesFound
         }
+
+        let latestEntry = await resolveLatestReleaseEntry(from: latestSitemapEntry)
 
         let releaseRequest = makeRequest(url: latestEntry.url)
         let (releaseData, releaseResponse) = try await session.data(for: releaseRequest)
@@ -92,15 +94,16 @@ public struct AMDService: Sendable {
         )
     }
 
-    private func makeRequest(url: URL) -> URLRequest {
+    private func makeRequest(url: URL, method: String = "GET") -> URLRequest {
         var request = URLRequest(url: url)
+        request.httpMethod = method
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
         return request
     }
 
     private func parseSitemapEntries(from xml: String) -> [SitemapEntry] {
-        let pattern = #"(?is)<url>\s*<loc>(https://www\.amd\.com/en/resources/support-articles/release-notes/RN-RAD-WIN-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})\.html)</loc>\s*<lastmod>([^<]+)</lastmod>\s*</url>"#
+        let pattern = #"(?is)<url>\s*<loc>(https://www\.amd\.com/en(?:/resources/support-articles/release-notes/RN-RAD-WIN-[^<]+\.html|/support/kb/release-notes/rn-rad-win-[^<]+))</loc>\s*<lastmod>([^<]+)</lastmod>\s*</url>"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return []
         }
@@ -111,9 +114,15 @@ public struct AMDService: Sendable {
         return matches.compactMap { match in
             guard
                 let urlRange = Range(match.range(at: 1), in: xml),
-                let versionRange = Range(match.range(at: 2), in: xml),
-                let dateRange = Range(match.range(at: 3), in: xml),
-                let url = URL(string: String(xml[urlRange])),
+                let dateRange = Range(match.range(at: 2), in: xml)
+            else {
+                return nil
+            }
+
+            let urlString = String(xml[urlRange])
+            guard
+                let version = extractReleaseVersionToken(from: urlString),
+                let url = URL(string: urlString),
                 let lastModified = parseISODate(String(xml[dateRange]))
             else {
                 return nil
@@ -121,10 +130,109 @@ public struct AMDService: Sendable {
 
             return SitemapEntry(
                 url: url,
-                version: String(xml[versionRange]),
+                version: version,
                 lastModified: lastModified
             )
         }
+    }
+
+    private func resolveLatestReleaseEntry(from sitemapEntry: SitemapEntry) async -> SitemapEntry {
+        guard let baseVersion = parseSitemapVersion(sitemapEntry.version) else {
+            return sitemapEntry
+        }
+
+        for candidateVersion in candidateVersionTokens(after: baseVersion) {
+            if let candidate = await probeReleaseEntry(version: candidateVersion, fallbackLastModified: sitemapEntry.lastModified) {
+                return candidate
+            }
+        }
+
+        return sitemapEntry
+    }
+
+    private func candidateVersionTokens(after baseVersion: [Int]) -> [String] {
+        let maxPatch = max(baseVersion[2] + 3, 6)
+        var candidates: [(year: Int, month: Int, patch: Int)] = []
+
+        for monthOffset in 0...2 {
+            let (year, month) = addMonthOffset(
+                year: baseVersion[0],
+                month: baseVersion[1],
+                offset: monthOffset
+            )
+            let minPatch = monthOffset == 0 ? baseVersion[2] + 1 : 0
+            guard minPatch <= maxPatch else {
+                continue
+            }
+
+            for patch in minPatch...maxPatch {
+                candidates.append((year: year, month: month, patch: patch))
+            }
+        }
+
+        candidates.sort { lhs, rhs in
+            if lhs.year != rhs.year {
+                return lhs.year > rhs.year
+            }
+            if lhs.month != rhs.month {
+                return lhs.month > rhs.month
+            }
+            return lhs.patch > rhs.patch
+        }
+
+        return candidates.map { "\($0.year)-\($0.month)-\($0.patch)" }
+    }
+
+    private func addMonthOffset(year: Int, month: Int, offset: Int) -> (Int, Int) {
+        let totalMonths = year * 12 + (month - 1) + offset
+        let nextYear = totalMonths / 12
+        let nextMonth = totalMonths % 12 + 1
+        return (nextYear, nextMonth)
+    }
+
+    private func probeReleaseEntry(version: String, fallbackLastModified: Date) async -> SitemapEntry? {
+        for url in releaseNoteURLs(for: version) {
+            if await releaseExists(at: url, version: version) {
+                return SitemapEntry(url: url, version: version, lastModified: fallbackLastModified)
+            }
+        }
+
+        return nil
+    }
+
+    private func releaseNoteURLs(for version: String) -> [URL] {
+        let upperVersion = version.uppercased()
+        let lowerVersion = version.lowercased()
+        let rawURLs = [
+            "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-\(upperVersion).html",
+            "https://www.amd.com/en/support/kb/release-notes/rn-rad-win-\(lowerVersion)",
+            "https://www.amd.com/en/support/kb/release-notes/rn-rad-win-\(lowerVersion).html"
+        ]
+
+        return rawURLs.compactMap(URL.init(string:))
+    }
+
+    private func releaseExists(at url: URL, version: String) async -> Bool {
+        let request = makeRequest(url: url)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validateHTTP(response)
+            let html = String(data: data, encoding: .utf8) ?? ""
+            return isReleasePage(html, matching: version)
+        } catch {
+            return false
+        }
+    }
+
+    private func isReleasePage(_ html: String, matching version: String) -> Bool {
+        let articleNumber = "Article Number: RN-RAD-WIN-\(version)"
+        let dottedVersion = version.replacingOccurrences(of: "-", with: ".")
+        let releaseTitle = "AMD Software: Adrenalin Edition \(dottedVersion) Release Notes"
+        let cleaned = cleanHTML(html, preserveNewlines: true)
+        let folded = cleaned.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+
+        return folded.contains(articleNumber.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")))
+            || folded.contains(releaseTitle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")))
     }
 
     private func compareSitemapEntries(_ lhs: SitemapEntry, _ rhs: SitemapEntry) -> Int {
@@ -142,6 +250,13 @@ public struct AMDService: Sendable {
         return parts.count == 3 ? parts : nil
     }
 
+    private func extractReleaseVersionToken(from value: String) -> String? {
+        firstCapture(
+            pattern: #"(?i)RN-RAD-WIN-([0-9]{2}-[0-9]{1,2}-[0-9]{1,2})"#,
+            in: value
+        )
+    }
+
     private func extractReleaseDate(from html: String, fallback: Date) -> String {
         if let published = firstCapture(pattern: #"\"datePublished\"\s*:\s*\"([^\"]+)\""#, in: html),
            let parsed = parseISODate(published) {
@@ -150,6 +265,15 @@ public struct AMDService: Sendable {
 
         if let updated = firstCapture(pattern: #"(?is)<meta\s+property=\"og:updated_time\"\s+content=\"([^\"]+)\""#, in: html),
            let parsed = parseDateWithZoneOffset(updated) {
+            return formatDate(parsed)
+        }
+
+        let cleaned = cleanHTML(html, preserveNewlines: true)
+        if let visibleDate = firstCapture(
+            pattern: #"(?is)Last\s+Updated:\s*([A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4})"#,
+            in: cleaned
+        ),
+           let parsed = parseVisibleReleaseDate(visibleDate) {
             return formatDate(parsed)
         }
 
@@ -510,6 +634,25 @@ public struct AMDService: Sendable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
         return formatter.date(from: value)
+    }
+
+    private func parseVisibleReleaseDate(_ value: String) -> Date? {
+        let normalized = value.replacingOccurrences(
+            of: #"(\d{1,2})(st|nd|rd|th)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMMM d, yyyy"
+
+        if let parsed = formatter.date(from: normalized) {
+            return parsed
+        }
+
+        formatter.dateFormat = "MMMM d yyyy"
+        return formatter.date(from: normalized)
     }
 
     private func formatDate(_ date: Date) -> String {
