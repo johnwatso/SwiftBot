@@ -45,5 +45,18 @@ final class PatchyValidationTests: XCTestCase {
         let errorGeneric = NSError(domain: "test", code: 500, userInfo: ["statusCode": 500])
         XCTAssertEqual(app.patchyErrorDiagnostic(from: errorGeneric), 
                        "Failed to send (HTTP 500). Check Patchy logs for details.")
+
+        // Test vendor fetch error keeps localized description instead of fake HTTP 0 send error
+        XCTAssertEqual(
+            app.patchyErrorDiagnostic(from: AMDServiceError.invalidResponse),
+            "AMD endpoint returned an invalid response object."
+        )
+
+        // Test network error is surfaced as a network problem
+        let timeout = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        XCTAssertEqual(
+            app.patchyErrorDiagnostic(from: timeout),
+            "Network request timed out while contacting the update source."
+        )
     }
 }

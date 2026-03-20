@@ -195,7 +195,7 @@ struct PatchyView: View {
                         } else {
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(app.patchyDebugLogs, id: \.self) { line in
+                                    ForEach(Array(app.patchyDebugLogs.enumerated()), id: \.offset) { _, line in
                                         Text(line)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)

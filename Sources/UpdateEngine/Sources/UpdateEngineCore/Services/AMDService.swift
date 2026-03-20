@@ -1,6 +1,9 @@
 import Foundation
 
 public struct AMDService: Sendable {
+    private static let fetchCoordinator = AMDFetchCoordinator()
+    private static let blockCoordinator = AMDBlockCoordinator()
+
     public struct DriverInfo: Sendable {
         public let releaseNotes: ReleaseNotes
         public let embedJSON: String
@@ -24,36 +27,40 @@ public struct AMDService: Sendable {
     private let sitemapURL: URL
     private let userAgent: String
     private let formatter: EmbedFormatter
+    private let now: @Sendable () -> Date
 
     public init(
         session: URLSession = .shared,
         sitemapURL: URL = URL(string: "https://www.amd.com/en.sitemap.xml")!,
         userAgent: String = "Mozilla/5.0 (UpdateEngine)",
-        formatter: EmbedFormatter = EmbedFormatter()
+        formatter: EmbedFormatter = EmbedFormatter(),
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.session = session
         self.sitemapURL = sitemapURL
         self.userAgent = userAgent
         self.formatter = formatter
+        self.now = now
     }
 
     public func fetchLatestDriver() async throws -> DriverInfo {
-        let sitemapRequest = makeRequest(url: sitemapURL)
-        let (sitemapData, sitemapResponse) = try await session.data(for: sitemapRequest)
-        try validateHTTP(sitemapResponse)
-
-        let rawSitemap = String(data: sitemapData, encoding: .utf8) ?? ""
-        let entries = parseSitemapEntries(from: rawSitemap)
-
-        guard let latestSitemapEntry = entries.max(by: { compareSitemapEntries($0, $1) < 0 }) else {
-            throw AMDServiceError.noReleaseNotesFound
+        try await Self.fetchCoordinator.fetch(
+            key: coordinationKey(),
+            ttl: 180,
+            now: now
+        ) {
+            try await fetchLatestDriverUncoordinated()
         }
+    }
 
-        let latestEntry = await resolveLatestReleaseEntry(from: latestSitemapEntry)
+    private func fetchLatestDriverUncoordinated() async throws -> DriverInfo {
+        let sitemapResult = await fetchSitemapEntries()
+        let latestEntry = try await discoverLatestReleaseEntry(
+            sitemapEntries: sitemapResult.entries,
+            fallbackError: sitemapResult.error
+        )
 
-        let releaseRequest = makeRequest(url: latestEntry.url)
-        let (releaseData, releaseResponse) = try await session.data(for: releaseRequest)
-        try validateHTTP(releaseResponse)
+        let (releaseData, _) = try await fetchData(url: latestEntry.url, timeoutInterval: 20)
 
         let rawReleaseHTML = String(data: releaseData, encoding: .utf8) ?? ""
         let cleanedReleaseHTML = removeScriptAndStyleBlocks(rawReleaseHTML)
@@ -80,7 +87,7 @@ public struct AMDService: Sendable {
 
         let debugRaw = """
         AMD sitemap XML:
-        \(rawSitemap)
+        \(sitemapResult.rawSitemap)
 
         AMD release notes HTML:
         \(rawReleaseHTML)
@@ -94,12 +101,204 @@ public struct AMDService: Sendable {
         )
     }
 
-    private func makeRequest(url: URL, method: String = "GET") -> URLRequest {
+    private func coordinationKey() -> String {
+        "\(sitemapURL.absoluteString)|\(userAgent)"
+    }
+
+    private func fetchSitemapEntries() async -> (rawSitemap: String, entries: [SitemapEntry], error: Error?) {
+        do {
+            let (data, _) = try await fetchData(url: sitemapURL, timeoutInterval: 12)
+            let rawSitemap = String(data: data, encoding: .utf8) ?? ""
+            return (rawSitemap, parseSitemapEntries(from: rawSitemap), nil)
+        } catch {
+            return ("<unavailable: \(error.localizedDescription)>", [], error)
+        }
+    }
+
+    private func discoverLatestReleaseEntry(
+        sitemapEntries: [SitemapEntry],
+        fallbackError: Error?
+    ) async throws -> SitemapEntry {
+        if let latestSitemapEntry = sitemapEntries.max(by: { compareSitemapEntries($0, $1) < 0 }) {
+            return await resolveLatestReleaseEntry(from: latestSitemapEntry)
+        }
+
+        let bootstrapped = await discoverLatestReleaseFromRecentCandidates()
+        if let entry = bootstrapped.entry {
+            return entry
+        }
+
+        if let fallbackError {
+            throw enrich(error: fallbackError, trace: mergeTrace(from: fallbackError, additionalTrace: bootstrapped.trace))
+        }
+
+        if !bootstrapped.trace.isEmpty {
+            throw enrich(error: AMDServiceError.noReleaseNotesFound, trace: bootstrapped.trace.joined(separator: "\n"))
+        }
+
+        throw AMDServiceError.noReleaseNotesFound
+    }
+
+    private func mergeTrace(from error: Error, additionalTrace: [String]) -> String {
+        let ns = error as NSError
+        let existing = (ns.userInfo["amdDebugTrace"] as? String)?
+            .components(separatedBy: .newlines)
+            .filter { !$0.isEmpty } ?? []
+        return (existing + additionalTrace).joined(separator: "\n")
+    }
+
+    private func fetchData(
+        url: URL,
+        method: String = "GET",
+        timeoutInterval: TimeInterval = 30
+    ) async throws -> (Data, URLResponse) {
+        if let host = url.host,
+           let blockedMessage = await Self.blockCoordinator.activeMessage(for: host, now: now()) {
+            throw enrich(error: AMDServiceError.blocked(message: blockedMessage), trace: "cooldown: \(blockedMessage)")
+        }
+
+        var lastError: Error?
+        var attempts: [String] = []
+
+        for (index, profile) in requestProfiles().enumerated() {
+            let request = makeRequest(url: url, method: method, profile: profile, timeoutInterval: timeoutInterval)
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    let body = String(data: data, encoding: .utf8) ?? ""
+                    if let blockMessage = blockMessage(statusCode: http.statusCode, body: body) {
+                        if let host = url.host {
+                            await Self.blockCoordinator.block(host: host, until: now().addingTimeInterval(30 * 60), message: blockMessage)
+                        }
+                        attempts.append("attempt \(index + 1): \(profile.label) \(url.absoluteString) -> \(blockMessage)")
+                        lastError = AMDServiceError.blocked(message: blockMessage)
+                        break
+                    }
+                }
+                try validateHTTP(response)
+                if let http = response as? HTTPURLResponse {
+                    attempts.append("attempt \(index + 1): \(profile.label) \(url.absoluteString) -> HTTP \(http.statusCode)")
+                } else {
+                    attempts.append("attempt \(index + 1): \(profile.label) \(url.absoluteString) -> success")
+                }
+                return (data, response)
+            } catch {
+                attempts.append("attempt \(index + 1): \(profile.label) \(url.absoluteString) -> \(describe(error: error))")
+                lastError = error
+            }
+        }
+
+        let trace = attempts.joined(separator: "\n")
+        if let error = lastError {
+            throw enrich(error: error, trace: trace)
+        }
+        throw enrich(error: AMDServiceError.invalidResponse, trace: trace)
+    }
+
+    private func makeRequest(
+        url: URL,
+        method: String = "GET",
+        profile: AMDRequestProfile,
+        timeoutInterval: TimeInterval
+    ) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 30
+        request.setValue(profile.userAgent, forHTTPHeaderField: "User-Agent")
+        for (header, value) in profile.headers {
+            request.setValue(value, forHTTPHeaderField: header)
+        }
+        request.timeoutInterval = timeoutInterval
         return request
+    }
+
+    private func requestProfiles() -> [AMDRequestProfile] {
+        let browserHeaders = [
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Referer": "https://www.amd.com/en/support.html",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1"
+        ]
+
+        let profiles = [
+            AMDRequestProfile(label: "default", userAgent: userAgent, headers: [:]),
+            AMDRequestProfile(
+                label: "safari-like",
+                userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
+                headers: browserHeaders
+            ),
+            AMDRequestProfile(
+                label: "chrome-like",
+                userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+                headers: browserHeaders
+            )
+        ]
+
+        var seen: Set<String> = []
+        return profiles.filter { seen.insert("\($0.label)|\($0.userAgent)|\($0.headers.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "&"))").inserted }
+    }
+
+    private func describe(error: Error) -> String {
+        let ns = error as NSError
+        if let statusCode = ns.userInfo["statusCode"] as? Int {
+            return "HTTP \(statusCode)"
+        }
+        if ns.domain == NSURLErrorDomain {
+            return "network \(ns.code): \(error.localizedDescription)"
+        }
+        return error.localizedDescription
+    }
+
+    private func blockMessage(statusCode: Int, body: String) -> String? {
+        guard statusCode == 403 else {
+            return nil
+        }
+
+        let foldedBody = body.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        guard foldedBody.contains("access denied") || foldedBody.contains("edgesuite.net") else {
+            return nil
+        }
+
+        let reference = firstCapture(pattern: #"Reference\s+#([^<\s]+)"#, in: body)
+        if let reference, !reference.isEmpty {
+            return "AMD is blocking this IP/session (Akamai Access Denied, ref \(reference)). Cooling down AMD retries for 30 minutes."
+        }
+        return "AMD is blocking this IP/session (Akamai Access Denied). Cooling down AMD retries for 30 minutes."
+    }
+
+    private func enrich(error: Error, trace: String) -> Error {
+        let ns = error as NSError
+        var userInfo = ns.userInfo
+        userInfo["amdDebugTrace"] = trace
+
+        if userInfo[NSLocalizedDescriptionKey] == nil {
+            userInfo[NSLocalizedDescriptionKey] = error.localizedDescription
+        }
+
+        switch error {
+        case AMDServiceError.blocked(let message):
+            return NSError(
+                domain: ns.domain,
+                code: 403,
+                userInfo: userInfo.merging([
+                    NSLocalizedDescriptionKey: message
+                ]) { _, new in new }
+            )
+        case AMDServiceError.httpError(let statusCode):
+            userInfo["statusCode"] = statusCode
+            return NSError(domain: ns.domain, code: statusCode, userInfo: userInfo)
+        case AMDServiceError.invalidResponse:
+            return NSError(domain: ns.domain, code: ns.code, userInfo: userInfo)
+        case AMDServiceError.noReleaseNotesFound:
+            return NSError(domain: ns.domain, code: ns.code, userInfo: userInfo)
+        default:
+            return NSError(domain: ns.domain, code: ns.code, userInfo: userInfo)
+        }
     }
 
     private func parseSitemapEntries(from xml: String) -> [SitemapEntry] {
@@ -141,8 +340,13 @@ public struct AMDService: Sendable {
             return sitemapEntry
         }
 
+        var trace: [String] = []
         for candidateVersion in candidateVersionTokens(after: baseVersion) {
-            if let candidate = await probeReleaseEntry(version: candidateVersion, fallbackLastModified: sitemapEntry.lastModified) {
+            if let candidate = await probeReleaseEntry(
+                version: candidateVersion,
+                fallbackLastModified: sitemapEntry.lastModified,
+                trace: &trace
+            ) {
                 return candidate
             }
         }
@@ -150,9 +354,59 @@ public struct AMDService: Sendable {
         return sitemapEntry
     }
 
-    private func candidateVersionTokens(after baseVersion: [Int]) -> [String] {
-        let maxPatch = max(baseVersion[2] + 3, 6)
+    private func discoverLatestReleaseFromRecentCandidates() async -> (entry: SitemapEntry?, trace: [String]) {
+        var trace: [String] = []
+        for candidateVersion in recentCandidateVersionTokens() {
+            if let candidate = await probeReleaseEntry(
+                version: candidateVersion,
+                fallbackLastModified: now(),
+                trace: &trace
+            ) {
+                return (candidate, trace)
+            }
+        }
+
+        return (nil, trace)
+    }
+
+    private func recentCandidateVersionTokens() -> [String] {
+        let calendar = Calendar(identifier: .gregorian)
+        let anchorDate = now()
+        let preferredPatches = [1, 0, 2, 3]
         var candidates: [(year: Int, month: Int, patch: Int)] = []
+
+        for monthOffset in 0..<2 {
+            guard let date = calendar.date(byAdding: .month, value: -monthOffset, to: anchorDate) else {
+                continue
+            }
+
+            let components = calendar.dateComponents([.year, .month], from: date)
+            guard let year = components.year, let month = components.month else {
+                continue
+            }
+
+            for patch in preferredPatches {
+                candidates.append((year: year % 100, month: month, patch: patch))
+            }
+        }
+
+        candidates.sort { lhs, rhs in
+            if lhs.year != rhs.year {
+                return lhs.year > rhs.year
+            }
+            if lhs.month != rhs.month {
+                return lhs.month > rhs.month
+            }
+            return lhs.patch > rhs.patch
+        }
+
+        return candidates.map { "\($0.year)-\($0.month)-\($0.patch)" }
+    }
+
+    private func candidateVersionTokens(after baseVersion: [Int]) -> [String] {
+        let preferredPatches = [1, 0, 2, 3]
+        var candidates: [(year: Int, month: Int, patch: Int)] = []
+        let currentMonthAnchor = currentReleaseMonthAnchor()
 
         for monthOffset in 0...2 {
             let (year, month) = addMonthOffset(
@@ -160,12 +414,13 @@ public struct AMDService: Sendable {
                 month: baseVersion[1],
                 offset: monthOffset
             )
-            let minPatch = monthOffset == 0 ? baseVersion[2] + 1 : 0
-            guard minPatch <= maxPatch else {
+            guard isCandidateMonth((year, month), notAfter: currentMonthAnchor) else {
                 continue
             }
-
-            for patch in minPatch...maxPatch {
+            let candidatePatches = monthOffset == 0
+                ? preferredPatches.filter { $0 > baseVersion[2] }
+                : preferredPatches
+            for patch in candidatePatches {
                 candidates.append((year: year, month: month, patch: patch))
             }
         }
@@ -183,6 +438,19 @@ public struct AMDService: Sendable {
         return candidates.map { "\($0.year)-\($0.month)-\($0.patch)" }
     }
 
+    private func currentReleaseMonthAnchor() -> (Int, Int) {
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents([.year, .month], from: now())
+        return ((components.year ?? 2000) % 100, components.month ?? 1)
+    }
+
+    private func isCandidateMonth(_ lhs: (Int, Int), notAfter rhs: (Int, Int)) -> Bool {
+        if lhs.0 != rhs.0 {
+            return lhs.0 < rhs.0
+        }
+        return lhs.1 <= rhs.1
+    }
+
     private func addMonthOffset(year: Int, month: Int, offset: Int) -> (Int, Int) {
         let totalMonths = year * 12 + (month - 1) + offset
         let nextYear = totalMonths / 12
@@ -190,14 +458,42 @@ public struct AMDService: Sendable {
         return (nextYear, nextMonth)
     }
 
-    private func probeReleaseEntry(version: String, fallbackLastModified: Date) async -> SitemapEntry? {
+    private func probeReleaseEntry(
+        version: String,
+        fallbackLastModified: Date,
+        trace: inout [String]
+    ) async -> SitemapEntry? {
         for url in releaseNoteURLs(for: version) {
-            if await releaseExists(at: url, version: version) {
+            let probe = await probeReleaseURL(at: url, version: version)
+            trace.append(contentsOf: probe.trace)
+            if probe.exists {
                 return SitemapEntry(url: url, version: version, lastModified: fallbackLastModified)
             }
         }
 
         return nil
+    }
+
+    private func probeReleaseURL(at url: URL, version: String) async -> (exists: Bool, trace: [String]) {
+        do {
+            let (data, _) = try await fetchData(url: url, timeoutInterval: 8)
+            let html = String(data: data, encoding: .utf8) ?? ""
+            if isReleasePage(html, matching: version) {
+                return (true, ["candidate \(version): \(url.absoluteString) -> matched release page"])
+            }
+            return (false, ["candidate \(version): \(url.absoluteString) -> page did not match release version"])
+        } catch {
+            let ns = error as NSError
+            if let debug = ns.userInfo["amdDebugTrace"] as? String, !debug.isEmpty {
+                return (
+                    false,
+                    debug.components(separatedBy: .newlines)
+                        .filter { !$0.isEmpty }
+                        .map { "candidate \(version): \($0)" }
+                )
+            }
+            return (false, ["candidate \(version): \(url.absoluteString) -> \(describe(error: error))"])
+        }
     }
 
     private func releaseNoteURLs(for version: String) -> [URL] {
@@ -210,18 +506,6 @@ public struct AMDService: Sendable {
         ]
 
         return rawURLs.compactMap(URL.init(string:))
-    }
-
-    private func releaseExists(at url: URL, version: String) async -> Bool {
-        let request = makeRequest(url: url)
-        do {
-            let (data, response) = try await session.data(for: request)
-            try validateHTTP(response)
-            let html = String(data: data, encoding: .utf8) ?? ""
-            return isReleasePage(html, matching: version)
-        } catch {
-            return false
-        }
     }
 
     private func isReleasePage(_ html: String, matching version: String) -> Bool {
@@ -779,10 +1063,75 @@ private struct SitemapEntry {
     let lastModified: Date
 }
 
+private struct AMDRequestProfile {
+    let label: String
+    let userAgent: String
+    let headers: [String: String]
+}
+
+private actor AMDFetchCoordinator {
+    private struct CachedValue {
+        let value: AMDService.DriverInfo
+        let fetchedAt: Date
+    }
+
+    private var cachedValues: [String: CachedValue] = [:]
+    private var inFlightTasks: [String: Task<AMDService.DriverInfo, Error>] = [:]
+
+    func fetch(
+        key: String,
+        ttl: TimeInterval,
+        now: @escaping @Sendable () -> Date,
+        operation: @escaping @Sendable () async throws -> AMDService.DriverInfo
+    ) async throws -> AMDService.DriverInfo {
+        let currentTime = now()
+        if let cached = cachedValues[key], currentTime.timeIntervalSince(cached.fetchedAt) < ttl {
+            return cached.value
+        }
+
+        if let existingTask = inFlightTasks[key] {
+            return try await existingTask.value
+        }
+
+        let task = Task { try await operation() }
+        inFlightTasks[key] = task
+        defer { inFlightTasks[key] = nil }
+
+        let value = try await task.value
+        cachedValues[key] = CachedValue(value: value, fetchedAt: now())
+        return value
+    }
+}
+
+private actor AMDBlockCoordinator {
+    private struct BlockEntry {
+        let until: Date
+        let message: String
+    }
+
+    private var blocks: [String: BlockEntry] = [:]
+
+    func activeMessage(for host: String, now: Date) -> String? {
+        guard let entry = blocks[host] else {
+            return nil
+        }
+        if now < entry.until {
+            return entry.message
+        }
+        blocks.removeValue(forKey: host)
+        return nil
+    }
+
+    func block(host: String, until: Date, message: String) {
+        blocks[host] = BlockEntry(until: until, message: message)
+    }
+}
+
 public enum AMDServiceError: LocalizedError, Sendable {
     case invalidResponse
     case httpError(statusCode: Int)
     case noReleaseNotesFound
+    case blocked(message: String)
 
     public var errorDescription: String? {
         switch self {
@@ -792,6 +1141,8 @@ public enum AMDServiceError: LocalizedError, Sendable {
             return "AMD endpoint request failed with HTTP \(statusCode)."
         case .noReleaseNotesFound:
             return "No AMD Radeon Adrenalin release notes were found."
+        case .blocked(let message):
+            return message
         }
     }
 }
