@@ -69,6 +69,135 @@ extension AppModel {
         )
     }
 
+    func runMusicLookup(
+        query: String?,
+        title: String?,
+        artist: String?,
+        userID: String,
+        channelID: String
+    ) async -> (ok: Bool, message: String) {
+        pruneExpiredMusicSelections()
+
+        let trimmedQuery = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedArtist = artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        let effectiveQuery: String = {
+            if !trimmedQuery.isEmpty {
+                return trimmedQuery
+            }
+            return [trimmedTitle, trimmedArtist]
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }()
+
+        guard !effectiveQuery.isEmpty else {
+            return (
+                false,
+                "🎵 Usage: \(effectivePrefix())music <query> OR \(effectivePrefix())music title:<title> artist:<artist> OR \(effectivePrefix())music pick <number>"
+            )
+        }
+
+        let results = await musicLookupService.searchTracks(query: effectiveQuery, limit: 5)
+        guard !results.isEmpty else {
+            return (
+                false,
+                "🎵 No matches found for `\(effectiveQuery)`. Try a different query or provide both title and artist."
+            )
+        }
+
+        pendingMusicSelectionsByUserID[userID] = PendingMusicSelection(
+            query: effectiveQuery,
+            channelID: channelID,
+            createdAt: Date(),
+            results: results
+        )
+
+        var lines: [String] = ["🎵 Matches for `\(effectiveQuery)`:"]
+        for (index, item) in results.enumerated() {
+            let albumPart = item.album.map { " · \($0)" } ?? ""
+            lines.append("\(index + 1). \(item.title) — \(item.artist)\(albumPart)")
+        }
+        lines.append("")
+        lines.append("Pick one with `\(effectivePrefix())music pick <number>` (or `/music pick:<number>`).")
+
+        return (true, lines.joined(separator: "\n"))
+    }
+
+    func pickMusicLookup(
+        selectionIndex: Int,
+        userID: String,
+        channelID: String
+    ) async -> (ok: Bool, message: String) {
+        pruneExpiredMusicSelections()
+
+        guard selectionIndex > 0 else {
+            return (false, "🎵 Pick must be a positive number. Example: `\(effectivePrefix())music pick 2`.")
+        }
+        guard let selection = pendingMusicSelectionsByUserID[userID] else {
+            return (false, "🎵 No active music search. Run `\(effectivePrefix())music <query>` first.")
+        }
+        guard selection.channelID == channelID else {
+            return (
+                false,
+                "🎵 Please pick in the same channel as the search, or run a fresh `\(effectivePrefix())music` query here."
+            )
+        }
+
+        let index = selectionIndex - 1
+        guard selection.results.indices.contains(index) else {
+            return (false, "🎵 Pick out of range. Choose 1...\(selection.results.count).")
+        }
+
+        let match = selection.results[index]
+        let combinedSearch = "\(match.title) \(match.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+        let appleLink = match.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: combinedSearch)
+        let spotifyLink = buildSpotifySearchURL(query: combinedSearch)
+        let youtubeMusicLink = buildYouTubeMusicSearchURL(query: combinedSearch)
+        let youtubeLink = buildYouTubeSearchURL(query: combinedSearch)
+
+        let message = """
+        🎧 \(match.title) — \(match.artist)
+        Apple Music: <\(appleLink)>
+        Spotify: <\(spotifyLink)>
+        YouTube Music: <\(youtubeMusicLink)>
+        YouTube: <\(youtubeLink)>
+        """
+        return (true, message)
+    }
+
+    func pruneExpiredMusicSelections(now: Date = Date()) {
+        pendingMusicSelectionsByUserID = pendingMusicSelectionsByUserID.filter { _, selection in
+            now.timeIntervalSince(selection.createdAt) < 15 * 60
+        }
+        musicInteractionSessionsByID = musicInteractionSessionsByID.filter { _, session in
+            now.timeIntervalSince(session.createdAt) < 15 * 60
+        }
+    }
+
+    func buildSpotifySearchURL(query: String) -> String {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? query
+        return "https://open.spotify.com/search/\(encoded)"
+    }
+
+    func buildYouTubeMusicSearchURL(query: String) -> String {
+        var components = URLComponents(string: "https://music.youtube.com/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: query)]
+        return components?.url?.absoluteString ?? "https://music.youtube.com/"
+    }
+
+    func buildYouTubeSearchURL(query: String) -> String {
+        var components = URLComponents(string: "https://www.youtube.com/results")
+        components?.queryItems = [URLQueryItem(name: "search_query", value: query)]
+        return components?.url?.absoluteString ?? "https://www.youtube.com/"
+    }
+
+    func buildITunesSearchURL(query: String) -> String {
+        var components = URLComponents(string: "https://music.apple.com/us/search")
+        components?.queryItems = [URLQueryItem(name: "term", value: query)]
+        return components?.url?.absoluteString ?? "https://music.apple.com/"
+    }
+
     func generateImageCommand(
         prompt: String,
         userId: String,

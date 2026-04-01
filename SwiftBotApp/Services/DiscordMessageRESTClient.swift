@@ -81,11 +81,15 @@ struct DiscordMessageRESTClient {
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
+        try await editMessage(channelId: channelId, messageId: messageId, payload: ["content": content], token: token)
+    }
+
+    func editMessage(channelId: String, messageId: String, payload: [String: Any], token: String) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["content": content])
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (_, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to edit message"])
@@ -186,7 +190,7 @@ struct DiscordMessageRESTClient {
         }
     }
 
-    func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws {
+    func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws -> String {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)/threads"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -204,6 +208,12 @@ struct DiscordMessageRESTClient {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to create thread", "responseBody": responseBody]
             )
         }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["id"] as? String,
+              !id.isEmpty else {
+            throw NSError(domain: "DiscordService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse thread id"])
+        }
+        return id
     }
 
     @discardableResult

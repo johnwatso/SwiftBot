@@ -131,6 +131,8 @@ final class AppModel: ObservableObject {
     lazy var guildRESTClient = DiscordGuildRESTClient(session: discordRESTSession)
     lazy var messageRESTClient = DiscordMessageRESTClient(session: discordRESTSession)
     lazy var wikiLookupService = WikiLookupService(session: discordRESTSession)
+    lazy var musicLookupService = MusicLookupService(session: discordRESTSession)
+    lazy var playlistImportService = PlaylistImportService(session: discordRESTSession)
     lazy var service = DiscordService(
         session: discordRESTSession,
         identitySession: identitySession,
@@ -222,6 +224,9 @@ final class AppModel: ObservableObject {
     var activeBugAutoFixMessageIDs: Set<String> = []
     var pendingBugAutoFixStarts: [String: BugAutoFixPendingStart] = [:]
     var pendingBugAutoFixApprovals: [String: BugAutoFixPendingApproval] = [:]
+    var pendingMusicSelectionsByUserID: [String: PendingMusicSelection] = [:]
+    var musicInteractionSessionsByID: [String: MusicInteractionSession] = [:]
+    var playlistTrackCardsByKey: [String: PlaylistTrackCardState] = [:]
 
     var botAvatarURL: URL? {
         guard let userId = botUserId, let hash = botAvatarHash else { return nil }
@@ -397,6 +402,10 @@ final class AppModel: ObservableObject {
                     guard let self else { return nil }
                     return await self.wikiLookupService.lookupWiki(query: query, source: source)
                 },
+                playlistImportHandler: { [weak self] playlistURL, limit in
+                    guard let self else { return nil }
+                    return await self.playlistImportService.importPlaylist(from: playlistURL, limit: limit)
+                },
                 onSnapshot: { [weak self] snapshot in
                     let model = self
                     await MainActor.run {
@@ -477,6 +486,7 @@ final class AppModel: ObservableObject {
                 leaderTerm: settings.clusterLeaderTerm
             )
             await cluster.setOffloadPolicy(
+                workerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
                 aiReplies: settings.clusterOffloadAIReplies,
                 wikiLookups: settings.clusterOffloadWikiLookups
             )

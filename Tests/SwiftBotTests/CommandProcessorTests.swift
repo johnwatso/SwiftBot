@@ -109,6 +109,56 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(lookups.first?.channelId, "channel-1")
     }
 
+    func testPrefixMusicRoutesQueryLookup() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(recorder: recorder)
+
+        let ok = await processor.executePrefixCommand(
+            .init(
+                commandText: "music title:Strobe artist:deadmau5",
+                username: "Taylor",
+                channelId: "channel-1",
+                raw: ["author": .object(["id": .string("user-9")])],
+                bypassSystemToggles: false
+            )
+        )
+
+        XCTAssertTrue(ok)
+        let lookups = await recorder.musicLookups()
+        XCTAssertEqual(lookups.count, 1)
+        XCTAssertEqual(lookups.first?.title, "Strobe")
+        XCTAssertEqual(lookups.first?.artist, "deadmau5")
+        XCTAssertEqual(lookups.first?.userId, "user-9")
+    }
+
+    func testSlashMusicPickRoutesSelection() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(recorder: recorder)
+
+        let response = await processor.executeSlashCommand(
+            command: "music",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("pick"),
+                        "value": .int(2)
+                    ])
+                ])
+            ],
+            context: .init(
+                channelId: "channel-1",
+                username: "Taylor",
+                rawLikeMessage: ["author": .object(["id": .string("user-9")])]
+            )
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Music Lookup")
+        let picks = await recorder.musicPicks()
+        XCTAssertEqual(picks.count, 1)
+        XCTAssertEqual(picks.first?.selection, 2)
+        XCTAssertEqual(picks.first?.userId, "user-9")
+    }
+
     private func makeProcessor(
         recorder: CommandRecorder,
         configuration: CommandProcessor.RuntimeConfiguration = .init(
@@ -190,7 +240,21 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 handleLogABugSlash: { _, _, _, _ in (true, "Logged") },
                 handleFeatureRequestSlash: { _, _, _, _, _ in (true, "Requested") },
-                lookupFinalsWiki: { _ in nil }
+                lookupFinalsWiki: { _ in nil },
+                runMusicLookup: { query, title, artist, userID, channelID in
+                    await recorder.recordMusicLookup(
+                        query: query,
+                        title: title,
+                        artist: artist,
+                        userId: userID,
+                        channelId: channelID
+                    )
+                    return (true, "Music lookup result")
+                },
+                pickMusicLookup: { selection, userID, channelID in
+                    await recorder.recordMusicPick(selection: selection, userId: userID, channelId: channelID)
+                    return (true, "Music selection result")
+                }
             )
         )
     }
@@ -200,6 +264,8 @@ private actor CommandRecorder {
     private var messages: [(channelId: String, content: String)] = []
     private var embeds: [(channelId: String, embed: [String: Any])] = []
     private var lookups: [(command: String, source: String, query: String, channelId: String)] = []
+    private var musicLookupRecords: [(query: String?, title: String?, artist: String?, userId: String, channelId: String)] = []
+    private var musicPickRecords: [(selection: Int, userId: String, channelId: String)] = []
 
     func recordMessage(channelId: String, content: String) {
         messages.append((channelId, content))
@@ -213,6 +279,14 @@ private actor CommandRecorder {
         lookups.append((command, source, query, channelId))
     }
 
+    func recordMusicLookup(query: String?, title: String?, artist: String?, userId: String, channelId: String) {
+        musicLookupRecords.append((query, title, artist, userId, channelId))
+    }
+
+    func recordMusicPick(selection: Int, userId: String, channelId: String) {
+        musicPickRecords.append((selection, userId, channelId))
+    }
+
     func sentMessages() -> [(channelId: String, content: String)] {
         messages
     }
@@ -223,5 +297,13 @@ private actor CommandRecorder {
 
     func wikiLookups() -> [(command: String, source: String, query: String, channelId: String)] {
         lookups
+    }
+
+    func musicLookups() -> [(query: String?, title: String?, artist: String?, userId: String, channelId: String)] {
+        musicLookupRecords
+    }
+
+    func musicPicks() -> [(selection: Int, userId: String, channelId: String)] {
+        musicPickRecords
     }
 }

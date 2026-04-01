@@ -432,38 +432,187 @@ extension AppModel {
     func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
         let context = interactionContext(from: event.rawMap)
+        switch event.interactionType {
+        case 2:
+            let slashName = (event.commandName ?? "").lowercased()
+            if slashName == "music" {
+                await handleInteractiveMusicSlash(event: event, context: context)
+                return
+            }
+            if slashName == "playlist" {
+                await handlePlaylistImportSlash(event: event, context: context)
+                return
+            }
+
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: ["type": 5]
+                )
+            } catch {
+                logs.append("❌ Failed ACK for slash command: \(error.localizedDescription)")
+                return
+            }
+
+            let response: SlashResponsePayload
+            if settings.commandsEnabled && settings.slashCommandsEnabled {
+                response = await executeSlashCommand(
+                    command: slashName,
+                    data: event.data,
+                    context: context
+                )
+            } else {
+                response = (
+                    content: nil,
+                    embeds: [[
+                        "title": "Slash Commands Disabled",
+                        "description": "Slash commands are turned off in SwiftBot settings.",
+                        "color": 15_790_767
+                    ]]
+                )
+            }
+            stats.commandsRun += 1
+            let slashCommandForLog = formatSlashCommandForLog(name: event.commandName ?? "unknown", data: event.data)
+            let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
+            let slashExecutionDetails = await commandExecutionDetails(for: slashName)
+            commandLog.insert(CommandLogEntry(
+                time: Date(),
+                user: context.username,
+                server: commandServerName(from: context.rawLikeMessage),
+                command: slashCommandForLog,
+                channel: context.channelId,
+                executionRoute: slashExecutionDetails.route,
+                executionNode: slashExecutionDetails.node,
+                ok: slashOk
+            ), at: 0)
+
+            guard let applicationID = botUserId, !applicationID.isEmpty else { return }
+            guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
+            do {
+                var payload: [String: Any] = [:]
+                if let content = response.content {
+                    payload["content"] = String(content.prefix(1900))
+                }
+                if let embeds = response.embeds, !embeds.isEmpty {
+                    payload["embeds"] = Array(embeds.prefix(10))
+                }
+                if payload.isEmpty {
+                    payload["content"] = "Done."
+                }
+                try await service.editOriginalInteractionResponse(
+                    applicationID: applicationID,
+                    interactionToken: event.interactionToken,
+                    payload: payload
+                )
+            } catch {
+                logs.append("❌ Failed editing slash response: \(error.localizedDescription)")
+            }
+        case 3:
+            let customID = slashCustomID(in: event.data)
+            if customID.hasPrefix("music:") {
+                await handleMusicComponentInteraction(event: event, context: context)
+                return
+            }
+            if customID.hasPrefix("playlist:") {
+                await handlePlaylistComponentInteraction(event: event, context: context)
+                return
+            }
+        default:
+            return
+        }
+    }
+
+    private func handleInteractiveMusicSlash(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let usageText = "Usage: `/music query:<text>` or `/music title:<title> artist:<artist>`"
+        guard settings.commandsEnabled, settings.slashCommandsEnabled else {
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "type": 4,
+                        "data": [
+                            "flags": 64,
+                            "content": "Slash commands are disabled. \(usageText)"
+                        ]
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /music disabled response: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        let userID = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let helpRequested = slashOptionBool(named: "help", in: event.data) ?? false
+        let query = slashOptionString(named: "query", in: event.data)
+        let title = slashOptionString(named: "title", in: event.data)
+        let artist = slashOptionString(named: "artist", in: event.data)
+
+        let effectiveQuery = [query, title, artist]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        let normalizedQuery = effectiveQuery.lowercased()
+        if helpRequested || ["help", "-h", "--help"].contains(normalizedQuery) {
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "type": 4,
+                        "data": [
+                            "flags": 64,
+                            "content": HelpRenderer.detailedMusicGuide(prefix: effectivePrefix())
+                        ]
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /music help response: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        guard !effectiveQuery.isEmpty else {
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "type": 4,
+                        "data": [
+                            "flags": 64,
+                            "content": usageText
+                        ]
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /music usage response: \(error.localizedDescription)")
+            }
+            return
+        }
+
         do {
             try await service.respondToInteraction(
                 interactionID: event.interactionID,
                 interactionToken: event.interactionToken,
-                payload: ["type": 5]
+                payload: [
+                    "type": 5,
+                    "data": ["flags": 64]
+                ]
             )
         } catch {
-            logs.append("❌ Failed ACK for slash command: \(error.localizedDescription)")
+            logs.append("❌ Failed ACK for /music: \(error.localizedDescription)")
             return
         }
 
-        let response: SlashResponsePayload
-        if settings.commandsEnabled && settings.slashCommandsEnabled {
-            response = await executeSlashCommand(
-                command: event.commandName.lowercased(),
-                data: event.data,
-                context: context
-            )
-        } else {
-            response = (
-                content: nil,
-                embeds: [[
-                    "title": "Slash Commands Disabled",
-                    "description": "Slash commands are turned off in SwiftBot settings.",
-                    "color": 15_790_767
-                ]]
-            )
-        }
+        let results = await musicLookupService.searchTracks(query: effectiveQuery, limit: 5)
         stats.commandsRun += 1
-        let slashCommandForLog = formatSlashCommandForLog(name: event.commandName, data: event.data)
-        let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
-        let slashExecutionDetails = await commandExecutionDetails(for: event.commandName.lowercased())
+        let commandName = event.commandName ?? "music"
+        let slashCommandForLog = formatSlashCommandForLog(name: commandName, data: event.data)
+        let slashExecutionDetails = await commandExecutionDetails(for: "music")
         commandLog.insert(CommandLogEntry(
             time: Date(),
             user: context.username,
@@ -472,29 +621,661 @@ extension AppModel {
             channel: context.channelId,
             executionRoute: slashExecutionDetails.route,
             executionNode: slashExecutionDetails.node,
-            ok: slashOk
+            ok: !results.isEmpty
         ), at: 0)
 
         guard let applicationID = botUserId, !applicationID.isEmpty else { return }
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
+
         do {
-            var payload: [String: Any] = [:]
-            if let content = response.content {
-                payload["content"] = String(content.prefix(1900))
+            if results.isEmpty {
+                try await service.editOriginalInteractionResponse(
+                    applicationID: applicationID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "content": "🎵 No matches for `\(effectiveQuery)`.\nTry refining title and artist.",
+                        "embeds": [],
+                        "components": []
+                    ]
+                )
+                return
             }
-            if let embeds = response.embeds, !embeds.isEmpty {
-                payload["embeds"] = Array(embeds.prefix(10))
-            }
-            if payload.isEmpty {
-                payload["content"] = "Done."
-            }
+
+            pruneExpiredMusicSelections()
+            let sessionID = UUID().uuidString
+            musicInteractionSessionsByID[sessionID] = MusicInteractionSession(
+                id: sessionID,
+                query: effectiveQuery,
+                userID: userID,
+                channelID: context.channelId,
+                createdAt: Date(),
+                results: results
+            )
+
+            let components = musicPickerComponents(sessionID: sessionID, results: results)
+            let content = "🎵 Matches for `\(effectiveQuery)`\nChoose a track below. Only you can see this."
             try await service.editOriginalInteractionResponse(
                 applicationID: applicationID,
                 interactionToken: event.interactionToken,
-                payload: payload
+                payload: [
+                    "content": String(content.prefix(1900)),
+                    "embeds": [musicSearchSummaryEmbed(query: effectiveQuery, results: results)],
+                    "components": components
+                ]
             )
         } catch {
-            logs.append("❌ Failed editing slash response: \(error.localizedDescription)")
+            logs.append("❌ Failed interactive /music response: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleMusicComponentInteraction(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let customID = slashCustomID(in: event.data)
+        guard customID.hasPrefix("music:") else { return }
+
+        let userID = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        pruneExpiredMusicSelections()
+
+        if customID.hasPrefix("music:pick:") {
+            let parts = customID.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 3 else { return }
+            let sessionID = parts[2]
+            guard let session = musicInteractionSessionsByID[sessionID], session.userID == userID else {
+                await respondToMusicComponentError(event: event, message: "This picker is no longer valid for you.")
+                return
+            }
+
+            guard let selectedValue = slashComponentValues(in: event.data).first,
+                  let selectedIndex = Int(selectedValue),
+                  session.results.indices.contains(selectedIndex) else {
+                await respondToMusicComponentError(event: event, message: "Invalid selection.")
+                return
+            }
+
+            let track = session.results[selectedIndex]
+            let trackEmbed = interactiveMusicTrackEmbed(for: track)
+            let components = musicPostComponents(
+                sessionID: sessionID,
+                selectedIndex: selectedIndex,
+                results: session.results
+            )
+            await updateMusicComponent(
+                event: event,
+                content: "Preview selected. Click **Post To Channel** to publish it.",
+                embed: trackEmbed,
+                components: components
+            )
+            return
+        }
+
+        if customID.hasPrefix("music:post:") {
+            let parts = customID.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 4 else { return }
+            let sessionID = parts[2]
+            guard let selectedIndex = Int(parts[3]),
+                  let session = musicInteractionSessionsByID[sessionID],
+                  session.userID == userID,
+                  session.results.indices.contains(selectedIndex) else {
+                await respondToMusicComponentError(event: event, message: "This post action is no longer valid.")
+                return
+            }
+
+            let track = session.results[selectedIndex]
+            let payload: [String: Any] = [
+                "content": "🎧 \(track.title) — \(track.artist)",
+                "embeds": [interactiveMusicTrackEmbed(for: track)]
+            ]
+            let sent = await sendPayload(channelId: session.channelID, payload: payload, action: "sendMessage")
+            let statusPrefix = sent ? "✅ Posted to channel." : "❌ Failed to post to channel."
+            await updateMusicComponent(
+                event: event,
+                content: statusPrefix,
+                embed: interactiveMusicTrackEmbed(for: track),
+                components: musicPostComponents(sessionID: sessionID, selectedIndex: selectedIndex, results: session.results)
+            )
+        }
+    }
+
+    private func respondToMusicComponentError(event: GatewayInteractionCreateEvent, message: String) async {
+        do {
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: [
+                    "type": 4,
+                    "data": [
+                        "flags": 64,
+                        "content": message
+                    ]
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed music component error response: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateMusicComponent(
+        event: GatewayInteractionCreateEvent,
+        content: String,
+        embed: [String: Any]? = nil,
+        components: [[String: Any]]
+    ) async {
+        do {
+            var data: [String: Any] = [
+                "content": String(content.prefix(1900)),
+                "components": components
+            ]
+            if let embed {
+                data["embeds"] = [embed]
+            } else {
+                data["embeds"] = []
+            }
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: [
+                    "type": 7,
+                    "data": data
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed music component update: \(error.localizedDescription)")
+        }
+    }
+
+    private func musicPickerComponents(sessionID: String, results: [MusicSearchResult]) -> [[String: Any]] {
+        let options: [[String: Any]] = results.enumerated().map { index, track in
+            [
+                "label": String("\(index + 1). \(track.title)".prefix(100)),
+                "description": String(track.artist.prefix(100)),
+                "value": "\(index)"
+            ]
+        }
+
+        return [[
+            "type": 1,
+            "components": [[
+                "type": 3,
+                "custom_id": "music:pick:\(sessionID)",
+                "placeholder": "Pick a song match",
+                "min_values": 1,
+                "max_values": 1,
+                "options": options
+            ]]
+        ]]
+    }
+
+    private func musicPostComponents(sessionID: String, selectedIndex: Int, results: [MusicSearchResult]) -> [[String: Any]] {
+        let picker = musicPickerComponents(sessionID: sessionID, results: results)
+        let postButtonRow: [String: Any] = [
+            "type": 1,
+            "components": [[
+                "type": 2,
+                "style": 1,
+                "custom_id": "music:post:\(sessionID):\(selectedIndex)",
+                "label": "Post To Channel"
+            ]]
+        ]
+        return [postButtonRow] + picker
+    }
+
+    private func interactiveMusicTrackEmbed(for track: MusicSearchResult) -> [String: Any] {
+        let combinedSearch = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+        let appleLink = track.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: combinedSearch)
+        let spotifyLink = track.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: combinedSearch)
+        let youtubeMusicLink = track.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: combinedSearch)
+        let youtubeLink = track.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: combinedSearch)
+
+        var embed: [String: Any] = [
+            "title": "\(track.title) — \(track.artist)",
+            "description": """
+            [Apple Music](\(appleLink))
+            [Spotify](\(spotifyLink))
+            [YouTube Music](\(youtubeMusicLink))
+            [YouTube](\(youtubeLink))
+            """,
+            "color": 5_793_266
+        ]
+        if let album = track.album, !album.isEmpty {
+            embed["footer"] = ["text": album]
+        }
+        if let artworkURL = track.artworkURL?.absoluteString, !artworkURL.isEmpty {
+            embed["thumbnail"] = ["url": artworkURL]
+        }
+        return embed
+    }
+
+    private func musicSearchSummaryEmbed(query: String, results: [MusicSearchResult]) -> [String: Any] {
+        let lines = results.enumerated().map { index, track in
+            "\(index + 1). **\(track.title)** — \(track.artist)"
+        }.joined(separator: "\n")
+        return [
+            "title": "Music Search",
+            "description": "Query: `\(query)`\n\n\(lines)",
+            "color": 5_793_266
+        ]
+    }
+
+    private func handlePlaylistImportSlash(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        guard settings.commandsEnabled, settings.slashCommandsEnabled else {
+            await respondEphemeralText(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                text: "Slash commands are disabled in settings."
+            )
+            return
+        }
+
+        let urlText = slashOptionString(named: "url", in: event.data)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let threadName = slashOptionString(named: "name", in: event.data)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let limit = max(1, min(100, slashOptionInt(named: "limit", in: event.data) ?? 25))
+
+        guard let playlistURL = URL(string: urlText), !urlText.isEmpty else {
+            await respondEphemeralText(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                text: "Usage: `/playlist url:<playlist-url> [name:<thread-name>] [limit:<n>]`"
+            )
+            return
+        }
+
+        let host = playlistURL.host?.lowercased() ?? ""
+        let path = playlistURL.path.lowercased()
+        if host.contains("open.spotify.com"), !path.contains("/playlist/") {
+            await respondEphemeralText(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                text: "That looks like a Spotify search/browse URL, not a playlist URL.\nUse a link like `https://open.spotify.com/playlist/<id>`."
+            )
+            return
+        }
+
+        do {
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: [
+                    "type": 5,
+                    "data": ["flags": 64]
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed ACK for /playlist: \(error.localizedDescription)")
+            return
+        }
+
+        let importResult: PlaylistImportResult
+        if settings.clusterMode == .leader, settings.clusterWorkerOffloadEnabled {
+            if let remoteResult = await cluster.importPlaylist(from: playlistURL, limit: limit) {
+                importResult = remoteResult
+            } else {
+                importResult = await playlistImportService.importPlaylist(from: playlistURL, limit: limit)
+            }
+        } else {
+            importResult = await playlistImportService.importPlaylist(from: playlistURL, limit: limit)
+        }
+        let tracks = importResult.tracks
+        guard let applicationID = botUserId, !applicationID.isEmpty else { return }
+
+        if tracks.isEmpty {
+            do {
+                try await service.editOriginalInteractionResponse(
+                    applicationID: applicationID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "content": "❌ I couldn't parse track entries from that playlist URL.\nSupported best-effort sources: Spotify, Apple Music, YouTube playlists.",
+                        "embeds": [],
+                        "components": []
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /playlist empty response: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        let sourceHost = playlistURL.host ?? "playlist"
+        let anchorMessage = """
+        🎶 Playlist import requested by @\(context.username)
+        Source: <\(playlistURL.absoluteString)>
+        Tracks detected: \(tracks.count)
+        """
+
+        guard let anchorMessageID = await sendMessageReturningID(channelId: context.channelId, content: anchorMessage) else {
+            do {
+                try await service.editOriginalInteractionResponse(
+                    applicationID: applicationID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "content": "❌ Failed to post the playlist anchor message in this channel."
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /playlist anchor error response: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        let desiredThreadName = {
+            let parsedTitle = importResult.playlistTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let fallback = parsedTitle.isEmpty ? "Playlist • \(sourceHost)" : "Playlist • \(parsedTitle)"
+            let proposed = (threadName?.isEmpty == false ? threadName! : fallback)
+            return String(proposed.prefix(90))
+        }()
+
+        guard let threadID = await createThreadFromMessageReturningID(
+            channelId: context.channelId,
+            messageId: anchorMessageID,
+            name: desiredThreadName
+        ) else {
+            do {
+                try await service.editOriginalInteractionResponse(
+                    applicationID: applicationID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "content": "❌ Failed creating playlist thread. Check bot permissions for thread creation."
+                    ]
+                )
+            } catch {
+                logs.append("❌ Failed /playlist thread error response: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        var posted = 0
+        let isYouTubeSource = sourceHost.lowercased().contains("youtube")
+        for seed in tracks {
+            let query = [seed.title, seed.artist].compactMap { $0 }.joined(separator: " ")
+            var candidates = await musicLookupService.searchTracks(query: query, limit: 5)
+            if candidates.isEmpty {
+                candidates = [
+                    MusicSearchResult(
+                        title: seed.title,
+                        artist: seed.artist ?? "Unknown Artist",
+                        album: nil,
+                        artworkURL: nil,
+                        appleMusicURL: nil,
+                        spotifyURL: nil,
+                        youtubeMusicURL: nil,
+                        youtubeURL: nil
+                    )
+                ]
+            }
+            candidates = rankPlaylistCandidates(candidates, sourceTitle: seed.title, sourceArtist: seed.artist)
+
+            let lowConfidenceMatch = {
+                guard let best = candidates.first else { return true }
+                let score = playlistMatchScore(
+                    sourceTitle: seed.title,
+                    sourceArtist: seed.artist,
+                    candidate: best
+                )
+                return score < 0.55
+            }()
+
+            if lowConfidenceMatch {
+                let sourceArtist = seed.artist?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let sourceFallback = MusicSearchResult(
+                    title: seed.title,
+                    artist: (sourceArtist?.isEmpty == false ? sourceArtist! : "Unknown Artist"),
+                    album: nil,
+                    artworkURL: nil,
+                    appleMusicURL: nil,
+                    spotifyURL: nil,
+                    youtubeMusicURL: nil,
+                    youtubeURL: nil
+                )
+                let duplicateExists = candidates.contains(where: {
+                    normalizeForMusicMatch($0.title) == normalizeForMusicMatch(sourceFallback.title) &&
+                    normalizeForMusicMatch($0.artist) == normalizeForMusicMatch(sourceFallback.artist)
+                })
+                if !duplicateExists {
+                    candidates.insert(sourceFallback, at: 0)
+                }
+            }
+
+            let key = UUID().uuidString
+            let tempState = PlaylistTrackCardState(
+                key: key,
+                threadID: threadID,
+                messageID: "",
+                sourceTitle: seed.title,
+                sourceArtist: seed.artist,
+                candidates: candidates,
+                selectedIndex: 0,
+                useSourceQueryForApple: false,
+                useSourceQueryForSpotify: false,
+                useSourceQueryForYouTubeMusic: isYouTubeSource && lowConfidenceMatch
+            )
+            let payload = playlistTrackMessagePayload(state: tempState)
+            if let messageID = await sendPayloadReturningMessageID(
+                channelId: threadID,
+                payload: payload,
+                action: "sendMessage"
+            ) {
+                var finalized = tempState
+                finalized.messageID = messageID
+                playlistTrackCardsByKey[key] = finalized
+                posted += 1
+            }
+        }
+
+        do {
+            try await service.editOriginalInteractionResponse(
+                applicationID: applicationID,
+                interactionToken: event.interactionToken,
+                payload: [
+                    "content": "✅ Imported \(posted)/\(tracks.count) tracks into thread <#\(threadID)>."
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed /playlist success response: \(error.localizedDescription)")
+        }
+    }
+
+    private func handlePlaylistComponentInteraction(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let customID = slashCustomID(in: event.data)
+        let parts = customID.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 3 else { return }
+        let action = parts[1]
+
+        func ackDeferredUpdate() async {
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: ["type": 6]
+                )
+            } catch {
+                logs.append("❌ Failed playlist component ACK: \(error.localizedDescription)")
+            }
+        }
+
+        if action == "next", parts.count >= 3 {
+            let key = parts[2]
+            guard var state = playlistTrackCardsByKey[key], !state.candidates.isEmpty else { return }
+            state.selectedIndex = (state.selectedIndex + 1) % state.candidates.count
+            playlistTrackCardsByKey[key] = state
+            await ackDeferredUpdate()
+            _ = await editMessagePayload(
+                channelId: state.threadID,
+                messageId: state.messageID,
+                payload: playlistTrackMessagePayload(state: state)
+            )
+            return
+        }
+
+        if action == "toggle", parts.count >= 4 {
+            let service = parts[2]
+            let key = parts[3]
+            guard var state = playlistTrackCardsByKey[key] else { return }
+            switch service {
+            case "apple":
+                state.useSourceQueryForApple.toggle()
+            case "spotify":
+                state.useSourceQueryForSpotify.toggle()
+            case "ytm":
+                state.useSourceQueryForYouTubeMusic.toggle()
+            default:
+                return
+            }
+            playlistTrackCardsByKey[key] = state
+            await ackDeferredUpdate()
+            _ = await editMessagePayload(
+                channelId: state.threadID,
+                messageId: state.messageID,
+                payload: playlistTrackMessagePayload(state: state)
+            )
+            return
+        }
+
+        _ = context
+    }
+
+    private func playlistTrackMessagePayload(state: PlaylistTrackCardState) -> [String: Any] {
+        let selected = state.candidates[min(max(0, state.selectedIndex), max(0, state.candidates.count - 1))]
+        let sourceQuery = [state.sourceTitle, state.sourceArtist].compactMap { $0 }.joined(separator: " ")
+        let selectedQuery = "\(selected.title) \(selected.artist)"
+
+        let apple = state.useSourceQueryForApple
+            ? buildITunesSearchURL(query: sourceQuery)
+            : (selected.appleMusicURL?.absoluteString ?? buildITunesSearchURL(query: selectedQuery))
+        let spotify = state.useSourceQueryForSpotify
+            ? buildSpotifySearchURL(query: sourceQuery)
+            : (selected.spotifyURL?.absoluteString ?? buildSpotifySearchURL(query: selectedQuery))
+        let ytm = state.useSourceQueryForYouTubeMusic
+            ? buildYouTubeMusicSearchURL(query: sourceQuery)
+            : (selected.youtubeMusicURL?.absoluteString ?? buildYouTubeMusicSearchURL(query: selectedQuery))
+        let yt = selected.youtubeURL?.absoluteString ?? buildYouTubeSearchURL(query: selectedQuery)
+
+        var embed: [String: Any] = [
+            "title": "\(selected.title) — \(selected.artist)",
+            "description": """
+            [Apple Music](\(apple))
+            [Spotify](\(spotify))
+            [YouTube Music](\(ytm))
+            [YouTube](\(yt))
+            """,
+            "color": 5_793_266,
+            "footer": ["text": "Match \(state.selectedIndex + 1)/\(max(1, state.candidates.count)) • Source: \(sourceQuery)"]
+        ]
+        if let art = selected.artworkURL?.absoluteString, !art.isEmpty {
+            embed["thumbnail"] = ["url": art]
+        }
+
+        let components: [[String: Any]] = [
+            [
+                "type": 1,
+                "components": [[
+                    "type": 2,
+                    "style": 1,
+                    "custom_id": "playlist:next:\(state.key)",
+                    "label": "Next Match"
+                ]]
+            ],
+            [
+                "type": 1,
+                "components": [
+                    [
+                        "type": 2,
+                        "style": state.useSourceQueryForApple ? 3 : 2,
+                        "custom_id": "playlist:toggle:apple:\(state.key)",
+                        "label": state.useSourceQueryForApple ? "Apple: Source Query" : "Apple: Matched"
+                    ],
+                    [
+                        "type": 2,
+                        "style": state.useSourceQueryForSpotify ? 3 : 2,
+                        "custom_id": "playlist:toggle:spotify:\(state.key)",
+                        "label": state.useSourceQueryForSpotify ? "Spotify: Source Query" : "Spotify: Matched"
+                    ],
+                    [
+                        "type": 2,
+                        "style": state.useSourceQueryForYouTubeMusic ? 3 : 2,
+                        "custom_id": "playlist:toggle:ytm:\(state.key)",
+                        "label": state.useSourceQueryForYouTubeMusic ? "YTM: Source Query" : "YTM: Matched"
+                    ]
+                ]
+            ]
+        ]
+        return [
+            "content": "🎵 Playlist Track",
+            "embeds": [embed],
+            "components": components
+        ]
+    }
+
+    private func rankPlaylistCandidates(
+        _ candidates: [MusicSearchResult],
+        sourceTitle: String,
+        sourceArtist: String?
+    ) -> [MusicSearchResult] {
+        candidates.sorted { lhs, rhs in
+            let left = playlistMatchScore(sourceTitle: sourceTitle, sourceArtist: sourceArtist, candidate: lhs)
+            let right = playlistMatchScore(sourceTitle: sourceTitle, sourceArtist: sourceArtist, candidate: rhs)
+            if left == right {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            return left > right
+        }
+    }
+
+    private func playlistMatchScore(
+        sourceTitle: String,
+        sourceArtist: String?,
+        candidate: MusicSearchResult
+    ) -> Double {
+        let sourceTitleNorm = normalizeForMusicMatch(sourceTitle)
+        let candidateTitleNorm = normalizeForMusicMatch(candidate.title)
+        let sourceArtistNorm = normalizeForMusicMatch(sourceArtist ?? "")
+        let candidateArtistNorm = normalizeForMusicMatch(candidate.artist)
+
+        let titleSimilarity = tokenOverlapScore(sourceTitleNorm, candidateTitleNorm)
+        let artistSimilarity = sourceArtistNorm.isEmpty ? 0.0 : tokenOverlapScore(sourceArtistNorm, candidateArtistNorm)
+        let exactTitleBoost = sourceTitleNorm == candidateTitleNorm ? 0.35 : 0.0
+        let containsBoost = (sourceTitleNorm.contains(candidateTitleNorm) || candidateTitleNorm.contains(sourceTitleNorm)) ? 0.15 : 0.0
+
+        return (titleSimilarity * 0.75) + (artistSimilarity * 0.25) + exactTitleBoost + containsBoost
+    }
+
+    private func normalizeForMusicMatch(_ text: String) -> String {
+        let lowered = text.lowercased()
+        let cleaned = lowered.replacingOccurrences(
+            of: #"[^a-z0-9\s]"#,
+            with: " ",
+            options: .regularExpression
+        )
+        return cleaned
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func tokenOverlapScore(_ a: String, _ b: String) -> Double {
+        let left = Set(a.split(separator: " ").map(String.init).filter { !$0.isEmpty })
+        let right = Set(b.split(separator: " ").map(String.init).filter { !$0.isEmpty })
+        guard !left.isEmpty, !right.isEmpty else { return 0.0 }
+
+        let intersection = left.intersection(right).count
+        let denom = max(left.count, right.count)
+        guard denom > 0 else { return 0.0 }
+        return Double(intersection) / Double(denom)
+    }
+
+    private func respondEphemeralText(interactionID: String, interactionToken: String, text: String) async {
+        do {
+            try await service.respondToInteraction(
+                interactionID: interactionID,
+                interactionToken: interactionToken,
+                payload: [
+                    "type": 4,
+                    "data": [
+                        "flags": 64,
+                        "content": text
+                    ]
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed ephemeral response: \(error.localizedDescription)")
         }
     }
 
@@ -520,6 +1301,68 @@ extension AppModel {
         }
         if rendered.isEmpty { return "/\(name)" }
         return "/\(name) " + rendered.joined(separator: " ")
+    }
+
+    private func slashOptionString(named name: String, in data: [String: DiscordJSON]) -> String? {
+        guard case let .array(options)? = data["options"] else { return nil }
+        for option in options {
+            guard case let .object(map) = option,
+                  case let .string(optionName)? = map["name"],
+                  optionName == name else { continue }
+            if case let .string(value)? = map["value"] {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func slashOptionInt(named name: String, in data: [String: DiscordJSON]) -> Int? {
+        guard case let .array(options)? = data["options"] else { return nil }
+        for option in options {
+            guard case let .object(map) = option,
+                  case let .string(optionName)? = map["name"],
+                  optionName == name else { continue }
+            if case let .int(value)? = map["value"] {
+                return value
+            }
+            if case let .string(value)? = map["value"], let parsed = Int(value) {
+                return parsed
+            }
+        }
+        return nil
+    }
+
+    private func slashOptionBool(named name: String, in data: [String: DiscordJSON]) -> Bool? {
+        guard case let .array(options)? = data["options"] else { return nil }
+        for option in options {
+            guard case let .object(map) = option,
+                  case let .string(optionName)? = map["name"],
+                  optionName == name else { continue }
+            if case let .bool(value)? = map["value"] {
+                return value
+            }
+            if case let .string(value)? = map["value"] {
+                return ["true", "1", "yes", "y", "on"].contains(value.lowercased())
+            }
+        }
+        return nil
+    }
+
+    private func slashCustomID(in data: [String: DiscordJSON]) -> String {
+        if case let .string(value)? = data["custom_id"] {
+            return value
+        }
+        return ""
+    }
+
+    private func slashComponentValues(in data: [String: DiscordJSON]) -> [String] {
+        guard case let .array(values)? = data["values"] else { return [] }
+        return values.compactMap { item in
+            if case let .string(value) = item {
+                return value
+            }
+            return nil
+        }
     }
 
     func registerSlashCommandsIfNeeded() async {
