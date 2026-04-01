@@ -382,6 +382,14 @@ actor DiscordService {
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, content: content, token: token)
     }
 
+    func editMessage(channelId: String, messageId: String, payload: [String: Any], token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payload: payload, token: token)
+    }
+
     func fetchChannel(channelId: String, token: String) async throws -> [String: DiscordJSON] {
         try await messageRESTClient.fetchChannel(channelId: channelId, token: token)
     }
@@ -418,12 +426,12 @@ actor DiscordService {
         try await messageRESTClient.unpinMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
-    func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws {
+    func createThreadFromMessage(channelId: String, messageId: String, name: String, token: String) async throws -> String {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: createThreadFromMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        try await messageRESTClient.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: token)
+        return try await messageRESTClient.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: token)
     }
 
     @discardableResult

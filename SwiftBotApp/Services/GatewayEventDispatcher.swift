@@ -51,7 +51,8 @@ struct GatewayMessageCreateEvent {
 struct GatewayInteractionCreateEvent {
     let interactionID: String
     let interactionToken: String
-    let commandName: String
+    let interactionType: Int
+    let commandName: String?
     let data: [String: DiscordJSON]
     let rawMap: [String: DiscordJSON]
 }
@@ -258,16 +259,17 @@ actor GatewayEventDispatcher {
         guard case let .object(map)? = raw,
               let interactionID = stringValue(for: "id", in: map),
               let interactionToken = stringValue(for: "token", in: map),
-              case let .int(kind)? = map["type"], kind == 2,
-              case let .object(data)? = map["data"],
-              let commandName = stringValue(for: "name", in: data) else {
+              case let .int(kind)? = map["type"],
+              kind == 2 || kind == 3,
+              case let .object(data)? = map["data"] else {
             return nil
         }
 
         return GatewayInteractionCreateEvent(
             interactionID: interactionID,
             interactionToken: interactionToken,
-            commandName: commandName,
+            interactionType: kind,
+            commandName: stringValue(for: "name", in: data),
             data: data,
             rawMap: map
         )
