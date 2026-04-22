@@ -234,6 +234,7 @@ extension AppModel {
         }
 
         await cluster.setOffloadPolicy(
+            workerOffloadEnabled: settings.clusterWorkerOffloadEnabled,
             aiReplies: settings.clusterOffloadAIReplies,
             wikiLookups: settings.clusterOffloadWikiLookups
         )

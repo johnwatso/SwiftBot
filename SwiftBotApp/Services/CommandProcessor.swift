@@ -55,6 +55,8 @@ final class CommandProcessor {
         var handleLogABugSlash: ([String: DiscordJSON], String, String, String) async -> (ok: Bool, message: String)
         var handleFeatureRequestSlash: ([String: DiscordJSON], String, String, String, String?) async -> (ok: Bool, message: String)
         var lookupFinalsWiki: (String) async -> FinalsWikiLookupResult?
+        var runMusicLookup: (String?, String?, String?, String, String) async -> (ok: Bool, message: String)
+        var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
     }
 
     private let dependencies: Dependencies
@@ -132,6 +134,26 @@ final class CommandProcessor {
             let prompt = tokens.dropFirst().joined(separator: " ")
             let userId = dependencies.authorId(context.raw) ?? "unknown-user"
             return await dependencies.generateImageCommand(prompt, userId, context.username, context.channelId)
+        case "music":
+            if tokens.count >= 2, ["help", "-h", "--help"].contains(tokens[1].lowercased()) {
+                return await dependencies.send(context.channelId, HelpRenderer.detailedMusicGuide(prefix: config.prefix))
+            }
+            let userId = dependencies.authorId(context.raw) ?? "unknown-user"
+            if tokens.count >= 3, tokens[1].lowercased() == "pick", let selection = Int(tokens[2]) {
+                let result = await dependencies.pickMusicLookup(selection, userId, context.channelId)
+                return await dependencies.send(context.channelId, result.message)
+            }
+
+            let argumentText = tokens.dropFirst().joined(separator: " ")
+            let parsed = Self.parseMusicInput(argumentText)
+            let result = await dependencies.runMusicLookup(
+                parsed.query,
+                parsed.title,
+                parsed.artist,
+                userId,
+                context.channelId
+            )
+            return await dependencies.send(context.channelId, result.message)
         case "userinfo":
             return await dependencies.send(context.channelId, "👤 User: \(context.username)")
         case "cluster", "worker":
@@ -309,6 +331,25 @@ final class CommandProcessor {
             let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
             let ok = await dependencies.generateImageCommand(prompt, userId, context.username, context.channelId)
             return statusEmbed(title: "Image Generation", ok: ok)
+        case "music":
+            let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
+            if let query = Self.slashOptionString(named: "query", in: data)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+               ["help", "-h", "--help"].contains(query) {
+                return embed(title: "Music + Playlist Help", description: HelpRenderer.detailedMusicGuide(prefix: config.prefix))
+            }
+            let pick = Self.slashOptionInt(named: "pick", in: data)
+            if let pick {
+                let result = await dependencies.pickMusicLookup(pick, userId, context.channelId)
+                return embed(title: "Music Lookup", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+            }
+
+            let query = Self.slashOptionString(named: "query", in: data)
+            let title = Self.slashOptionString(named: "title", in: data)
+            let artist = Self.slashOptionString(named: "artist", in: data)
+            let result = await dependencies.runMusicLookup(query, title, artist, userId, context.channelId)
+            return embed(title: "Music Lookup", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "wiki":
             let query = Self.slashOptionString(named: "query", in: data) ?? ""
             guard config.wikiEnabled else {
@@ -411,5 +452,59 @@ final class CommandProcessor {
 
     private static func slashOptionChannelID(named name: String, in data: [String: DiscordJSON]) -> String? {
         slashOptionString(named: name, in: data)
+    }
+
+    private static func slashOptionInt(named name: String, in data: [String: DiscordJSON]) -> Int? {
+        guard case let .array(options)? = data["options"] else { return nil }
+        for option in options {
+            guard case let .object(map) = option,
+                  case let .string(optionName)? = map["name"],
+                  optionName == name else { continue }
+            if case let .int(value)? = map["value"] {
+                return value
+            }
+            if case let .string(value)? = map["value"], let parsed = Int(value) {
+                return parsed
+            }
+        }
+        return nil
+    }
+
+    private static func parseMusicInput(_ raw: String) -> (query: String?, title: String?, artist: String?) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return (nil, nil, nil)
+        }
+
+        let title = captureRegex(
+            pattern: #"(?i)\btitle\s*[:=]\s*(.+?)(?=\s+artist\s*[:=]|$)"#,
+            in: trimmed
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = captureRegex(
+            pattern: #"(?i)\bartist\s*[:=]\s*(.+?)(?=\s+title\s*[:=]|$)"#,
+            in: trimmed
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if (title?.isEmpty == false) || (artist?.isEmpty == false) {
+            return (
+                nil,
+                (title?.isEmpty == false ? title : nil),
+                (artist?.isEmpty == false ? artist : nil)
+            )
+        }
+
+        return (trimmed, nil, nil)
+    }
+
+    private static func captureRegex(pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1 else {
+            return nil
+        }
+        let capture = match.range(at: 1)
+        guard capture.location != NSNotFound else { return nil }
+        return (text as NSString).substring(with: capture)
     }
 }
