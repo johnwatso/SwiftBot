@@ -92,6 +92,24 @@ struct CommandCatalog {
                 isAdminOnly: false
             ),
             CommandEntry(
+                name: "music",
+                aliases: [],
+                usage: "\(prefix)music <query> | \(prefix)music title:<title> artist:<artist> | \(prefix)music pick <n>",
+                description: "Looks up tracks and returns Apple Music, Spotify, and YouTube links.",
+                examples: ["\(prefix)music strobe deadmau5", "\(prefix)music title:strobe artist:deadmau5", "\(prefix)music pick 1"],
+                category: .fun,
+                isAdminOnly: false
+            ),
+            CommandEntry(
+                name: "playlist",
+                aliases: [],
+                usage: "/playlist url:<playlist-url> [name:<thread>] [limit:<n>]",
+                description: "Imports a playlist URL into a thread and posts tracks with interactive link controls.",
+                examples: ["/playlist url:https://open.spotify.com/playlist/...", "/playlist url:https://music.youtube.com/playlist?list=... limit:30"],
+                category: .fun,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "userinfo",
                 aliases: [],
                 usage: "\(prefix)userinfo [@user]",
@@ -290,6 +308,10 @@ struct HelpRenderer {
     // MARK: Detail (for `!help <command>`)
 
     func detail(for entry: CommandEntry) -> String {
+        if entry.name == "music" || entry.name == "playlist" {
+            return Self.detailedMusicGuide(prefix: prefix)
+        }
+
         var lines: [String] = []
         lines.append("**`\(entry.usage)`**")
         lines.append(entry.description)
@@ -303,6 +325,57 @@ struct HelpRenderer {
             lines.append("⚙️ Requires server management permissions.")
         }
         return lines.joined(separator: "\n")
+    }
+
+    static func detailedMusicGuide(prefix: String) -> String {
+        """
+        **Music + Playlist Guide**
+
+        **Interactive Track Lookup**
+        `\(prefix)music <query>`
+        `\(prefix)music title:<title> artist:<artist>`
+        `/music query:<query>`
+        `/music title:<title> artist:<artist>`
+
+        What happens:
+        - SwiftBot finds track matches and shows an interactive picker.
+        - You pick the best match privately (ephemeral response).
+        - You can post the selected card to the channel.
+        - Cards include Apple Music, Spotify, YouTube Music, and YouTube links.
+
+        **Legacy Pick Flow (still supported)**
+        `\(prefix)music pick <number>`
+        `/music pick:<number>`
+        Use this after a non-interactive list response.
+
+        **Playlist Import**
+        `/playlist url:<playlist-url> [name:<thread-name>] [limit:<n>]`
+
+        Supported sources:
+        - Apple Music playlists
+        - Spotify playlists
+        - YouTube / YouTube Music playlists
+
+        What playlist import does:
+        - Creates an anchor message in the current channel.
+        - Creates a thread (uses playlist title automatically when available).
+        - Posts each track as a card with album art + service links.
+        - Adds per-track controls:
+          - `Next Match` to cycle candidate matches
+          - `Apple/Spotify/YTM: Matched` toggle to switch between matched links and source-query links
+
+        **Tips For Better Matches**
+        - Prefer `title + artist` instead of title-only queries.
+        - For remixes/live versions, include the version tag in title.
+        - Use `limit:` on `/playlist` for large playlists (example: `limit:30`).
+        - If a match is off, click `Next Match` or toggle to `Source Query`.
+
+        **Quick Examples**
+        `\(prefix)music strobe deadmau5`
+        `\(prefix)music title:Alive artist:RUFUS DU SOL`
+        `/playlist url:https://open.spotify.com/playlist/...`
+        `/playlist url:https://music.youtube.com/playlist?list=... limit:25`
+        """
     }
 
     // MARK: AI system prompt

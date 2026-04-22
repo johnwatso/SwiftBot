@@ -140,6 +140,28 @@ extension AppModel {
                 lookupFinalsWiki: { [weak self] query in
                     guard let self else { return nil }
                     return await self.wikiLookupService.lookupFinalsWiki(query: query)
+                },
+                runMusicLookup: { [weak self] query, title, artist, userID, channelID in
+                    guard let self else {
+                        return (ok: false, message: "Music lookup is unavailable right now.")
+                    }
+                    return await self.runMusicLookup(
+                        query: query,
+                        title: title,
+                        artist: artist,
+                        userID: userID,
+                        channelID: channelID
+                    )
+                },
+                pickMusicLookup: { [weak self] selection, userID, channelID in
+                    guard let self else {
+                        return (ok: false, message: "Music lookup is unavailable right now.")
+                    }
+                    return await self.pickMusicLookup(
+                        selectionIndex: selection,
+                        userID: userID,
+                        channelID: channelID
+                    )
                 }
             )
         )

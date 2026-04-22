@@ -26,6 +26,17 @@ extension AppModel {
                 ["type": 3, "name": "reason", "description": "Why this feature is needed (optional)", "required": false]
             ]],
             ["name": "image", "description": "Generate an image with OpenAI", "type": 1, "options": [["type": 3, "name": "prompt", "description": "Image prompt", "required": true]]],
+            ["name": "music", "description": "Search music and get Apple/Spotify/YouTube links", "type": 1, "options": [
+                ["type": 5, "name": "help", "description": "Show detailed music + playlist help", "required": false],
+                ["type": 3, "name": "query", "description": "Track lookup query", "required": false],
+                ["type": 3, "name": "title", "description": "Song title", "required": false],
+                ["type": 3, "name": "artist", "description": "Artist name", "required": false]
+            ]],
+            ["name": "playlist", "description": "Import a playlist URL into a thread with per-track links", "type": 1, "options": [
+                ["type": 3, "name": "url", "description": "Playlist URL (Spotify/Apple/YouTube)", "required": true],
+                ["type": 3, "name": "name", "description": "Optional thread name", "required": false],
+                ["type": 4, "name": "limit", "description": "Max tracks to import (1-100)", "required": false]
+            ]],
             ["name": "wiki", "description": "Query WikiBridge", "type": 1, "options": [["type": 3, "name": "query", "description": "Your wiki query", "required": true]]],
             ["name": "compare", "description": "Compare two THE FINALS weapons", "type": 1, "options": [
                 ["type": 3, "name": "weapon_a", "description": "First weapon", "required": true],

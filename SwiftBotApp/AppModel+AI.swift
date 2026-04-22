@@ -168,6 +168,23 @@ extension AppModel {
         }
     }
 
+    func sendPayloadReturningMessageID(
+        channelId: String,
+        payload: [String: Any],
+        action: String
+    ) async -> String? {
+        await performOutputRequest(action: action) {
+            let response = try await sendPayloadResponse(channelId: channelId, payload: payload, action: action)
+            guard let data = response.responseBody.data(using: .utf8),
+                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? String,
+                  !id.isEmpty else {
+                throw NSError(domain: "AppModel", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse message id"])
+            }
+            return id
+        }
+    }
+
     func sendEmbed(_ channelId: String, embed: [String: Any]) async -> Bool {
         await sendPayload(channelId: channelId, payload: ["embeds": [embed]], action: "sendEmbed")
     }
@@ -175,6 +192,12 @@ extension AppModel {
     func editMessage(channelId: String, messageId: String, content: String) async -> Bool {
         await performOutputAction(action: "editMessage") {
             try await service.editMessage(channelId: channelId, messageId: messageId, content: content, token: settings.token)
+        }
+    }
+
+    func editMessagePayload(channelId: String, messageId: String, payload: [String: Any]) async -> Bool {
+        await performOutputAction(action: "editMessage") {
+            try await service.editMessage(channelId: channelId, messageId: messageId, payload: payload, token: settings.token)
         }
     }
 
@@ -220,6 +243,12 @@ extension AppModel {
 
     func createThreadFromMessage(channelId: String, messageId: String, name: String) async -> Bool {
         await performOutputAction(action: "createThreadFromMessage") {
+            _ = try await service.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: settings.token)
+        }
+    }
+
+    func createThreadFromMessageReturningID(channelId: String, messageId: String, name: String) async -> String? {
+        await performOutputRequest(action: "createThreadFromMessage") {
             try await service.createThreadFromMessage(channelId: channelId, messageId: messageId, name: name, token: settings.token)
         }
     }

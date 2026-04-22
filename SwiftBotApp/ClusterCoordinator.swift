@@ -38,6 +38,7 @@ actor ClusterCoordinator {
 
     typealias AIHandler = @Sendable ([Message], String?, String?, String?) async -> String?
     typealias WikiHandler = @Sendable (String, WikiSource) async -> FinalsWikiLookupResult?
+    typealias PlaylistImportHandler = @Sendable (URL, Int) async -> PlaylistImportResult?
     typealias JobLogHandler = @Sendable (CommandLogEntry) async -> Void
     typealias SyncHandler = @Sendable (MeshSyncPayload) async -> Void
     typealias MeshHandler = @Sendable (String) async -> Data?
@@ -67,6 +68,7 @@ actor ClusterCoordinator {
     var sharedSecret: String = ""
     var offloadAIReplies: Bool = true
     var offloadWikiLookups: Bool = true
+    var offloadPlaylistImports: Bool = true
     /// Nonce replay cache: maps nonce → expiry time. Swept opportunistically on each auth check.
     private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
@@ -90,6 +92,7 @@ actor ClusterCoordinator {
 
     private var aiHandler: AIHandler?
     private var wikiHandler: WikiHandler?
+    private var playlistImportHandler: PlaylistImportHandler?
     private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
     private var listenerActivePort: Int?
@@ -110,6 +113,7 @@ actor ClusterCoordinator {
     func configureHandlers(
         aiHandler: @escaping AIHandler,
         wikiHandler: @escaping WikiHandler,
+        playlistImportHandler: @escaping PlaylistImportHandler = { _, _ in nil },
         onSnapshot: @escaping @Sendable (ClusterSnapshot) async -> Void,
         onJobLog: @escaping JobLogHandler,
         onSync: @escaping SyncHandler,
@@ -127,6 +131,7 @@ actor ClusterCoordinator {
     ) {
         self.aiHandler = aiHandler
         self.wikiHandler = wikiHandler
+        self.playlistImportHandler = playlistImportHandler
         self.onSnapshot = onSnapshot
         self.onJobLog = onJobLog
         self.onSync = onSync
@@ -227,11 +232,35 @@ actor ClusterCoordinator {
         await publishSnapshot()
     }
 
-    func setOffloadPolicy(aiReplies: Bool, wikiLookups: Bool) async {
-        offloadAIReplies = aiReplies
-        offloadWikiLookups = wikiLookups
-        snapshot.diagnostics = "Offload policy updated (AI: \(aiReplies ? "on" : "off"), Wiki: \(wikiLookups ? "on" : "off"))"
+    func setOffloadPolicy(workerOffloadEnabled: Bool, aiReplies: Bool, wikiLookups: Bool, playlistImports: Bool = true) async {
+        offloadAIReplies = workerOffloadEnabled && aiReplies
+        offloadWikiLookups = workerOffloadEnabled && wikiLookups
+        offloadPlaylistImports = workerOffloadEnabled && playlistImports
+        snapshot.diagnostics = "Offload policy updated (AI: \(offloadAIReplies ? "on" : "off"), Wiki: \(offloadWikiLookups ? "on" : "off"), Playlist: \(offloadPlaylistImports ? "on" : "off"))"
         await publishSnapshot()
+    }
+
+    func importPlaylist(from playlistURL: URL, limit: Int) async -> PlaylistImportResult? {
+        let clampedLimit = max(1, min(limit, 100))
+
+        if mode == .leader, offloadPlaylistImports,
+           let remote = await performRemotePlaylistImport(playlistURL: playlistURL, limit: clampedLimit) {
+            snapshot.lastJobRoute = .remote
+            snapshot.lastJobSummary = "Playlist import via worker"
+            snapshot.lastJobNode = remote.nodeName
+            await publishSnapshot()
+            return remote.result
+        }
+
+        let local = await playlistImportHandler?(playlistURL, clampedLimit)
+        snapshot.lastJobRoute = local == nil ? .unavailable : .local
+        snapshot.lastJobSummary = local == nil ? "Playlist import unavailable" : "Playlist import local"
+        snapshot.lastJobNode = nodeName
+        if local != nil {
+            snapshot.diagnostics = "Handled playlist import locally on \(nodeName)"
+        }
+        await publishSnapshot()
+        return local
     }
 
     /// Startup reconciliation to prevent split-brain:
@@ -951,6 +980,42 @@ actor ClusterCoordinator {
             let response = WikiJobResponse(nodeName: nodeName, result: result)
             let bodyData = (try? encoder.encode(response)) ?? Data()
             return httpResponse(status: "200 OK", body: bodyData)
+        case ("POST", "/v1/playlist-import"):
+            activeJobs += 1
+            defer { activeJobs = max(0, activeJobs - 1) }
+            guard let playlistImportHandler,
+                  let body = try? decoder.decode(PlaylistImportJobRequest.self, from: request.body),
+                  let playlistURL = URL(string: body.playlistURL) else {
+                return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_request"}"#.utf8))
+            }
+            guard let result = await playlistImportHandler(playlistURL, max(1, min(body.limit, 100))) else {
+                await recordJobLog(
+                    user: "Remote Playlist",
+                    server: "Cluster",
+                    command: "Playlist import failed",
+                    channel: "worker",
+                    executionRoute: "Worker",
+                    ok: false
+                )
+                return httpResponse(status: "404 Not Found", body: Data(#"{"error":"playlist_unavailable"}"#.utf8))
+            }
+
+            snapshot.lastJobRoute = .remote
+            snapshot.lastJobSummary = "Served remote playlist import"
+            snapshot.lastJobNode = nodeName
+            snapshot.diagnostics = "Handled remote playlist import on \(nodeName)"
+            await publishSnapshot()
+            await recordJobLog(
+                user: "Playlist Import",
+                server: "Remote Playlist",
+                command: "Playlist import",
+                channel: "worker",
+                executionRoute: "Worker",
+                ok: true
+            )
+            let response = PlaylistImportJobResponse(nodeName: nodeName, result: result)
+            let bodyData = (try? encoder.encode(response)) ?? Data()
+            return httpResponse(status: "200 OK", body: bodyData)
         case ("POST", "/v1/mesh/leader-changed"):
             return await handleMeshLeaderChanged(request.body)
         case ("GET", "/v1/mesh/workers"):
@@ -1536,6 +1601,53 @@ actor ClusterCoordinator {
         snapshot.workerState = .failed
         snapshot.workerStatusText = "Remote wiki unavailable"
         snapshot.diagnostics = "Remote wiki failed for all registered workers"
+        await publishSnapshot()
+        return nil
+    }
+
+    private func performRemotePlaylistImport(playlistURL: URL, limit: Int) async -> PlaylistImportJobResponse? {
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else {
+            snapshot.workerState = .inactive
+            snapshot.workerStatusText = "No workers registered"
+            snapshot.diagnostics = "No registered workers available for remote playlist import"
+            await publishSnapshot()
+            return nil
+        }
+
+        let job = PlaylistImportJobRequest(
+            playlistURL: playlistURL.absoluteString,
+            limit: max(1, min(limit, 100))
+        )
+
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/playlist-import") else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try encoder.encode(job)
+                applyMeshAuth(to: &request, path: "/v1/playlist-import")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+
+                let decoded = try decoder.decode(PlaylistImportJobResponse.self, from: data)
+                snapshot.workerState = .connected
+                snapshot.workerStatusText = "Remote playlist import available"
+                snapshot.diagnostics = "Remote playlist import succeeded via \(url.absoluteString)"
+                await publishSnapshot()
+                return decoded
+            } catch {
+                continue
+            }
+        }
+
+        snapshot.workerState = .failed
+        snapshot.workerStatusText = "Remote playlist import unavailable"
+        snapshot.diagnostics = "Remote playlist import failed for all registered workers"
         await publishSnapshot()
         return nil
     }
@@ -2393,6 +2505,16 @@ private struct LegacyWikiJobRequest: Codable {
 private struct WikiJobResponse: Codable {
     let nodeName: String
     let result: FinalsWikiLookupResult
+}
+
+private struct PlaylistImportJobRequest: Codable {
+    let playlistURL: String
+    let limit: Int
+}
+
+private struct PlaylistImportJobResponse: Codable {
+    let nodeName: String
+    let result: PlaylistImportResult
 }
 
 private struct HealthResponse: Codable {
