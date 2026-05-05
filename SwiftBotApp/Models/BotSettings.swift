@@ -315,6 +315,7 @@ struct BotSettings: Codable, Hashable {
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
+    var swiftMiner = SwiftMinerSettings()
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
 
@@ -397,6 +398,7 @@ struct BotSettings: Codable, Hashable {
         case behavior
         case wikiBot
         case patchy
+        case swiftMiner
         case help
         case adminWebUI
     }
@@ -463,6 +465,7 @@ struct BotSettings: Codable, Hashable {
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+        swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
         remoteMode.normalize()
@@ -528,8 +531,83 @@ struct BotSettings: Codable, Hashable {
         try container.encode(behavior, forKey: .behavior)
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
+        try container.encode(swiftMiner, forKey: .swiftMiner)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
+    }
+}
+
+struct SwiftMinerSettings: Codable, Hashable {
+    var enabled: Bool = false
+    var baseURL: String = "http://127.0.0.1:8080"
+    var apiKey: String = ""
+    var webhookSecret: String = ""
+    var webhookHint: String = ""
+
+    var normalizedBaseURL: String {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "http://127.0.0.1:8080" }
+        return trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    mutating func apply(pairingBundle: SwiftMinerPairingBundle) {
+        enabled = true
+        let apiEndpoint = pairingBundle.swiftMinerEndpoint.nonEmpty ?? pairingBundle.endpoint.nonEmpty
+        if let apiEndpoint {
+            baseURL = apiEndpoint
+        }
+        apiKey = pairingBundle.apiKey
+        webhookSecret = pairingBundle.hmacSecret
+        webhookHint = pairingBundle.webhookHint
+    }
+}
+
+struct SwiftMinerPairingBundle: Codable, Hashable {
+    let version: Int?
+    let endpoint: String
+    let swiftMinerEndpoint: String
+    let swiftBotEndpoint: String
+    let apiKey: String
+    let hmacSecret: String
+    let webhookHint: String
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case endpoint
+        case swiftMinerEndpoint
+        case swiftBotEndpoint
+        case apiKey
+        case hmacSecret
+        case webhookHint
+    }
+
+    init(
+        version: Int? = nil,
+        endpoint: String,
+        swiftMinerEndpoint: String = "",
+        swiftBotEndpoint: String = "",
+        apiKey: String,
+        hmacSecret: String,
+        webhookHint: String
+    ) {
+        self.version = version
+        self.endpoint = endpoint
+        self.swiftMinerEndpoint = swiftMinerEndpoint
+        self.swiftBotEndpoint = swiftBotEndpoint
+        self.apiKey = apiKey
+        self.hmacSecret = hmacSecret
+        self.webhookHint = webhookHint
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version)
+        endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        swiftMinerEndpoint = try container.decodeIfPresent(String.self, forKey: .swiftMinerEndpoint) ?? ""
+        swiftBotEndpoint = try container.decodeIfPresent(String.self, forKey: .swiftBotEndpoint) ?? ""
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        hmacSecret = try container.decodeIfPresent(String.self, forKey: .hmacSecret) ?? ""
+        webhookHint = try container.decodeIfPresent(String.self, forKey: .webhookHint) ?? ""
     }
 }
 

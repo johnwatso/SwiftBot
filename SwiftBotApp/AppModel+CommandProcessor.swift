@@ -162,6 +162,12 @@ extension AppModel {
                         userID: userID,
                         channelID: channelID
                     )
+                },
+                swiftMinerCommand: { [weak self] action, userID, channelID in
+                    guard let self else {
+                        return (ok: false, message: "SwiftMiner integration is unavailable right now.")
+                    }
+                    return await self.swiftMinerCommand(action: action, userId: userID, channelId: channelID)
                 }
             )
         )

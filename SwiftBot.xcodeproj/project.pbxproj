@@ -67,6 +67,7 @@
 		6E8FB330BD0BE5ADFCA0FC6B /* MediaThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDACC9B9F1633073834BE07 /* MediaThumbnailCache.swift */; };
 		7071FF33C237742C35AB7082 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */; };
 		7132DFC658401903B85DC61D /* CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */; };
+		77A6A8DB1F994205038B1F55 /* AppModel+SwiftMiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C860E3F668A714ABB7F68FD5 /* AppModel+SwiftMiner.swift */; };
 		7894B179A8B556313CC7492A /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */; };
 		795E1B910968188CC57BA263 /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059780457BD592C5364C934 /* RemoteControlService.swift */; };
 		7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB32D13A6D673323296304C /* AdminWebServer.swift */; };
@@ -115,6 +116,7 @@
 		DC360305E4A3D50E81B2F576 /* Crypto in Frameworks */ = {isa = PBXBuildFile; productRef = 1840331BC8F2A1886D5014FF /* Crypto */; };
 		DEEBB36AAE69806B0DE44641 /* RemoteModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F8451B9C919529C86CD289 /* RemoteModels.swift */; };
 		DEED6A6AE95EB1E4BD68B09F /* SchemaSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C156C1770937C834073B637 /* SchemaSettings.swift */; };
+		EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B2E521D4ABF13B19C9005F /* SwiftMinerClient.swift */; };
 		EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8964B98159AC25452C4423DF /* SwiftBot.icon */; };
 		EBF4ED30124502DB72B90F79 /* EmbedFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726607C6AA014293B0C7794D /* EmbedFormatter.swift */; };
 		F18225F9C4A1405093180E0D /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */; };
@@ -138,7 +140,7 @@
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		1F3D691AFC6D78460AE015A8 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
@@ -222,9 +224,11 @@
 		C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaExportCoordinator.swift; sourceTree = "<group>"; };
 		C706274351683F9F2B98EFC6 /* DiscordCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCache.swift; sourceTree = "<group>"; };
 		C7962859CFEF723E67BD800C /* AppModel+Media.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Media.swift"; sourceTree = "<group>"; };
+		C860E3F668A714ABB7F68FD5 /* AppModel+SwiftMiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SwiftMiner.swift"; sourceTree = "<group>"; };
 		C87A43A58BBA036A9646BCAC /* AMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AMDService.swift; sourceTree = "<group>"; };
 		CA5F49E09077B173A9D9C851 /* DiscordAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordAIService.swift; sourceTree = "<group>"; };
 		D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActionsView.swift; sourceTree = "<group>"; };
+		D3B2E521D4ABF13B19C9005F /* SwiftMinerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerClient.swift; sourceTree = "<group>"; };
 		D72EB30017C9118909755079 /* AppModel+BotLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+BotLifecycle.swift"; sourceTree = "<group>"; };
 		D7DC12FFA9EC621A265D2A0C /* GatewayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayModels.swift; sourceTree = "<group>"; };
 		D9386EDF3092943C62265C4E /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
@@ -285,6 +289,7 @@
 				C7962859CFEF723E67BD800C /* AppModel+Media.swift */,
 				7FD42789A025FD409C081463 /* AppModel+Patchy.swift */,
 				9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */,
+				C860E3F668A714ABB7F68FD5 /* AppModel+SwiftMiner.swift */,
 				6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */,
 				B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */,
 				A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */,
@@ -429,6 +434,7 @@
 				7059780457BD592C5364C934 /* RemoteControlService.swift */,
 				24F8451B9C919529C86CD289 /* RemoteModels.swift */,
 				F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */,
+				D3B2E521D4ABF13B19C9005F /* SwiftMinerClient.swift */,
 				2F319382F183BB1612580B30 /* VoicePresenceStore.swift */,
 				9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */,
 				6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */,
@@ -585,6 +591,7 @@
 				9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */,
 				61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */,
 				7B1416030084F25AC03D0B84 /* AppModel+SlashCommandHelpers.swift in Sources */,
+				77A6A8DB1F994205038B1F55 /* AppModel+SwiftMiner.swift in Sources */,
 				8830FFC6D53A953574FE99AF /* AppModel+VoicePresence.swift in Sources */,
 				5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */,
 				DC03C1EA8B4FEBC1E2BE90A7 /* AppModel.swift in Sources */,
@@ -660,6 +667,7 @@
 				B6B3280ACF4438511C36A188 /* SwiftBotApp.swift in Sources */,
 				F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */,
 				22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */,
+				EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */,
 				13EC6A8C3526F1B617A9C146 /* TunnelManager.swift in Sources */,
 				AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */,
 				B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */,
@@ -696,7 +704,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 198000;
+				CURRENT_PROJECT_VERSION = 196000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -723,7 +731,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.8;
+				MARKETING_VERSION = 1.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -835,7 +843,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 198000;
+				CURRENT_PROJECT_VERSION = 196000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -862,7 +870,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.8;
+				MARKETING_VERSION = 1.9.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

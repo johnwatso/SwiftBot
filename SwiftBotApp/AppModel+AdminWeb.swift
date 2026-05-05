@@ -1075,6 +1075,12 @@ extension AppModel {
                 _ = await MainActor.run { model.refreshClusterStatus() }
                 return true
             },
+            swiftMinerWebhookHandler: { [weak self] headers, body in
+                guard let model = self else {
+                    return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))
+                }
+                return await model.handleSwiftMinerWebhook(headers: headers, body: body)
+            },
             log: { [weak self] message in
                 guard let model = self else { return }
                 await MainActor.run { model.logs.append(message) }
