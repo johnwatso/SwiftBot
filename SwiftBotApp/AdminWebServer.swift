@@ -462,6 +462,7 @@ actor AdminWebServer {
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
+    private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -518,6 +519,7 @@ actor AdminWebServer {
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
+        swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -566,6 +568,7 @@ actor AdminWebServer {
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
+        self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.logger = log
 
         loadPersistedSessions()
@@ -876,6 +879,12 @@ actor AdminWebServer {
             return serveAsset(named: parts[0], ext: parts[1], subdirectories: ["admin/games", "Resources/admin/games"])
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
+        case ("POST", "/webhooks/swiftminer/events"):
+            guard let handler = swiftMinerWebhookHandler else {
+                return jsonResponse(["error": "swiftminer_unavailable"], status: "503 Service Unavailable")
+            }
+            let result = await handler(request.headers, request.body)
+            return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
         case ("GET", "/api/remote/status"):
             guard isRemoteRequestAuthorized(request) else {
                 return unauthorizedResponse()

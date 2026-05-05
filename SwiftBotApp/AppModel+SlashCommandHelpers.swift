@@ -32,6 +32,13 @@ extension AppModel {
                 ["type": 3, "name": "title", "description": "Song title", "required": false],
                 ["type": 3, "name": "artist", "description": "Artist name", "required": false]
             ]],
+            ["name": "miner", "description": "Check or set up your SwiftMiner drops miner", "type": 1, "options": [
+                ["type": 3, "name": "action", "description": "status | setup | health", "required": false, "choices": [
+                    ["name": "status", "value": "status"],
+                    ["name": "setup", "value": "setup"],
+                    ["name": "health", "value": "health"]
+                ]]
+            ]],
             ["name": "playlist", "description": "Import a playlist URL into a thread with per-track links", "type": 1, "options": [
                 ["type": 3, "name": "url", "description": "Playlist URL (Spotify/Apple/YouTube)", "required": true],
                 ["type": 3, "name": "name", "description": "Optional thread name", "required": false],
