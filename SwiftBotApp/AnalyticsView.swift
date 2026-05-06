@@ -67,7 +67,7 @@ struct AnalyticsView: View {
 
     private var dailyChart: some View {
         analyticsCard(title: "Voice Activity — Last 7 Days", symbol: "chart.bar.fill") {
-            if dailyActivity.allSatisfy({ $0.count == 0 }) {
+            if !dailyActivity.contains(where: { $0.1 > 0 }) {
                 emptyState("No voice sessions recorded yet")
             } else {
                 Chart(dailyActivity, id: \.date) { item in
@@ -79,13 +79,13 @@ struct AnalyticsView: View {
                     .cornerRadius(4)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
+                    AxisMarks(values: .stride(by: .day)) { _ in
                         AxisGridLine()
                         AxisValueLabel(format: .dateTime.weekday(.abbreviated))
                     }
                 }
                 .chartYAxis {
-                    AxisMarks { value in
+                    AxisMarks { _ in
                         AxisGridLine()
                         AxisValueLabel()
                     }
@@ -99,7 +99,7 @@ struct AnalyticsView: View {
 
     private var hourlyChart: some View {
         analyticsCard(title: "Activity by Hour", symbol: "clock.badge.checkmark") {
-            if hourlyActivity.allSatisfy({ $0.count == 0 }) {
+            if !hourlyActivity.contains(where: { $0.1 > 0 }) {
                 emptyState("No data")
             } else {
                 Chart(hourlyActivity, id: \.hour) { item in
@@ -210,7 +210,7 @@ struct AnalyticsView: View {
         switch hour {
         case 0: return "12a"
         case 12: return "12p"
-        case let h where h < 12: return "\(h)a"
+        case let hourBeforeNoon where hourBeforeNoon < 12: return "\(hourBeforeNoon)a"
         default: return "\(hour - 12)p"
         }
     }
