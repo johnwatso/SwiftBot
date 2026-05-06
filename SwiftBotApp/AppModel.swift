@@ -341,6 +341,10 @@ final class AppModel: ObservableObject {
                 loadedSettings.remoteAccessToken = generatedRemoteAccessToken()
                 migrated = true
             }
+            if loadedSettings.swiftMiner.enabled && !loadedSettings.adminWebUI.enabled {
+                loadedSettings.adminWebUI.enabled = true
+                migrated = true
+            }
 
             settings = loadedSettings
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
