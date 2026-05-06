@@ -123,142 +123,131 @@ struct DashboardSidebar: View {
     @Namespace private var selectionHighlightNamespace
 
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(spacing: 10) {
-                Group {
-                    if let avatarURL = app.botAvatarURL {
-                        AsyncImage(url: avatarURL) { phase in
-                            switch phase {
-                            case .empty:
-                                ZStack {
-                                    Circle()
-                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        .frame(width: 56, height: 56)
-                                    ProgressView()
-                                        .tint(.white)
-                                }
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 56, height: 56)
-                                    .clipShape(Circle())
-                            case .failure:
-                                ZStack {
-                                    Circle()
-                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        .frame(width: 56, height: 56)
-                                    Image(systemName: "cpu.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(.white)
-                                }
-                            @unknown default:
-                                ZStack {
-                                    Circle()
-                                        .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        .frame(width: 56, height: 56)
-                                    Image(systemName: "cpu.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                        }
-                    } else {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 56, height: 56)
-                            Image(systemName: "cpu.fill")
-                                .font(.title2)
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
+        ZStack {
+            SwiftBotSidebarMaterialBackground()
 
-                VStack(spacing: 2) {
-                    Text(app.botUsername)
-                        .font(.headline)
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(app.primaryServiceIsOnline ? Color.green : Color.secondary)
-                            .frame(width: 6, height: 6)
-                            .accessibilityHidden(true)
-                        Text(app.primaryServiceStatusText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 6) {
-                        Image(systemName: clusterIcon)
-                            .font(.caption2)
-                        Text(app.clusterSnapshot.mode.rawValue)
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            VStack(spacing: 12) {
+                DashboardSidebarHeader(
+                    avatarURL: app.botAvatarURL,
+                    botUsername: app.botUsername,
+                    statusText: app.primaryServiceStatusText,
+                    isOnline: app.primaryServiceIsOnline,
+                    clusterMode: app.clusterSnapshot.mode.rawValue,
+                    clusterIcon: clusterIcon
+                )
+                .padding(.horizontal, 10)
+                .padding(.top, 44)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    SidebarSection(title: "Dashboard") {
-                        SidebarRow(item: .overview, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                    }
-
-                    SidebarSection(title: "Automation") {
-                        SidebarRow(item: .commands, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        if selection == .commands || selection == .commandLog {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SidebarSection(title: "Dashboard") {
                             SidebarRow(
-                                item: .commandLog,
+                                item: .overview,
                                 selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace,
-                                isChild: true
+                                selectionHighlightNamespace: selectionHighlightNamespace
                             )
                         }
-                        SidebarRow(item: .voice, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace, count: app.activeVoice.count)
-                        SidebarRow(item: .patchy, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .wikiBridge, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                    }
 
-                    SidebarSection(title: "System") {
-                        SidebarRow(item: .aiBots, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .analytics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .diagnostics, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                        SidebarRow(item: .logs, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
-                    }
+                        SidebarSection(title: "Automation") {
+                            SidebarRow(
+                                item: .commands,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            if selection == .commands || selection == .commandLog {
+                                SidebarRow(
+                                    item: .commandLog,
+                                    selection: $selection,
+                                    selectionHighlightNamespace: selectionHighlightNamespace,
+                                    isChild: true
+                                )
+                            }
+                            SidebarRow(
+                                item: .voice,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace,
+                                count: app.activeVoice.count
+                            )
+                            SidebarRow(
+                                item: .patchy,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .wikiBridge,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                        }
 
-                    SidebarSection(title: "Infrastructure") {
-                        SidebarRow(item: .swiftMesh, selection: $selection, selectionHighlightNamespace: selectionHighlightNamespace)
+                        SidebarSection(title: "System") {
+                            SidebarRow(
+                                item: .aiBots,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .analytics,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .diagnostics,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .logs,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                        }
+
+                        SidebarSection(title: "Infrastructure") {
+                            SidebarRow(
+                                item: .swiftMesh,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                }
+
+                Group {
+                    if !isPrimaryServiceRunning {
+                        Button {
+                            Task { await app.startBot() }
+                        } label: {
+                            Label(startButtonTitle, systemImage: "play.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button {
+                            Task { await app.stopBot() }
+                        } label: {
+                            Label(stopButtonTitle, systemImage: "stop.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.secondary)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
+                .controlSize(.regular)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 12)
             }
-
-            Group {
-                if !isPrimaryServiceRunning {
-                    Button {
-                        Task { await app.startBot() }
-                    } label: {
-                        Label(startButtonTitle, systemImage: "play.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(GlassActionButtonStyle())
-                } else {
-                    Button {
-                        Task { await app.stopBot() }
-                    } label: {
-                        Label(stopButtonTitle, systemImage: "stop.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
-                }
-            }
-            .controlSize(.regular)
         }
-        .padding(12)
-        .background(Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .padding(.vertical, 8)
     }
 
     private var isPrimaryServiceRunning: Bool {
@@ -299,23 +288,28 @@ struct SidebarRow: View {
             HStack(spacing: 10) {
                 if isChild {
                     Image(systemName: "arrow.turn.down.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .frame(width: 12)
                 }
                 Image(systemName: item.icon)
-                    .frame(width: 16)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 18)
                 Text(item.rawValue)
+                    .font(.system(size: 14, weight: selection == item ? .semibold : .medium))
+                    .lineLimit(1)
                 Spacer()
                 if let count, count > 0 {
                     Text("\(count)")
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 7)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.20), in: Capsule())
+                        .background(Color.accentColor, in: Capsule())
                 }
             }
-            .padding(.horizontal, isChild ? 24 : 12)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, isChild ? 22 : 12)
             .padding(.vertical, 9)
             .background {
                 if selection == item {
@@ -359,13 +353,194 @@ struct SidebarSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
+                .textCase(.uppercase)
 
             VStack(alignment: .leading, spacing: 4) {
                 content
             }
         }
+    }
+}
+
+private struct DashboardSidebarHeader: View {
+    let avatarURL: URL?
+    let botUsername: String
+    let statusText: String
+    let isOnline: Bool
+    let clusterMode: String
+    let clusterIcon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .center, spacing: 12) {
+                SidebarAvatarView(avatarURL: avatarURL)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(botUsername)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(isOnline ? Color.green : Color.secondary)
+                            .frame(width: 6, height: 6)
+                            .accessibilityHidden(true)
+                        Text("SwiftBot")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                SidebarInfoRow(
+                    systemImage: "power.circle.fill",
+                    title: "Status",
+                    value: statusText,
+                    tint: isOnline ? .green : .secondary
+                )
+                SidebarInfoRow(
+                    systemImage: clusterIcon,
+                    title: "Mode",
+                    value: clusterMode,
+                    tint: .secondary
+                )
+            }
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct SidebarAvatarView: View {
+    let avatarURL: URL?
+
+    var body: some View {
+        Group {
+            if let avatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .empty:
+                        placeholder(progress: true)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    case .failure:
+                        placeholder()
+                    @unknown default:
+                        placeholder()
+                    }
+                }
+            } else {
+                placeholder()
+            }
+        }
+        .frame(width: 40, height: 40)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func placeholder(progress: Bool = false) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.blue, .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            if progress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            } else {
+                Image(systemName: "cpu.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+}
+
+private struct SidebarInfoRow: View {
+    let systemImage: String
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 12)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct SwiftBotSidebarMaterialBackground: View {
+    var body: some View {
+        SwiftBotVisualEffectMaterialView(material: .sidebar)
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.08),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+    }
+}
+
+private struct SwiftBotVisualEffectMaterialView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.state = .active
+        view.material = material
+        view.blendingMode = blendingMode
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = .active
     }
 }
