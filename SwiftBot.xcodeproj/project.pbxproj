@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0005740627E44E41BFB0B69B /* UpdatesPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */; };
 		00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */; };
+		01C4B7408B5741A598E3E6AB /* SwiftMinerPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */; };
 		085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */; };
 		0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */; };
 		0E6027F2B5CEEDF280B843D4 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1886F81C765D477A60E46CBD /* AnalyticsView.swift */; };
@@ -148,6 +149,7 @@
 		33D0CC3569144419991BD125 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
 		346C818F5054314C6BF97DC5 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralPreferencesView.swift; sourceTree = "<group>"; };
+		01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
 		3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
@@ -326,6 +328,7 @@
 				5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */,
 				818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */,
 				4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */,
+				01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */,
 				44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */,
 				D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */,
 				56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */,
@@ -668,6 +671,7 @@
 				F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */,
 				22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */,
 				EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */,
+				01C4B7408B5741A598E3E6AB /* SwiftMinerPreferencesView.swift in Sources */,
 				13EC6A8C3526F1B617A9C146 /* TunnelManager.swift in Sources */,
 				AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */,
 				B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */,

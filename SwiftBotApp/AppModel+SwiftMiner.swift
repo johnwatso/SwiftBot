@@ -6,7 +6,9 @@ extension AppModel {
         do {
             let bundle = try decodeSwiftMinerPairingToken(rawToken)
             settings.swiftMiner.apply(pairingBundle: bundle)
-            return (true, "SwiftMiner pairing bundle applied.")
+            settings.adminWebUI.enabled = true
+            saveSettings()
+            return (true, "SwiftMiner pairing bundle applied. Local webhook server enabled.")
         } catch {
             return (false, error.localizedDescription)
         }
