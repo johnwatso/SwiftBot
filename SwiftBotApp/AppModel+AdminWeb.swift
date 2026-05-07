@@ -1083,7 +1083,7 @@ extension AppModel {
             },
             discordUsersProvider: { [weak self] in
                 guard let model = self else { return [:] }
-                return await model.discordCache.allUserNames()
+                return await model.discordCache.humanUserNames()
             },
             swiftMinerTestDMSender: { [weak self] discordUserId in
                 guard let model = self else { return false }

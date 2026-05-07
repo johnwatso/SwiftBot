@@ -2224,6 +2224,22 @@ extension AppModel {
         }()
 
         await discordCache.upsertUser(id: userID, preferredName: preferredName)
+
+        // Flag bots and webhooks so the admin user picker can exclude non-human authors.
+        var isNonHuman = false
+        if map["webhook_id"] != nil {
+            isNonHuman = true
+        }
+        if case let .object(author)? = map["author"], author["bot"] == .bool(true) {
+            isNonHuman = true
+        }
+        if isNonHuman {
+            await discordCache.markBot(id: userID)
+        } else if guildID != nil {
+            // Author is a real user posting in a guild we're connected to → trusted member.
+            await discordCache.markGuildMember(id: userID)
+        }
+
         await syncPublishedDiscordCacheFromService()
         scheduleDiscordCacheSave()
     }
@@ -2528,6 +2544,7 @@ extension AppModel {
     func appendAssistantMessage(scope: MemoryScope, content: String) async {
         let assistantID = botUserId ?? "swiftbot"
         await discordCache.upsertUser(id: assistantID, preferredName: botUsername)
+        await discordCache.markBot(id: assistantID)
         await conversationStore.append(
             scope: scope,
             userID: assistantID,

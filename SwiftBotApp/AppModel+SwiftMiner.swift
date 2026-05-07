@@ -83,6 +83,19 @@ extension AppModel {
         }
     }
 
+    func fetchSwiftMinerRegisteredUsers() async -> [String: String] {
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        let cacheNames = await discordCache.allUserNames()
+        guard let ids = try? await client.registeredUserIds() else {
+            return cacheNames
+        }
+        var result: [String: String] = [:]
+        for id in ids {
+            result[id] = cacheNames[id] ?? id
+        }
+        return result
+    }
+
     func sendSwiftMinerTestDM(to discordUserId: String) async -> Bool {
         guard settings.swiftMiner.enabled else { return false }
         let content = """
