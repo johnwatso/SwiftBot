@@ -96,20 +96,60 @@ extension AppModel {
         return result
     }
 
-    func sendSwiftMinerTestDM(to discordUserId: String) async -> Bool {
+    func sendSwiftMinerTestDM(to discordUserId: String, twitchUsername: String?, priorityGames: [String]) async -> Bool {
         guard settings.swiftMiner.enabled else { return false }
-        let content = """
-        **SwiftMiner account connected and active** ⚡
 
-        Your Twitch account has been linked to SwiftMiner and is ready to mine drops.
-        Use `/miner action:status` to check your current progress at any time.
-        """
+        // Look up the recipient's Discord display name (server nick / global name / username)
+        // from the gateway cache so the message can address them by name.
+        let discordName = await discordCache.userName(for: discordUserId)
+        let greeting = discordName.map { "Hi **\($0)**! " } ?? ""
+
+        let body: String
+        if let twitchUsername, !twitchUsername.isEmpty {
+            body = "Your Twitch account **@\(twitchUsername)** is linked and ready to mine drops."
+        } else {
+            body = "Your Twitch account has been linked to SwiftMiner and is ready to mine drops."
+        }
+        let description = greeting + body
+
+        var fields: [[String: Any]] = []
+
+        if priorityGames.isEmpty {
+            fields.append([
+                "name": "🎮 Priority games",
+                "value": "_None set — SwiftMiner will mine any available drops campaign._",
+                "inline": false
+            ])
+        } else {
+            let preview = priorityGames.prefix(8).map { "• \($0)" }.joined(separator: "\n")
+            let extra = priorityGames.count > 8 ? "\n• …and \(priorityGames.count - 8) more" : ""
+            fields.append([
+                "name": "🎮 Priority games",
+                "value": preview + extra,
+                "inline": false
+            ])
+        }
+
+        fields.append([
+            "name": "📬 Notifications",
+            "value": "You'll get a DM here if anything needs attention — auth expired, blocked drops, etc.",
+            "inline": false
+        ])
+
+        let embed: [String: Any] = [
+            "title": "SwiftMiner account connected and active ⚡",
+            "description": description,
+            "color": 3_062_954, // green, matches the ok colour used by /miner responses
+            "fields": fields,
+            "footer": ["text": "Use /miner action:status to check progress"]
+        ]
+
         do {
-            try await service.sendDM(userId: discordUserId, content: content)
-            addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner test DM sent to \(discordUserId)"))
+            try await service.sendDMEmbed(userId: discordUserId, embed: embed)
+            addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner setup DM sent to \(discordUserId)"))
             return true
         } catch {
-            logs.append("SwiftMiner test DM failed for \(discordUserId): \(error.localizedDescription)")
+            logs.append("SwiftMiner setup DM failed for \(discordUserId): \(error.localizedDescription)")
             return false
         }
     }

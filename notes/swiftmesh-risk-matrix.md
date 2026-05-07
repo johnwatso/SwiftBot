@@ -3,7 +3,7 @@
 **Generated:** 2026-03-08
 **Authors:** Claude, Codex, Gemini, Kimi (agent team discussion)
 **Status:** Draft — refreshed against current code on 2026-03-08
-**Related:** `notes/swiftmesh-plan.md`, `notes/swiftmesh-observed-behavior.md`, `RISK_MATRIX.md`
+**Related:** `notes/swiftmesh-plan.md`, `notes/swiftmesh-observed-behavior.md`
 
 This document tracks areas where SwiftMesh can be made better — new capabilities, reliability improvements, UX enhancements, and fixes. Risks are flagged inline where relevant.
 

@@ -464,7 +464,7 @@ actor AdminWebServer {
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [String: String])?
-    private var swiftMinerTestDMSender: (@Sendable (String) async -> Bool)?
+    private var swiftMinerTestDMSender: (@Sendable (String, String?, [String]) async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -523,7 +523,7 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         discordUsersProvider: @escaping @Sendable () async -> [String: String],
-        swiftMinerTestDMSender: @escaping @Sendable (String) async -> Bool,
+        swiftMinerTestDMSender: @escaping @Sendable (String, String?, [String]) async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -898,7 +898,15 @@ actor AdminWebServer {
                 return jsonResponse(["error": "invalid_path"], status: "400 Bad Request")
             }
             let discordUserId = segments[2]
-            let sent = await swiftMinerTestDMSender?(discordUserId) ?? false
+            // Optional body: { "twitch_username": "...", "priority_games": ["..."] }
+            var twitchUsername: String?
+            var priorityGames: [String] = []
+            if !request.body.isEmpty,
+               let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] {
+                twitchUsername = json["twitch_username"] as? String
+                priorityGames = json["priority_games"] as? [String] ?? []
+            }
+            let sent = await swiftMinerTestDMSender?(discordUserId, twitchUsername, priorityGames) ?? false
             return jsonResponse(["ok": sent], status: sent ? "200 OK" : "502 Bad Gateway")
         case ("POST", "/webhooks/swiftminer/events"):
             guard let handler = swiftMinerWebhookHandler else {

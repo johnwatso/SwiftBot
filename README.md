@@ -227,8 +227,6 @@ When reporting runtime problems, include the SwiftBot version, macOS version, th
 
 - [Architecture](ARCHITECTURE.md)
 - [AI Guide](AI_GUIDE.md)
-- [Changelog](CHANGELOG.md)
-- [Risk Matrix](RISK_MATRIX.md)
 - [Feature Plan](notes/FEATURE_PLAN_PHASE1.txt)
 
 ## Releases
