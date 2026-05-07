@@ -75,7 +75,6 @@ struct UnifiedRootView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(SwiftBotGlassBackground())
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
@@ -510,18 +509,27 @@ private struct SidebarInfoRow: View {
 }
 
 private struct SwiftBotSidebarMaterialBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        SwiftBotVisualEffectMaterialView(material: .sidebar)
-            .overlay {
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.08),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+        ZStack {
+            Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
+                .opacity(colorScheme == .dark ? 0.38 : 0.44)
+
+            SwiftBotVisualEffectMaterialView(material: .sidebar)
+
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.08),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Color(nsColor: colorScheme == .dark ? .controlBackgroundColor : .windowBackgroundColor)
+                .opacity(colorScheme == .dark ? 0.18 : 0.24)
+        }
     }
 }
 

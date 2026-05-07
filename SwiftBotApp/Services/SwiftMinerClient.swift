@@ -119,6 +119,16 @@ struct SwiftMinerClient {
         return try decoder.decode(SwiftMinerActivationSession.self, from: data)
     }
 
+    func registeredUserIds() async throws -> [String] {
+        let data = try await request(path: "/v1/users", method: "GET")
+        struct User: Decodable {
+            let discordId: String
+            enum CodingKeys: String, CodingKey { case discordId = "discord_id" }
+        }
+        struct Response: Decodable { let users: [User] }
+        return try JSONDecoder().decode(Response.self, from: data).users.map(\.discordId)
+    }
+
     func ignoreCampaign(discordUserId: String, campaignId: String, scope: String) async throws {
         struct Body: Encodable { let scope: String }
         _ = try await request(

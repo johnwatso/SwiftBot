@@ -433,6 +433,31 @@ extension AppModel {
     func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
         let context = interactionContext(from: event.rawMap)
+
+        // Safeguard: only allow interactions from users who share at least one connected guild
+        // with this bot. Guild-context interactions are pre-validated by Discord (the user must
+        // already be a guild member to invoke a slash command in that guild). DM-context
+        // interactions need an explicit check.
+        if event.interactionType == 2, !(await isInteractionAllowed(event: event, context: context)) {
+            do {
+                try await service.respondToInteraction(
+                    interactionID: event.interactionID,
+                    interactionToken: event.interactionToken,
+                    payload: [
+                        "type": 4,
+                        "data": [
+                            "content": "This bot can only be used by members of a server it's installed in.",
+                            "flags": 64 // EPHEMERAL
+                        ]
+                    ]
+                )
+            } catch {
+                logs.append("⚠️ Failed to reject unauthorized interaction: \(error.localizedDescription)")
+            }
+            logs.append("🚫 Rejected slash command from non-member user \(context.username)")
+            return
+        }
+
         switch event.interactionType {
         case 2:
             let slashName = (event.commandName ?? "").lowercased()
@@ -1379,22 +1404,41 @@ extension AppModel {
             clearedGlobalSlashCommands = false
             lastSlashCommandsEnabledState = slashEnabled
         }
-        let commands = buildSlashCommandDefinitions()
+        let allCommands = buildSlashCommandDefinitions()
+        // Commands that should also work in user DMs with the bot. Registered globally with
+        // `contexts: [0, 1]` (GUILD + BOT_DM) instead of per-guild.
+        let dmEnabledCommandNames: Set<String> = ["miner"]
+        let dmEnabledCommands: [[String: Any]] = allCommands
+            .filter { ($0["name"] as? String).map { dmEnabledCommandNames.contains($0) } ?? false }
+            .map { cmd in
+                var enriched = cmd
+                enriched["contexts"] = [0, 1] // GUILD, BOT_DM
+                return enriched
+            }
+        let guildOnlyCommands = allCommands
+            .filter { !(($0["name"] as? String).map { dmEnabledCommandNames.contains($0) } ?? false) }
+
         let now = Date()
         let guildIds = connectedServers.keys.sorted()
 
-        if !guildIds.isEmpty, !clearedGlobalSlashCommands {
+        // Push DM-enabled commands globally (also propagates to every guild the bot is in,
+        // so we exclude them from guild registration to avoid duplicates).
+        if lastSlashRegistrationAt == nil || now.timeIntervalSince(lastSlashRegistrationAt!) >= 300 {
             do {
                 try await service.registerGlobalApplicationCommands(
                     applicationID: appID,
-                    commands: [],
+                    commands: dmEnabledCommands,
                     token: token
                 )
                 clearedGlobalSlashCommands = true
                 lastSlashRegistrationAt = now
-                logs.append("✅ Cleared global slash commands to avoid duplicates")
+                if slashEnabled, !dmEnabledCommands.isEmpty {
+                    logs.append("✅ Registered \(dmEnabledCommands.count) DM-enabled slash command(s) globally")
+                } else if !slashEnabled {
+                    logs.append("✅ Cleared global slash commands")
+                }
             } catch {
-                logs.append("⚠️ Failed clearing global slash commands: \(error.localizedDescription)")
+                logs.append("⚠️ Global slash command registration failed: \(error.localizedDescription)")
             }
         }
 
@@ -1407,7 +1451,7 @@ extension AppModel {
                 try await service.registerGuildApplicationCommands(
                     applicationID: appID,
                     guildID: guildId,
-                    commands: commands,
+                    commands: guildOnlyCommands,
                     token: token
                 )
                 lastSlashGuildRegistrationAt[guildId] = now
@@ -1422,28 +1466,46 @@ extension AppModel {
             } else {
                 logs.append("✅ Slash commands disabled and cleared for \(guildRegisteredCount) guild(s)")
             }
-        } else if guildIds.isEmpty,
-                  lastSlashRegistrationAt == nil || now.timeIntervalSince(lastSlashRegistrationAt!) >= 300 {
-            do {
-                try await service.registerGlobalApplicationCommands(
-                    applicationID: appID,
-                    commands: commands,
-                    token: token
-                )
-                lastSlashRegistrationAt = now
-                if slashEnabled {
-                    logs.append("✅ Slash commands registered globally (no guilds known yet)")
-                } else {
-                    logs.append("✅ Slash commands disabled and cleared globally")
-                }
-            } catch {
-                logs.append("❌ Global slash command registration failed: \(error.localizedDescription)")
-            }
         }
     }
 
     typealias SlashContext = CommandProcessor.SlashContext
     typealias SlashResponsePayload = CommandProcessor.SlashResponsePayload
+
+    /// Returns `true` if the interaction's user is allowed to use this bot.
+    /// Guild interactions are trusted (Discord enforces guild membership). DM interactions
+    /// must come from a user who is a member of at least one connected guild — verified
+    /// against the cache, with a REST fallback that populates the cache on hit.
+    private func isInteractionAllowed(event: GatewayInteractionCreateEvent, context: SlashContext) async -> Bool {
+        // Guild-context interactions: Discord guarantees the user is a guild member.
+        if guildId(from: event.rawMap) != nil {
+            return true
+        }
+
+        // Pull the invoking user ID from the DM-style payload.
+        var userId: String?
+        if case let .object(user)? = event.rawMap["user"], case let .string(id)? = user["id"] {
+            userId = id
+        }
+        guard let userId, !userId.isEmpty else { return false }
+
+        // Fast path: cache says they're a known guild member.
+        if await discordCache.isGuildMember(id: userId) {
+            return true
+        }
+
+        // Cache miss: verify against each connected guild via REST. Cache the result on hit.
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return false }
+        let guildIds = connectedServers.keys
+        for guildId in guildIds {
+            if await guildRESTClient.fetchGuildMemberRoleIDs(guildID: guildId, userID: userId, token: token) != nil {
+                await discordCache.markGuildMember(id: userId)
+                return true
+            }
+        }
+        return false
+    }
 
     func interactionContext(from map: [String: DiscordJSON]) -> SlashContext {
         let channelId: String = {
@@ -1602,6 +1664,9 @@ extension AppModel {
 
     func voiceDisplayName(from map: [String: DiscordJSON], userId: String) async -> String {
         if case let .object(member)? = map["member"] {
+            if case let .object(memberUser)? = member["user"], memberUser["bot"] == .bool(true) {
+                await discordCache.markBot(id: userId)
+            }
             if case let .string(nick)? = member["nick"], !nick.isEmpty {
                 await discordCache.upsertUser(id: userId, preferredName: nick)
                 return nick
@@ -1620,6 +1685,9 @@ extension AppModel {
         }
 
         if case let .object(user)? = map["user"] {
+            if user["bot"] == .bool(true) {
+                await discordCache.markBot(id: userId)
+            }
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
                 await discordCache.upsertUser(id: userId, preferredName: globalName)
                 return globalName

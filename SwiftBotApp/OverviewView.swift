@@ -478,7 +478,6 @@ struct OverviewView: View {
             .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 16)
-            .background(SwiftBotGlassBackground().opacity(0.55))
         }
         .onAppear {
             syncDashboardPreferences()
