@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 
@@ -7,6 +8,7 @@ extension AppModel {
             let bundle = try decodeSwiftMinerPairingToken(rawToken)
             settings.swiftMiner.apply(pairingBundle: bundle)
             settings.adminWebUI.enabled = true
+            cacheSwiftMinerArtwork(from: bundle)
             saveSettings()
             return (true, "SwiftMiner pairing bundle applied. Local webhook server enabled.")
         } catch {
@@ -78,6 +80,24 @@ extension AppModel {
             }
         } catch {
             return (false, error.localizedDescription)
+        }
+    }
+
+    func sendSwiftMinerTestDM(to discordUserId: String) async -> Bool {
+        guard settings.swiftMiner.enabled else { return false }
+        let content = """
+        **SwiftMiner account connected and active** ⚡
+
+        Your Twitch account has been linked to SwiftMiner and is ready to mine drops.
+        Use `/miner action:status` to check your current progress at any time.
+        """
+        do {
+            try await service.sendDM(userId: discordUserId, content: content)
+            addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner test DM sent to \(discordUserId)"))
+            return true
+        } catch {
+            logs.append("SwiftMiner test DM failed for \(discordUserId): \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -201,6 +221,77 @@ extension AppModel {
             throw SwiftMinerPairingError.missingSecret
         }
         return bundle
+    }
+
+    func swiftMinerCachedArtworkURL() -> URL? {
+        let fileName = settings.swiftMiner.cachedArtworkFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fileName.isEmpty else { return nil }
+        let url = Self.swiftMinerArtworkCacheDirectoryURL().appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func cacheSwiftMinerArtworkIfNeeded() {
+        let fileName = settings.swiftMiner.cachedArtworkFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cachedURL = swiftMinerCachedArtworkURL()
+        guard cachedURL == nil || fileName.isEmpty else { return }
+        let artworkURL = settings.swiftMiner.artworkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !artworkURL.isEmpty else { return }
+        cacheSwiftMinerArtwork(from: nil)
+    }
+
+    private func cacheSwiftMinerArtwork(from bundle: SwiftMinerPairingBundle?) {
+        if let bundle,
+           let data = Self.decodedSwiftMinerArtworkData(from: bundle.artworkDataBase64) {
+            storeSwiftMinerArtwork(data)
+            return
+        }
+
+        let artworkURL = (bundle?.artworkURL ?? settings.swiftMiner.artworkURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: artworkURL), ["http", "https"].contains(url.scheme?.lowercased()) else { return }
+
+        Task { [weak self] in
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    return
+                }
+                await MainActor.run {
+                    self?.storeSwiftMinerArtwork(data)
+                    self?.saveSettings()
+                }
+            } catch {
+                await MainActor.run {
+                    self?.logs.append("SwiftMiner artwork cache failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func storeSwiftMinerArtwork(_ data: Data) {
+        guard NSImage(data: data) != nil else { return }
+        let fileName = "swiftminer-artwork-\(SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()).img"
+        let url = Self.swiftMinerArtworkCacheDirectoryURL().appendingPathComponent(fileName)
+        do {
+            try data.write(to: url, options: .atomic)
+            settings.swiftMiner.cachedArtworkFileName = fileName
+        } catch {
+            logs.append("SwiftMiner artwork cache failed: \(error.localizedDescription)")
+        }
+    }
+
+    private static func decodedSwiftMinerArtworkData(from rawValue: String) -> Data? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let base64 = trimmed.localizedCaseInsensitiveContains(";base64,")
+            ? trimmed.components(separatedBy: ";base64,").last ?? ""
+            : trimmed
+        return Data(base64Encoded: base64)
+    }
+
+    private static func swiftMinerArtworkCacheDirectoryURL() -> URL {
+        let url = SwiftBotStorage.folderURL().appendingPathComponent("swiftminer-artwork", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
     }
 }
 

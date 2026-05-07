@@ -75,6 +75,7 @@ extension AppModel {
         }
         botDiscriminator = identity?.discriminator
         botAvatarHash = identity?.avatarHash
+        persistCachedBotIdentityIfNeeded()
     }
 
     func handleMeshSync(_ payload: MeshSyncPayload) async {

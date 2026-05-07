@@ -200,6 +200,15 @@ final class AppModel: ObservableObject {
     // Max cache entries to prevent unbounded memory growth during extended operation
     private let maxAvatarCacheCount = 1000
 
+    var resolvedBotUsername: String {
+        let live = botUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !live.isEmpty, live != "OnlineBot" {
+            return live
+        }
+        let cached = settings.cachedBotIdentity.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cached.isEmpty ? "SwiftBot" : cached
+    }
+
     func cacheUserAvatar(_ hash: String, for userId: String) {
         userAvatarHashById[userId] = hash
         if userAvatarHashById.count > maxAvatarCacheCount {
@@ -229,7 +238,11 @@ final class AppModel: ObservableObject {
     var playlistTrackCardsByKey: [String: PlaylistTrackCardState] = [:]
 
     var botAvatarURL: URL? {
-        guard let userId = botUserId, let hash = botAvatarHash else { return nil }
+        let cachedUserId = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cachedAvatarHash = settings.cachedBotIdentity.avatarHash.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userId = botUserId ?? (cachedUserId.isEmpty ? nil : cachedUserId)
+        let hash = botAvatarHash ?? (cachedAvatarHash.isEmpty ? nil : cachedAvatarHash)
+        guard let userId, let hash else { return nil }
         let ext = hash.hasPrefix("a_") ? "gif" : "png"
         return URL(string: "https://cdn.discordapp.com/avatars/\(userId)/\(hash).\(ext)?size=128")
     }
@@ -347,6 +360,7 @@ final class AppModel: ObservableObject {
             }
 
             settings = loadedSettings
+            restoreCachedBotIdentity()
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
 
             // Initialize the appropriate data provider
@@ -711,10 +725,7 @@ final class AppModel: ObservableObject {
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
-        botUserId = nil
-        botUsername = "OnlineBot"
-        botDiscriminator = nil
-        botAvatarHash = nil
+        restoreCachedBotIdentity()
         clusterNodes = []
         lastGoodClusterNodes = []
         lastClusterStatusSuccessAt = nil
@@ -831,6 +842,41 @@ final class AppModel: ObservableObject {
         let m = interval / 60
         let s = interval % 60
         return "\(m)m \(s)s"
+    }
+
+    func restoreCachedBotIdentity() {
+        let cached = settings.cachedBotIdentity
+        let cachedUserId = cached.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cachedUserId.isEmpty {
+            botUserId = cachedUserId
+        }
+        let cachedUsername = cached.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cachedUsername.isEmpty {
+            botUsername = cachedUsername
+        }
+        let cachedDiscriminator = cached.discriminator.trimmingCharacters(in: .whitespacesAndNewlines)
+        botDiscriminator = cachedDiscriminator.isEmpty ? nil : cachedDiscriminator
+        let cachedAvatarHash = cached.avatarHash.trimmingCharacters(in: .whitespacesAndNewlines)
+        botAvatarHash = cachedAvatarHash.isEmpty ? nil : cachedAvatarHash
+    }
+
+    func persistCachedBotIdentityIfNeeded() {
+        var cached = settings.cachedBotIdentity
+        let nextUserId = botUserId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.userId
+        let nextUsername = botUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextDiscriminator = botDiscriminator?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.discriminator
+        let nextAvatarHash = botAvatarHash?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.avatarHash
+
+        guard !nextUsername.isEmpty, nextUsername != "OnlineBot" else { return }
+
+        cached.userId = nextUserId
+        cached.username = nextUsername
+        cached.discriminator = nextDiscriminator == "0" ? "" : nextDiscriminator
+        cached.avatarHash = nextAvatarHash
+
+        guard cached != settings.cachedBotIdentity else { return }
+        settings.cachedBotIdentity = cached
+        saveSettings()
     }
 }
 
