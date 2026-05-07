@@ -85,6 +85,95 @@ struct AdminWebOverviewPayload: Codable {
     let botInfo: AdminWebBotInfoPayload
 }
 
+struct AdminWebAnalyticsMetricPayload: Codable {
+    let id: String
+    let title: String
+    let value: String
+    let detail: String
+    let trend: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsDayPayload: Codable {
+    let date: Date
+    let label: String
+    let count: Int
+}
+
+struct AdminWebAnalyticsHourPayload: Codable {
+    let hour: Int
+    let label: String
+    let count: Int
+}
+
+struct AdminWebAnalyticsTopUserPayload: Codable {
+    let id: String
+    let username: String
+    let initials: String
+    let totalTime: String
+    let activityShare: Int
+    let isActive: Bool
+}
+
+struct AdminWebAnalyticsFeedEntryPayload: Codable {
+    let id: String
+    let timestamp: Date
+    let title: String
+    let detail: String
+    let category: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsHealthPayload: Codable {
+    let state: String
+    let detail: String
+    let websocketLatencyMs: Int?
+    let reconnectCount: Int
+    let activeTasks: Int
+    let eventQueueDepth: Int
+    let eventQueueLoad: Double
+    let memoryText: String
+}
+
+struct AdminWebAnalyticsInsightPayload: Codable {
+    let title: String
+    let body: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsPayload: Codable {
+    let generatedAt: Date
+    let peakActivityLabel: String
+    let metrics: [AdminWebAnalyticsMetricPayload]
+    let dailyActivity: [AdminWebAnalyticsDayPayload]
+    let hourlyActivity: [AdminWebAnalyticsHourPayload]
+    let topUsers: [AdminWebAnalyticsTopUserPayload]
+    let feed: [AdminWebAnalyticsFeedEntryPayload]
+    let health: AdminWebAnalyticsHealthPayload
+    let insights: [AdminWebAnalyticsInsightPayload]
+
+    static let empty = AdminWebAnalyticsPayload(
+        generatedAt: Date(),
+        peakActivityLabel: "Waiting for activity",
+        metrics: [],
+        dailyActivity: [],
+        hourlyActivity: [],
+        topUsers: [],
+        feed: [],
+        health: AdminWebAnalyticsHealthPayload(
+            state: "healthy",
+            detail: "Runtime analytics are waiting for the app state.",
+            websocketLatencyMs: nil,
+            reconnectCount: 0,
+            activeTasks: 0,
+            eventQueueDepth: 0,
+            eventQueueLoad: 0,
+            memoryText: "-"
+        ),
+        insights: []
+    )
+}
+
 struct AdminWebConfigPayload: Codable {
     struct Commands: Codable {
         let enabled: Bool
@@ -418,6 +507,7 @@ actor AdminWebServer {
     private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
+    private var analyticsProvider: (@Sendable () async -> AdminWebAnalyticsPayload)?
     private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
     private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
     private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
@@ -483,6 +573,7 @@ actor AdminWebServer {
         remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
         updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
+        analyticsProvider: @escaping @Sendable () async -> AdminWebAnalyticsPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
         updatePrefix: @escaping @Sendable (String) async -> Bool,
@@ -534,6 +625,7 @@ actor AdminWebServer {
         self.remoteSettingsProvider = remoteSettingsProvider
         self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
+        self.analyticsProvider = analyticsProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
         self.updatePrefix = updatePrefix
@@ -991,6 +1083,12 @@ actor AdminWebServer {
                 recentCommands: [],
                 botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
             )
+            return codableResponse(payload)
+        case ("GET", "/api/analytics"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            let payload = await analyticsProvider?() ?? AdminWebAnalyticsPayload.empty
             return codableResponse(payload)
         case ("GET", "/api/me"):
             guard let session = authenticatedSession(for: request) else {
@@ -2000,39 +2098,15 @@ actor AdminWebServer {
     }
 
     private func redirectURI() -> String {
-        var resolvedBase = activePublicBaseURL.isEmpty
+        let resolvedBase = activePublicBaseURL.isEmpty
             ? resolvedPublicBaseURL(usingTLS: config.https != nil)
             : activePublicBaseURL
 
-        // Ensure scheme exists
-        if !resolvedBase.isEmpty && !resolvedBase.contains("://") {
-            resolvedBase = "https://" + resolvedBase
-        }
-
-        let path = config.redirectPath.hasPrefix("/") ? config.redirectPath : "/" + config.redirectPath
-
         Task {
-            await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(path)'")
+            await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(config.redirectPath)'")
         }
 
-        guard var components = URLComponents(string: resolvedBase) else {
-            let fallback = resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path)
-            Task {
-                await logger?("[OAuth] redirectURI fallback construction: \(fallback)")
-            }
-            return fallback
-        }
-
-        // Handle existing path in base URL (e.g. proxy subpath)
-        if !components.path.isEmpty && components.path != "/" {
-            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let subPath = path.hasPrefix("/") ? path : "/" + path
-            components.path = basePath + subPath
-        } else {
-            components.path = path
-        }
-
-        let result = components.url?.absoluteString ?? (resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path))
+        let result = adminWebOAuthRedirectURL(baseURL: resolvedBase, redirectPath: config.redirectPath)
 
         Task {
             await logger?("[OAuth] Resulting redirectURI: \(result)")
