@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.6.2 - Release Notes</title>
+  <title>SwiftBot 1.3 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -83,27 +83,39 @@
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.6.2</h1>
-    <p class="meta">Version 1.6.2</p>
-    <p class="intro">WikiBridge and menu logic received a practical cleanup pass.</p>
+    <h1>SwiftBot 1.3</h1>
+    <p class="meta">Version 1.3</p>
+    <p class="intro">The first complete SwiftBot foundation release.</p>
+    <section class="foundation">
+      <h2><span class="badge" aria-hidden="true">🚀</span>Native Discord Bot Foundation</h2>
+      <p class="summary">The core macOS app, Discord runtime, and first-run setup came together here.</p>
+      <ul>
+        <li>Introduced the native SwiftUI control surface for running SwiftBot locally on macOS.</li>
+        <li>Added Discord bot onboarding, token validation, invite flow support, runtime status, and persistent app configuration.</li>
+        <li>Established the main navigation, dashboard cards, logs, command management, and diagnostics surfaces that later releases expanded.</li>
+        <li>Built the secure local settings model for bot credentials, server/channel targets, automation rules, and app state.</li>
+      </ul>
+    </section>
     <section class="features">
-      <h2><span class="badge" aria-hidden="true">📚</span>WikiBridge Improvements</h2>
-      <p class="summary">Wiki lookup behavior and surrounding UI flows were tightened.</p>
+      <h2><span class="badge" aria-hidden="true">🧠</span>Automation, AI, and Patchy Foundations</h2>
+      <p class="summary">This release set up the pieces that made SwiftBot more than a basic bot wrapper.</p>
       <ul>
-        <li>Updated WikiBridge logic for more reliable lookup behavior.</li>
-        <li>Refined WikiBot-related flows and general UI handling around the feature.</li>
-        <li>Adjusted the menu structure to make the growing app easier to navigate.</li>
+        <li>Added the early automation rule engine for Discord events, responses, and configurable bot actions.</li>
+        <li>Laid the groundwork for local AI replies, WikiBridge lookups, Patchy update monitoring, and helper-bot workflows.</li>
+        <li>Introduced the first UpdateEngine and release-monitoring direction that later became the Patchy dashboard.</li>
+        <li>Prepared the project structure for multiple feature modules while keeping the first release usable as a single native app.</li>
       </ul>
     </section>
-    <section class="reliability">
-      <h2><span class="badge" aria-hidden="true">🔧</span>Build Fixes</h2>
-      <p class="summary">The release also cleaned up Swift build issues found during the 1.6 line.</p>
+    <section class="operations">
+      <h2><span class="badge" aria-hidden="true">🛠️</span>Self-Update and High Availability Prep</h2>
+      <p class="summary">The release also started SwiftBot down the path toward being easier to ship and operate.</p>
       <ul>
-        <li>Fixed Swift build errors introduced during the WikiBridge and menu updates.</li>
-        <li>Kept the appcast and version metadata current for the retained 1.6 release.</li>
+        <li>Added the initial Sparkle self-update path and release publishing assumptions for distributing signed builds.</li>
+        <li>Started the high-availability and SwiftMesh groundwork so SwiftBot could eventually coordinate more than one running node.</li>
+        <li>Captured the first operational patterns for appcasts, versioning, release notes, and signed downloadable builds.</li>
       </ul>
     </section>
-    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/f0fe2b3c83fccc372c5637902ee62973f11e4b59">f0fe2b3</a></p>
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/964d40e11ec8c2086b6c584b992bf72b90405749">964d40e</a></p>
   </main>
 </body>
 </html>

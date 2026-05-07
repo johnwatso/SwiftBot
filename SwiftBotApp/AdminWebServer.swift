@@ -463,6 +463,8 @@ actor AdminWebServer {
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
+    private var discordUsersProvider: (@Sendable () async -> [String: String])?
+    private var swiftMinerTestDMSender: (@Sendable (String) async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -520,6 +522,8 @@ actor AdminWebServer {
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
+        discordUsersProvider: @escaping @Sendable () async -> [String: String],
+        swiftMinerTestDMSender: @escaping @Sendable (String) async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -569,6 +573,8 @@ actor AdminWebServer {
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
+        self.discordUsersProvider = discordUsersProvider
+        self.swiftMinerTestDMSender = swiftMinerTestDMSender
         self.logger = log
 
         loadPersistedSessions()
@@ -879,6 +885,21 @@ actor AdminWebServer {
             return serveAsset(named: parts[0], ext: parts[1], subdirectories: ["admin/games", "Resources/admin/games"])
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
+        case ("GET", "/v1/users"):
+            let usernamesById = await discordUsersProvider?() ?? [:]
+            let users = usernamesById
+                .map { ["discord_id": $0.key, "display_name": $0.value] }
+                .sorted { ($0["display_name"] ?? "") < ($1["display_name"] ?? "") }
+            return jsonResponse(["users": users])
+        case ("POST", let path) where path.hasPrefix("/v1/users/") && path.hasSuffix("/dm/test"):
+            let segments = path.split(separator: "/").map(String.init)
+            // Expected: ["v1", "users", "<discordUserId>", "dm", "test"]
+            guard segments.count == 5 else {
+                return jsonResponse(["error": "invalid_path"], status: "400 Bad Request")
+            }
+            let discordUserId = segments[2]
+            let sent = await swiftMinerTestDMSender?(discordUserId) ?? false
+            return jsonResponse(["ok": sent], status: sent ? "200 OK" : "502 Bad Gateway")
         case ("POST", "/webhooks/swiftminer/events"):
             guard let handler = swiftMinerWebhookHandler else {
                 return jsonResponse(["error": "swiftminer_unavailable"], status: "503 Service Unavailable")

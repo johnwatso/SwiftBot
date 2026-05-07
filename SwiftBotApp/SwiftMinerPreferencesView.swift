@@ -23,50 +23,62 @@ struct SwiftMinerPreferencesView: View {
                             .foregroundStyle(app.settings.swiftMiner.enabled ? .green : .secondary)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Pairing Bundle")
-                            .font(.subheadline.weight(.medium))
-                        TextField("Paste from SwiftMiner", text: $swiftMinerPairingToken)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    HStack {
-                        Button {
-                            let result = app.applySwiftMinerPairingToken(swiftMinerPairingToken)
-                            swiftMinerPairingSucceeded = result.ok
-                            swiftMinerPairingMessage = result.message
-                            if result.ok {
-                                swiftMinerPairingToken = ""
-                            }
-                        } label: {
-                            Label("Pair with SwiftMiner", systemImage: "link")
+                    if app.settings.swiftMiner.enabled {
+                        HStack(spacing: 10) {
+                            swiftMinerArtwork
+                            Text("SwiftMiner is paired and ready.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderedProminent)
-
-                        Button {
-                            let token = NSPasteboard.general.string(forType: .string) ?? ""
-                            swiftMinerPairingToken = token
-                            let result = app.applySwiftMinerPairingToken(token)
-                            swiftMinerPairingSucceeded = result.ok
-                            swiftMinerPairingMessage = result.message
-                            if result.ok {
-                                swiftMinerPairingToken = ""
-                            }
-                        } label: {
-                            Label("Paste and Pair", systemImage: "doc.on.clipboard")
+                        .onAppear {
+                            app.cacheSwiftMinerArtworkIfNeeded()
                         }
-                        .buttonStyle(.bordered)
-                    }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Pairing Bundle")
+                                .font(.subheadline.weight(.medium))
+                            TextField("Paste from SwiftMiner", text: $swiftMinerPairingToken)
+                                .textFieldStyle(.roundedBorder)
+                        }
 
-                    if let swiftMinerPairingMessage {
-                        Text(swiftMinerPairingMessage)
+                        HStack {
+                            Button {
+                                let result = app.applySwiftMinerPairingToken(swiftMinerPairingToken)
+                                swiftMinerPairingSucceeded = result.ok
+                                swiftMinerPairingMessage = result.message
+                                if result.ok {
+                                    swiftMinerPairingToken = ""
+                                }
+                            } label: {
+                                Label("Pair with SwiftMiner", systemImage: "link")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button {
+                                let token = NSPasteboard.general.string(forType: .string) ?? ""
+                                swiftMinerPairingToken = token
+                                let result = app.applySwiftMinerPairingToken(token)
+                                swiftMinerPairingSucceeded = result.ok
+                                swiftMinerPairingMessage = result.message
+                                if result.ok {
+                                    swiftMinerPairingToken = ""
+                                }
+                            } label: {
+                                Label("Paste and Pair", systemImage: "doc.on.clipboard")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        if let swiftMinerPairingMessage {
+                            Text(swiftMinerPairingMessage)
+                                .font(.caption)
+                                .foregroundStyle(swiftMinerPairingSucceeded ? .green : .red)
+                        }
+
+                        Text("Copy the pairing bundle from SwiftMiner > Integrations and paste it here.")
                             .font(.caption)
-                            .foregroundStyle(swiftMinerPairingSucceeded ? .green : .red)
+                            .foregroundStyle(.secondary)
                     }
-
-                    Text("Copy the pairing bundle from SwiftMiner > Integrations and paste it here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .disabled(app.isFailoverManagedNode)
@@ -80,6 +92,42 @@ struct SwiftMinerPreferencesView: View {
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
+        }
+    }
+
+    @ViewBuilder
+    private var swiftMinerArtwork: some View {
+        if let cachedURL = app.swiftMinerCachedArtworkURL(),
+           let image = NSImage(contentsOf: cachedURL) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else if let remoteURL = URL(string: app.settings.swiftMiner.artworkURL),
+                  ["http", "https"].contains(remoteURL.scheme?.lowercased()) {
+            AsyncImage(url: remoteURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    Image(systemName: "shippingbox.circle")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(.secondary)
+                        .padding(4)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else {
+            Image(systemName: "shippingbox.circle")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
         }
     }
 }

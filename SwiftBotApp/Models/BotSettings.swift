@@ -316,6 +316,7 @@ struct BotSettings: Codable, Hashable {
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
     var swiftMiner = SwiftMinerSettings()
+    var cachedBotIdentity = CachedBotIdentity()
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
 
@@ -399,6 +400,7 @@ struct BotSettings: Codable, Hashable {
         case wikiBot
         case patchy
         case swiftMiner
+        case cachedBotIdentity
         case help
         case adminWebUI
     }
@@ -466,6 +468,7 @@ struct BotSettings: Codable, Hashable {
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
         swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
+        cachedBotIdentity = try container.decodeIfPresent(CachedBotIdentity.self, forKey: .cachedBotIdentity) ?? CachedBotIdentity()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
         remoteMode.normalize()
@@ -532,8 +535,22 @@ struct BotSettings: Codable, Hashable {
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
         try container.encode(swiftMiner, forKey: .swiftMiner)
+        try container.encode(cachedBotIdentity, forKey: .cachedBotIdentity)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
+    }
+}
+
+struct CachedBotIdentity: Codable, Hashable {
+    var userId: String = ""
+    var username: String = ""
+    var discriminator: String = ""
+    var avatarHash: String = ""
+
+    var hasValue: Bool {
+        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !userId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !avatarHash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 
@@ -543,6 +560,8 @@ struct SwiftMinerSettings: Codable, Hashable {
     var apiKey: String = ""
     var webhookSecret: String = ""
     var webhookHint: String = ""
+    var artworkURL: String = ""
+    var cachedArtworkFileName: String = ""
 
     var normalizedBaseURL: String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -559,6 +578,7 @@ struct SwiftMinerSettings: Codable, Hashable {
         apiKey = pairingBundle.apiKey
         webhookSecret = pairingBundle.hmacSecret
         webhookHint = pairingBundle.webhookHint
+        artworkURL = pairingBundle.artworkURL
     }
 }
 
@@ -570,6 +590,8 @@ struct SwiftMinerPairingBundle: Codable, Hashable {
     let apiKey: String
     let hmacSecret: String
     let webhookHint: String
+    let artworkURL: String
+    let artworkDataBase64: String
 
     private enum CodingKeys: String, CodingKey {
         case version
@@ -579,6 +601,18 @@ struct SwiftMinerPairingBundle: Codable, Hashable {
         case apiKey
         case hmacSecret
         case webhookHint
+        case artworkURL
+        case imageURL
+        case iconURL
+        case logoURL
+        case artwork
+        case image
+        case icon
+        case logo
+        case artworkData
+        case imageData
+        case iconData
+        case logoData
     }
 
     init(
@@ -588,7 +622,9 @@ struct SwiftMinerPairingBundle: Codable, Hashable {
         swiftBotEndpoint: String = "",
         apiKey: String,
         hmacSecret: String,
-        webhookHint: String
+        webhookHint: String,
+        artworkURL: String = "",
+        artworkDataBase64: String = ""
     ) {
         self.version = version
         self.endpoint = endpoint
@@ -597,6 +633,8 @@ struct SwiftMinerPairingBundle: Codable, Hashable {
         self.apiKey = apiKey
         self.hmacSecret = hmacSecret
         self.webhookHint = webhookHint
+        self.artworkURL = artworkURL
+        self.artworkDataBase64 = artworkDataBase64
     }
 
     init(from decoder: Decoder) throws {
@@ -608,6 +646,48 @@ struct SwiftMinerPairingBundle: Codable, Hashable {
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         hmacSecret = try container.decodeIfPresent(String.self, forKey: .hmacSecret) ?? ""
         webhookHint = try container.decodeIfPresent(String.self, forKey: .webhookHint) ?? ""
+        let artworkValue = try Self.firstDecodedString(
+            in: container,
+            keys: [.artworkURL, .imageURL, .iconURL, .logoURL, .artwork, .image, .icon, .logo]
+        )
+        if artworkValue.localizedCaseInsensitiveContains(";base64,"),
+           let base64 = artworkValue.components(separatedBy: ";base64,").last {
+            artworkURL = ""
+            artworkDataBase64 = base64
+        } else {
+            artworkURL = artworkValue
+            artworkDataBase64 = try Self.firstDecodedString(
+                in: container,
+                keys: [.artworkData, .imageData, .iconData, .logoData]
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(version, forKey: .version)
+        try container.encode(endpoint, forKey: .endpoint)
+        try container.encode(swiftMinerEndpoint, forKey: .swiftMinerEndpoint)
+        try container.encode(swiftBotEndpoint, forKey: .swiftBotEndpoint)
+        try container.encode(apiKey, forKey: .apiKey)
+        try container.encode(hmacSecret, forKey: .hmacSecret)
+        try container.encode(webhookHint, forKey: .webhookHint)
+        try container.encode(artworkURL, forKey: .artworkURL)
+        try container.encode(artworkDataBase64, forKey: .artworkData)
+    }
+
+    private static func firstDecodedString(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        keys: [CodingKeys]
+    ) throws -> String {
+        for key in keys {
+            let value = try container.decodeIfPresent(String.self, forKey: key) ?? ""
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return ""
     }
 }
 

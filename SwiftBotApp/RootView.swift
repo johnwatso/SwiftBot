@@ -50,7 +50,7 @@ struct UnifiedRootView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             DashboardSidebar(selection: $selection)
                 .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
 
@@ -77,7 +77,6 @@ struct UnifiedRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SwiftBotGlassBackground())
         }
-        .padding(.top, -30)
         .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
         .overlay(alignment: .topTrailing) {
@@ -129,7 +128,7 @@ struct DashboardSidebar: View {
             VStack(spacing: 12) {
                 DashboardSidebarHeader(
                     avatarURL: app.botAvatarURL,
-                    botUsername: app.botUsername,
+                    botUsername: app.resolvedBotUsername,
                     statusText: app.primaryServiceStatusText,
                     isOnline: app.primaryServiceIsOnline,
                     clusterMode: app.clusterSnapshot.mode.rawValue,
