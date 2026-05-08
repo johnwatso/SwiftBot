@@ -2413,6 +2413,7 @@
     let selectedActionRuleID = null;
     let selectedMediaItemID = null;
     let mediaViewMode = 'library';
+    const activeMediaPlayback = { sessionID: '', itemID: '', started: false, completed: false, lastSentSeconds: 0 };
     let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
     let mediaExportState = {
       secondaryID: '',
@@ -3137,7 +3138,9 @@
       const system = document.getElementById('analyticsSystem');
       if (system) {
         const metrics = new Map((data.metrics || []).map(metric => [metric.id, metric]));
-        const rows = ['commands-today', 'active-workflows'].map(id => metrics.get(id)).filter(Boolean);
+        const rows = ['commands-today', 'active-workflows', 'recordings-watched', 'clips-exported']
+          .map(id => metrics.get(id))
+          .filter(Boolean);
         system.innerHTML = rows.map(metric => `
           <div class="analytics-health-row ${analyticsToneClass(metric.tone)}">
             <span>${metric.title}</span>
@@ -3416,8 +3419,8 @@
     }
 
     async function loadMediaExportStatus() {
-      const response = await fetch('/api/media/ffmpeg');
-      if (!response.ok) throw new Error('FFmpeg status unavailable');
+      const response = await fetch('/api/media/export-status');
+      if (!response.ok) throw new Error('Export status unavailable');
       const data = await response.json();
       mediaExportStatus = data;
       return data;
@@ -3454,6 +3457,59 @@
       if (contentType.includes('application/json')) return response.json();
       return null;
     }
+
+    function createPlaybackSession(itemID) {
+      return `media-${itemID}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function sendMediaPlaybackEvent(payload) {
+      return fetch('/api/media/playback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-CSRF': csrfToken || ''
+        },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => null);
+    }
+
+    function flushActiveMediaPlayback(video, eventName = 'progress') {
+      if (!activeMediaPlayback.sessionID || !video) return;
+      const watchedSeconds = Math.max(0, Math.floor(video.currentTime || 0));
+      if (watchedSeconds <= activeMediaPlayback.lastSentSeconds && eventName !== 'completed') return;
+      activeMediaPlayback.lastSentSeconds = Math.max(activeMediaPlayback.lastSentSeconds, watchedSeconds);
+      sendMediaPlaybackEvent({
+        sessionID: activeMediaPlayback.sessionID,
+        itemID: activeMediaPlayback.itemID,
+        event: eventName,
+        watchedSeconds
+      });
+    }
+
+    function mediaPreviewAllowed() {
+      if (mediaViewMode !== 'library') return false;
+      const activePlayer = document.querySelector('#mediaPanels video:not(.hover-preview)');
+      if (activePlayer && !activePlayer.paused && !activePlayer.ended) return false;
+      return true;
+    }
+
+    function stopHoverPreview(video) {
+      if (!video) return;
+      if (video._hoverTimer) {
+        clearTimeout(video._hoverTimer);
+        video._hoverTimer = null;
+      }
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.style.display = 'none';
+      video.dataset.active = 'false';
+    }
+
+    window.addEventListener('beforeunload', () => {
+      flushActiveMediaPlayback(document.querySelector('#mediaPanels video'), 'progress');
+    });
 
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
@@ -4302,9 +4358,9 @@
     function ffmpegPillHTML() {
       if (!mediaExportStatus) return '';
       if (mediaExportStatus.installed) {
-        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">FFmpeg ready</span>`;
+        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">Exports ready</span>`;
       }
-      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">FFmpeg missing</span>`;
+      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">Exports unavailable</span>`;
     }
 
     function mediaTokenFromURL(url) {
@@ -5062,7 +5118,7 @@
           <section class="settings-panel glass">
             <div class="panel-title"><span class="ms">content_cut</span> Clip</div>
             ${mediaExportStatus && !mediaExportStatus.installed ? `
-              <div class="placeholder" style="margin:0;">Install FFmpeg with <code>brew install ffmpeg</code> to enable exports.</div>
+              <div class="placeholder" style="margin:0;">Exports are currently unavailable on this node.</div>
             ` : ''}
             <div class="timeline-card">
               <div class="field-label">Primary clip window</div>
@@ -5146,6 +5202,7 @@
         `;
 
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
+          flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
           renderMediaView();
         });
@@ -5235,6 +5292,40 @@
         const primaryToken = selected ? mediaTokenFromURL(selected.streamURL) : '';
         let primaryState = null;
         if (primaryVideo) {
+          activeMediaPlayback.sessionID = createPlaybackSession(selected.id);
+          activeMediaPlayback.itemID = selected.id;
+          activeMediaPlayback.started = false;
+          activeMediaPlayback.completed = false;
+          activeMediaPlayback.lastSentSeconds = 0;
+
+          primaryVideo.addEventListener('play', () => {
+            if (activeMediaPlayback.started) return;
+            activeMediaPlayback.started = true;
+            sendMediaPlaybackEvent({
+              sessionID: activeMediaPlayback.sessionID,
+              itemID: activeMediaPlayback.itemID,
+              event: 'started',
+              watchedSeconds: Math.max(0, Math.floor(primaryVideo.currentTime || 0))
+            });
+          });
+
+          primaryVideo.addEventListener('timeupdate', () => {
+            const watchedSeconds = Math.max(0, Math.floor(primaryVideo.currentTime || 0));
+            if (watchedSeconds - activeMediaPlayback.lastSentSeconds >= 15) {
+              flushActiveMediaPlayback(primaryVideo, 'progress');
+            }
+          });
+
+          primaryVideo.addEventListener('pause', () => {
+            flushActiveMediaPlayback(primaryVideo, 'progress');
+          });
+
+          primaryVideo.addEventListener('ended', () => {
+            if (activeMediaPlayback.completed) return;
+            activeMediaPlayback.completed = true;
+            flushActiveMediaPlayback(primaryVideo, 'completed');
+          });
+
           primaryVideo.addEventListener('loadedmetadata', () => {
             const duration = primaryVideo.duration || 300;
             const state = initTimelineState(duration, maxLen);
@@ -5462,29 +5553,30 @@
 
       panels.querySelectorAll('[data-media-id]').forEach(node => {
         node.addEventListener('click', () => {
+          flushActiveMediaPlayback(document.querySelector('#mediaPanels video'), 'progress');
           selectedMediaItemID = node.dataset.mediaId;
           mediaViewMode = 'player';
           renderMediaView();
         });
         node.addEventListener('mouseenter', () => {
+          if (!mediaPreviewAllowed()) return;
           const video = node.querySelector('.hover-preview');
           if (!video || video.dataset.active === 'true') return;
           const item = items.find(entry => entry.id === node.dataset.mediaId);
           if (!item) return;
           const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
-          video.dataset.active = 'true';
-          video.style.display = 'block';
-          video.src = `${item.streamURL}${accessQuery}`;
-          video.play().catch(() => {});
+          video._hoverTimer = setTimeout(() => {
+            if (!mediaPreviewAllowed()) return;
+            video.dataset.active = 'true';
+            video.style.display = 'block';
+            video.src = `${item.streamURL}${accessQuery}`;
+            video.play().catch(() => {
+              stopHoverPreview(video);
+            });
+          }, 180);
         });
         node.addEventListener('mouseleave', () => {
-          const video = node.querySelector('.hover-preview');
-          if (!video) return;
-          video.pause();
-          video.removeAttribute('src');
-          video.load();
-          video.style.display = 'none';
-          video.dataset.active = 'false';
+          stopHoverPreview(node.querySelector('.hover-preview'));
         });
       });
       header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {

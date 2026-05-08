@@ -1,6 +1,11 @@
 import Foundation
 import SwiftUI
 
+struct PatchyMonitoringSnapshot: Equatable {
+    let patchySettings: PatchySettings
+    let clusterMode: ClusterMode
+}
+
 extension AppModel {
 
     // MARK: - Patchy Update Monitoring
@@ -146,10 +151,18 @@ extension AppModel {
     }
 
     func configurePatchyMonitoring() {
+        let snapshot = PatchyMonitoringSnapshot(
+            patchySettings: settings.patchy,
+            clusterMode: settings.clusterMode
+        )
+
+        guard snapshot != lastPatchyMonitoringSnapshot else { return }
+        lastPatchyMonitoringSnapshot = snapshot
+
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
 
-        guard settings.patchy.monitoringEnabled else {
+        guard usesLocalRuntime, settings.patchy.monitoringEnabled else {
             appendPatchyLog("Patchy monitoring paused.")
             return
         }

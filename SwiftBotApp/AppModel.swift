@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import CryptoKit
 import Foundation
+import OSLog
 import SwiftUI
 import Darwin
 
@@ -175,10 +176,12 @@ final class AppModel: ObservableObject {
     ]
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
+    let swiftMinerLogger = Logger(subsystem: "com.swiftbot", category: "swiftminer")
     let pluginManager: PluginManager
     var weeklyPlugin: WeeklySummaryPlugin?
     let patchyChecker: UpdateChecker?
     var patchyMonitorTask: Task<Void, Never>?
+    var lastPatchyMonitoringSnapshot: PatchyMonitoringSnapshot?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
     var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
     var mediaMonitorTask: Task<Void, Never>?
@@ -225,6 +228,10 @@ final class AppModel: ObservableObject {
 
     @Published var mediaLibrarySettings = MediaLibrarySettings()
     @Published var mediaExportJobs: [MediaExportJob] = []
+    @Published var mediaPlaybackStarts = 0
+    @Published var mediaPlaybackCompletedViews = 0
+    @Published var mediaPlaybackTotalSeconds = 0
+    @Published var mediaPlaybackUniqueItemCount = 0
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
@@ -236,6 +243,10 @@ final class AppModel: ObservableObject {
     var pendingMusicSelectionsByUserID: [String: PendingMusicSelection] = [:]
     var musicInteractionSessionsByID: [String: MusicInteractionSession] = [:]
     var playlistTrackCardsByKey: [String: PlaylistTrackCardState] = [:]
+    var mediaPlaybackStartedSessionIDs: Set<String> = []
+    var mediaPlaybackCompletedSessionIDs: Set<String> = []
+    var mediaPlaybackLastSecondsBySession: [String: Int] = [:]
+    var mediaPlaybackViewedItemIDs: Set<String> = []
 
     var botAvatarURL: URL? {
         let cachedUserId = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -562,7 +573,6 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.localAuthPassword = settings.adminWebUI.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.publicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
         settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile

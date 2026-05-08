@@ -388,6 +388,13 @@ struct AdminWebMediaLibraryPayload: Codable {
     let totalPages: Int
 }
 
+struct AdminWebMediaPlaybackPatch: Codable {
+    let sessionID: String
+    let itemID: String
+    let event: String
+    let watchedSeconds: Int?
+}
+
 actor AdminWebServer {
     struct RuntimeState: Equatable {
         var isEnabled: Bool
@@ -547,6 +554,7 @@ actor AdminWebServer {
     private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
     private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
     private var mediaExportJobsProvider: (@Sendable () async -> MediaExportJobsPayload)?
+    private var mediaPlaybackRecorder: (@Sendable (AdminWebMediaPlaybackPatch) async -> Bool)?
     private var mediaClipExportStarter: (@Sendable (MediaExportClipRequest) async -> MediaExportJobResponse)?
     private var mediaMultiViewExportStarter: (@Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse)?
     private var startBot: (@Sendable () async -> Bool)?
@@ -554,7 +562,7 @@ actor AdminWebServer {
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [String: String])?
-    private var swiftMinerTestDMSender: (@Sendable (String, String?, [String]) async -> Bool)?
+    private var swiftMinerTestDMSender: (@Sendable (String, String?, [String], Bool) async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -607,6 +615,7 @@ actor AdminWebServer {
         mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
         mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
         mediaExportJobsProvider: @escaping @Sendable () async -> MediaExportJobsPayload,
+        mediaPlaybackRecorder: @escaping @Sendable (AdminWebMediaPlaybackPatch) async -> Bool,
         mediaClipExportStarter: @escaping @Sendable (MediaExportClipRequest) async -> MediaExportJobResponse,
         mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
         startBot: @escaping @Sendable () async -> Bool,
@@ -614,7 +623,7 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         discordUsersProvider: @escaping @Sendable () async -> [String: String],
-        swiftMinerTestDMSender: @escaping @Sendable (String, String?, [String]) async -> Bool,
+        swiftMinerTestDMSender: @escaping @Sendable (String, String?, [String], Bool) async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -659,6 +668,7 @@ actor AdminWebServer {
         self.mediaFrameProvider = mediaFrameProvider
         self.mediaExportStatusProvider = mediaExportStatusProvider
         self.mediaExportJobsProvider = mediaExportJobsProvider
+        self.mediaPlaybackRecorder = mediaPlaybackRecorder
         self.mediaClipExportStarter = mediaClipExportStarter
         self.mediaMultiViewExportStarter = mediaMultiViewExportStarter
         self.startBot = startBot
@@ -993,12 +1003,15 @@ actor AdminWebServer {
             // Optional body: { "twitch_username": "...", "priority_games": ["..."] }
             var twitchUsername: String?
             var priorityGames: [String] = []
+            var priorityGamesKeyPresent = false
             if !request.body.isEmpty,
                let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] {
                 twitchUsername = json["twitch_username"] as? String
+                priorityGamesKeyPresent = json.keys.contains("priority_games")
                 priorityGames = json["priority_games"] as? [String] ?? []
             }
-            let sent = await swiftMinerTestDMSender?(discordUserId, twitchUsername, priorityGames) ?? false
+            await logger?("[SwiftMiner] DM test request for \(discordUserId) — priority_games key present: \(priorityGamesKeyPresent), count: \(priorityGames.count)")
+            let sent = await swiftMinerTestDMSender?(discordUserId, twitchUsername, priorityGames, priorityGamesKeyPresent) ?? false
             return jsonResponse(["ok": sent], status: sent ? "200 OK" : "502 Bad Gateway")
         case ("POST", "/webhooks/swiftminer/events"):
             guard let handler = swiftMinerWebhookHandler else {
@@ -1333,14 +1346,14 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
-        case ("GET", "/api/media/ffmpeg"):
+        case ("GET", "/api/media/ffmpeg"), ("GET", "/api/media/export-status"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
             }
             if let payload = await mediaExportStatusProvider?() {
                 return codableResponse(payload)
             }
-            return jsonResponse(["error": "ffmpeg_unavailable"], status: "503 Service Unavailable")
+            return jsonResponse(["error": "export_unavailable"], status: "503 Service Unavailable")
         case ("GET", "/api/media/exports"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -1349,6 +1362,20 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "exports_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/media/playback"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let body = try? decoder.decode(AdminWebMediaPlaybackPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await mediaPlaybackRecorder?(body) == true else {
+                return jsonResponse(["error": "record_failed"], status: "500 Internal Server Error")
+            }
+            return jsonResponse(["ok": true])
         case ("GET", "/api/media/thumbnail"):
             guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()

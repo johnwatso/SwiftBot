@@ -224,7 +224,7 @@ struct AnalyticsView: View {
                             x: .value("Day", item.date, unit: .day),
                             y: .value("Sessions", item.count)
                         )
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.monotone)
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [.accentColor.opacity(0.22), .accentColor.opacity(0.025)],
@@ -237,7 +237,7 @@ struct AnalyticsView: View {
                             x: .value("Day", item.date, unit: .day),
                             y: .value("Sessions", item.count)
                         )
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.monotone)
                         .lineStyle(StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
                         .foregroundStyle(Color.accentColor)
 
@@ -259,6 +259,7 @@ struct AnalyticsView: View {
                         .padding(.horizontal, 7)
                 }
                 .chartXScale(domain: dailyChartDomain)
+                .chartYScale(domain: 0...(max(1, snapshot.voice.peakDayCount) + 1))
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day)) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))

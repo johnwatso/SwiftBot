@@ -273,6 +273,9 @@ extension AppModel {
         let activeTaskCount = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
             + (patchyIsCycleRunning ? 1 : 0)
             + activeBugAutoFixMessageIDs.count
+        let finishedExports = mediaExportJobs.filter { $0.status == .finished }.count
+        let failedExports = mediaExportJobs.filter { $0.status == .failed }.count
+        let activeExports = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
         let queueDepth = events.count
         let queueLoad = min(Double(queueDepth) / 20.0, 1.0)
         let healthState = adminWebAnalyticsHealthState(
@@ -284,6 +287,10 @@ extension AppModel {
         let peakHour = loadedHourly.max { $0.count < $1.count }.flatMap { $0.count >= 1 ? $0 : nil }
         let mostActiveDay = adminWebDeterministicMostActiveDay(from: loadedDaily)
         let averageSession = loadedSessionCount > 0 ? loadedTotalSeconds / loadedSessionCount : 0
+        let averageWatchSeconds = mediaPlaybackStarts > 0 ? mediaPlaybackTotalSeconds / mediaPlaybackStarts : 0
+        let exportSuccessRate = finishedExports + failedExports > 0
+            ? Int((Double(finishedExports) / Double(finishedExports + failedExports)) * 100)
+            : 100
         let successRate = stats.commandsRun > 0
             ? Double(max(0, stats.commandsRun - stats.errors)) / Double(stats.commandsRun)
             : 1
@@ -336,6 +343,26 @@ extension AppModel {
                 detail: patchyIsCycleRunning ? "Patchy running now" : "Rule engine ready",
                 trend: automationFailures > 0 ? "\(automationFailures) automation warnings" : "Automation nominal",
                 tone: automationFailures > 0 ? "warning" : "automation"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "recordings-watched",
+                title: "Videos Watched",
+                value: "\(mediaPlaybackStarts)",
+                detail: "\(mediaPlaybackUniqueItemCount) unique recordings opened",
+                trend: averageWatchSeconds > 0
+                    ? "Average watch \(adminWebFormatDuration(averageWatchSeconds))"
+                    : "Waiting for playback telemetry",
+                tone: "usage"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "clips-exported",
+                title: "Clips Exported",
+                value: "\(finishedExports)",
+                detail: activeExports > 0 ? "\(activeExports) exports in progress" : "No active exports",
+                trend: failedExports > 0
+                    ? "\(failedExports) failed · \(exportSuccessRate)% success"
+                    : "\(exportSuccessRate)% success rate",
+                tone: failedExports > 0 ? "warning" : "healthy"
             )
         ]
 
@@ -376,7 +403,9 @@ extension AppModel {
                 dailyActivity: loadedDaily,
                 healthState: healthState.state,
                 automationFailures: automationFailures,
-                commandsToday: commandsToday
+                commandsToday: commandsToday,
+                watchedVideos: mediaPlaybackStarts,
+                exportedClips: finishedExports
             )
         )
     }
@@ -481,7 +510,9 @@ extension AppModel {
         dailyActivity: [(date: Date, count: Int)],
         healthState: String,
         automationFailures: Int,
-        commandsToday: Int
+        commandsToday: Int,
+        watchedVideos: Int,
+        exportedClips: Int
     ) -> [AdminWebAnalyticsInsightPayload] {
         var output: [AdminWebAnalyticsInsightPayload] = []
         let total = dailyActivity.reduce(0) { $0 + $1.count }
@@ -522,6 +553,14 @@ extension AppModel {
             output.append(AdminWebAnalyticsInsightPayload(
                 title: "Command traffic is active",
                 body: "\(commandsToday) commands have been processed today.",
+                tone: "usage"
+            ))
+        }
+
+        if watchedVideos > 0 || exportedClips > 0 {
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "Recording activity is flowing",
+                body: "\(watchedVideos) playback sessions and \(exportedClips) completed exports have been observed in this runtime.",
                 tone: "usage"
             ))
         }
@@ -1469,6 +1508,10 @@ extension AppModel {
                 guard let model = self else { return MediaExportJobsPayload(jobs: []) }
                 return await model.adminWebMediaExportJobs()
             },
+            mediaPlaybackRecorder: { [weak self] patch in
+                guard let model = self else { return false }
+                return await model.adminWebRecordMediaPlayback(patch)
+            },
             mediaClipExportStarter: { [weak self] request in
                 guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
                 return await model.adminWebStartMediaClipExport(request: request)
@@ -1502,9 +1545,14 @@ extension AppModel {
                 guard let model = self else { return [:] }
                 return await model.discordCache.humanUserNames()
             },
-            swiftMinerTestDMSender: { [weak self] discordUserId, twitchUsername, priorityGames in
+            swiftMinerTestDMSender: { [weak self] discordUserId, twitchUsername, priorityGames, priorityGamesKeyPresent in
                 guard let model = self else { return false }
-                return await model.sendSwiftMinerTestDM(to: discordUserId, twitchUsername: twitchUsername, priorityGames: priorityGames)
+                return await model.sendSwiftMinerTestDM(
+                    to: discordUserId,
+                    twitchUsername: twitchUsername,
+                    priorityGames: priorityGames,
+                    priorityGamesKeyPresent: priorityGamesKeyPresent
+                )
             },
             log: { [weak self] message in
                 guard let model = self else { return }
