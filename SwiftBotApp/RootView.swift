@@ -52,7 +52,7 @@ struct UnifiedRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             DashboardSidebar(selection: $selection)
-                .frame(minWidth: 230, idealWidth: 250, maxWidth: 280)
+                .frame(width: 250)
 
             Group {
                 switch selection {
@@ -76,8 +76,10 @@ struct UnifiedRootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea(.container, edges: .top)
-        .background(SwiftBotGlassBackground())
+        .background(
+            SwiftBotGlassBackground()
+                .ignoresSafeArea(.container, edges: .top)
+        )
         .overlay(alignment: .topTrailing) {
             if app.isBetaBuild {
                 BetaBadgeView()
@@ -134,7 +136,7 @@ struct DashboardSidebar: View {
                     clusterIcon: clusterIcon
                 )
                 .padding(.horizontal, 10)
-                .padding(.top, 44)
+                .padding(.top, 12)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
@@ -380,6 +382,8 @@ private struct DashboardSidebarHeader: View {
                     Text(botUsername)
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
 
                     HStack(spacing: 5) {
                         Circle()
@@ -391,9 +395,12 @@ private struct DashboardSidebarHeader: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
                 Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
                 SidebarInfoRow(
@@ -409,8 +416,10 @@ private struct DashboardSidebarHeader: View {
                     tint: .secondary
                 )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -497,7 +506,10 @@ private struct SidebarInfoRow: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
 
             Spacer(minLength: 0)
         }
