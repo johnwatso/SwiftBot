@@ -99,6 +99,7 @@ final class AppModel: ObservableObject {
     let ruleStore = RuleStore()
 
     let store = ConfigStore()
+    let analyticsRuntimeStore = AnalyticsRuntimeStore()
     let swiftMeshConfigStore = SwiftMeshConfigStore()
     let mediaLibraryConfigStore = MediaLibraryConfigStore()
     let discordCacheStore = DiscordCacheStore()
@@ -339,6 +340,8 @@ final class AppModel: ObservableObject {
             await startRateLimitCleanupTask()
 
             await voiceSessionStore.load()
+            let analyticsRuntimeSnapshot = await analyticsRuntimeStore.load()
+            restoreAnalyticsRuntime(analyticsRuntimeSnapshot)
             var loadedSettings = await store.load()
             let loadedMeshSettings = await swiftMeshConfigStore.load()
             let loadedMediaSettings = await mediaLibraryConfigStore.load()
@@ -456,7 +459,7 @@ final class AppModel: ObservableObject {
                 onJobLog: { [weak self] entry in
                     let model = self
                     await MainActor.run {
-                        model?.commandLog.insert(entry, at: 0)
+                        model?.addCommandLogEntry(entry)
                     }
                 },
                 onSync: { [weak self] payload in
@@ -840,6 +843,42 @@ final class AppModel: ObservableObject {
     func addEvent(_ event: ActivityEvent) {
         events.insert(event, at: 0)
         if events.count > 20 { events.removeLast(events.count - 20) }
+        persistAnalyticsRuntime()
+    }
+
+    func addCommandLogEntry(_ entry: CommandLogEntry) {
+        commandLog.insert(entry, at: 0)
+        persistAnalyticsRuntime()
+    }
+
+    func addVoiceLogEntry(_ entry: VoiceEventLogEntry) {
+        voiceLog.insert(entry, at: 0)
+        if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }
+        persistAnalyticsRuntime()
+    }
+
+    func setPatchyLastCycleAt(_ date: Date?) {
+        patchyLastCycleAt = date
+        persistAnalyticsRuntime()
+    }
+
+    private func restoreAnalyticsRuntime(_ snapshot: AnalyticsRuntimeSnapshot) {
+        events = snapshot.events
+        commandLog = snapshot.commandLog
+        voiceLog = snapshot.voiceLog
+        patchyLastCycleAt = snapshot.patchyLastCycleAt
+    }
+
+    func persistAnalyticsRuntime() {
+        let snapshot = AnalyticsRuntimeSnapshot(
+            events: events,
+            commandLog: commandLog,
+            voiceLog: voiceLog,
+            patchyLastCycleAt: patchyLastCycleAt
+        )
+        Task {
+            await analyticsRuntimeStore.save(snapshot)
+        }
     }
 
     // MARK: - P0.5: Member join welcome

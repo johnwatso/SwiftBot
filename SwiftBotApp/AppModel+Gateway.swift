@@ -120,6 +120,9 @@ extension AppModel {
         if let remoteVoiceLog = payload.voiceLog {
             voiceLog = Array(remoteVoiceLog.prefix(200))
         }
+        if payload.commandLog != nil || payload.voiceLog != nil {
+            persistAnalyticsRuntime()
+        }
         if let remoteActiveVoice = payload.activeVoice {
             await replaceVoicePresence(remoteActiveVoice)
         }
@@ -476,7 +479,7 @@ extension AppModel {
             let slashCommandForLog = formatSlashCommandForLog(name: event.commandName ?? "unknown", data: event.data)
             let slashOk = response.embeds != nil || (response.content?.isEmpty == false)
             let slashExecutionDetails = await commandExecutionDetails(for: slashName)
-            commandLog.insert(CommandLogEntry(
+            addCommandLogEntry(CommandLogEntry(
                 time: Date(),
                 user: context.username,
                 server: commandServerName(from: context.rawLikeMessage),
@@ -485,7 +488,7 @@ extension AppModel {
                 executionRoute: slashExecutionDetails.route,
                 executionNode: slashExecutionDetails.node,
                 ok: slashOk
-            ), at: 0)
+            ))
 
             guard let applicationID = botUserId, !applicationID.isEmpty else { return }
             guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
@@ -613,7 +616,7 @@ extension AppModel {
         let commandName = event.commandName ?? "music"
         let slashCommandForLog = formatSlashCommandForLog(name: commandName, data: event.data)
         let slashExecutionDetails = await commandExecutionDetails(for: "music")
-        commandLog.insert(CommandLogEntry(
+        addCommandLogEntry(CommandLogEntry(
             time: Date(),
             user: context.username,
             server: commandServerName(from: context.rawLikeMessage),
@@ -622,7 +625,7 @@ extension AppModel {
             executionRoute: slashExecutionDetails.route,
             executionNode: slashExecutionDetails.node,
             ok: !results.isEmpty
-        ), at: 0)
+        ))
 
         guard let applicationID = botUserId, !applicationID.isEmpty else { return }
         guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
@@ -1559,7 +1562,7 @@ extension AppModel {
             stats.voiceJoins += 1
             lastVoiceStateSummary = "JOIN \(displayName) -> \(next.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceJoin, message: "🟢 @\(displayName) joined \(next.channelName)"))
-            voiceLog.insert(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"), at: 0)
+            addVoiceLogEntry(VoiceEventLogEntry(time: now, description: "JOIN \(displayName) \(next.channelName)"))
             await voiceSessionStore.recordJoin(userId: userId, username: displayName, guildId: guildId, channelId: next.channelId, channelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
@@ -1583,7 +1586,7 @@ extension AppModel {
             stats.voiceLeaves += 1
             lastVoiceStateSummary = "MOVE \(displayName): \(previous.channelName) -> \(next.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceMove, message: "🔀 @\(displayName) moved from \(previous.channelName) — Time in chat: \(elapsed) → \(next.channelName)"))
-            voiceLog.insert(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"), at: 0)
+            addVoiceLogEntry(VoiceEventLogEntry(time: now, description: "MOVE \(displayName) \(previous.channelName) -> \(next.channelName)"))
             await voiceSessionStore.recordChannelSwitch(userId: userId, username: displayName, guildId: guildId, newChannelId: next.channelId, newChannelName: next.channelName, at: now)
 
             if allowPrimarySideEffects,
@@ -1605,7 +1608,7 @@ extension AppModel {
             stats.voiceLeaves += 1
             lastVoiceStateSummary = "LEAVE \(previous.username) <- \(previous.channelName)"
             addEvent(ActivityEvent(timestamp: now, kind: .voiceLeave, message: "🔴 @\(previous.username) left \(previous.channelName) — Time in chat: \(elapsed)"))
-            voiceLog.insert(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"), at: 0)
+            addVoiceLogEntry(VoiceEventLogEntry(time: now, description: "LEAVE \(previous.username) \(previous.channelName) duration=\(elapsed)"))
             await voiceSessionStore.recordLeave(userId: userId, guildId: guildId, at: now)
 
             if allowPrimarySideEffects,
@@ -1626,8 +1629,6 @@ extension AppModel {
                 await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
             }
         }
-
-        if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }
     }
 
     enum VoiceNotifyEvent {

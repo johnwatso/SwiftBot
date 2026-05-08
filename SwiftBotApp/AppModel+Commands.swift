@@ -1575,7 +1575,7 @@ extension AppModel {
 
     func appendBugCommandLog(user: String, server: String, command: String, channel: String, ok: Bool) async {
         let executionDetails = await commandExecutionDetails(for: "bug")
-        commandLog.insert(CommandLogEntry(
+        addCommandLogEntry(CommandLogEntry(
             time: Date(),
             user: user,
             server: server,
@@ -1584,7 +1584,7 @@ extension AppModel {
             executionRoute: executionDetails.route,
             executionNode: executionDetails.node,
             ok: ok
-        ), at: 0)
+        ))
     }
 
     func bugTrackerChannelID(for guildID: String) -> String? {
