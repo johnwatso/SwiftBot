@@ -99,7 +99,7 @@ struct PipelineContext {
 | File | Purpose |
 |------|---------|
 | `AppModel.swift` | Primary app state `@MainActor ObservableObject`. Bot lifecycle, settings, gateway coordination, rule engine orchestration, Patchy scheduler, plugin management. |
-| `AppModel+Commands.swift` | Slash and prefix command handlers |
+| `AppModel+Commands.swift` | Slash command handlers |
 | `AppModel+Gateway.swift` | Gateway event parsing and dispatch |
 | `AppModel+AI.swift` | AI provider routing and response generation |
 | `DiscordService.swift` | Discord WebSocket gateway + REST API actor. Rule action execution. AI replies. Wiki lookup. |

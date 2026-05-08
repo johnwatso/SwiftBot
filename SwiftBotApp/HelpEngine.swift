@@ -244,7 +244,7 @@ struct HelpRenderer {
 
     static let orderedCategories: [CommandCategory] = [.general, .fun, .moderation, .cluster, .wiki]
 
-    // MARK: Embed overview (for `!help` — primary path)
+    // MARK: Embed overview
 
     /// Returns a Discord embed payload for the full command overview.
     /// Fields are always catalog-sourced; AI can optionally supply a description.
@@ -263,7 +263,7 @@ struct HelpRenderer {
             fields.append(["name": category.rawValue, "value": value, "inline": false])
         }
 
-        var footerText = "Type \(prefix)help <command> for usage and examples."
+        var footerText = "Type \(prefix)help command:<command> for usage and examples."
         if !helpSettings.customFooter.trimmed.isEmpty {
             footerText += "  \(helpSettings.customFooter.trimmed)"
         }
@@ -305,7 +305,7 @@ struct HelpRenderer {
             lines.append("**\(category.rawValue)**\n\(list)")
         }
 
-        lines.append("*Type `\(prefix)help <command>` for usage and examples.*")
+        lines.append("*Type `\(prefix)help command:<command>` for usage and examples.*")
 
         if !helpSettings.customFooter.trimmed.isEmpty {
             lines.append(helpSettings.customFooter.trimmed)
@@ -314,7 +314,7 @@ struct HelpRenderer {
         return lines.joined(separator: "\n\n")
     }
 
-    // MARK: Detail (for `!help <command>`)
+    // MARK: Detail
 
     func detail(for entry: CommandEntry) -> String {
         if entry.name == "music" || entry.name == "playlist" {
@@ -341,8 +341,6 @@ struct HelpRenderer {
         **Music + Playlist Guide**
 
         **Interactive Track Lookup**
-        `\(prefix)music <query>`
-        `\(prefix)music title:<title> artist:<artist>`
         `/music query:<query>`
         `/music title:<title> artist:<artist>`
 
@@ -352,10 +350,9 @@ struct HelpRenderer {
         - You can post the selected card to the channel.
         - Cards include Apple Music, Spotify, YouTube Music, and YouTube links.
 
-        **Legacy Pick Flow (still supported)**
-        `\(prefix)music pick <number>`
+        **Track Selection**
         `/music pick:<number>`
-        Use this after a non-interactive list response.
+        Use this after the bot returns a list of candidate matches.
 
         **Playlist Import**
         `/playlist url:<playlist-url> [name:<thread-name>] [limit:<n>]`
@@ -380,8 +377,8 @@ struct HelpRenderer {
         - If a match is off, click `Next Match` or toggle to `Source Query`.
 
         **Quick Examples**
-        `\(prefix)music strobe deadmau5`
-        `\(prefix)music title:Alive artist:RUFUS DU SOL`
+        `/music query:strobe deadmau5`
+        `/music title:Alive artist:RUFUS DU SOL`
         `/playlist url:https://open.spotify.com/playlist/...`
         `/playlist url:https://music.youtube.com/playlist?list=... limit:25`
         """

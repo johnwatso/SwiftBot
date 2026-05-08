@@ -30,7 +30,7 @@ The app handles:
 
 - Discord bot onboarding and token validation
 - Server invite link generation
-- Prefix and slash command routing
+- Slash command routing
 - Voice, message, and member-join automation
 - Patchy update monitoring for AMD, NVIDIA, Intel, and Steam
 - WikiBridge-backed knowledge commands
@@ -50,7 +50,7 @@ SwiftBot brings those pieces together in one place. It is intended to make the b
 
 - Runs a native Discord bot runtime from macOS
 - Guides first-time setup with token validation and invite link generation
-- Supports prefix commands and slash commands
+- Supports Discord slash commands
 - Provides command logging and channel configuration
 - Builds automation rules for voice events, messages, and member joins
 - Sends update notifications through Patchy monitoring targets
@@ -138,7 +138,7 @@ Building from the current branch includes newer changes that may not have been r
 
 ## Commands
 
-SwiftBot supports both prefix commands and slash commands. The prefix is configurable in Settings, and WikiBridge can add commands from enabled sources.
+SwiftBot uses Discord slash commands, and WikiBridge can add commands from enabled sources.
 
 Common commands include:
 

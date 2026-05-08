@@ -92,10 +92,7 @@ extension AppModel {
         }()
 
         guard !effectiveQuery.isEmpty else {
-            return (
-                false,
-                "🎵 Usage: \(effectivePrefix())music <query> OR \(effectivePrefix())music title:<title> artist:<artist> OR \(effectivePrefix())music pick <number>"
-            )
+            return (false, "🎵 Usage: `/music query:<query>` or `/music title:<title> artist:<artist>`.")
         }
 
         let results = await musicLookupService.searchTracks(query: effectiveQuery, limit: 5)
@@ -119,7 +116,7 @@ extension AppModel {
             lines.append("\(index + 1). \(item.title) — \(item.artist)\(albumPart)")
         }
         lines.append("")
-        lines.append("Pick one with `\(effectivePrefix())music pick <number>` (or `/music pick:<number>`).")
+        lines.append("Pick one with `/music pick:<number>`.")
 
         return (true, lines.joined(separator: "\n"))
     }
@@ -132,15 +129,15 @@ extension AppModel {
         pruneExpiredMusicSelections()
 
         guard selectionIndex > 0 else {
-            return (false, "🎵 Pick must be a positive number. Example: `\(effectivePrefix())music pick 2`.")
+            return (false, "🎵 Pick must be a positive number. Example: `/music pick:2`.")
         }
         guard let selection = pendingMusicSelectionsByUserID[userID] else {
-            return (false, "🎵 No active music search. Run `\(effectivePrefix())music <query>` first.")
+            return (false, "🎵 No active music search. Run `/music query:<query>` first.")
         }
         guard selection.channelID == channelID else {
             return (
                 false,
-                "🎵 Please pick in the same channel as the search, or run a fresh `\(effectivePrefix())music` query here."
+                "🎵 Please pick in the same channel as the search, or run a fresh `/music` query here."
             )
         }
 
@@ -206,7 +203,7 @@ extension AppModel {
     ) async -> Bool {
         let cleanedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedPrompt.isEmpty else {
-            return await send(channelId, "🎨 Usage: \(effectivePrefix())image <prompt>")
+            return await send(channelId, "🎨 Usage: `/image prompt:<prompt>`")
         }
 
         guard settings.openAIImageGenerationEnabled else {
@@ -392,10 +389,6 @@ extension AppModel {
             trimmed = String(first)
         }
 
-        let prefix = effectivePrefix().lowercased()
-        if !prefix.isEmpty, trimmed.hasPrefix(prefix) {
-            trimmed = String(trimmed.dropFirst(prefix.count))
-        }
         while let first = trimmed.first, first == "!" || first == "/" {
             trimmed.removeFirst()
         }
@@ -424,7 +417,7 @@ extension AppModel {
         var guildSettings = settings.guildSettings[guildId] ?? GuildSettings()
 
         guard tokens.count >= 2 else {
-            return await send(responseChannelId, "Usage: \(effectivePrefix())ignorechannel #channel | \(effectivePrefix())ignorechannel list | \(effectivePrefix())ignorechannel remove #channel")
+            return await send(responseChannelId, "Usage: `/ignorechannel action:list` or `/ignorechannel action:add channel:<channel>`.")
         }
 
         let action = tokens[1].lowercased()
@@ -1673,7 +1666,7 @@ extension AppModel {
 
     func bugReportText(for raw: [String: DiscordJSON]) -> String {
         guard let guildID = guildId(from: raw) else {
-            return "⚠️ `\(effectivePrefix())bugreport` only works in a server channel."
+            return "⚠️ `/bugreport` only works in a server channel."
         }
 
         let statuses: [BugStatus] = [.new, .workingOn, .inProgress, .blocked, .resolved]
@@ -2561,7 +2554,7 @@ extension AppModel {
     ) async -> Bool {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let trigger = normalizedWikiCommandTrigger(command.trigger)
-        let usageTrigger = trigger.isEmpty ? command.trigger : "\(effectivePrefix())\(trigger)"
+        let usageTrigger = trigger.isEmpty ? command.trigger : "/\(trigger)"
         guard !trimmedQuery.isEmpty else {
             return await send(
                 channelId,

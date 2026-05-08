@@ -17,10 +17,10 @@ extension AppModel {
                     }
                     return .init(
                         commandsEnabled: self.settings.commandsEnabled,
-                        prefixCommandsEnabled: self.settings.prefixCommandsEnabled,
+                        prefixCommandsEnabled: false,
                         slashCommandsEnabled: self.settings.slashCommandsEnabled,
                         wikiEnabled: self.settings.wikiBot.isEnabled,
-                        prefix: self.effectivePrefix(),
+                        prefix: "/",
                         helpSettings: self.settings.help
                     )
                 },

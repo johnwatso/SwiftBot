@@ -2965,18 +2965,12 @@
           <label class="switch"><input id="cmdMaster" type="checkbox" ${commandsCatalog.commandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Prefix</span>
-          <span class="value">! style</span>
-          <label class="switch"><input id="cmdPrefix" type="checkbox" ${commandsCatalog.prefixCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-        <div class="commands-toggle-card">
           <span class="label">Discord UI</span>
           <span class="value">/ slash</span>
           <label class="switch"><input id="cmdSlash" type="checkbox" ${commandsCatalog.slashCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
       `;
       top.querySelector('#cmdMaster')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      top.querySelector('#cmdPrefix')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
       top.querySelector('#cmdSlash')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
 
       const rows = (commandsCatalog.items || []).map(item => {
@@ -4815,7 +4809,6 @@
         <section class="settings-panel glass">
           <div class="panel-title"><span class="ms">terminal</span> Commands</div>
           <div class="setting-row"><div class="left"><div class="title">Enable Command System</div><div class="desc">Master switch for all command handling.</div></div><label class="switch"><input id="setCmdEnabled" type="checkbox" ${cfg.commands.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Enable Prefix Commands</div><div class="desc">Allow legacy prefix commands.</div></div><label class="switch"><input id="setCmdPrefix" type="checkbox" ${cfg.commands.prefixEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Slash Commands</div><div class="desc">Allow Discord slash command UI.</div></div><label class="switch"><input id="setCmdSlash" type="checkbox" ${cfg.commands.slashEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Bug Tracking</div><div class="desc">Allow mention-based bug capture flow.</div></div><label class="switch"><input id="setCmdBug" type="checkbox" ${cfg.commands.bugTrackingEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
         </section>
@@ -4852,7 +4845,6 @@
 
       top.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
       panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      panels.querySelector('#setCmdPrefix')?.addEventListener('change', e => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setAiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
@@ -6126,12 +6118,11 @@
         case 'commands':
           primaryRows = [
             { label: 'System Enabled', value: config.commands.enabled ? 'On' : 'Off' },
-            { label: 'Prefix Commands', value: config.commands.prefixEnabled ? 'On' : 'Off' },
             { label: 'Slash Commands', value: config.commands.slashEnabled ? 'On' : 'Off' },
-            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' }
+            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' },
+            { label: 'Command Surface', value: '/ slash commands' }
           ];
           secondaryRows = [
-            { label: 'Prefix', value: settings.prefix || '/' },
             { label: 'Commands Run', value: metricLookup('Commands Run') }
           ];
           break;
@@ -6179,7 +6170,7 @@
         case 'settings':
           primaryRows = [
             { label: 'Auto Start', value: config.general.autoStart ? 'On' : 'Off' },
-            { label: 'Command Prefix', value: settings.prefix || '/' },
+            { label: 'Command Surface', value: '/ slash commands' },
             { label: 'Web UI URL', value: status.webUIBaseURL || '-' }
           ];
           secondaryRows = [
@@ -6263,13 +6254,11 @@
       if (view === 'commands') {
         controls.innerHTML = `
           <div class="control-row"><span class="control-label">Enable Command System</span><input id="cfgCommandsEnabled" type="checkbox" ${config.commands.enabled ? 'checked' : ''}></div>
-          <div class="control-row"><span class="control-label">Enable Prefix Commands</span><input id="cfgPrefixEnabled" type="checkbox" ${config.commands.prefixEnabled ? 'checked' : ''}></div>
           <div class="control-row"><span class="control-label">Enable Slash Commands</span><input id="cfgSlashEnabled" type="checkbox" ${config.commands.slashEnabled ? 'checked' : ''}></div>
           <div class="control-row"><span class="control-label">Enable Bug Tracking</span><input id="cfgBugEnabled" type="checkbox" ${config.commands.bugTrackingEnabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgCommandsEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-        controls.querySelector('#cfgPrefixEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
         controls.querySelector('#cfgSlashEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
         controls.querySelector('#cfgBugEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       } else if (view === 'patchy') {
