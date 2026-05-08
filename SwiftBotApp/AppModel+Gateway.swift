@@ -257,13 +257,12 @@ extension AppModel {
             return
         }
 
-        let prefix = effectivePrefix()
         if isDMChannel, !settings.behavior.allowDMs {
-            _ = await send(channelId, "DM support is disabled. If you need help, use \(prefix)help in a server channel.")
+            _ = await send(channelId, "DM support is disabled. If you need help, use `/help` in a server channel.")
             return
         }
 
-        if isDMChannel, !content.hasPrefix(prefix) {
+        if isDMChannel {
             if let memoryText = extractAIMemoryInstruction(from: content) {
                 _ = await rememberAIMemory(
                     text: memoryText,
@@ -323,7 +322,7 @@ extension AppModel {
                 }
             }
 
-            _ = await send(channelId, "If you need help, type \(prefix)help.")
+            _ = await send(channelId, "If you need help, use `/help` in a server channel.")
             return
         }
 
@@ -351,8 +350,7 @@ extension AppModel {
         if isGuildTextChannel,
            settings.localAIDMReplyEnabled,
            settings.behavior.useAIInGuildChannels,
-           isMentioningBot(map),
-           !content.hasPrefix(prefix) {
+           isMentioningBot(map) {
             let prompt = contentWithoutBotMention(content)
             if !prompt.isEmpty {
                 if let memoryText = extractAIMemoryInstruction(from: prompt) {
@@ -399,30 +397,6 @@ extension AppModel {
                 }
             }
         }
-
-        guard content.hasPrefix(prefix) else { return }
-
-        guard await checkRateLimit(userId: userId, username: username, channelId: channelId, isDM: isDMChannel) else { return }
-
-        stats.commandsRun += 1
-        let commandText = String(content.dropFirst(prefix.count))
-        let commandName = commandText.split(separator: " ").first.map { String($0).lowercased() } ?? ""
-        let result = await executeCommand(commandText, username: username, channelId: channelId, raw: map)
-        let serverName = commandServerName(from: map)
-        let executionDetails = await commandExecutionDetails(for: commandName)
-        addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "\(username): \(content)"))
-        commandLog.insert(CommandLogEntry(
-            time: Date(),
-            user: username,
-            server: serverName,
-            command: content,
-            channel: channelId,
-            executionRoute: executionDetails.route,
-            executionNode: executionDetails.node,
-            ok: result
-        ), at: 0)
-        logs.append(result ? "✅ Command success: \(content)" : "❌ Command failed: \(content)")
-        if !result { stats.errors += 1 }
     }
 
     func handleMessageReactionAdd(_ raw: DiscordJSON?) async {
@@ -591,7 +565,7 @@ extension AppModel {
                         "type": 4,
                         "data": [
                             "flags": 64,
-                            "content": HelpRenderer.detailedMusicGuide(prefix: effectivePrefix())
+                            "content": HelpRenderer.detailedMusicGuide(prefix: "/")
                         ]
                     ]
                 )

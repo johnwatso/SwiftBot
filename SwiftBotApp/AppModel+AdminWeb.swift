@@ -783,10 +783,10 @@ extension AppModel {
         AdminWebConfigPayload(
             commands: .init(
                 enabled: settings.commandsEnabled,
-                prefixEnabled: settings.prefixCommandsEnabled,
+                prefixEnabled: false,
                 slashEnabled: settings.slashCommandsEnabled,
                 bugTrackingEnabled: settings.bugTrackingEnabled,
-                prefix: settings.prefix
+                prefix: "/"
             ),
             aiBots: .init(
                 localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
@@ -824,10 +824,8 @@ extension AppModel {
 
     func applyAdminWebConfigPatch(_ patch: AdminWebConfigPatch) -> Bool {
         if let value = patch.commandsEnabled { settings.commandsEnabled = value }
-        if let value = patch.prefixCommandsEnabled { settings.prefixCommandsEnabled = value }
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
         if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
-        if let value = patch.prefix { settings.prefix = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
         if let value = patch.preferredAIProvider,
            let provider = AIProviderPreference(rawValue: value) {
@@ -865,19 +863,6 @@ extension AppModel {
             let adminOnly: Bool
         }
 
-        let prefixCatalog = buildFullHelpCatalog(prefix: effectivePrefix())
-        let prefixCommands = prefixCatalog.entries.map { entry in
-            VisualCommand(
-                id: "prefix-\(entry.name)",
-                name: entry.name,
-                usage: entry.usage,
-                description: entry.description,
-                category: entry.category.rawValue,
-                surface: "prefix",
-                aliases: entry.aliases,
-                adminOnly: entry.isAdminOnly
-            )
-        }
         let slashCommands = allSlashCommandDefinitions().compactMap { raw -> VisualCommand? in
             guard let name = raw["name"] as? String else { return nil }
             let description = (raw["description"] as? String) ?? "No description"
@@ -899,7 +884,7 @@ extension AppModel {
             )
         }
 
-        var commands = prefixCommands + slashCommands
+        var commands = slashCommands
         commands.append(
             VisualCommand(
                 id: "mention-bug",
@@ -938,7 +923,7 @@ extension AppModel {
 
         return AdminWebCommandCatalogPayload(
             commandsEnabled: settings.commandsEnabled,
-            prefixCommandsEnabled: settings.prefixCommandsEnabled,
+            prefixCommandsEnabled: false,
             slashCommandsEnabled: settings.slashCommandsEnabled,
             items: items
         )
@@ -1286,7 +1271,7 @@ extension AppModel {
             remoteSettingsProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
                         aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -1324,18 +1309,17 @@ extension AppModel {
                 guard let model = self else { return [] }
                 return await MainActor.run { Set(model.connectedServers.keys) }
             },
-            currentPrefixProvider: { [weak self] in
-                guard let model = self else { return "/" }
-                return await MainActor.run { model.settings.prefix }
+            currentPrefixProvider: {
+                "/"
             },
-            updatePrefix: { [weak self] prefix in
-                guard let model = self else { return false }
-                return await MainActor.run { model.updatePrefixFromAdmin(prefix) }
+            updatePrefix: { prefix in
+                _ = prefix
+                return false
             },
             configProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
                         aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -1353,7 +1337,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebCommandCatalogPayload(
                         commandsEnabled: true,
-                        prefixCommandsEnabled: true,
+                        prefixCommandsEnabled: false,
                         slashCommandsEnabled: true,
                         items: []
                     )

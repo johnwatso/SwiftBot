@@ -17,22 +17,6 @@ struct CommandsView: View {
         let adminOnly: Bool
     }
 
-    private var visualPrefixCommands: [VisualCommand] {
-        let catalog = app.buildFullHelpCatalog(prefix: app.effectivePrefix())
-        return catalog.entries.map { entry in
-            VisualCommand(
-                id: "prefix-\(entry.name)",
-                name: entry.name,
-                usage: entry.usage,
-                description: entry.description,
-                category: entry.category.rawValue,
-                surfaces: ["Prefix"],
-                aliases: entry.aliases,
-                adminOnly: entry.isAdminOnly
-            )
-        }
-    }
-
     private var visualSlashCommands: [VisualCommand] {
         app.allSlashCommandDefinitions().compactMap { raw in
             guard let name = raw["name"] as? String else { return nil }
@@ -81,11 +65,6 @@ struct CommandsView: View {
         guard app.settings.commandsEnabled else { return [] }
 
         var commandsByName: [String: VisualCommand] = [:]
-        if app.settings.prefixCommandsEnabled {
-            for command in visualPrefixCommands {
-                commandsByName[command.name.lowercased()] = command
-            }
-        }
         if app.settings.slashCommandsEnabled {
             for command in visualSlashCommands {
                 let key = command.name.lowercased()
@@ -173,13 +152,6 @@ struct CommandsView: View {
                             isOn: $app.settings.commandsEnabled
                         )
                         compactToggleCard(
-                            title: "Prefix",
-                            subtitle: "Legacy chat",
-                            icon: "exclamationmark.circle",
-                            isOn: $app.settings.prefixCommandsEnabled,
-                            disabled: !app.settings.commandsEnabled
-                        )
-                        compactToggleCard(
                             title: "Slash",
                             subtitle: "Discord UI",
                             icon: "command",
@@ -227,7 +199,7 @@ struct CommandsView: View {
                                                 Text(command.name)
                                                     .font(.body.weight(.semibold))
                                                 ForEach(command.surfaces, id: \.self) { surface in
-                                                    CommandTag(text: surface, tint: surface == "Slash" ? .orange : (surface == "Prefix" ? .blue : .secondary))
+                                                    CommandTag(text: surface, tint: surface == "Slash" ? .orange : .secondary)
                                                 }
                                                 if !command.surfaces.contains(where: { $0.caseInsensitiveCompare(command.category) == .orderedSame }) {
                                                     CommandTag(text: command.category, tint: .secondary)
@@ -305,9 +277,6 @@ struct CommandsView: View {
         }
         .onChange(of: app.settings.commandsEnabled) { _, _ in
             persistCommandSettings(syncSlash: true)
-        }
-        .onChange(of: app.settings.prefixCommandsEnabled) { _, _ in
-            persistCommandSettings(syncSlash: false)
         }
         .onChange(of: app.settings.slashCommandsEnabled) { _, _ in
             persistCommandSettings(syncSlash: true)
