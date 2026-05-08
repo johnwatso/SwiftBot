@@ -87,8 +87,8 @@
 <body>
   <main>
     <h1>SwiftBot 1.10</h1>
-    <p class="meta">Version 1.10 · Build 1100000</p>
-    <p class="intro">The 1.10 release closes out the 1.9 line with two big additions — first-class SwiftMiner integration and a brand-new analytics dashboard — alongside a round of UI polish and repo housekeeping.</p>
+    <p class="meta">Version 1.10 · Build 2026050813</p>
+    <p class="intro">The 1.10 release closes out the 1.9 line with three big shifts — first-class SwiftMiner integration, a brand-new analytics dashboard, and a move off FFmpeg onto Apple's native AVFoundation pipeline for media export — alongside a round of UI polish and repo housekeeping.</p>
 
     <section class="integrations">
       <h2><span class="badge" aria-hidden="true">⛓️</span>SwiftMiner Integration</h2>
@@ -111,6 +111,17 @@
         <li>Adds Insights and Top Users panels generated from live app state.</li>
         <li>Mirrors the same dashboard in the admin web UI so analytics are available away from the Mac.</li>
         <li>Switches the activity line chart to monotone interpolation and adds y-axis headroom so the curve and peak markers stay inside the panel.</li>
+      </ul>
+    </section>
+
+    <section class="media">
+      <h2><span class="badge" aria-hidden="true">🎬</span>Media Export — Off FFmpeg, onto AVFoundation</h2>
+      <p class="summary">Media export no longer depends on a system FFmpeg install. SwiftBot now uses Apple's native AVFoundation stack end-to-end.</p>
+      <ul>
+        <li>Removes the FFmpeg dependency for single-file exports — passthrough or transcode is handled by <code>AVAssetExportSession</code> with the appropriate preset.</li>
+        <li>Reworks multiview exports to build an <code>AVMutableComposition</code> from the source assets and render through AVFoundation, replacing the previous FFmpeg argument pipeline.</li>
+        <li>Updates the export status surface so it reports "Apple AVFoundation" instead of probing for an installed FFmpeg binary, so first-run setup no longer requires Homebrew or a manual FFmpeg install.</li>
+        <li>Drops the FFmpeg path resolution, version probing, and process-launch helpers that are no longer needed.</li>
       </ul>
     </section>
 
