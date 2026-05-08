@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		0005740627E44E41BFB0B69B /* UpdatesPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */; };
 		00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */; };
-		01C4B7408B5741A598E3E6AB /* SwiftMinerPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */; };
 		085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */; };
 		0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */; };
 		0E6027F2B5CEEDF280B843D4 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1886F81C765D477A60E46CBD /* AnalyticsView.swift */; };
@@ -45,6 +44,7 @@
 		4816D705CD69FA14D1641610 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EABA6DDB19D3312394B5D72 /* SettingsView.swift */; };
 		4EB0A5E6CC96AD52F65A20C0 /* CacheKeyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */; };
 		52D688DC1DDA87CD00D7A749 /* DiscordGuildRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2912532FD0E1F2D6462C3B /* DiscordGuildRESTClient.swift */; };
+		52F6105016F5F7DCBA6F25F2 /* SwiftMinerPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */; };
 		5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */; };
 		566EE7D8A59E9C9890359374 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */; };
 		56B1C09E13E53AF7007401CE /* MusicLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C62599CD5D11338B087201C /* MusicLookupService.swift */; };
@@ -149,7 +149,6 @@
 		33D0CC3569144419991BD125 /* EmptyRuleOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRuleOnboardingView.swift; sourceTree = "<group>"; };
 		346C818F5054314C6BF97DC5 /* VersionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionStore.swift; sourceTree = "<group>"; };
 		3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralPreferencesView.swift; sourceTree = "<group>"; };
-		01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordService.swift; sourceTree = "<group>"; };
 		3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordParsers.swift"; sourceTree = "<group>"; };
@@ -184,6 +183,7 @@
 		74A94E05BFB8B12D551FBD96 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		750574541041BF7D66545F68 /* DiscordInteractionRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordInteractionRESTClient.swift; sourceTree = "<group>"; };
 		788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateItem.swift; sourceTree = "<group>"; };
+		791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
 		7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheKeyBuilder.swift; sourceTree = "<group>"; };
 		7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSource.swift; sourceTree = "<group>"; };
@@ -328,7 +328,7 @@
 				5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */,
 				818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */,
 				4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */,
-				01C4B7418B5741A598E3E6AB /* SwiftMinerPreferencesView.swift */,
+				791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */,
 				44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */,
 				D2627CB6D5226BCFBDB65D61 /* VoiceActionsView.swift */,
 				56C5EE8341F1833DB1BF48D6 /* VoiceRuleListView.swift */,
@@ -671,7 +671,7 @@
 				F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */,
 				22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */,
 				EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */,
-				01C4B7408B5741A598E3E6AB /* SwiftMinerPreferencesView.swift in Sources */,
+				52F6105016F5F7DCBA6F25F2 /* SwiftMinerPreferencesView.swift in Sources */,
 				13EC6A8C3526F1B617A9C146 /* TunnelManager.swift in Sources */,
 				AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */,
 				B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */,
@@ -708,7 +708,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
+				CURRENT_PROJECT_VERSION = 1100000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -735,7 +735,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.9;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -847,7 +847,7 @@
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 196000;
+				CURRENT_PROJECT_VERSION = 1100000;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -874,7 +874,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.9.9;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
