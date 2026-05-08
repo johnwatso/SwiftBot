@@ -324,6 +324,11 @@ final class AppModel: ObservableObject {
         self.ruleStore.onPersisted = { [weak self] in
             await self?.handleRuleStorePersisted()
         }
+        StreamDebug.inAppSink = { [weak self] line in
+            Task { @MainActor [weak self] in
+                self?.logs.append(line)
+            }
+        }
         Task { [weak self] in
             await self?.mediaExportCoordinator.setOnJobFinished { [weak self] (_: MediaExportJob) in
                 await self?.mediaLibraryIndexer.invalidate()
