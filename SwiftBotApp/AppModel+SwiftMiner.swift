@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import OSLog
 
 extension AppModel {
     func applySwiftMinerPairingToken(_ rawToken: String) -> (ok: Bool, message: String) {
@@ -96,8 +97,20 @@ extension AppModel {
         return result
     }
 
-    func sendSwiftMinerTestDM(to discordUserId: String, twitchUsername: String?, priorityGames: [String]) async -> Bool {
-        guard settings.swiftMiner.enabled else { return false }
+    func sendSwiftMinerTestDM(
+        to discordUserId: String,
+        twitchUsername: String?,
+        priorityGames: [String],
+        priorityGamesKeyPresent: Bool
+    ) async -> Bool {
+        guard settings.swiftMiner.enabled else {
+            self.swiftMinerLogger.warning("sendSwiftMinerTestDM skipped: SwiftMiner integration is disabled")
+            return false
+        }
+
+        self.swiftMinerLogger.info(
+            "Building SwiftMiner onboarding embed for \(discordUserId) — priorityGamesKeyPresent: \(priorityGamesKeyPresent), count: \(priorityGames.count)"
+        )
 
         // Look up the recipient's Discord display name (server nick / global name / username)
         // from the gateway cache so the message can address them by name.
@@ -114,12 +127,20 @@ extension AppModel {
 
         var fields: [[String: Any]] = []
 
-        if priorityGames.isEmpty {
+        if !priorityGamesKeyPresent {
+            fields.append([
+                "name": "🎮 Priority games",
+                "value": "_Priority games could not be loaded._",
+                "inline": false
+            ])
+            self.swiftMinerLogger.warning("Priority games key missing in payload for \(discordUserId)")
+        } else if priorityGames.isEmpty {
             fields.append([
                 "name": "🎮 Priority games",
                 "value": "_None set — SwiftMiner will mine any available drops campaign._",
                 "inline": false
             ])
+            self.swiftMinerLogger.info("Priority games explicitly empty for \(discordUserId)")
         } else {
             let preview = priorityGames.prefix(8).map { "• \($0)" }.joined(separator: "\n")
             let extra = priorityGames.count > 8 ? "\n• …and \(priorityGames.count - 8) more" : ""
@@ -128,6 +149,7 @@ extension AppModel {
                 "value": preview + extra,
                 "inline": false
             ])
+            self.swiftMinerLogger.info("Priority games rendered for \(discordUserId): \(priorityGames)")
         }
 
         fields.append([
@@ -147,9 +169,11 @@ extension AppModel {
         do {
             try await service.sendDMEmbed(userId: discordUserId, embed: embed)
             addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner setup DM sent to \(discordUserId)"))
+            self.swiftMinerLogger.info("SwiftMiner onboarding embed sent successfully to \(discordUserId)")
             return true
         } catch {
             logs.append("SwiftMiner setup DM failed for \(discordUserId): \(error.localizedDescription)")
+            self.swiftMinerLogger.error("SwiftMiner onboarding embed failed for \(discordUserId): \(error.localizedDescription)")
             return false
         }
     }
