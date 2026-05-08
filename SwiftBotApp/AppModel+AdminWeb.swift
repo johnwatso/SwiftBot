@@ -1488,9 +1488,9 @@ extension AppModel {
                 }
                 return await model.adminWebMediaLibrarySnapshot(query: query)
             },
-            mediaStreamProvider: { [weak self] token, rangeHeader in
+            mediaStreamProvider: { [weak self] token, rangeHeader, quality in
                 guard let model = self else { return nil }
-                return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader)
+                return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader, quality: quality)
             },
             mediaThumbnailProvider: { [weak self] token in
                 guard let model = self else { return nil }

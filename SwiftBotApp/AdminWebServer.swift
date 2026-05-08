@@ -549,7 +549,7 @@ actor AdminWebServer {
     private var testWikiSource: (@Sendable (UUID) async -> Bool)?
     private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
-    private var mediaStreamProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
+    private var mediaStreamProvider: (@Sendable (String, String?, String?) async -> BinaryHTTPResponse?)?
     private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
     private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
@@ -610,7 +610,7 @@ actor AdminWebServer {
         testWikiSource: @escaping @Sendable (UUID) async -> Bool,
         deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
-        mediaStreamProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
+        mediaStreamProvider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?,
         mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
         mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
@@ -1417,7 +1417,8 @@ actor AdminWebServer {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             let rangeHeader = request.headers["range"]
-            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+            let quality = request.query["quality"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader, quality) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
@@ -1434,7 +1435,8 @@ actor AdminWebServer {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             let rangeHeader = request.headers["range"] ?? "bytes=0-0"
-            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+            let quality = request.query["quality"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader, quality) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
             }
             return httpResponse(

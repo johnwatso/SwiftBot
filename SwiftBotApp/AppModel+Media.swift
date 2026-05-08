@@ -153,10 +153,22 @@ extension AppModel {
         return snapshot.items.first(where: { $0.id == itemID })
     }
 
-    func localMediaStreamResponse(itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+    func localMediaStreamResponse(itemID: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
         guard let item = await localMediaItem(for: itemID) else { return nil }
 
-        let fileURL = URL(fileURLWithPath: item.absolutePath)
+        let originalURL = URL(fileURLWithPath: item.absolutePath)
+        let normalizedQuality = quality?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let resolvedURL: URL
+        let resolvedSource: String
+        if normalizedQuality == "low",
+           let variantURL = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: .low) {
+            resolvedURL = variantURL
+            resolvedSource = "low"
+        } else {
+            resolvedURL = originalURL
+            resolvedSource = "raw"
+        }
+        let fileURL = resolvedURL
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let fileSizeNumber = attributes[.size] as? NSNumber else {
             return nil
@@ -165,10 +177,13 @@ extension AppModel {
         let fileSize = fileSizeNumber.uint64Value
         let contentType = mediaContentType(for: fileURL.path)
         let requestedRange = parseByteRange(rangeHeader, fileSize: fileSize)
-        let initialChunkLength = min(fileSize, 256 * 1024 * 1024)
-        // Keep a hard ceiling for safety, but make the window large enough
-        // for sustained browser playback of higher bitrate recordings.
-        let maxRangeResponseLength = min(fileSize, 256 * 1024 * 1024)
+        // Serve modest chunks so we don't load hundreds of MB into RAM
+        // before the first byte hits the wire. Browsers will issue follow-up
+        // range requests as the playback buffer drains, and each request
+        // returns quickly instead of stalling for seconds.
+        let chunkLength: UInt64 = 8 * 1024 * 1024
+        let initialChunkLength = min(fileSize, chunkLength)
+        let maxRangeResponseLength = min(fileSize, chunkLength)
         let effectiveRange: (offset: UInt64, length: UInt64)
         let responseStatus: String
         if let requestedRange {
@@ -182,14 +197,28 @@ extension AppModel {
             responseStatus = "206 Partial Content"
         }
 
+        let debugStream = StreamDebug.enabled
+        let debugContext = StreamDebug.context(itemID: itemID, source: resolvedSource, rangeHeader: rangeHeader)
+        let debugStart = debugStream ? Date() : nil
         let isPartialResponse = responseStatus == "206 Partial Content"
-        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isPartialResponse, responseStatus] in
+        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isPartialResponse, responseStatus, debugStream, debugContext, debugStart] in
             do {
                 let handle = try FileHandle(forReadingFrom: fileURL)
                 defer { try? handle.close() }
 
                 try handle.seek(toOffset: effectiveRange.offset)
                 let data = try handle.read(upToCount: Int(effectiveRange.length)) ?? Data()
+                if debugStream, let started = debugStart {
+                    StreamDebug.log(
+                        context: debugContext,
+                        offset: effectiveRange.offset,
+                        requestedLength: effectiveRange.length,
+                        deliveredLength: UInt64(data.count),
+                        fileSize: fileSize,
+                        status: responseStatus,
+                        elapsedMs: Date().timeIntervalSince(started) * 1000.0
+                    )
+                }
                 if isPartialResponse {
                     let end = data.isEmpty
                         ? effectiveRange.offset
@@ -475,7 +504,7 @@ extension AppModel {
         )
     }
 
-    func adminWebMediaStreamResponse(token: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+    func adminWebMediaStreamResponse(token: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
         guard let descriptor = decodedMediaStreamToken(token) else { return nil }
         let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
@@ -487,7 +516,7 @@ extension AppModel {
             return await cluster.fetchRemoteMediaStream(from: ownerBaseURL, itemID: descriptor.itemID, rangeHeader: rangeHeader)
         }
 
-        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader)
+        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
     }
 
     func adminWebMediaThumbnailResponse(token: String) async -> BinaryHTTPResponse? {
