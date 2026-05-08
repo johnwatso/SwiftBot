@@ -106,6 +106,12 @@ final class AppModel: ObservableObject {
     let mediaLibraryIndexer = MediaLibraryIndexer()
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
+    let mediaTranscodeCache: MediaTranscodeCache = {
+        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let root = baseCaches.appendingPathComponent("SwiftBot/MediaTranscodes", isDirectory: true)
+        return MediaTranscodeCache(cacheRoot: root)
+    }()
     let discordCache = DiscordCache()
 
     /// Shared session for general Discord REST API calls (gateway, guild, message operations).

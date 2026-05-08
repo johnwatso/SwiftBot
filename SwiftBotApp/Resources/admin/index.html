@@ -2428,7 +2428,8 @@
       multiEndSeconds: null,
       multiName: '',
       layout: 'stacked',
-      audio: 'primary'
+      audio: 'primary',
+      playbackQuality: 'auto'
     };
     let actionSaveTimer = null;
     let patchySaveTimers = {};
@@ -5106,11 +5107,15 @@
                     </div>
                     <div style="font-size:12px;color:var(--muted);">${selected.nodeName} · ${selected.sourceName}</div>
                   </div>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <span class="chip">${selected.fileExtension.toUpperCase()}</span>
+                    <button id="mediaQualityToggle" class="mini-btn" type="button" title="Use a lower-bitrate transcode if the original buffers. The first switch may take a few seconds while the variant is generated.">
+                      <span class="ms">${mediaExportState.playbackQuality === 'low' ? 'hd' : 'sd'}</span>
+                      ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
+                    </button>
                   </div>
                 </div>
-                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : ''}"></video>
+                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${mediaExportState.playbackQuality === 'low' ? '&quality=low' : ''}${csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : ''}"></video>
                 <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
@@ -5205,6 +5210,23 @@
           flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
           renderMediaView();
+        });
+
+        panels.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
+          const video = panels.querySelector('video');
+          const wasPlaying = video && !video.paused && !video.ended;
+          const resumeAt = video ? video.currentTime : 0;
+          mediaExportState.playbackQuality = mediaExportState.playbackQuality === 'low' ? 'auto' : 'low';
+          renderMediaView();
+          const refreshed = document.querySelector('section#mediaView video');
+          if (refreshed) {
+            const onLoaded = () => {
+              try { refreshed.currentTime = resumeAt; } catch (_) {}
+              if (wasPlaying) refreshed.play().catch(() => {});
+              refreshed.removeEventListener('loadedmetadata', onLoaded);
+            };
+            refreshed.addEventListener('loadedmetadata', onLoaded);
+          }
         });
 
         panels.querySelector('#clipExportStart')?.addEventListener('click', async () => {
