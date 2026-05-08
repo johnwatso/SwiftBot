@@ -2252,7 +2252,10 @@ actor AdminWebServer {
         headers.forEach { key, value in
             response += "\(key): \(value)\r\n"
         }
-        response += "Connection: close\r\n\r\n"
+        if normalizedHeaders["connection"] == nil {
+            response += "Connection: keep-alive\r\n"
+        }
+        response += "\r\n"
 
         var data = Data(response.utf8)
         data.append(body)
@@ -2281,30 +2284,40 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        guard !hasWrittenResponse else { return }
-
         var chunk = unwrapInboundIn(data)
         if let bytes = chunk.readBytes(length: chunk.readableBytes) {
             buffer.append(contentsOf: bytes)
         }
 
         guard buffer.count <= maxHTTPRequestSize else {
-            writeResponse(Self.badRequestResponse, context: context)
+            writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true)
             return
         }
 
-        guard !isProcessing, Self.isCompleteHTTPRequest(buffer) else {
+        tryProcessNextRequest(context: context)
+    }
+
+    private func tryProcessNextRequest(context: ChannelHandlerContext) {
+        guard !isProcessing,
+              !hasWrittenResponse,
+              let frame = Self.extractNextHTTPRequest(buffer) else {
             return
         }
 
         isProcessing = true
-        let requestData = buffer
-        buffer.removeAll(keepingCapacity: false)
+        let requestData = frame.request
+        buffer = frame.remainder
+        let clientRequestedClose = frame.connectionClose
 
         processorTask = Task { [weak self] in
             guard let self else { return }
             let response = await self.processor(requestData)
-            self.writeResponse(response, context: context)
+            let serverRequestedClose = Self.responseRequestsClose(response)
+            self.writeResponse(
+                response,
+                context: context,
+                closeAfterWrite: clientRequestedClose || serverRequestedClose
+            )
         }
     }
 
@@ -2319,10 +2332,10 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
             return
         }
 
-        writeResponse(Self.badRequestResponse, context: context)
+        writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true)
     }
 
-    private func writeResponse(_ response: Data, context: ChannelHandlerContext) {
+    private func writeResponse(_ response: Data, context: ChannelHandlerContext, closeAfterWrite: Bool) {
         guard !hasWrittenResponse else { return }
         hasWrittenResponse = true
 
@@ -2330,20 +2343,65 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
             var buffer = context.channel.allocator.buffer(capacity: response.count)
             buffer.writeBytes(response)
             context.writeAndFlush(self.wrapOutboundOut(buffer)).whenComplete { _ in
-                context.close(promise: nil)
+                if closeAfterWrite {
+                    context.close(promise: nil)
+                    return
+                }
+                self.hasWrittenResponse = false
+                self.isProcessing = false
+                self.processorTask = nil
+                self.tryProcessNextRequest(context: context)
             }
         }
     }
 
-    private static func isCompleteHTTPRequest(_ buffer: Data) -> Bool {
-        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
-            return false
-        }
+    private struct HTTPFrame {
+        let request: Data
+        let remainder: Data
+        let connectionClose: Bool
+    }
 
+    private static func extractNextHTTPRequest(_ buffer: Data) -> HTTPFrame? {
+        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
+            return nil
+        }
         let headerData = buffer[..<headerRange.upperBound]
         let contentLength = parseContentLength(headerData)
-        let bodyLength = buffer.count - headerRange.upperBound
-        return bodyLength >= contentLength
+        let bodyEnd = headerRange.upperBound + contentLength
+        guard buffer.count >= bodyEnd else { return nil }
+        let request = buffer.subdata(in: 0..<bodyEnd)
+        let remainder = buffer.subdata(in: bodyEnd..<buffer.count)
+        let close = clientRequestedClose(headerData)
+        return HTTPFrame(request: request, remainder: remainder, connectionClose: close)
+    }
+
+    private static func clientRequestedClose(_ headerData: Data.SubSequence) -> Bool {
+        guard let text = String(data: Data(headerData), encoding: .utf8) else { return false }
+        for line in text.split(separator: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("connection:") {
+                return lower.contains("close")
+            }
+        }
+        // HTTP/1.0 defaults to close, HTTP/1.1 defaults to keep-alive.
+        return text.contains(" HTTP/1.0")
+    }
+
+    private static func responseRequestsClose(_ response: Data) -> Bool {
+        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let headerData = response[..<headerEnd.upperBound]
+        guard let text = String(data: Data(headerData), encoding: .utf8) else { return false }
+        for line in text.split(separator: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("connection:") {
+                return lower.contains("close")
+            }
+        }
+        return false
+    }
+
+    private static func isCompleteHTTPRequest(_ buffer: Data) -> Bool {
+        extractNextHTTPRequest(buffer) != nil
     }
 
     private static func parseContentLength(_ headerData: Data.SubSequence) -> Int {
