@@ -25,7 +25,6 @@ struct SwiftBotApp: App {
 
     private func applyMainWindowChrome(to window: NSWindow) {
         guard window.identifier != .settingsWindow else { return }
-        guard !(window.titleVisibility == .hidden && window.backgroundColor == .clear && window.isOpaque == false) else { return }
 
         window.identifier = .mainWindow
         window.titleVisibility = .hidden
@@ -69,14 +68,7 @@ struct SwiftBotApp: App {
             chromeView.layer?.backgroundColor = NSColor.clear.cgColor
         }
 
-        let trafficLightButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-        for type in trafficLightButtons {
-            guard let button = window.standardWindowButton(type) else { continue }
-            var origin = button.frame.origin
-            origin.x += 14
-            origin.y -= 10
-            button.setFrameOrigin(origin)
-        }
+        positionTrafficLightButtons(in: window)
 
         if let zoomButton = window.standardWindowButton(.zoomButton) {
             zoomButton.action = #selector(NSWindow.performZoom(_:))
@@ -84,6 +76,23 @@ struct SwiftBotApp: App {
         }
 
         window.invalidateShadow()
+    }
+
+    private func positionTrafficLightButtons(in window: NSWindow) {
+        let trafficLightButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let leadingInset: CGFloat = 22
+        let topInset: CGFloat = 22
+        let spacing: CGFloat = 28
+
+        for (index, type) in trafficLightButtons.enumerated() {
+            guard let button = window.standardWindowButton(type) else { continue }
+            let titlebarHeight = button.superview?.bounds.height ?? 0
+            let y = titlebarHeight > 0 ? titlebarHeight - topInset - button.frame.height : button.frame.origin.y
+            button.setFrameOrigin(CGPoint(
+                x: leadingInset + (CGFloat(index) * spacing),
+                y: y
+            ))
+        }
     }
 
     private func restoreSettingsWindowChrome(_ window: NSWindow) {
@@ -207,10 +216,15 @@ private extension NSUserInterfaceItemIdentifier {
 private struct WindowAccessor: NSViewRepresentable {
     let onResolve: (NSWindow) -> Void
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onResolve: onResolve)
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             if let window = view.window {
+                context.coordinator.attach(to: window)
                 onResolve(window)
             }
         }
@@ -220,7 +234,42 @@ private struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
             if let window = nsView.window {
+                context.coordinator.attach(to: window)
                 onResolve(window)
+            }
+        }
+    }
+
+    final class Coordinator {
+        private let onResolve: (NSWindow) -> Void
+        private weak var window: NSWindow?
+        private var resizeObserver: NSObjectProtocol?
+
+        init(onResolve: @escaping (NSWindow) -> Void) {
+            self.onResolve = onResolve
+        }
+
+        deinit {
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+        }
+
+        func attach(to window: NSWindow) {
+            guard self.window !== window else { return }
+
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+
+            self.window = window
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] notification in
+                guard let resizedWindow = notification.object as? NSWindow else { return }
+                self?.onResolve(resizedWindow)
             }
         }
     }

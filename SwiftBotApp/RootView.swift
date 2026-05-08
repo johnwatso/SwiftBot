@@ -52,7 +52,7 @@ struct UnifiedRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             DashboardSidebar(selection: $selection)
-                .frame(width: 250)
+                .frame(width: 280)
 
             Group {
                 switch selection {
@@ -76,10 +76,8 @@ struct UnifiedRootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(
-            SwiftBotGlassBackground()
-                .ignoresSafeArea(.container, edges: .top)
-        )
+        .ignoresSafeArea(.container, edges: .top)
+        .background(SwiftBotGlassBackground())
         .overlay(alignment: .topTrailing) {
             if app.isBetaBuild {
                 BetaBadgeView()
@@ -136,7 +134,7 @@ struct DashboardSidebar: View {
                     clusterIcon: clusterIcon
                 )
                 .padding(.horizontal, 10)
-                .padding(.top, 12)
+                .padding(.top, 44)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
