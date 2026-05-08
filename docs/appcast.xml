@@ -6,7 +6,7 @@
             <title>1.10</title>
             <sparkle:releaseNotesLink>https://johnwatso.github.io/SwiftBot/release-notes/1.10.html</sparkle:releaseNotesLink>
             <pubDate>Fri, 08 May 2026 12:00:00 +1200</pubDate>
-            <sparkle:version>1100000</sparkle:version>
+            <sparkle:version>2026050813</sparkle:version>
             <sparkle:shortVersionString>1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.10/SwiftBot-1.10.zip" length="0" type="application/octet-stream" sparkle:edSignature=""/>

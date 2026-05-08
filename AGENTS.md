@@ -47,9 +47,12 @@ Do not use `swift build` or `swift test` as a substitute for validating the app 
 ## Versioning
 
 - `MARKETING_VERSION` is user-directed. Do not bump it unless the user explicitly asks.
-- `CURRENT_PROJECT_VERSION` should not be changed casually. Only update it when the requested work includes release/version/build preparation.
+- `CURRENT_PROJECT_VERSION` is timestamp-based. Update it whenever release/version/build preparation is part of the requested work. Use the local project time at the moment of the change, formatted as `yyyyMMddHH` (example: `2026050813` means 2026 May 8 at 1pm).
 - When version metadata changes, keep `project.yml` and `SwiftBot.xcodeproj/project.pbxproj` aligned.
-- If release metadata is touched, also verify related Sparkle/appcast files under `docs/`.
+- If release metadata is touched, also verify related Sparkle/appcast files under `docs/`:
+  - `sparkle:shortVersionString` should match `MARKETING_VERSION`.
+  - `sparkle:version` should match the generated `CURRENT_PROJECT_VERSION` timestamp.
+  - Any visible build references in release notes should match the generated build number.
 
 ## Sparkle and Release Metadata
 
