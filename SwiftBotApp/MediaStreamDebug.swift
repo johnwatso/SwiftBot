@@ -5,10 +5,11 @@ import os
 ///
 /// Enabled by setting the `SWIFTBOT_DEBUG_STREAM` environment variable to a
 /// truthy value (`1`, `true`, `yes`). When enabled, every range request that
-/// `/api/media/stream` services emits a single log line with offset, length,
-/// status, and read latency, so we can pinpoint whether buffering stalls are
-/// caused by big chunk reads, transcoder warm-up, or something further up the
-/// stack.
+/// `/api/media/stream` services emits a single log line — both to OSLog
+/// (subsystem `com.swiftbot.media`) and the in-app Logs panel — with
+/// offset, length, status, and read latency, so we can pinpoint whether
+/// buffering stalls are caused by big chunk reads, transcoder warm-up, or
+/// something further up the stack.
 enum StreamDebug {
     static let enabled: Bool = {
         guard let raw = ProcessInfo.processInfo.environment["SWIFTBOT_DEBUG_STREAM"] else {
@@ -21,6 +22,11 @@ enum StreamDebug {
             return false
         }
     }()
+
+    /// Optional sink that mirrors stream-debug lines into the SwiftBot in-app
+    /// Logs panel. Wired from `AppModel` at startup so this file stays free of
+    /// cross-module dependencies.
+    nonisolated(unsafe) static var inAppSink: (@Sendable (String) -> Void)?
 
     private static let logger = Logger(subsystem: "com.swiftbot.media", category: "stream")
 
@@ -48,8 +54,8 @@ enum StreamDebug {
         elapsedMs: Double
     ) {
         guard enabled else { return }
-        logger.debug(
-            "[stream] item=\(context.itemID, privacy: .public) src=\(context.source, privacy: .public) range=\(context.rangeHeader, privacy: .public) offset=\(offset) requested=\(requestedLength) delivered=\(deliveredLength) total=\(fileSize) status=\(status, privacy: .public) elapsedMs=\(String(format: "%.1f", elapsedMs), privacy: .public)"
-        )
+        let line = "[stream] item=\(context.itemID) src=\(context.source) range=\(context.rangeHeader) offset=\(offset) requested=\(requestedLength) delivered=\(deliveredLength) total=\(fileSize) status=\(status) elapsedMs=\(String(format: "%.1f", elapsedMs))"
+        logger.debug("\(line, privacy: .public)")
+        inAppSink?(line)
     }
 }
