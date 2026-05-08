@@ -11,7 +11,14 @@ import os
 /// buffering stalls are caused by big chunk reads, transcoder warm-up, or
 /// something further up the stack.
 enum StreamDebug {
-    static let enabled: Bool = {
+    /// Re-evaluated on every call so the flag can be flipped at runtime via
+    /// `defaults write com.example.swiftbot SwiftBotDebugStream -bool YES`
+    /// without restarting the app. Falls back to the `SWIFTBOT_DEBUG_STREAM`
+    /// env var for parity with CI / Xcode-scheme overrides.
+    static var enabled: Bool {
+        if UserDefaults.standard.bool(forKey: "SwiftBotDebugStream") {
+            return true
+        }
         guard let raw = ProcessInfo.processInfo.environment["SWIFTBOT_DEBUG_STREAM"] else {
             return false
         }
@@ -21,7 +28,7 @@ enum StreamDebug {
         default:
             return false
         }
-    }()
+    }
 
     /// Optional sink that mirrors stream-debug lines into the SwiftBot in-app
     /// Logs panel. Wired from `AppModel` at startup so this file stays free of
