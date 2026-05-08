@@ -194,14 +194,14 @@ extension AppModel {
         let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty }
         guard !enabledTargets.isEmpty else {
             appendPatchyLog("Patchy cycle (\(trigger)) skipped: no enabled targets.")
-            patchyLastCycleAt = Date()
+            setPatchyLastCycleAt(Date())
             return
         }
 
         patchyIsCycleRunning = true
         defer {
             patchyIsCycleRunning = false
-            patchyLastCycleAt = Date()
+            setPatchyLastCycleAt(Date())
         }
 
         let grouped = Dictionary(grouping: enabledTargets) { target in
