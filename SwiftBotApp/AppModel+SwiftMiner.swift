@@ -100,9 +100,7 @@ extension AppModel {
     // MARK: - SwiftMiner Typed DM Pipeline
 
     private func makeSwiftMinerDMSender() -> SwiftMinerDMSender {
-        let notificationPreferences = self.settings.swiftMiner.notificationPreferences
-        return SwiftMinerDMSender(
-            dependencies: .init(
+        SwiftMinerDMSender(dependencies: .init(
                 sendDMEmbed: { [weak self] userId, embed in
                     guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
                     try await self.service.sendDMEmbed(userId: userId, embed: embed)
@@ -162,8 +160,7 @@ extension AppModel {
                         self.addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: message))
                     }
                 }
-            ),
-            notificationPreferences: notificationPreferences
+            )
         )
     }
 
