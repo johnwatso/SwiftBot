@@ -86,27 +86,33 @@ struct SwiftMinerPreferencesView: View {
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
 
             // MARK: Discord Integration — DM Notifications
-            if app.settings.swiftMiner.enabled {
-                PreferencesCard("Discord Integration", systemImage: "app.badge.checkmark") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
+            PreferencesCard("Discord Integration", systemImage: "app.badge.checkmark") {
+                VStack(alignment: .leading, spacing: 8) {
+                    if !app.settings.swiftMiner.enabled {
+                        Text("Pair SwiftMiner above to enable DM notifications.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
-                            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
-                            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
-                            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
-                            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
-                            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
-                            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
-                        }
                     }
+
+                    Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
+                        settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
+                        settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
+                        settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
+                        settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
+                        settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
+                        settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
+                    }
+                    .disabled(!app.settings.swiftMiner.enabled)
+                    .opacity(!app.settings.swiftMiner.enabled ? 0.5 : 1)
                 }
-                .disabled(app.isFailoverManagedNode)
-                .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             }
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
     }
 
