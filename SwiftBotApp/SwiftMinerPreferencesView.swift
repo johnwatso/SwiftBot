@@ -9,9 +9,8 @@ struct SwiftMinerPreferencesView: View {
 
     var body: some View {
         PreferencesTabContainer {
-            PreferencesCard("Integrations", systemImage: "app.connected.to.app.below.fill") {
+            PreferencesCard("SwiftMiner", systemImage: "shippingbox.circle") {
                 VStack(alignment: .leading, spacing: 12) {
-                    // SwiftMiner pairing status
                     HStack {
                         settingsToggleRow("Enable SwiftMiner Integration", isOn: $app.settings.swiftMiner.enabled)
                         Spacer()
@@ -76,41 +75,11 @@ struct SwiftMinerPreferencesView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-
-                    // Discord Integration — DM Notifications
-                    if app.settings.swiftMiner.enabled {
-                        Divider()
-                            .padding(.vertical, 4)
-
-                        Text("Discord Integration")
-                            .font(.subheadline.weight(.medium))
-
-                        Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
-                            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
-                            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
-                            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
-                            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
-                            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
-                            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
-                        }
-                    }
                 }
             }
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
-    }
-
-    private func notificationBinding(_ keyPath: WritableKeyPath<SwiftMinerDMNotificationPreferences, Bool>) -> Binding<Bool> {
-        Binding(
-            get: { app.settings.swiftMiner.notificationPreferences[keyPath: keyPath] },
-            set: { app.settings.swiftMiner.notificationPreferences[keyPath: keyPath] = $0 }
-        )
     }
 
     private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
