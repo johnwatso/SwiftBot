@@ -100,54 +100,58 @@ extension AppModel {
     // MARK: - SwiftMiner Typed DM Pipeline
 
     private func makeSwiftMinerDMSender() -> SwiftMinerDMSender {
-        SwiftMinerDMSender(dependencies: .init(
-            sendDMEmbed: { [weak self] userId, embed in
-                guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
-                try await self.service.sendDMEmbed(userId: userId, embed: embed)
-            },
-            discordNameForUserId: { [weak self] userId in
-                guard let self else { return nil }
-                return await self.discordCache.userName(for: userId)
-            },
-            hasUserBeenWelcomed: { [weak self] userId in
-                guard let self else { return true }
-                return await MainActor.run {
-                    self.settings.swiftMiner.welcomeMessageSentUserIds.contains(userId)
+        let frequencyConfig = self.settings.swiftMiner.frequencyConfig
+        return SwiftMinerDMSender(
+            dependencies: .init(
+                sendDMEmbed: { [weak self] userId, embed in
+                    guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
+                    try await self.service.sendDMEmbed(userId: userId, embed: embed)
+                },
+                discordNameForUserId: { [weak self] userId in
+                    guard let self else { return nil }
+                    return await self.discordCache.userName(for: userId)
+                },
+                hasUserBeenWelcomed: { [weak self] userId in
+                    guard let self else { return true }
+                    return await MainActor.run {
+                        self.settings.swiftMiner.welcomeMessageSentUserIds.contains(userId)
+                    }
+                },
+                hasUserCompletedOnboarding: { [weak self] userId in
+                    guard let self else { return true }
+                    return await MainActor.run {
+                        self.settings.swiftMiner.completedInitialDMFlowUserIds.contains(userId)
+                    }
+                },
+                markUserWelcomed: { [weak self] userId in
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.settings.swiftMiner.welcomeMessageSentUserIds.insert(userId)
+                        self.saveSettings()
+                    }
+                },
+                markUserCompletedOnboarding: { [weak self] userId in
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.settings.swiftMiner.completedInitialDMFlowUserIds.insert(userId)
+                        self.saveSettings()
+                    }
+                },
+                logInfo: { [weak self] message in
+                    self?.swiftMinerLogger.info("\(message)")
+                },
+                logError: { [weak self] message in
+                    self?.swiftMinerLogger.error("\(message)")
+                },
+                recordEvent: { [weak self] message in
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: message))
+                    }
                 }
-            },
-            hasUserCompletedOnboarding: { [weak self] userId in
-                guard let self else { return true }
-                return await MainActor.run {
-                    self.settings.swiftMiner.completedInitialDMFlowUserIds.contains(userId)
-                }
-            },
-            markUserWelcomed: { [weak self] userId in
-                guard let self else { return }
-                await MainActor.run {
-                    self.settings.swiftMiner.welcomeMessageSentUserIds.insert(userId)
-                    self.saveSettings()
-                }
-            },
-            markUserCompletedOnboarding: { [weak self] userId in
-                guard let self else { return }
-                await MainActor.run {
-                    self.settings.swiftMiner.completedInitialDMFlowUserIds.insert(userId)
-                    self.saveSettings()
-                }
-            },
-            logInfo: { [weak self] message in
-                self?.swiftMinerLogger.info("\(message)")
-            },
-            logError: { [weak self] message in
-                self?.swiftMinerLogger.error("\(message)")
-            },
-            recordEvent: { [weak self] message in
-                guard let self else { return }
-                await MainActor.run {
-                    self.addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: message))
-                }
-            }
-        ))
+            ),
+            frequencyConfig: frequencyConfig
+        )
     }
 
     func sendSwiftMinerDM(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {
