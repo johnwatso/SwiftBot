@@ -49,6 +49,7 @@ struct SwiftMinerDMRouter: Sendable {
                 discordName: discordName,
                 activationCode: request.activationCode,
                 activationExpiresInMinutes: request.activationExpiresInMinutes,
+                activationURL: request.activationURL,
                 debug: request.debug,
                 theme: theme
             )

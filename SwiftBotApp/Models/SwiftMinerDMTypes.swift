@@ -46,6 +46,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let priorityGames: [String]
     let activationCode: String?
     let activationExpiresInMinutes: Int?
+    let activationURL: String?
     let affectedGame: String?
     let campaignName: String?
     let milestoneTitle: String?
@@ -60,6 +61,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         priorityGames: [String] = [],
         activationCode: String? = nil,
         activationExpiresInMinutes: Int? = nil,
+        activationURL: String? = nil,
         affectedGame: String? = nil,
         campaignName: String? = nil,
         milestoneTitle: String? = nil,
@@ -72,6 +74,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.priorityGames = priorityGames
         self.activationCode = activationCode
         self.activationExpiresInMinutes = activationExpiresInMinutes
+        self.activationURL = activationURL
         self.affectedGame = affectedGame
         self.campaignName = campaignName
         self.milestoneTitle = milestoneTitle
@@ -86,6 +89,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case priorityGames = "priority_games"
         case activationCode = "activation_code"
         case activationExpiresInMinutes = "activation_expires_in_minutes"
+        case activationURL = "activation_url"
         case affectedGame = "affected_game"
         case campaignName = "campaign_name"
         case milestoneTitle = "milestone_title"
@@ -102,6 +106,7 @@ struct SwiftMinerDMMockData: Sendable {
     var priorityGames: [String] = ["THE FINALS", "Overwatch 2"]
     var activationCode: String? = "ABCD-EFGH"
     var activationExpiresInMinutes: Int? = 29
+    var activationURL: String? = "https://www.twitch.tv/activate?code=ABCD-EFGH"
     var affectedGame: String? = "Test Game"
     var campaignName: String? = "Test Campaign"
     var milestoneTitle: String? = "50% Complete"

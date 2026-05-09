@@ -63,13 +63,14 @@ extension AppModel {
                 }
 
                 let session = try await client.startActivation(discordUserId: userId)
+                let activationLink = "\(session.verificationUri)?code=\(session.userCode)"
                 return (
                     true,
                     """
                     Link Twitch for SwiftMiner:
-                    1. Open \(session.verificationUri)
-                    2. Enter code `\(session.userCode)`
+                    [Click here to activate](\(activationLink))
 
+                    Or enter code `\(session.userCode)` at \(session.verificationUri)
                     This code expires \(relativeTimeText(for: session.expiresAt)).
                     """
                 )
@@ -189,6 +190,7 @@ extension AppModel {
             priorityGames: mockData.priorityGames,
             activationCode: mockData.activationCode,
             activationExpiresInMinutes: mockData.activationExpiresInMinutes,
+            activationURL: mockData.activationURL,
             affectedGame: mockData.affectedGame,
             campaignName: mockData.campaignName,
             milestoneTitle: mockData.milestoneTitle,
