@@ -50,6 +50,8 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let campaignName: String?
     let milestoneTitle: String?
     let recoveryReason: String?
+    /// Opaque event identifier for persistent deduplication. E.g. "drop:<id>", "campaign:<id>".
+    let eventId: String?
 
     init(
         messageType: SwiftMinerDMMessageType,
@@ -61,7 +63,8 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         affectedGame: String? = nil,
         campaignName: String? = nil,
         milestoneTitle: String? = nil,
-        recoveryReason: String? = nil
+        recoveryReason: String? = nil,
+        eventId: String? = nil
     ) {
         self.messageType = messageType
         self.debug = debug
@@ -73,6 +76,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.campaignName = campaignName
         self.milestoneTitle = milestoneTitle
         self.recoveryReason = recoveryReason
+        self.eventId = eventId
     }
 
     enum CodingKeys: String, CodingKey {
@@ -86,6 +90,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case campaignName = "campaign_name"
         case milestoneTitle = "milestone_title"
         case recoveryReason = "recovery_reason"
+        case eventId = "event_id"
     }
 }
 

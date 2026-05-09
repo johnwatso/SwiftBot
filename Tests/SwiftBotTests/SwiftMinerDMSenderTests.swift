@@ -7,6 +7,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         var sentEmbeds: [(userId: String, embed: [String: Any])] = []
         var welcomedUserIds: Set<String> = []
         var completedUserIds: Set<String> = []
+        var sentSignatures: Set<String> = []
         var infoLogs: [String] = []
         var errorLogs: [String] = []
         var events: [String] = []
@@ -39,6 +40,14 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         func setDiscordName(_ userId: String, name: String) {
             discordNames[userId] = name
         }
+
+        func markEventSent(_ signature: String) {
+            sentSignatures.insert(signature)
+        }
+
+        func hasEventBeenSent(_ signature: String) -> Bool {
+            sentSignatures.contains(signature)
+        }
     }
 
     private func makeSender(spy: Spy) -> SwiftMinerDMSender {
@@ -60,6 +69,12 @@ final class SwiftMinerDMSenderTests: XCTestCase {
             },
             markUserCompletedOnboarding: { userId in
                 await spy.markCompleted(userId)
+            },
+            hasEventBeenSent: { signature in
+                await spy.hasEventBeenSent(signature)
+            },
+            markEventSent: { signature in
+                await spy.markEventSent(signature)
             },
             logInfo: { message in
                 await spy.logInfo(message)
@@ -97,6 +112,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
             hasUserCompletedOnboarding: { _ in true },
             markUserWelcomed: { _ in },
             markUserCompletedOnboarding: { _ in },
+            hasEventBeenSent: { _ in false },
+            markEventSent: { _ in },
             logInfo: { _ in },
             logError: { _ in },
             recordEvent: { _ in }
@@ -243,6 +260,49 @@ final class SwiftMinerDMSenderTests: XCTestCase {
 
         let events = await spy.events
         XCTAssertTrue(events.first?.contains("DEBUG") == true)
+    }
+
+    // MARK: - Dedup
+
+    func testDuplicateEventIsSkipped() async {
+        let spy = Spy()
+        let sender = makeSender(spy: spy)
+
+        let request = SwiftMinerDMRequest(messageType: .dropClaimed, eventId: "drop:abc")
+        let ok1 = await sender.send(request: request, discordUserId: "user-1")
+        XCTAssertTrue(ok1)
+
+        let ok2 = await sender.send(request: request, discordUserId: "user-1")
+        XCTAssertTrue(ok2)
+
+        let sent = await spy.sentEmbeds
+        XCTAssertEqual(sent.count, 1, "Duplicate event should be deduped")
+    }
+
+    func testDifferentEventIdsAreNotDeduped() async {
+        let spy = Spy()
+        let sender = makeSender(spy: spy)
+
+        let request1 = SwiftMinerDMRequest(messageType: .dropClaimed, eventId: "drop:abc")
+        let request2 = SwiftMinerDMRequest(messageType: .dropClaimed, eventId: "drop:def")
+
+        _ = await sender.send(request: request1, discordUserId: "user-1")
+        _ = await sender.send(request: request2, discordUserId: "user-1")
+
+        let sent = await spy.sentEmbeds
+        XCTAssertEqual(sent.count, 2, "Different event IDs should not be deduped")
+    }
+
+    func testDebugModeDoesNotDedup() async {
+        let spy = Spy()
+        let sender = makeSender(spy: spy)
+
+        let request = SwiftMinerDMRequest(messageType: .dropClaimed, debug: true, eventId: "drop:abc")
+        _ = await sender.send(request: request, discordUserId: "user-1")
+        _ = await sender.send(request: request, discordUserId: "user-1")
+
+        let sent = await spy.sentEmbeds
+        XCTAssertEqual(sent.count, 2, "Debug mode should not dedup")
     }
 
     // MARK: - Preview (No Side Effects)

@@ -7,6 +7,7 @@ import OSLog
 // - first-interaction onboarding prepend (welcome → discord linked)
 // - embed routing by message type
 // - notification filter (per-type enable/disable)
+// - event deduplication (persistent across relaunches)
 // - debug isolation (no state mutation)
 // - state tracking (welcome sent, onboarding completed)
 // - analytics logging
@@ -28,6 +29,10 @@ struct SwiftMinerDMSender: Sendable {
         let markUserWelcomed: @Sendable (String) async -> Void
         /// Marks the user as having completed onboarding.
         let markUserCompletedOnboarding: @Sendable (String) async -> Void
+        /// Checks whether a specific event signature has already been delivered.
+        let hasEventBeenSent: @Sendable (String) async -> Bool
+        /// Records an event signature as delivered.
+        let markEventSent: @Sendable (String) async -> Void
         /// Logs an analytics/info message.
         let logInfo: @Sendable (String) -> Void
         /// Logs an analytics/error message.
@@ -53,7 +58,7 @@ struct SwiftMinerDMSender: Sendable {
     // MARK: - Public API
 
     /// Sends a typed SwiftMiner DM, handling onboarding prepend, notification filtering,
-    /// debug isolation, and onboarding state transitions.
+    /// deduplication, debug isolation, and onboarding state transitions.
     func send(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {
         let discordName = await dependencies.discordNameForUserId(discordUserId)
 
@@ -73,6 +78,18 @@ struct SwiftMinerDMSender: Sendable {
             return true
         }
 
+        // Persistent deduplication: skip if this exact event was already delivered.
+        if let eventId = request.eventId, !request.debug {
+            let signature = "\(discordUserId)|\(eventId)"
+            let alreadySent = await dependencies.hasEventBeenSent(signature)
+            if alreadySent {
+                dependencies.logInfo(
+                    "SwiftMiner \(request.messageType.rawValue) DM deduped for \(discordUserId) — already sent"
+                )
+                return true
+            }
+        }
+
         // Route and send the primary DM.
         let result = router.route(request: request, discordName: discordName)
 
@@ -83,6 +100,10 @@ struct SwiftMinerDMSender: Sendable {
                 result: result,
                 discordUserId: discordUserId
             )
+            if let eventId = request.eventId, !request.debug {
+                let signature = "\(discordUserId)|\(eventId)"
+                await dependencies.markEventSent(signature)
+            }
             let debugTag = request.debug ? " [DEBUG]" : ""
             await dependencies.recordEvent("SwiftMiner \(result.analyticsDescription) DM sent to \(discordUserId)\(debugTag)")
             dependencies.logInfo("SwiftMiner \(result.analyticsDescription) DM sent successfully to \(discordUserId)\(debugTag)")

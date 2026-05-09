@@ -586,6 +586,9 @@ struct SwiftMinerSettings: Codable, Hashable {
     var completedInitialDMFlowUserIds: Set<String> = []
     /// Controls which event DM types are sent. Onboarding messages always pass through.
     var notificationPreferences: SwiftMinerDMNotificationPreferences = SwiftMinerDMNotificationPreferences()
+    /// Event signatures already delivered, to suppress duplicates across relaunches.
+    /// Format: "<discordUserId>|<eventId>"
+    var sentEventSignatures: Set<String> = []
 
     var normalizedBaseURL: String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
