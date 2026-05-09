@@ -100,7 +100,7 @@ extension AppModel {
     // MARK: - SwiftMiner Typed DM Pipeline
 
     private func makeSwiftMinerDMSender() -> SwiftMinerDMSender {
-        let frequencyConfig = self.settings.swiftMiner.frequencyConfig
+        let notificationPreferences = self.settings.swiftMiner.notificationPreferences
         return SwiftMinerDMSender(
             dependencies: .init(
                 sendDMEmbed: { [weak self] userId, embed in
@@ -150,7 +150,7 @@ extension AppModel {
                     }
                 }
             ),
-            frequencyConfig: frequencyConfig
+            notificationPreferences: notificationPreferences
         )
     }
 

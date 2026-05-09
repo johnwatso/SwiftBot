@@ -554,19 +554,21 @@ struct CachedBotIdentity: Codable, Hashable {
     }
 }
 
-struct SwiftMinerDMFrequencyConfig: Codable, Hashable, Sendable {
-    /// Cooldown between drop claimed DMs for the same user (seconds). Default: 5 min.
-    var dropClaimedCooldownSeconds: Int = 300
-    /// Cooldown between campaign completed DMs for the same user (seconds). Default: 10 min.
-    var campaignCompletedCooldownSeconds: Int = 600
-    /// Cooldown between welcome back DMs for the same user (seconds). Default: 1 hour.
-    var welcomeBackCooldownSeconds: Int = 3600
-    /// Cooldown between connection expired DMs for the same user (seconds). Default: 5 min.
-    var connectionExpiredCooldownSeconds: Int = 300
-    /// Global minimum time between any two DMs for the same user (seconds). Default: 1 min.
-    var globalCooldownSeconds: Int = 60
-    /// Whether the frequency gate is enabled at all.
-    var enabled: Bool = true
+struct SwiftMinerDMNotificationPreferences: Codable, Hashable, Sendable {
+    /// Whether drop claimed DMs are enabled.
+    var dropClaimedEnabled: Bool = true
+    /// Whether campaign complete DMs are enabled.
+    var campaignCompletedEnabled: Bool = true
+    /// Whether connection expired (re-auth) DMs are enabled.
+    var connectionExpiredEnabled: Bool = true
+    /// Whether welcome back DMs are enabled.
+    var welcomeBackEnabled: Bool = true
+    /// Whether prioritised game needs linking DMs are enabled.
+    var linkRequiredEnabled: Bool = true
+    /// Whether new campaign detected DMs are enabled.
+    var campaignDetectedEnabled: Bool = true
+    /// Whether account action required DMs are enabled.
+    var accountActionRequiredEnabled: Bool = true
 }
 
 struct SwiftMinerSettings: Codable, Hashable {
@@ -582,8 +584,8 @@ struct SwiftMinerSettings: Codable, Hashable {
     var welcomeMessageSentUserIds: Set<String> = []
     /// User IDs who have completed the initial SwiftMiner DM onboarding flow.
     var completedInitialDMFlowUserIds: Set<String> = []
-    /// Controls how often event DMs are sent per user. Onboarding messages bypass this.
-    var frequencyConfig: SwiftMinerDMFrequencyConfig = SwiftMinerDMFrequencyConfig()
+    /// Controls which event DM types are sent. Onboarding messages always pass through.
+    var notificationPreferences: SwiftMinerDMNotificationPreferences = SwiftMinerDMNotificationPreferences()
 
     var normalizedBaseURL: String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
