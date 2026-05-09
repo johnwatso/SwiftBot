@@ -6,7 +6,7 @@ import OSLog
 // Encapsulates the full lifecycle of sending a SwiftMiner DM:
 // - first-interaction onboarding prepend (welcome → discord linked)
 // - embed routing by message type
-// - frequency gating (prevents DM bombardment)
+// - notification filter (per-type enable/disable)
 // - debug isolation (no state mutation)
 // - state tracking (welcome sent, onboarding completed)
 // - analytics logging
@@ -38,21 +38,21 @@ struct SwiftMinerDMSender: Sendable {
 
     private let dependencies: Dependencies
     private let router: SwiftMinerDMRouter
-    private let frequencyGate: SwiftMinerDMFrequencyGate
+    private let notificationFilter: SwiftMinerDMNotificationFilter
 
     init(
         dependencies: Dependencies,
         theme: SwiftMinerDMTheme = .default,
-        frequencyConfig: SwiftMinerDMFrequencyConfig = SwiftMinerDMFrequencyConfig()
+        notificationPreferences: SwiftMinerDMNotificationPreferences = SwiftMinerDMNotificationPreferences()
     ) {
         self.dependencies = dependencies
         self.router = SwiftMinerDMRouter(theme: theme)
-        self.frequencyGate = SwiftMinerDMFrequencyGate(config: frequencyConfig)
+        self.notificationFilter = SwiftMinerDMNotificationFilter(preferences: notificationPreferences)
     }
 
     // MARK: - Public API
 
-    /// Sends a typed SwiftMiner DM, handling onboarding prepend, frequency gating,
+    /// Sends a typed SwiftMiner DM, handling onboarding prepend, notification filtering,
     /// debug isolation, and onboarding state transitions.
     func send(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {
         let discordName = await dependencies.discordNameForUserId(discordUserId)
@@ -64,14 +64,11 @@ struct SwiftMinerDMSender: Sendable {
             discordName: discordName
         )
 
-        // Check frequency gate for event notifications.
-        let shouldSend = await frequencyGate.shouldSend(
-            messageType: request.messageType,
-            discordUserId: discordUserId
-        )
+        // Check notification filter for event types.
+        let shouldSend = await notificationFilter.shouldSend(messageType: request.messageType)
         guard shouldSend else {
             dependencies.logInfo(
-                "SwiftMiner \(request.messageType.rawValue) DM suppressed for \(discordUserId) — frequency gate"
+                "SwiftMiner \(request.messageType.rawValue) DM suppressed for \(discordUserId) — disabled in preferences"
             )
             return true
         }

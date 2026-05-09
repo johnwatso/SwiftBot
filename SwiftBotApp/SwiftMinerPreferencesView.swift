@@ -34,7 +34,7 @@ struct SwiftMinerPreferencesView: View {
                             app.cacheSwiftMinerArtworkIfNeeded()
                         }
 
-                        dmFrequencySection
+                        dmNotificationSection
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Pairing Bundle")
@@ -88,54 +88,35 @@ struct SwiftMinerPreferencesView: View {
         }
     }
 
-    // MARK: - DM Frequency
+    // MARK: - DM Notifications
 
     @ViewBuilder
-    private var dmFrequencySection: some View {
+    private var dmNotificationSection: some View {
         Divider()
             .padding(.vertical, 4)
 
         Text("DM Notifications")
             .font(.subheadline.weight(.medium))
 
-        settingsToggleRow(
-            "Limit how often event DMs are sent",
-            isOn: frequencyBinding(\.enabled)
-        )
+        Text("Choose which event DMs SwiftBot sends to users. Onboarding messages are always sent.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
-        if app.settings.swiftMiner.frequencyConfig.enabled {
-            Picker("Drop claimed cooldown", selection: frequencyBinding(\.dropClaimedCooldownSeconds)) {
-                Text("1 minute").tag(60)
-                Text("5 minutes").tag(300)
-                Text("15 minutes").tag(900)
-                Text("30 minutes").tag(1800)
-                Text("1 hour").tag(3600)
-            }
-            .pickerStyle(.menu)
-
-            Picker("Campaign complete cooldown", selection: frequencyBinding(\.campaignCompletedCooldownSeconds)) {
-                Text("1 minute").tag(60)
-                Text("5 minutes").tag(300)
-                Text("15 minutes").tag(900)
-                Text("30 minutes").tag(1800)
-                Text("1 hour").tag(3600)
-            }
-            .pickerStyle(.menu)
-
-            Picker("Minimum time between any DMs", selection: frequencyBinding(\.globalCooldownSeconds)) {
-                Text("30 seconds").tag(30)
-                Text("1 minute").tag(60)
-                Text("2 minutes").tag(120)
-                Text("5 minutes").tag(300)
-            }
-            .pickerStyle(.menu)
+        VStack(alignment: .leading, spacing: 8) {
+            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
+            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
+            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
+            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
+            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
+            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
+            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
         }
     }
 
-    private func frequencyBinding<T>(_ keyPath: WritableKeyPath<SwiftMinerDMFrequencyConfig, T>) -> Binding<T> {
+    private func notificationBinding(_ keyPath: WritableKeyPath<SwiftMinerDMNotificationPreferences, Bool>) -> Binding<Bool> {
         Binding(
-            get: { app.settings.swiftMiner.frequencyConfig[keyPath: keyPath] },
-            set: { app.settings.swiftMiner.frequencyConfig[keyPath: keyPath] = $0 }
+            get: { app.settings.swiftMiner.notificationPreferences[keyPath: keyPath] },
+            set: { app.settings.swiftMiner.notificationPreferences[keyPath: keyPath] = $0 }
         )
     }
 

@@ -1,68 +1,37 @@
 import Foundation
 
-// MARK: - SwiftMiner DM Frequency Gate
+// MARK: - SwiftMiner DM Notification Filter
 //
-// Lightweight notification throttle that prevents DM bombardment.
-// Onboarding messages (welcome, discordLinked, setup, linked) bypass the gate.
-// Event notifications (dropClaimed, campaignCompleted, etc.) are gated by cooldown.
+// Lightweight per-type toggle that controls which event DMs are delivered.
+// Onboarding messages (welcome, discordLinked, setup, linked) always pass through.
 
-actor SwiftMinerDMFrequencyGate {
-    private let config: SwiftMinerDMFrequencyConfig
-    private var lastSentByKey: [String: Date] = [:]
+actor SwiftMinerDMNotificationFilter {
+    private let preferences: SwiftMinerDMNotificationPreferences
 
-    init(config: SwiftMinerDMFrequencyConfig) {
-        self.config = config
+    init(preferences: SwiftMinerDMNotificationPreferences) {
+        self.preferences = preferences
     }
 
-    /// Returns true if the DM should be sent, false if it should be suppressed.
-    func shouldSend(messageType: SwiftMinerDMMessageType, discordUserId: String) -> Bool {
-        guard config.enabled else { return true }
-
+    /// Returns true if the DM should be sent, false if suppressed by preferences.
+    func shouldSend(messageType: SwiftMinerDMMessageType) -> Bool {
         // Onboarding messages always pass through.
         switch messageType {
         case .welcome, .discordLinked, .setup, .linked:
             return true
-        default:
-            break
-        }
-
-        let now = Date()
-
-        // Check per-type cooldown.
-        let typeKey = "\(discordUserId):\(messageType.rawValue)"
-        let typeCooldown = cooldown(for: messageType)
-        if typeCooldown > 0 {
-            if let last = lastSentByKey[typeKey], now.timeIntervalSince(last) < typeCooldown {
-                return false
-            }
-        }
-
-        // Check global cooldown.
-        let globalKey = "\(discordUserId):global"
-        if config.globalCooldownSeconds > 0 {
-            if let last = lastSentByKey[globalKey], now.timeIntervalSince(last) < TimeInterval(config.globalCooldownSeconds) {
-                return false
-            }
-        }
-
-        // Record send timestamps.
-        lastSentByKey[typeKey] = now
-        lastSentByKey[globalKey] = now
-        return true
-    }
-
-    private func cooldown(for messageType: SwiftMinerDMMessageType) -> TimeInterval {
-        switch messageType {
         case .dropClaimed:
-            return TimeInterval(config.dropClaimedCooldownSeconds)
+            return preferences.dropClaimedEnabled
         case .campaignCompleted:
-            return TimeInterval(config.campaignCompletedCooldownSeconds)
-        case .welcomeBack:
-            return TimeInterval(config.welcomeBackCooldownSeconds)
+            return preferences.campaignCompletedEnabled
         case .reauth:
-            return TimeInterval(config.connectionExpiredCooldownSeconds)
-        default:
-            return 0
+            return preferences.connectionExpiredEnabled
+        case .welcomeBack:
+            return preferences.welcomeBackEnabled
+        case .prioritisedGameNeedsLinking:
+            return preferences.linkRequiredEnabled
+        case .campaignDetected:
+            return preferences.campaignDetectedEnabled
+        case .accountActionRequired:
+            return preferences.accountActionRequiredEnabled
         }
     }
 }
