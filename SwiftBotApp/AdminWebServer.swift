@@ -562,7 +562,7 @@ actor AdminWebServer {
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [String: String])?
-    private var swiftMinerTestDMSender: (@Sendable (String, String?, [String], Bool) async -> Bool)?
+    private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -623,7 +623,7 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         discordUsersProvider: @escaping @Sendable () async -> [String: String],
-        swiftMinerTestDMSender: @escaping @Sendable (String, String?, [String], Bool) async -> Bool,
+        swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -1000,18 +1000,18 @@ actor AdminWebServer {
                 return jsonResponse(["error": "invalid_path"], status: "400 Bad Request")
             }
             let discordUserId = segments[2]
-            // Optional body: { "twitch_username": "...", "priority_games": ["..."] }
-            var twitchUsername: String?
-            var priorityGames: [String] = []
-            var priorityGamesKeyPresent = false
-            if !request.body.isEmpty,
-               let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] {
-                twitchUsername = json["twitch_username"] as? String
-                priorityGamesKeyPresent = json.keys.contains("priority_games")
-                priorityGames = json["priority_games"] as? [String] ?? []
+            let dmRequest: SwiftMinerDMRequest
+            if !request.body.isEmpty {
+                do {
+                    dmRequest = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: request.body)
+                } catch {
+                    return jsonResponse(["error": "invalid_payload", "detail": error.localizedDescription], status: "400 Bad Request")
+                }
+            } else {
+                dmRequest = SwiftMinerDMRequest(messageType: .linked)
             }
-            await logger?("[SwiftMiner] DM test request for \(discordUserId) — priority_games key present: \(priorityGamesKeyPresent), count: \(priorityGames.count)")
-            let sent = await swiftMinerTestDMSender?(discordUserId, twitchUsername, priorityGames, priorityGamesKeyPresent) ?? false
+            await logger?("[SwiftMiner] DM request type=\(dmRequest.messageType.rawValue) debug=\(dmRequest.debug) for \(discordUserId)")
+            let sent = await swiftMinerTestDMSender?(dmRequest, discordUserId) ?? false
             return jsonResponse(["ok": sent], status: sent ? "200 OK" : "502 Bad Gateway")
         case ("POST", "/webhooks/swiftminer/events"):
             guard let handler = swiftMinerWebhookHandler else {

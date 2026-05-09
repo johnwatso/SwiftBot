@@ -1529,14 +1529,9 @@ extension AppModel {
                 guard let model = self else { return [:] }
                 return await model.discordCache.humanUserNames()
             },
-            swiftMinerTestDMSender: { [weak self] discordUserId, twitchUsername, priorityGames, priorityGamesKeyPresent in
+            swiftMinerTestDMSender: { [weak self] request, discordUserId in
                 guard let model = self else { return false }
-                return await model.sendSwiftMinerTestDM(
-                    to: discordUserId,
-                    twitchUsername: twitchUsername,
-                    priorityGames: priorityGames,
-                    priorityGamesKeyPresent: priorityGamesKeyPresent
-                )
+                return await model.sendSwiftMinerDM(request: request, discordUserId: discordUserId)
             },
             log: { [weak self] message in
                 guard let model = self else { return }

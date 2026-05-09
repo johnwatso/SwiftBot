@@ -562,6 +562,11 @@ struct SwiftMinerSettings: Codable, Hashable {
     var webhookHint: String = ""
     var artworkURL: String = ""
     var cachedArtworkFileName: String = ""
+    /// User IDs who have already received a SwiftMiner welcome DM.
+    /// Used to ensure welcome messages are only sent once per user.
+    var welcomeMessageSentUserIds: Set<String> = []
+    /// User IDs who have completed the initial SwiftMiner DM onboarding flow.
+    var completedInitialDMFlowUserIds: Set<String> = []
 
     var normalizedBaseURL: String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
