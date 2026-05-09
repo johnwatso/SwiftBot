@@ -13,6 +13,7 @@ struct SwiftMinerPreferencesView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
             }
 
+            // MARK: SwiftMiner Pairing
             PreferencesCard("SwiftMiner", systemImage: "shippingbox.circle") {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -33,8 +34,6 @@ struct SwiftMinerPreferencesView: View {
                         .onAppear {
                             app.cacheSwiftMinerArtworkIfNeeded()
                         }
-
-                        dmNotificationSection
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Pairing Bundle")
@@ -85,31 +84,29 @@ struct SwiftMinerPreferencesView: View {
             }
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
-        }
-    }
 
-    // MARK: - DM Notifications
+            // MARK: Discord Integration — DM Notifications
+            if app.settings.swiftMiner.enabled {
+                PreferencesCard("Discord Integration", systemImage: "app.badge.checkmark") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
-    @ViewBuilder
-    private var dmNotificationSection: some View {
-        Divider()
-            .padding(.vertical, 4)
-
-        Text("DM Notifications")
-            .font(.subheadline.weight(.medium))
-
-        Text("Choose which event DMs SwiftBot sends to users. Onboarding messages are always sent.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-        VStack(alignment: .leading, spacing: 8) {
-            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
-            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
-            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
-            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
-            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
-            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
-            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
+                        VStack(alignment: .leading, spacing: 6) {
+                            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
+                            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
+                            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
+                            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
+                            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
+                            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
+                            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
+                        }
+                    }
+                }
+                .disabled(app.isFailoverManagedNode)
+                .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+            }
         }
     }
 
