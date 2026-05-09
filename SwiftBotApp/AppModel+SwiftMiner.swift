@@ -137,6 +137,19 @@ extension AppModel {
                         self.saveSettings()
                     }
                 },
+                hasEventBeenSent: { [weak self] signature in
+                    guard let self else { return true }
+                    return await MainActor.run {
+                        self.settings.swiftMiner.sentEventSignatures.contains(signature)
+                    }
+                },
+                markEventSent: { [weak self] signature in
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.settings.swiftMiner.sentEventSignatures.insert(signature)
+                        self.saveSettings()
+                    }
+                },
                 logInfo: { [weak self] message in
                     self?.swiftMinerLogger.info("\(message)")
                 },

@@ -9,13 +9,9 @@ struct SwiftMinerPreferencesView: View {
 
     var body: some View {
         PreferencesTabContainer {
-            if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
-            }
-
-            // MARK: SwiftMiner Pairing
-            PreferencesCard("SwiftMiner", systemImage: "shippingbox.circle") {
+            PreferencesCard("Integrations", systemImage: "app.connected.to.app.below.fill") {
                 VStack(alignment: .leading, spacing: 12) {
+                    // SwiftMiner pairing status
                     HStack {
                         settingsToggleRow("Enable SwiftMiner Integration", isOn: $app.settings.swiftMiner.enabled)
                         Spacer()
@@ -80,35 +76,29 @@ struct SwiftMinerPreferencesView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
 
-            // MARK: Discord Integration — DM Notifications
-            PreferencesCard("Discord Integration", systemImage: "app.badge.checkmark") {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !app.settings.swiftMiner.enabled {
-                        Text("Pair SwiftMiner above to enable DM notifications.")
+                    // Discord Integration — DM Notifications
+                    if app.settings.swiftMiner.enabled {
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        Text("Discord Integration")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
 
-                    Text("Choose which DMs SwiftBot sends to users. Onboarding messages are always sent.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
-                        settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
-                        settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
-                        settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
-                        settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
-                        settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
-                        settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
+                        VStack(alignment: .leading, spacing: 6) {
+                            settingsToggleRow("Drop claimed", isOn: notificationBinding(\.dropClaimedEnabled))
+                            settingsToggleRow("Campaign complete", isOn: notificationBinding(\.campaignCompletedEnabled))
+                            settingsToggleRow("Connection expired", isOn: notificationBinding(\.connectionExpiredEnabled))
+                            settingsToggleRow("Welcome back", isOn: notificationBinding(\.welcomeBackEnabled))
+                            settingsToggleRow("Link required for game", isOn: notificationBinding(\.linkRequiredEnabled))
+                            settingsToggleRow("New campaign detected", isOn: notificationBinding(\.campaignDetectedEnabled))
+                            settingsToggleRow("Account action required", isOn: notificationBinding(\.accountActionRequiredEnabled))
+                        }
                     }
-                    .disabled(!app.settings.swiftMiner.enabled)
-                    .opacity(!app.settings.swiftMiner.enabled ? 0.5 : 1)
                 }
             }
             .disabled(app.isFailoverManagedNode)
