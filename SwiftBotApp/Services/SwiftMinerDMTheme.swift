@@ -35,6 +35,8 @@ struct SwiftMinerDMTheme: Sendable {
 
     var activationStepsTitle: String = "Link your Twitch account"
     var activationCodeSeparator: String = "━━━━━━━━━━━━━━"
+    var setupLinkTitle: String = "Activate"
+    var setupLinkLabel: String = "Click here to link Twitch"
     var notificationsSectionLabel: String = "Notifications"
     var notificationsSectionValue: String = "I'll DM you here if anything needs your attention."
 

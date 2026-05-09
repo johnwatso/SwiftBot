@@ -168,31 +168,37 @@ enum SwiftMinerDMEmbedBuilders {
         discordName: String?,
         activationCode: String?,
         activationExpiresInMinutes: Int?,
+        activationURL: String?,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         var fields: [[String: Any]] = []
 
-        let steps = [
-            "1. \(theme.setupStep1)",
-            "2. \(theme.setupStep2)",
-            "3. \(theme.setupStep3)"
-        ].joined(separator: "\n")
-
-        fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
-            title: theme.activationStepsTitle,
-            value: steps
-        ))
+        // Primary CTA: clickable activation link with code pre-filled
+        if let url = activationURL, !url.isEmpty {
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.setupLinkTitle,
+                value: "[\(theme.setupLinkLabel)](\(url))"
+            ))
+        } else if let code = activationCode, !code.isEmpty {
+            // Fallback if no URL is provided
+            let steps = [
+                "1. \(theme.setupStep1)",
+                "2. \(theme.setupStep2)",
+                "3. \(theme.setupStep3)"
+            ].joined(separator: "\n")
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.activationStepsTitle,
+                value: steps
+            ))
+            fields.append(SwiftMinerDMEmbedPrimitives.makeActivationCodeField(code: code, theme: theme))
+        }
 
         if let minutes = activationExpiresInMinutes, minutes > 0 {
             fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
                 title: theme.setupExpiresLabel,
                 value: "This code expires in \(minutes) minute\(minutes == 1 ? "" : "s")."
             ))
-        }
-
-        if let code = activationCode, !code.isEmpty {
-            fields.append(SwiftMinerDMEmbedPrimitives.makeActivationCodeField(code: code, theme: theme))
         }
 
         if let helpField = SwiftMinerDMEmbedPrimitives.makeHelpField(theme: theme) {
