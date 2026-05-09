@@ -17,7 +17,7 @@ struct SwiftMinerDMTheme: Sendable {
 
     /// URL to the dedicated GitHub help/documentation page.
     /// Used for "Learn more", "Need help?", and setup guide links.
-    var helpDocumentationURL: String? = nil
+    var helpDocumentationURL: String? = "https://github.com/johnwatso/SwiftMiner/blob/main/docs/help/discord-help.md"
 
     // MARK: - Footer Defaults
 
