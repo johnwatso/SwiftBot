@@ -33,6 +33,8 @@ struct SwiftMinerPreferencesView: View {
                         .onAppear {
                             app.cacheSwiftMinerArtworkIfNeeded()
                         }
+
+                        dmFrequencySection
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Pairing Bundle")
@@ -84,6 +86,57 @@ struct SwiftMinerPreferencesView: View {
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
+    }
+
+    // MARK: - DM Frequency
+
+    @ViewBuilder
+    private var dmFrequencySection: some View {
+        Divider()
+            .padding(.vertical, 4)
+
+        Text("DM Notifications")
+            .font(.subheadline.weight(.medium))
+
+        settingsToggleRow(
+            "Limit how often event DMs are sent",
+            isOn: frequencyBinding(\.enabled)
+        )
+
+        if app.settings.swiftMiner.frequencyConfig.enabled {
+            Picker("Drop claimed cooldown", selection: frequencyBinding(\.dropClaimedCooldownSeconds)) {
+                Text("1 minute").tag(60)
+                Text("5 minutes").tag(300)
+                Text("15 minutes").tag(900)
+                Text("30 minutes").tag(1800)
+                Text("1 hour").tag(3600)
+            }
+            .pickerStyle(.menu)
+
+            Picker("Campaign complete cooldown", selection: frequencyBinding(\.campaignCompletedCooldownSeconds)) {
+                Text("1 minute").tag(60)
+                Text("5 minutes").tag(300)
+                Text("15 minutes").tag(900)
+                Text("30 minutes").tag(1800)
+                Text("1 hour").tag(3600)
+            }
+            .pickerStyle(.menu)
+
+            Picker("Minimum time between any DMs", selection: frequencyBinding(\.globalCooldownSeconds)) {
+                Text("30 seconds").tag(30)
+                Text("1 minute").tag(60)
+                Text("2 minutes").tag(120)
+                Text("5 minutes").tag(300)
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
+    private func frequencyBinding<T>(_ keyPath: WritableKeyPath<SwiftMinerDMFrequencyConfig, T>) -> Binding<T> {
+        Binding(
+            get: { app.settings.swiftMiner.frequencyConfig[keyPath: keyPath] },
+            set: { app.settings.swiftMiner.frequencyConfig[keyPath: keyPath] = $0 }
+        )
     }
 
     private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
