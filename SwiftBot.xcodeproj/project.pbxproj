@@ -107,6 +107,7 @@
 		92C470056A7AFC94763D56C2 /* RuleExecutionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57BBCBA04C95A7B63B412ED /* RuleExecutionServiceTests.swift */; };
 		93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */; };
 		9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 1C81108D7CF200AA2750ED17 /* NIOSSL */; };
+		973C625E6A1463378BE7190D /* SwiftMinerDMFrequencyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E40E1A97020F354A369FB65 /* SwiftMinerDMFrequencyGate.swift */; };
 		9A07952399C3531240BD87FB /* DiscordIdentityRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */; };
 		9A7E4ACD026F52C74EF01C9F /* VoiceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */; };
 		9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7962859CFEF723E67BD800C /* AppModel+Media.swift */; };
@@ -195,6 +196,7 @@
 		29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupServiceTests.swift; sourceTree = "<group>"; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2C8FA234EDBAE756493F5CF9 /* DiscordGuildRESTClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGuildRESTClientTests.swift; sourceTree = "<group>"; };
+		2E40E1A97020F354A369FB65 /* SwiftMinerDMFrequencyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMFrequencyGate.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
 		322D9081CEE7191A61086D90 /* ClusterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterModels.swift; sourceTree = "<group>"; };
@@ -557,6 +559,7 @@
 				F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */,
 				D3B2E521D4ABF13B19C9005F /* SwiftMinerClient.swift */,
 				45A7F34F7FFB7E1B2BD1C889 /* SwiftMinerDMEmbedBuilders.swift */,
+				2E40E1A97020F354A369FB65 /* SwiftMinerDMFrequencyGate.swift */,
 				20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */,
 				9BF6280D047F718E4F74CE97 /* SwiftMinerDMSender.swift */,
 				497A71EBDE92BC874E86B34F /* SwiftMinerDMStyle.swift */,
@@ -816,6 +819,7 @@
 				22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */,
 				EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */,
 				A03E7AB8F0B643B3271F1968 /* SwiftMinerDMEmbedBuilders.swift in Sources */,
+				973C625E6A1463378BE7190D /* SwiftMinerDMFrequencyGate.swift in Sources */,
 				7E590A8A89A2086377084C3D /* SwiftMinerDMRouter.swift in Sources */,
 				8075341BD09A151AD2C7ADA3 /* SwiftMinerDMSender.swift in Sources */,
 				17557C576F020DDA90DBDDF2 /* SwiftMinerDMStyle.swift in Sources */,

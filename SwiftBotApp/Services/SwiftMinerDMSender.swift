@@ -6,6 +6,7 @@ import OSLog
 // Encapsulates the full lifecycle of sending a SwiftMiner DM:
 // - first-interaction onboarding prepend (welcome → discord linked)
 // - embed routing by message type
+// - frequency gating (prevents DM bombardment)
 // - debug isolation (no state mutation)
 // - state tracking (welcome sent, onboarding completed)
 // - analytics logging
@@ -37,16 +38,22 @@ struct SwiftMinerDMSender: Sendable {
 
     private let dependencies: Dependencies
     private let router: SwiftMinerDMRouter
+    private let frequencyGate: SwiftMinerDMFrequencyGate
 
-    init(dependencies: Dependencies, theme: SwiftMinerDMTheme = .default) {
+    init(
+        dependencies: Dependencies,
+        theme: SwiftMinerDMTheme = .default,
+        frequencyConfig: SwiftMinerDMFrequencyConfig = SwiftMinerDMFrequencyConfig()
+    ) {
         self.dependencies = dependencies
         self.router = SwiftMinerDMRouter(theme: theme)
+        self.frequencyGate = SwiftMinerDMFrequencyGate(config: frequencyConfig)
     }
 
     // MARK: - Public API
 
-    /// Sends a typed SwiftMiner DM, handling onboarding prepend, debug isolation,
-    /// and onboarding state transitions.
+    /// Sends a typed SwiftMiner DM, handling onboarding prepend, frequency gating,
+    /// debug isolation, and onboarding state transitions.
     func send(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {
         let discordName = await dependencies.discordNameForUserId(discordUserId)
 
@@ -56,6 +63,18 @@ struct SwiftMinerDMSender: Sendable {
             discordUserId: discordUserId,
             discordName: discordName
         )
+
+        // Check frequency gate for event notifications.
+        let shouldSend = await frequencyGate.shouldSend(
+            messageType: request.messageType,
+            discordUserId: discordUserId
+        )
+        guard shouldSend else {
+            dependencies.logInfo(
+                "SwiftMiner \(request.messageType.rawValue) DM suppressed for \(discordUserId) — frequency gate"
+            )
+            return true
+        }
 
         // Route and send the primary DM.
         let result = router.route(request: request, discordName: discordName)
