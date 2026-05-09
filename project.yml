@@ -127,6 +127,30 @@ targets:
         ENABLE_NS_ASSERTIONS: NO
         MTL_ENABLE_DEBUG_INFO: NO
 
+  SwiftBotTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Tests/SwiftBotTests
+        type: group
+    dependencies:
+      - target: SwiftBot
+    settings:
+      base:
+        PRODUCT_NAME: SwiftBotTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftbot.tests
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        SDKROOT: macosx
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/SwiftBot.app/Contents/MacOS/SwiftBot"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+      debug:
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        DEBUG_INFORMATION_FORMAT: dwarf
+
   SparklePublisher:
     type: tool
     platform: macOS
@@ -150,6 +174,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      targets:
+        - name: SwiftBotTests
     profile:
       config: Release
     analyze:

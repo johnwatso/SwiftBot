@@ -97,85 +97,97 @@ extension AppModel {
         return result
     }
 
-    func sendSwiftMinerTestDM(
-        to discordUserId: String,
-        twitchUsername: String?,
-        priorityGames: [String],
-        priorityGamesKeyPresent: Bool
-    ) async -> Bool {
+    // MARK: - SwiftMiner Typed DM Pipeline
+
+    private func makeSwiftMinerDMSender() -> SwiftMinerDMSender {
+        SwiftMinerDMSender(dependencies: .init(
+            sendDMEmbed: { [weak self] userId, embed in
+                guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
+                try await self.service.sendDMEmbed(userId: userId, embed: embed)
+            },
+            discordNameForUserId: { [weak self] userId in
+                guard let self else { return nil }
+                return await self.discordCache.userName(for: userId)
+            },
+            hasUserBeenWelcomed: { [weak self] userId in
+                guard let self else { return true }
+                return await MainActor.run {
+                    self.settings.swiftMiner.welcomeMessageSentUserIds.contains(userId)
+                }
+            },
+            hasUserCompletedOnboarding: { [weak self] userId in
+                guard let self else { return true }
+                return await MainActor.run {
+                    self.settings.swiftMiner.completedInitialDMFlowUserIds.contains(userId)
+                }
+            },
+            markUserWelcomed: { [weak self] userId in
+                guard let self else { return }
+                await MainActor.run {
+                    self.settings.swiftMiner.welcomeMessageSentUserIds.insert(userId)
+                    self.saveSettings()
+                }
+            },
+            markUserCompletedOnboarding: { [weak self] userId in
+                guard let self else { return }
+                await MainActor.run {
+                    self.settings.swiftMiner.completedInitialDMFlowUserIds.insert(userId)
+                    self.saveSettings()
+                }
+            },
+            logInfo: { [weak self] message in
+                self?.swiftMinerLogger.info("\(message)")
+            },
+            logError: { [weak self] message in
+                self?.swiftMinerLogger.error("\(message)")
+            },
+            recordEvent: { [weak self] message in
+                guard let self else { return }
+                await MainActor.run {
+                    self.addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: message))
+                }
+            }
+        ))
+    }
+
+    func sendSwiftMinerDM(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {
         guard settings.swiftMiner.enabled else {
-            self.swiftMinerLogger.warning("sendSwiftMinerTestDM skipped: SwiftMiner integration is disabled")
+            self.swiftMinerLogger.warning("sendSwiftMinerDM skipped: SwiftMiner integration is disabled")
             return false
         }
+        let sender = makeSwiftMinerDMSender()
+        return await sender.send(request: request, discordUserId: discordUserId)
+    }
 
-        self.swiftMinerLogger.info(
-            "Building SwiftMiner onboarding embed for \(discordUserId) — priorityGamesKeyPresent: \(priorityGamesKeyPresent), count: \(priorityGames.count)"
+    // MARK: - DM Testing Utilities
+
+    /// Sends a preview DM of any SwiftMiner message type with mock data.
+    /// Does NOT mutate production state (forces debug mode).
+    func previewSwiftMinerDM(
+        messageType: SwiftMinerDMMessageType,
+        discordUserId: String,
+        mockData: SwiftMinerDMMockData = SwiftMinerDMMockData()
+    ) async -> Bool {
+        let request = SwiftMinerDMRequest(
+            messageType: messageType,
+            debug: true,
+            twitchUsername: mockData.twitchUsername,
+            priorityGames: mockData.priorityGames,
+            activationCode: mockData.activationCode,
+            activationExpiresInMinutes: mockData.activationExpiresInMinutes,
+            affectedGame: mockData.affectedGame,
+            campaignName: mockData.campaignName,
+            milestoneTitle: mockData.milestoneTitle,
+            recoveryReason: mockData.recoveryReason
         )
+        return await sendSwiftMinerDM(request: request, discordUserId: discordUserId)
+    }
 
-        // Look up the recipient's Discord display name (server nick / global name / username)
-        // from the gateway cache so the message can address them by name.
-        let discordName = await discordCache.userName(for: discordUserId)
-        let greeting = discordName.map { "Hi **\($0)**! " } ?? ""
-
-        let body: String
-        if let twitchUsername, !twitchUsername.isEmpty {
-            body = "Your Twitch account **@\(twitchUsername)** is linked and ready to mine drops."
-        } else {
-            body = "Your Twitch account has been linked to SwiftMiner and is ready to mine drops."
-        }
-        let description = greeting + body
-
-        var fields: [[String: Any]] = []
-
-        if !priorityGamesKeyPresent {
-            fields.append([
-                "name": "🎮 Priority games",
-                "value": "_Priority games could not be loaded._",
-                "inline": false
-            ])
-            self.swiftMinerLogger.warning("Priority games key missing in payload for \(discordUserId)")
-        } else if priorityGames.isEmpty {
-            fields.append([
-                "name": "🎮 Priority games",
-                "value": "_None set — SwiftMiner will mine any available drops campaign._",
-                "inline": false
-            ])
-            self.swiftMinerLogger.info("Priority games explicitly empty for \(discordUserId)")
-        } else {
-            let preview = priorityGames.prefix(8).map { "• \($0)" }.joined(separator: "\n")
-            let extra = priorityGames.count > 8 ? "\n• …and \(priorityGames.count - 8) more" : ""
-            fields.append([
-                "name": "🎮 Priority games",
-                "value": preview + extra,
-                "inline": false
-            ])
-            self.swiftMinerLogger.info("Priority games rendered for \(discordUserId): \(priorityGames)")
-        }
-
-        fields.append([
-            "name": "📬 Notifications",
-            "value": "You'll get a DM here if anything needs attention — auth expired, blocked drops, etc.",
-            "inline": false
-        ])
-
-        let embed: [String: Any] = [
-            "title": "SwiftMiner account connected and active ⚡",
-            "description": description,
-            "color": 3_062_954, // green, matches the ok colour used by /miner responses
-            "fields": fields,
-            "footer": ["text": "Use /miner action:status to check progress"]
-        ]
-
-        do {
-            try await service.sendDMEmbed(userId: discordUserId, embed: embed)
-            addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner setup DM sent to \(discordUserId)"))
-            self.swiftMinerLogger.info("SwiftMiner onboarding embed sent successfully to \(discordUserId)")
-            return true
-        } catch {
-            logs.append("SwiftMiner setup DM failed for \(discordUserId): \(error.localizedDescription)")
-            self.swiftMinerLogger.error("SwiftMiner onboarding embed failed for \(discordUserId): \(error.localizedDescription)")
-            return false
-        }
+    /// Returns the embed that would be sent for a given request, without sending it.
+    /// Useful for admin preview panels.
+    func renderSwiftMinerDMEmbedPreview(request: SwiftMinerDMRequest, discordUserId: String) async -> [String: Any] {
+        let sender = makeSwiftMinerDMSender()
+        return await sender.preview(request: request, discordUserId: discordUserId)
     }
 
     func handleSwiftMinerWebhook(headers: [String: String], body: Data) async -> (status: String, body: Data) {
