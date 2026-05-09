@@ -10,6 +10,16 @@ struct AnalyticsView: View {
 
     private let secondaryCardHeight: CGFloat = 268
 
+    private struct RankedInsight: Identifiable {
+        let id: String
+        let title: String
+        let value: String
+        let detail: String
+        let symbol: String
+        let color: Color
+        let progress: Double
+    }
+
     private var dailyActivity: [AnalyticsDaySample] { snapshot.voice.dailyActivity }
     private var hourlyActivity: [AnalyticsHourSample] { snapshot.voice.hourlyActivity }
     private var topUsers: [AnalyticsTopUser] { snapshot.voice.topUsers }
@@ -48,6 +58,93 @@ struct AnalyticsView: View {
     private var rollingEventCount: Int { snapshot.system.rollingEventCount }
     private var eventFeed: [AnalyticsFeedEntry] { snapshot.feed }
 
+    private var averageVoiceSessionText: String {
+        guard sessionCountThisWeek > 0 else { return "--" }
+        return formattedDuration(totalSecondsThisWeek / sessionCountThisWeek)
+    }
+
+    private var averageConcurrentUsers: String {
+        let activeDays = max(dailyActivity.filter(\.hasActivity).count, 1)
+        let average = Double(sessionCountThisWeek) / Double(activeDays)
+        return String(format: "%.1f", average)
+    }
+
+    private var dailyActiveUsersText: String {
+        let recentCommandUsers = Set(app.commandLog.filter { Calendar.current.isDateInToday($0.time) }.map(\.user))
+        let activeVoiceUsers = Set(app.activeVoice.map(\.username))
+        return "\(recentCommandUsers.union(activeVoiceUsers).count)"
+    }
+
+    private var messageVelocityText: String {
+        String(format: "%.1f/min", snapshot.system.eventThroughputPerMinute)
+    }
+
+    private var commandNameRanks: [RankedInsight] {
+        rankedCounts(
+            values: app.commandLog.map { normalizedCommandName($0.command) },
+            symbol: "terminal",
+            color: .cyan,
+            emptyDetail: "No command traffic yet"
+        )
+    }
+
+    private var commandUserRanks: [RankedInsight] {
+        rankedCounts(
+            values: app.commandLog.map(\.user),
+            symbol: "person.text.rectangle",
+            color: .teal,
+            emptyDetail: "No command users yet"
+        )
+    }
+
+    private var channelRanks: [RankedInsight] {
+        rankedCounts(
+            values: app.commandLog.map(\.channel).filter { !$0.isEmpty },
+            symbol: "number",
+            color: .blue,
+            emptyDetail: "No channel activity yet"
+        )
+    }
+
+    private var fastestGrowingChannel: RankedInsight? {
+        let recentCutoff = Date().addingTimeInterval(-3600)
+        return rankedCounts(
+            values: app.commandLog.filter { $0.time >= recentCutoff }.map(\.channel).filter { !$0.isEmpty },
+            symbol: "arrow.up.right",
+            color: .green,
+            emptyDetail: "No recent growth"
+        ).first
+    }
+
+    private var quietestChannel: RankedInsight? {
+        channelRanks.last
+    }
+
+    private var voiceMovementCount: Int {
+        app.events.filter { $0.kind == .voiceMove }.count
+    }
+
+    private var automationSuccessRateText: String {
+        let failures = snapshot.system.failedAutomationCount
+        let total = max(snapshot.system.activeWorkflowCount + failures, 1)
+        let rate = Double(max(total - failures, 0)) / Double(total)
+        return "\(Int((rate * 100).rounded()))%"
+    }
+
+    private var peakVoiceChannel: String {
+        let channelNames = app.voiceLog.compactMap { entry -> String? in
+            let description = entry.description
+            if let range = description.range(of: " joined ") {
+                return String(description[range.upperBound...]).components(separatedBy: " — ").first
+            }
+            if let range = description.range(of: " left ") {
+                return String(description[range.upperBound...]).components(separatedBy: " — ").first
+            }
+            return nil
+        }
+        return rankedCounts(values: channelNames, symbol: "waveform", color: .blue, emptyDetail: "No voice channels yet").first?.title ?? "--"
+    }
+
     private var dailyChartDomain: ClosedRange<Date> {
         guard let first = dailyActivity.first?.date, let last = dailyActivity.last?.date else {
             let now = Date()
@@ -64,20 +161,27 @@ struct AnalyticsView: View {
             header
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    heroSummary
+                VStack(alignment: .leading, spacing: 14) {
+                    communityHero
 
-                    activityOverview
+                    voiceAnalyticsSection
 
                     HStack(alignment: .top, spacing: 12) {
-                        systemActivity
+                        communityAnalyticsSection
                             .frame(maxWidth: .infinity)
-                        botHealth
+                        channelAnalyticsSection
                             .frame(maxWidth: .infinity)
                     }
 
                     HStack(alignment: .top, spacing: 12) {
-                        insightsSection
+                        automationAnalyticsSection
+                            .frame(maxWidth: .infinity)
+                        infrastructureAnalyticsSection
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    HStack(alignment: .top, spacing: 12) {
+                        trendInsightsSection
                             .frame(maxWidth: .infinity)
                         topUsersSection
                             .frame(maxWidth: .infinity)
@@ -136,11 +240,11 @@ struct AnalyticsView: View {
         }
     }
 
-    private var heroSummary: some View {
+    private var communityHero: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Operational Pulse")
+                    Text("Community Intelligence")
                         .font(.title3.weight(.semibold))
                     Text(heroSubtitle)
                         .font(.caption)
@@ -156,31 +260,39 @@ struct AnalyticsView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], spacing: 8) {
                 metricCard(
-                    title: "Voice Sessions",
-                    value: "\(sessionCountThisWeek)",
-                    detail: "\(app.activeVoice.count) currently active",
-                    symbol: "waveform",
-                    tint: .cyan,
-                    prominence: .primary
-                )
-                metricCard(
-                    title: "Total Voice Time",
-                    value: formattedDuration(totalSecondsThisWeek),
-                    detail: "Average session \(formattedDuration(averageSessionSeconds))",
-                    symbol: "clock",
-                    tint: .blue,
-                    prominence: .primary
-                )
-                metricCard(
                     title: "Most Active Day",
                     value: mostActiveDay,
                     detail: peakDayDetail,
                     symbol: "calendar.day.timeline.leading",
                     tint: .indigo,
+                    prominence: .primary
+                )
+                metricCard(
+                    title: "Average Voice Session",
+                    value: averageVoiceSessionText,
+                    detail: "\(sessionCountThisWeek) sessions this week",
+                    symbol: "clock",
+                    tint: .blue,
+                    prominence: .primary
+                )
+                metricCard(
+                    title: "Peak Voice Hour",
+                    value: peakHour.map { hourLabel($0.hour) } ?? "--",
+                    detail: peakHour.map { "\($0.count) session starts tracked" } ?? "No peak window yet",
+                    symbol: "waveform",
+                    tint: .cyan,
+                    prominence: .primary
+                )
+                metricCard(
+                    title: "Daily Active Users",
+                    value: dailyActiveUsersText,
+                    detail: "Commands and live voice today",
+                    symbol: "person.2.fill",
+                    tint: .green,
                     prominence: .secondary
                 )
                 metricCard(
-                    title: "Top User",
+                    title: "Most Active User",
                     value: topUsers.first?.username ?? "-",
                     detail: topUsers.first.map { "\($0.activityShare)% of tracked voice time" } ?? "No completed sessions yet",
                     symbol: "person.fill",
@@ -205,6 +317,202 @@ struct AnalyticsView: View {
             }
             .frame(minHeight: 154, alignment: .top)
         }
+    }
+
+    private var voiceAnalyticsSection: some View {
+        analyticsCard(
+            title: "Voice Analytics",
+            subtitle: "\(formattedDuration(totalSecondsThisWeek)) tracked this week",
+            symbol: "waveform.and.mic"
+        ) {
+            HStack(alignment: .top, spacing: 14) {
+                runtimeActivityChart
+                    .frame(minWidth: 380, maxWidth: .infinity)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    insightTile(
+                        title: "Most Active Voice Channel",
+                        value: peakVoiceChannel,
+                        detail: "\(voiceMovementCount) channel movement\(voiceMovementCount == 1 ? "" : "s") tracked",
+                        symbol: "speaker.wave.2.fill",
+                        color: .blue
+                    )
+                    insightTile(
+                        title: "Average Concurrent Users",
+                        value: averageConcurrentUsers,
+                        detail: "\(app.activeVoice.count) currently in voice",
+                        symbol: "person.3.sequence.fill",
+                        color: .green
+                    )
+                    peakHourChart
+                        .frame(height: 112)
+                }
+                .frame(minWidth: 250, idealWidth: 300, maxWidth: 340)
+            }
+            .frame(minHeight: 230, alignment: .top)
+        }
+    }
+
+    private var communityAnalyticsSection: some View {
+        analyticsCard(title: "Community Analytics", subtitle: "Users, commands, and engagement", symbol: "person.2.wave.2.fill") {
+            cardScrollContent {
+                VStack(spacing: 8) {
+                    insightTile(
+                        title: "Message Velocity",
+                        value: messageVelocityText,
+                        detail: "\(rollingEventCount) community/runtime events in the last window",
+                        symbol: "speedometer",
+                        color: .green
+                    )
+                    if let first = commandUserRanks.first {
+                        insightTile(
+                            title: "Top Command User",
+                            value: first.title,
+                            detail: first.detail,
+                            symbol: "person.text.rectangle",
+                            color: .teal
+                        )
+                    }
+                    rankedList(title: "Command Users", rows: Array(commandUserRanks.prefix(4)))
+                    if let streak = snapshot.voice.topUserStreak {
+                        insightTile(
+                            title: "Engagement Streak",
+                            value: "\(streak.days)d",
+                            detail: "\(streak.username) has the current voice streak",
+                            symbol: "flame.fill",
+                            color: .orange
+                        )
+                    }
+                }
+            }
+        }
+        .frame(height: secondaryCardHeight, alignment: .top)
+    }
+
+    private var channelAnalyticsSection: some View {
+        analyticsCard(title: "Channel Analytics", subtitle: "Where activity concentrates", symbol: "square.grid.2x2") {
+            cardScrollContent {
+                VStack(spacing: 8) {
+                    if let first = channelRanks.first {
+                        insightTile(
+                            title: "Most Active Text Channel",
+                            value: first.title,
+                            detail: first.detail,
+                            symbol: "number",
+                            color: .blue
+                        )
+                    } else {
+                        insightTile(
+                            title: "Most Active Text Channel",
+                            value: "--",
+                            detail: "No command channel activity yet",
+                            symbol: "number",
+                            color: .blue
+                        )
+                    }
+                    if let fastestGrowingChannel {
+                        insightTile(
+                            title: "Fastest Growing Channel",
+                            value: fastestGrowingChannel.title,
+                            detail: "Most command activity in the last hour",
+                            symbol: "arrow.up.right",
+                            color: .green
+                        )
+                    }
+                    if let quietestChannel {
+                        insightTile(
+                            title: "Quietest Channel",
+                            value: quietestChannel.title,
+                            detail: quietestChannel.detail,
+                            symbol: "speaker.slash",
+                            color: .secondary
+                        )
+                    }
+                    insightTile(
+                        title: "Media Upload Trends",
+                        value: "\(app.recentMediaCount24h)",
+                        detail: "new recordings in the last 24 hours",
+                        symbol: "film.fill",
+                        color: .purple
+                    )
+                }
+            }
+        }
+        .frame(height: secondaryCardHeight, alignment: .top)
+    }
+
+    private var automationAnalyticsSection: some View {
+        analyticsCard(title: "Automation Analytics", subtitle: "Rules, AI, and execution patterns", symbol: "wand.and.stars") {
+            cardScrollContent {
+                VStack(spacing: 8) {
+                    if let firstCommand = commandNameRanks.first {
+                        insightTile(
+                            title: "Most Triggered Rule",
+                            value: firstCommand.title,
+                            detail: firstCommand.detail,
+                            symbol: "bolt.circle",
+                            color: .cyan
+                        )
+                    }
+                    insightTile(
+                        title: "AI Usage Count",
+                        value: "\(app.commandLog.filter { $0.command.localizedCaseInsensitiveContains("ai") }.count)",
+                        detail: "\(app.settings.preferredAIProvider.rawValue) provider selected",
+                        symbol: "sparkles",
+                        color: .purple
+                    )
+                    insightTile(
+                        title: "Rule Success Rate",
+                        value: automationSuccessRateText,
+                        detail: "\(snapshot.system.failedAutomationCount) failed automation signal\(snapshot.system.failedAutomationCount == 1 ? "" : "s")",
+                        symbol: "checkmark.seal",
+                        color: snapshot.system.failedAutomationCount > 0 ? .orange : .green
+                    )
+                    rankedList(title: "Top Commands", rows: Array(commandNameRanks.prefix(4)))
+                }
+            }
+        }
+        .frame(height: secondaryCardHeight, alignment: .top)
+    }
+
+    private var infrastructureAnalyticsSection: some View {
+        analyticsCard(title: "Infrastructure Analytics", subtitle: "Trends behind the community surface", symbol: "cpu") {
+            cardScrollContent {
+                VStack(spacing: 8) {
+                    compactSignal(
+                        title: "Gateway Uptime Trend",
+                        value: app.uptime?.text ?? "--",
+                        detail: snapshot.health.state.detail,
+                        color: snapshot.health.state.color
+                    )
+                    compactSignal(
+                        title: "Queue Throughput",
+                        value: messageVelocityText,
+                        detail: "\(snapshot.health.eventQueueDepth)/20 retained event depth",
+                        color: snapshot.health.eventQueueLoad > 0.75 ? .orange : .green
+                    )
+                    compactSignal(
+                        title: "Worker Performance",
+                        value: "\(app.clusterNodes.reduce(0) { $0 + $1.jobsActive }) jobs",
+                        detail: app.settings.clusterMode.displayName,
+                        color: .blue
+                    )
+                    compactSignal(
+                        title: "Cluster Sync Frequency",
+                        value: app.lastClusterStatusSuccessAt.map { relativeText(since: $0) } ?? "--",
+                        detail: app.clusterSnapshot.serverStatusText,
+                        color: .teal
+                    )
+                    compactSignal(
+                        title: "Patchy Execution Frequency",
+                        value: app.patchyLastCycleAt.map { relativeText(since: $0) } ?? "--",
+                        detail: app.patchyIsCycleRunning ? "Cycle running now" : "\(app.settings.patchy.sourceTargets.filter(\.isEnabled).count) targets enabled",
+                        color: .purple
+                    )
+                }
+            }
+        }
+        .frame(height: secondaryCardHeight, alignment: .top)
     }
 
     private var runtimeActivityChart: some View {
@@ -402,7 +710,7 @@ struct AnalyticsView: View {
     }
 
     private var topUsersSection: some View {
-        analyticsCard(title: "Top Users", subtitle: "Ranked voice activity", symbol: "person.3.fill") {
+        analyticsCard(title: "Voice Leaders", subtitle: "Ranked voice activity", symbol: "person.3.fill") {
             if topUsers.isEmpty {
                 emptyState("No completed voice sessions yet")
             } else {
@@ -419,8 +727,8 @@ struct AnalyticsView: View {
         .frame(height: secondaryCardHeight, alignment: .top)
     }
 
-    private var insightsSection: some View {
-        analyticsCard(title: "Operational Insights", subtitle: "Live trends, streaks, and anomalies", symbol: "sparkles") {
+    private var trendInsightsSection: some View {
+        analyticsCard(title: "Trend Insights", subtitle: "Streaks, anomalies, and behavior shifts", symbol: "sparkles") {
             TimelineView(.periodic(from: .now, by: 12)) { timeline in
                 let deck = operationalInsights(at: timeline.date)
                 cardScrollContent {
@@ -567,6 +875,125 @@ struct AnalyticsView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
+
+    private var peakHourChart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Peak Voice Hours")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(peakHour.map { hourLabel($0.hour) } ?? "--")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+
+            if !hourlyActivity.contains(where: { $0.hasActivity }) {
+                emptyState("No hourly voice data yet")
+            } else {
+                Chart {
+                    ForEach(hourlyActivity) { item in
+                        BarMark(
+                            x: .value("Hour", item.hour),
+                            y: .value("Sessions", item.count)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .foregroundStyle(item.hour == peakHour?.hour ? Color.accentColor : Color.accentColor.opacity(0.32))
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: [0, 6, 12, 18, 23]) { value in
+                        AxisValueLabel {
+                            if let hour = value.as(Int.self) {
+                                Text(hourLabel(hour))
+                            }
+                        }
+                    }
+                }
+                .chartYAxis(.hidden)
+                .chartPlotStyle { plot in
+                    plot
+                        .background(.black.opacity(0.025))
+                        .padding(.horizontal, 4)
+                }
+            }
+        }
+        .padding(9)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func insightTile(title: String, value: String, detail: String, symbol: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+                .frame(width: 24, height: 24)
+                .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.headline.weight(.semibold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func rankedList(title: String, rows: [RankedInsight]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if rows.isEmpty {
+                Text("No data yet")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .center)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    HStack(spacing: 8) {
+                        Text("\(index + 1)")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Image(systemName: row.symbol)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(row.color)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(row.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(row.value)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            ProgressView(value: row.progress)
+                                .tint(row.color)
+                                .controlSize(.mini)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+        }
+        .padding(8)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private func healthRow(title: String, value: String, progress: Double?, color: Color) -> some View {
@@ -839,6 +1266,49 @@ struct AnalyticsView: View {
         if hours > 0 { return "\(hours)h \(minutes)m" }
         if minutes > 0 { return "\(minutes)m" }
         return "<1m"
+    }
+
+    private func relativeText(since date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
+        return "\(seconds / 86_400)d ago"
+    }
+
+    private func normalizedCommandName(_ command: String) -> String {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Command" }
+        if let first = trimmed.split(whereSeparator: \.isWhitespace).first {
+            return String(first)
+        }
+        return trimmed
+    }
+
+    private func rankedCounts(values: [String], symbol: String, color: Color, emptyDetail: String) -> [RankedInsight] {
+        let cleaned = values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0 != "-" }
+        let grouped = Dictionary(grouping: cleaned, by: { $0 })
+        let maxCount = max(grouped.values.map(\.count).max() ?? 0, 1)
+        return grouped
+            .map { key, entries in
+                RankedInsight(
+                    id: "\(symbol)-\(key)",
+                    title: key,
+                    value: "\(entries.count)",
+                    detail: entries.count == 1 ? "1 tracked event" : "\(entries.count) tracked events",
+                    symbol: symbol,
+                    color: color,
+                    progress: Double(entries.count) / Double(maxCount)
+                )
+            }
+            .sorted {
+                if $0.progress != $1.progress {
+                    return $0.progress > $1.progress
+                }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
     }
 
     private func currentResidentMemoryBytes() -> UInt64 {
