@@ -33,6 +33,77 @@ struct OverviewView: View {
         let members: [VoiceMemberPresence]
     }
 
+    private struct OperationalStatusMetric: Identifiable {
+        enum State {
+            case healthy
+            case warning
+            case critical
+            case neutral
+
+            var color: Color {
+                switch self {
+                case .healthy: return .green
+                case .warning: return .orange
+                case .critical: return .red
+                case .neutral: return .secondary
+                }
+            }
+        }
+
+        let id: String
+        let title: String
+        let value: String
+        let detail: String
+        let symbol: String
+        let state: State
+    }
+
+    private struct OperationalActivityItem: Identifiable {
+        let id: String
+        let timestamp: Date
+        let title: String
+        let detail: String
+        let symbol: String
+        let color: Color
+    }
+
+    private struct AttentionItem: Identifiable {
+        enum Severity: Int {
+            case critical = 3
+            case warning = 2
+            case info = 1
+
+            var color: Color {
+                switch self {
+                case .critical: return .red
+                case .warning: return .orange
+                case .info: return .blue
+                }
+            }
+
+            var label: String {
+                switch self {
+                case .critical: return "Action"
+                case .warning: return "Review"
+                case .info: return "Note"
+                }
+            }
+
+            var symbol: String {
+                switch self {
+                case .critical: return "exclamationmark.octagon.fill"
+                case .warning: return "exclamationmark.triangle.fill"
+                case .info: return "info.circle.fill"
+                }
+            }
+        }
+
+        let id: String
+        let title: String
+        let detail: String
+        let severity: Severity
+    }
+
     // MARK: - Data Access via Provider
 
     private var settings: BotSettings { provider.settings }
@@ -89,6 +160,292 @@ struct OverviewView: View {
 
     private var helpSummary: String {
         "\(settings.help.mode.rawValue) · \(settings.help.tone.rawValue)"
+    }
+
+    private var failedCommandsToday: Int {
+        commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count
+    }
+
+    private var eventThroughputPerMinute: Double {
+        let cutoff = Date().addingTimeInterval(-300)
+        return Double(provider.events.filter { $0.timestamp >= cutoff }.count) / 5.0
+    }
+
+    private var queueLoad: Double {
+        min(Double(provider.events.count) / 20.0, 1.0)
+    }
+
+    private var operationalHealth: OperationalStatusMetric.State {
+        if status == .reconnecting || app.connectionDiagnostics.lastGatewayCloseCode != nil || failedCommandsToday >= 5 {
+            return .critical
+        }
+        if status == .connecting || queueLoad >= 0.70 || failedCommandsToday > 0 || app.connectionDiagnostics.heartbeatLatencyMs.map({ $0 >= 300 }) == true {
+            return .warning
+        }
+        if status == .running || settings.clusterMode == .worker {
+            return .healthy
+        }
+        return .neutral
+    }
+
+    private var operationalHealthTitle: String {
+        switch operationalHealth {
+        case .healthy: return "Nominal"
+        case .warning: return "Needs Review"
+        case .critical: return "Action Required"
+        case .neutral: return "Offline"
+        }
+    }
+
+    private var operationalHealthDetail: String {
+        switch operationalHealth {
+        case .healthy:
+            return "Gateway, workflows, and support services are inside their normal operating band."
+        case .warning:
+            return "SwiftBot is running, but one or more runtime signals should be watched."
+        case .critical:
+            return "A connection, queue, or automation signal needs attention before the bot is fully healthy."
+        case .neutral:
+            return "Start SwiftBot to resume live operations and runtime monitoring."
+        }
+    }
+
+    private var lastOperationalSyncDate: Date? {
+        [app.lastVoiceStateAt, app.lastClusterStatusSuccessAt, provider.patchyLastCycleAt]
+            .compactMap { $0 }
+            .max()
+    }
+
+    private var operationalStatusMetrics: [OperationalStatusMetric] {
+        let latency = app.connectionDiagnostics.heartbeatLatencyMs
+        let queueDepth = provider.events.count
+        let memoryBytes = currentResidentMemoryBytes()
+        let memoryText = memoryBytes > 0
+            ? ByteCountFormatter.string(fromByteCount: Int64(memoryBytes), countStyle: .memory)
+            : "--"
+
+        return [
+            OperationalStatusMetric(
+                id: "gateway-latency",
+                title: "Gateway Latency",
+                value: latency.map { "\($0) ms" } ?? "--",
+                detail: app.lastGatewayEventName == "-" ? "Awaiting gateway events" : "Last event \(app.lastGatewayEventName)",
+                symbol: "antenna.radiowaves.left.and.right",
+                state: latency.map { $0 >= 300 ? .warning : .healthy } ?? (status == .running ? .warning : .neutral)
+            ),
+            OperationalStatusMetric(
+                id: "cluster-role",
+                title: "Cluster Role",
+                value: settings.clusterMode.displayName,
+                detail: settings.clusterNodeName.isEmpty ? clusterSnapshot.nodeName : settings.clusterNodeName,
+                symbol: "point.3.connected.trianglepath.dotted",
+                state: clusterNodes.contains(where: { $0.status == .disconnected }) ? .warning : .healthy
+            ),
+            OperationalStatusMetric(
+                id: "last-sync",
+                title: "Last Sync",
+                value: lastOperationalSyncDate.map { relativeText(since: $0) } ?? "--",
+                detail: app.lastVoiceStateAt == nil ? "No voice state yet" : "Voice state observed",
+                symbol: "arrow.triangle.2.circlepath",
+                state: lastOperationalSyncDate == nil ? .neutral : .healthy
+            ),
+            OperationalStatusMetric(
+                id: "workflows",
+                title: "Active Workflows",
+                value: "\(enabledActionRuleCount)",
+                detail: "\(rules.count) configured rules",
+                symbol: "wand.and.stars",
+                state: enabledActionRuleCount > 0 ? .healthy : .warning
+            ),
+            OperationalStatusMetric(
+                id: "queue",
+                title: "Queue Health",
+                value: "\(queueDepth)",
+                detail: "\(String(format: "%.1f", eventThroughputPerMinute)) events/min",
+                symbol: "tray.full",
+                state: queueLoad >= 0.90 ? .critical : (queueLoad >= 0.70 ? .warning : .healthy)
+            ),
+            OperationalStatusMetric(
+                id: "ai-provider",
+                title: "AI Provider",
+                value: aiProviderSummary,
+                detail: settings.localAIDMReplyEnabled ? "DM replies on" : "DM replies off",
+                symbol: "sparkles",
+                state: .healthy
+            ),
+            OperationalStatusMetric(
+                id: "memory",
+                title: "Memory",
+                value: memoryText,
+                detail: "Current resident footprint",
+                symbol: "memorychip",
+                state: .neutral
+            ),
+            OperationalStatusMetric(
+                id: "discord",
+                title: "Discord Connectivity",
+                value: discordConnectivityLabel,
+                detail: discordConnectivityDetail,
+                symbol: "checkmark.icloud",
+                state: discordConnectivityState
+            ),
+            OperationalStatusMetric(
+                id: "node-mode",
+                title: "Node Mode",
+                value: currentNodeModeLabel,
+                detail: settings.clusterMode == .standalone ? "Local output enabled" : clusterSnapshot.serverStatusText,
+                symbol: "cpu",
+                state: settings.clusterMode == .standby || settings.clusterMode == .worker ? .warning : .healthy
+            ),
+            OperationalStatusMetric(
+                id: "throughput",
+                title: "Event Throughput",
+                value: String(format: "%.1f/min", eventThroughputPerMinute),
+                detail: "\(provider.events.count) retained runtime events",
+                symbol: "waveform.path.ecg",
+                state: .healthy
+            )
+        ]
+    }
+
+    private var liveActivityItems: [OperationalActivityItem] {
+        var items = provider.events.prefix(8).map { event in
+            OperationalActivityItem(
+                id: "event-\(event.id)",
+                timestamp: event.timestamp,
+                title: activityTitle(for: event.kind),
+                detail: cleanedActivityMessage(event.message),
+                symbol: activitySymbol(for: event.kind),
+                color: activityColor(for: event.kind)
+            )
+        }
+
+        items += commandLog.prefix(4).map { command in
+            OperationalActivityItem(
+                id: "command-\(command.id)",
+                timestamp: command.time,
+                title: command.ok ? "Command Executed" : "Command Failed",
+                detail: "\(command.user) ran \(command.command)",
+                symbol: "terminal",
+                color: command.ok ? .cyan : .red
+            )
+        }
+
+        if provider.patchyIsCycleRunning {
+            items.append(OperationalActivityItem(
+                id: "patchy-running",
+                timestamp: Date(),
+                title: "Patchy Running",
+                detail: "Update monitoring cycle is active",
+                symbol: "hammer.fill",
+                color: .purple
+            ))
+        } else if let lastCycle = provider.patchyLastCycleAt {
+            items.append(OperationalActivityItem(
+                id: "patchy-\(lastCycle.timeIntervalSince1970)",
+                timestamp: lastCycle,
+                title: "Patchy Checked",
+                detail: "\(patchyEnabledTargetCount) targets monitored",
+                symbol: "hammer",
+                color: .purple
+            ))
+        }
+
+        return Array(items.sorted { $0.timestamp > $1.timestamp }.prefix(10))
+    }
+
+    private var attentionItems: [AttentionItem] {
+        var items: [AttentionItem] = []
+
+        if status != .running && settings.clusterMode != .worker {
+            items.append(AttentionItem(
+                id: "gateway-status",
+                title: "Gateway is \(status.rawValue.capitalized)",
+                detail: "Live Discord operations are limited until the gateway is running.",
+                severity: status == .reconnecting ? .critical : .warning
+            ))
+        }
+
+        if let closeCode = app.connectionDiagnostics.lastGatewayCloseCode {
+            items.append(AttentionItem(
+                id: "gateway-close",
+                title: "Discord gateway closed",
+                detail: "Last abnormal close code: \(closeCode). Check token, intents, and permissions.",
+                severity: .critical
+            ))
+        }
+
+        if let latency = app.connectionDiagnostics.heartbeatLatencyMs, latency >= 300 {
+            items.append(AttentionItem(
+                id: "latency",
+                title: "Gateway latency elevated",
+                detail: "\(latency) ms heartbeat latency is above the normal operating band.",
+                severity: latency >= 500 ? .critical : .warning
+            ))
+        }
+
+        if failedCommandsToday > 0 {
+            items.append(AttentionItem(
+                id: "failed-commands",
+                title: "Command failures today",
+                detail: "\(failedCommandsToday) command\(failedCommandsToday == 1 ? "" : "s") failed and may need review.",
+                severity: failedCommandsToday >= 5 ? .critical : .warning
+            ))
+        }
+
+        if queueLoad >= 0.70 {
+            items.append(AttentionItem(
+                id: "queue",
+                title: "Runtime event queue is busy",
+                detail: "\(provider.events.count) retained events are pushing queue load to \(Int(queueLoad * 100))%.",
+                severity: queueLoad >= 0.90 ? .critical : .warning
+            ))
+        }
+
+        if enabledActionRuleCount == 0 {
+            items.append(AttentionItem(
+                id: "rules",
+                title: "No active workflows",
+                detail: "Rules are configured, but none are currently enabled for automation.",
+                severity: .info
+            ))
+        }
+
+        let patchyWarnings = provider.patchyDebugLogs.prefix(30).filter {
+            $0.localizedCaseInsensitiveContains("failed") || $0.localizedCaseInsensitiveContains("skipped")
+        }.count
+        if settings.patchy.monitoringEnabled && patchyEnabledTargetCount == 0 {
+            items.append(AttentionItem(
+                id: "patchy-targets",
+                title: "Patchy has no enabled targets",
+                detail: "Monitoring is on, but there are no delivery targets to check.",
+                severity: .warning
+            ))
+        } else if patchyWarnings > 0 {
+            items.append(AttentionItem(
+                id: "patchy-warnings",
+                title: "Patchy warnings detected",
+                detail: "\(patchyWarnings) recent update-monitoring warning\(patchyWarnings == 1 ? "" : "s") appeared in the debug log.",
+                severity: .warning
+            ))
+        }
+
+        let degradedNodes = clusterNodes.filter { $0.status == .degraded || $0.status == .disconnected }
+        if settings.clusterMode != .standalone && !degradedNodes.isEmpty {
+            items.append(AttentionItem(
+                id: "cluster-nodes",
+                title: "SwiftMesh node health",
+                detail: "\(degradedNodes.count) cluster node\(degradedNodes.count == 1 ? "" : "s") need attention.",
+                severity: degradedNodes.contains(where: { $0.status == .disconnected }) ? .critical : .warning
+            ))
+        }
+
+        return items.sorted {
+            if $0.severity.rawValue != $1.severity.rawValue {
+                return $0.severity.rawValue > $1.severity.rawValue
+            }
+            return $0.title < $1.title
+        }
     }
 
     private var groupedActiveVoice: [VoiceChannelGroup] {
@@ -302,98 +659,9 @@ struct OverviewView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    ViewSectionHeader(title: "Overview", symbol: "speedometer")
-                    Spacer()
-                    if isEditingDashboard {
-                        Menu {
-                            if hiddenWidgets.isEmpty {
-                                Text("No hidden widgets")
-                            } else {
-                                ForEach(hiddenWidgets) { widget in
-                                    Button {
-                                        hiddenMetricIDs.remove(widget.id)
-                                        persistDashboardPreferences()
-                                    } label: {
-                                        Label(widget.title, systemImage: widget.symbol)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label("Add Widget", systemImage: "plus.circle")
-                        }
-                        .menuStyle(.borderlessButton)
-
-                        Button("Reset") {
-                            metricOrder = availableMetricWidgets.map(\.id)
-                            hiddenMetricIDs.removeAll()
-                            persistDashboardPreferences()
-                        }
-                        .disabled(!canResetDashboard)
-                        .buttonStyle(.bordered)
-                    }
-
-                    Button(isEditingDashboard ? "Done" : "Edit") {
-                        isEditingDashboard.toggle()
-                    }
-                    .buttonStyle(GlassActionButtonStyle())
-                    .controlSize(.small)
-                }
-
-                LazyVGrid(columns: [
-                    GridItem(.adaptive(minimum: 185), spacing: 10)
-                ], spacing: 12) {
-                    ForEach(orderedVisibleMetricWidgets) { widget in
-                        ZStack(alignment: .topTrailing) {
-                            DashboardMetricCard(
-                                title: widget.title,
-                                value: widget.value,
-                                subtitle: widget.subtitle,
-                                symbol: widget.symbol,
-                                detail: widget.detail,
-                                color: widget.color,
-                                appleIntelligenceGlowEnabled: widget.id == "aiBots" && settings.preferredAIProvider == .apple
-                            )
-                            .rotationEffect(.degrees(isEditingDashboard ? wiggleAmplitude(for: widget.id) : 0))
-                            .animation(
-                                isEditingDashboard
-                                    ? .easeInOut(duration: wiggleDuration(for: widget.id))
-                                        .repeatForever(autoreverses: true)
-                                        .delay(wiggleDelay(for: widget.id))
-                                    : .easeOut(duration: 0.12),
-                                value: isEditingDashboard
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .onDrag {
-                                guard isEditingDashboard else { return NSItemProvider() }
-                                draggingMetricID = widget.id
-                                return NSItemProvider(object: widget.id as NSString)
-                            }
-                            .onDrop(of: [UTType.text], delegate: OverviewMetricDropDelegate(
-                                targetID: widget.id,
-                                orderedIDs: $metricOrder,
-                                draggingID: $draggingMetricID,
-                                isEnabled: isEditingDashboard,
-                                onCommit: persistDashboardPreferences
-                            ))
-
-                            if isEditingDashboard {
-                                Button {
-                                    hiddenMetricIDs.insert(widget.id)
-                                    persistDashboardPreferences()
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.red)
-                                        .background(Circle().fill(.ultraThinMaterial))
-                                }
-                                .buttonStyle(.plain)
-                                .padding(6)
-                            }
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 22) {
+                overviewHeader
+                metricStrip
 
                 if settings.clusterMode != .standalone {
                     OverviewClusterSummaryCard(
@@ -402,77 +670,13 @@ struct OverviewView: View {
                     )
                 }
 
-                HStack(spacing: 12) {
-                    DashboardPanel(title: "Recent Voice Events", actionTitle: "View") {
-                        if recentVoice.isEmpty {
-                            PlaceholderPanelLine(text: "No voice events yet")
-                        } else {
-                            ForEach(recentVoice) { entry in
-                                PanelLine(
-                                    title: entry.description,
-                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
-                                    tone: .green
-                                )
-                            }
-                        }
-                    }
+                operationalStatusCard
 
-                    DashboardPanel(title: "Recent Commands", actionTitle: "View") {
-                        if recentCommands.isEmpty {
-                            PlaceholderPanelLine(text: "No commands yet")
-                        } else {
-                            ForEach(recentCommands) { entry in
-                                PanelLine(
-                                    title: "\(entry.user) @ \(entry.server) • \(entry.command)",
-                                    subtitle: entry.time.formatted(date: .omitted, time: .standard),
-                                    tone: entry.ok ? .accentColor : .red
-                                )
-                            }
-                        }
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    DashboardPanel(title: settings.clusterMode == .worker ? "Worker Activity" : "Currently In Voice") {
-                        if settings.clusterMode == .worker {
-                            InfoRow(label: "Server", value: clusterSnapshot.serverStatusText)
-                            InfoRow(label: "Last Job", value: clusterSnapshot.lastJobSummary)
-                            InfoRow(label: "Last Node", value: clusterSnapshot.lastJobNode)
-                            InfoRow(label: "Diagnostics", value: clusterSnapshot.diagnostics)
-                        } else if activeVoice.isEmpty {
-                            PlaceholderPanelLine(text: "No one is in voice right now")
-                        } else {
-                            ForEach(groupedActiveVoice) { group in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(group.title)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 4)
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        ForEach(group.members) { member in
-                                            VoicePresenceMemberRow(
-                                                member: member,
-                                                avatarURL: provider.avatarURL(forUserId: member.userId, guildId: member.guildId)
-                                            )
-                                        }
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 8)
-                                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                }
-                            }
-                        }
-                    }
-
-                    DashboardPanel(title: "Bot Info") {
-                        InfoRow(label: "Uptime", value: settings.clusterMode == .worker ? "--" : (uptime?.text ?? "--"))
-                        InfoRow(label: "Errors", value: "\(stats.errors)")
-                        InfoRow(label: "State", value: settings.clusterMode == .worker ? app.primaryServiceStatusText : status.rawValue.capitalized)
-                        if settings.clusterMode != .standalone {
-                            InfoRow(label: "Cluster", value: clusterSnapshot.mode.rawValue)
-                        }
-                    }
+                HStack(alignment: .top, spacing: 16) {
+                    liveActivityCard
+                        .frame(maxWidth: .infinity)
+                    attentionRequiredCard
+                        .frame(maxWidth: .infinity)
                 }
             }
             .padding(.horizontal, 16)
@@ -488,6 +692,453 @@ struct OverviewView: View {
         .onChange(of: isEditingDashboard) { _, isEditing in
             if !isEditing { draggingMetricID = nil }
         }
+    }
+
+    private var overviewHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                ViewSectionHeader(title: "Overview", symbol: "speedometer")
+                Text("Mission control for SwiftBot's live runtime.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isEditingDashboard {
+                Menu {
+                    if hiddenWidgets.isEmpty {
+                        Text("No hidden widgets")
+                    } else {
+                        ForEach(hiddenWidgets) { widget in
+                            Button {
+                                hiddenMetricIDs.remove(widget.id)
+                                persistDashboardPreferences()
+                            } label: {
+                                Label(widget.title, systemImage: widget.symbol)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Add Widget", systemImage: "plus.circle")
+                }
+                .menuStyle(.borderlessButton)
+
+                Button("Reset") {
+                    metricOrder = availableMetricWidgets.map(\.id)
+                    hiddenMetricIDs.removeAll()
+                    persistDashboardPreferences()
+                }
+                .disabled(!canResetDashboard)
+                .buttonStyle(.bordered)
+            }
+
+            Button(isEditingDashboard ? "Done" : "Edit") {
+                isEditingDashboard.toggle()
+            }
+            .buttonStyle(GlassActionButtonStyle())
+            .controlSize(.small)
+        }
+    }
+
+    private var metricStrip: some View {
+        LazyVGrid(columns: [
+            GridItem(.adaptive(minimum: 185), spacing: 12)
+        ], spacing: 12) {
+            ForEach(orderedVisibleMetricWidgets) { widget in
+                ZStack(alignment: .topTrailing) {
+                    DashboardMetricCard(
+                        title: widget.title,
+                        value: widget.value,
+                        subtitle: widget.subtitle,
+                        symbol: widget.symbol,
+                        detail: widget.detail,
+                        color: widget.color,
+                        appleIntelligenceGlowEnabled: widget.id == "aiBots" && settings.preferredAIProvider == .apple
+                    )
+                    .rotationEffect(.degrees(isEditingDashboard ? wiggleAmplitude(for: widget.id) : 0))
+                    .animation(
+                        isEditingDashboard
+                            ? .easeInOut(duration: wiggleDuration(for: widget.id))
+                                .repeatForever(autoreverses: true)
+                                .delay(wiggleDelay(for: widget.id))
+                            : .easeOut(duration: 0.12),
+                        value: isEditingDashboard
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .onDrag {
+                        guard isEditingDashboard else { return NSItemProvider() }
+                        draggingMetricID = widget.id
+                        return NSItemProvider(object: widget.id as NSString)
+                    }
+                    .onDrop(of: [UTType.text], delegate: OverviewMetricDropDelegate(
+                        targetID: widget.id,
+                        orderedIDs: $metricOrder,
+                        draggingID: $draggingMetricID,
+                        isEnabled: isEditingDashboard,
+                        onCommit: persistDashboardPreferences
+                    ))
+
+                    if isEditingDashboard {
+                        Button {
+                            hiddenMetricIDs.insert(widget.id)
+                            persistDashboardPreferences()
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.red)
+                                .background(Circle().fill(.ultraThinMaterial))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(6)
+                    }
+                }
+            }
+        }
+    }
+
+    private var operationalStatusCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        liveStatusPulse(color: operationalHealth.color)
+                        Text("Operational Status")
+                            .font(.title3.weight(.semibold))
+                    }
+                    Text(operationalHealthDetail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 18)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(operationalHealthTitle)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(operationalHealth.color)
+                    Text(uptime?.text ?? currentNodeModeLabel)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.adaptive(minimum: 180), spacing: 10)
+            ], spacing: 10) {
+                ForEach(operationalStatusMetrics) { metric in
+                    operationalStatusTile(metric)
+                }
+            }
+        }
+        .padding(18)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [operationalHealth.color.opacity(0.10), Color.white.opacity(0.025)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .allowsHitTesting(false)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: operationalHealth.color.opacity(0.10), radius: 22, y: 10)
+    }
+
+    private func operationalStatusTile(_ metric: OperationalStatusMetric) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: metric.symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(metric.state.color)
+                    .frame(width: 22, height: 22)
+                    .background(metric.state.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                Text(metric.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Circle()
+                    .fill(metric.state.color)
+                    .frame(width: 6, height: 6)
+            }
+            Text(metric.value)
+                .font(.headline.weight(.semibold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(metric.detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(metric.state.color.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var liveActivityCard: some View {
+        overviewOperationsCard(title: "Live Activity", subtitle: "Runtime stream", symbol: "dot.radiowaves.left.and.right") {
+            if liveActivityItems.isEmpty {
+                emptyOperationsState("No live activity yet")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(liveActivityItems.enumerated()), id: \.element.id) { index, item in
+                        operationalActivityRow(item)
+                        if index < liveActivityItems.count - 1 {
+                            Divider()
+                                .opacity(0.24)
+                                .padding(.leading, 34)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var attentionRequiredCard: some View {
+        overviewOperationsCard(title: "Attention Required", subtitle: "\(attentionItems.count) item\(attentionItems.count == 1 ? "" : "s")", symbol: "exclamationmark.triangle") {
+            if attentionItems.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.headline)
+                            .foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No action needed")
+                                .font(.subheadline.weight(.semibold))
+                            Text("SwiftBot is operating inside the expected runtime band.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(attentionItems.prefix(6)) { item in
+                        attentionRow(item)
+                    }
+                }
+            }
+        }
+    }
+
+    private func overviewOperationsCard<Content: View>(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 280, alignment: .topLeading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func operationalActivityRow(_ item: OperationalActivityItem) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: item.symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(item.color)
+                .frame(width: 24, height: 24)
+                .background(item.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(item.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(item.timestamp, style: .relative)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func attentionRow(_ item: AttentionItem) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: item.severity.symbol)
+                .font(.subheadline)
+                .foregroundStyle(item.severity.color)
+                .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(item.severity.label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(item.severity.color)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(item.severity.color.opacity(0.12), in: Capsule())
+                }
+                Text(item.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(item.severity.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .strokeBorder(item.severity.color.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private func emptyOperationsState(_ message: String) -> some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+    }
+
+    private func liveStatusPulse(color: Color) -> some View {
+        TimelineView(.animation) { timeline in
+            let pulse = (sin(timeline.date.timeIntervalSince1970 * 3.0) + 1) / 2
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+                .overlay {
+                    Circle()
+                        .stroke(color.opacity(0.26), lineWidth: 7)
+                        .scaleEffect(1 + pulse * 0.55)
+                        .opacity(0.28 + pulse * 0.35)
+                }
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var discordConnectivityLabel: String {
+        switch app.connectionDiagnostics.restHealth {
+        case .ok: return "REST OK"
+        case .error(let code, _): return code == 0 ? "Unavailable" : "HTTP \(code)"
+        case .unknown:
+            if status == .running { return "Gateway OK" }
+            return "Unknown"
+        }
+    }
+
+    private var discordConnectivityDetail: String {
+        switch app.connectionDiagnostics.restHealth {
+        case .ok:
+            return app.connectionDiagnostics.rateLimitRemaining.map { "\($0) REST requests remaining" } ?? "REST probe succeeded"
+        case .error(_, let message):
+            return message
+        case .unknown:
+            return app.connectionDiagnostics.lastTestMessage.isEmpty ? "REST probe not run" : app.connectionDiagnostics.lastTestMessage
+        }
+    }
+
+    private var discordConnectivityState: OperationalStatusMetric.State {
+        switch app.connectionDiagnostics.restHealth {
+        case .ok: return .healthy
+        case .error: return .critical
+        case .unknown: return status == .running ? .healthy : .neutral
+        }
+    }
+
+    private var currentNodeModeLabel: String {
+        switch settings.clusterMode {
+        case .standalone: return "Standalone"
+        case .leader: return "Primary"
+        case .standby: return "Failover"
+        case .worker: return "Worker"
+        }
+    }
+
+    private func activityTitle(for kind: ActivityEvent.Kind) -> String {
+        switch kind {
+        case .voiceJoin: return "User Joined Voice"
+        case .voiceLeave: return "User Left Voice"
+        case .voiceMove: return "Voice Channel Move"
+        case .command: return "Command Executed"
+        case .info: return "Runtime Event"
+        case .warning: return "Runtime Warning"
+        case .error: return "Runtime Error"
+        }
+    }
+
+    private func activitySymbol(for kind: ActivityEvent.Kind) -> String {
+        switch kind {
+        case .voiceJoin, .voiceLeave, .voiceMove: return "waveform"
+        case .command: return "terminal"
+        case .info: return "info.circle"
+        case .warning: return "exclamationmark.triangle"
+        case .error: return "xmark.octagon"
+        }
+    }
+
+    private func activityColor(for kind: ActivityEvent.Kind) -> Color {
+        switch kind {
+        case .voiceJoin: return .green
+        case .voiceLeave: return .red
+        case .voiceMove: return .blue
+        case .command: return .cyan
+        case .info: return .secondary
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+
+    private func cleanedActivityMessage(_ message: String) -> String {
+        ["🟢 ", "🔴 ", "🔀 ", "✅ ", "⚠️ ", "❌ "].reduce(message) { cleaned, marker in
+            cleaned.replacingOccurrences(of: marker, with: "")
+        }
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func relativeText(since date: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 3600 { return "\(seconds / 60)m ago" }
+        if seconds < 86_400 { return "\(seconds / 3600)h ago" }
+        return "\(seconds / 86_400)d ago"
+    }
+
+    private func currentResidentMemoryBytes() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return UInt64(info.resident_size)
     }
 
     private func syncDashboardPreferences() {
@@ -638,7 +1289,7 @@ struct DashboardMetricCard: View {
     @State private var glowOpacity = 0.0
     @State private var playPulse = false
 
-    private let cornerRadius: CGFloat = 18
+    private let cornerRadius: CGFloat = 22
 
     private var isGlowActive: Bool {
         appleIntelligenceGlowEnabled && isHovering
@@ -654,9 +1305,12 @@ struct DashboardMetricCard: View {
                 Image(systemName: symbol)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(color)
+                    .frame(width: 22, height: 22)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
@@ -676,7 +1330,13 @@ struct DashboardMetricCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .glassCard(cornerRadius: cornerRadius, tint: color.opacity(0.10), stroke: color.opacity(0.28))
+        .glassCard(
+            cornerRadius: cornerRadius,
+            tint: color.opacity(isHovering ? 0.15 : 0.10),
+            stroke: color.opacity(isHovering ? 0.38 : 0.24)
+        )
+        .scaleEffect(isHovering ? 1.012 : 1)
+        .shadow(color: color.opacity(isHovering ? 0.14 : 0.06), radius: isHovering ? 14 : 8, y: isHovering ? 8 : 4)
         .overlay {
             if shouldRenderGlow || playPulse {
                 ZStack {
@@ -695,7 +1355,9 @@ struct DashboardMetricCard: View {
         }
         .onHover { hovering in
             let wasHovering = isHovering
-            isHovering = hovering
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
 
             if hovering && appleIntelligenceGlowEnabled && !wasHovering {
                 playPulse = true
