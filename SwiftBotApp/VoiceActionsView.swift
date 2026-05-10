@@ -13,6 +13,7 @@ struct VoiceWorkspaceView: View {
     @EnvironmentObject var app: AppModel
     @ObservedObject var ruleStore: RuleStore
     @Environment(\.undoManager) private var undoManager
+    @State private var showRecipeWizard: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,9 +34,7 @@ struct VoiceWorkspaceView: View {
                 rules: rulesBinding,
                 selectedRuleID: appSelectionBinding,
                 onAddNew: {
-                    let sid = serverIds.first ?? ""
-                    let cid = app.availableTextChannelsByServer[sid]?.first?.id ?? ""
-                    ruleStore.addNewRule(serverId: sid, channelId: cid)
+                    showRecipeWizard = true
                 },
                 onDeleteRuleID: { ruleID in
                     ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
@@ -72,6 +71,12 @@ struct VoiceWorkspaceView: View {
         .padding(.vertical, 12)
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .sheet(isPresented: $showRecipeWizard) {
+            RecipeWizardView { rule in
+                ruleStore.addRule(rule)
+            }
+            .environmentObject(app)
+        }
         .onChange(of: ruleStore.rules) {
             if let selected = ruleStore.selectedRuleID,
                !ruleStore.rules.contains(where: { $0.id == selected }) {
