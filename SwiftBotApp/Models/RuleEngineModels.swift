@@ -32,6 +32,13 @@ final class RuleStore: ObservableObject {
         scheduleAutoSave()
     }
 
+    /// Append a fully-formed Rule (e.g. produced by the recipe wizard) and select it.
+    func addRule(_ rule: Rule) {
+        rules.append(rule)
+        selectedRuleID = rule.id
+        scheduleAutoSave()
+    }
+
     func deleteRules(at offsets: IndexSet, undoManager: UndoManager?) {
         let sortedOffsets = offsets.sorted()
         guard !sortedOffsets.isEmpty else { return }

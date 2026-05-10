@@ -106,7 +106,7 @@ enum SwiftMinerDMEmbedPrimitives {
     // MARK: - Greeting
 
     static func greeting(for discordName: String?) -> String {
-        discordName.map { "Hi **\($0)**. " } ?? ""
+        discordName.map { "Hi **\($0)**\n\n" } ?? ""
     }
 }
 
@@ -129,7 +129,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Welcome to SwiftMiner",
+            title: "👋 Welcome to SwiftMiner",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.welcomeDescription,
             style: .neutral,
             fields: fields,
@@ -152,7 +152,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Discord account linked",
+            title: "🔗 Discord account linked",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.discordLinkedDescription,
             style: .info,
             fields: fields,
@@ -174,23 +174,29 @@ enum SwiftMinerDMEmbedBuilders {
     ) -> [String: Any] {
         var fields: [[String: Any]] = []
 
-        // Primary CTA: clickable activation link with code pre-filled
+        // Primary CTA: clickable activation link with code pre-filled.
         if let url = activationURL, !url.isEmpty {
             fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
                 title: theme.setupLinkTitle,
                 value: "[\(theme.setupLinkLabel)](\(url))"
             ))
-        } else if let code = activationCode, !code.isEmpty {
-            // Fallback if no URL is provided
-            let steps = [
-                "1. \(theme.setupStep1)",
-                "2. \(theme.setupStep2)",
-                "3. \(theme.setupStep3)"
-            ].joined(separator: "\n")
-            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
-                title: theme.activationStepsTitle,
-                value: steps
-            ))
+        }
+
+        // Always show the code if we have one, even alongside the CTA — it's a
+        // useful fallback if Discord blocks the link or the user is on another
+        // device. When there's no URL, also include the manual steps.
+        if let code = activationCode, !code.isEmpty {
+            if activationURL?.isEmpty ?? true {
+                let steps = [
+                    "1. \(theme.setupStep1)",
+                    "2. \(theme.setupStep2)",
+                    "3. \(theme.setupStep3)"
+                ].joined(separator: "\n")
+                fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                    title: theme.activationStepsTitle,
+                    value: steps
+                ))
+            }
             fields.append(SwiftMinerDMEmbedPrimitives.makeActivationCodeField(code: code, theme: theme))
         }
 
@@ -206,7 +212,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Link your Twitch account",
+            title: "🟣 Link your Twitch account",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.setupDescription,
             style: .info,
             fields: fields,
@@ -248,7 +254,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Twitch connected",
+            title: "✅ Twitch connected",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + body,
             style: .success,
             fields: fields,
@@ -284,7 +290,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Twitch connection expired",
+            title: "⚠️ Twitch connection expired",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.reauthDescription,
             style: .warning,
             fields: fields,
@@ -302,7 +308,7 @@ enum SwiftMinerDMEmbedBuilders {
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Welcome back",
+            title: "👋 Welcome back",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.welcomeBackDescription,
             style: .neutral,
             footer: theme.statusFooter,
@@ -325,7 +331,7 @@ enum SwiftMinerDMEmbedBuilders {
         let desc = String(format: theme.dropClaimedDescription, campaign, account)
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Drop claimed",
+            title: "🎁 Drop claimed",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .success,
             footer: "Check your Twitch inventory to redeem it",
@@ -346,7 +352,7 @@ enum SwiftMinerDMEmbedBuilders {
         let desc = String(format: theme.campaignCompletedDescription, campaign)
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Campaign complete",
+            title: "🏁 Campaign complete",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .success,
             footer: theme.statusFooter,
@@ -368,7 +374,7 @@ enum SwiftMinerDMEmbedBuilders {
         let desc = String(format: theme.campaignDetectedDescription, game)
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "New campaign",
+            title: "🆕 New campaign",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .info,
             footer: "Prioritise or ignore games with /miner",
@@ -403,7 +409,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Something needs a look",
+            title: "⚠️ Something needs a look",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.accountActionRequiredDescription,
             style: .recovery,
             fields: fields,
@@ -430,7 +436,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "Link Twitch for \(game)",
+            title: "🔗 Link Twitch for \(game)",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .warning,
             fields: fields,

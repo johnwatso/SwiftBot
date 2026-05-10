@@ -29,21 +29,21 @@ struct SwiftMinerDMTheme: Sendable {
 
     // MARK: - Section Labels
 
-    var prioritisationSectionLabel: String = "Current priorities"
-    var prioritisationEmptyLabel: String = "Current priorities"
-    var prioritisationMissingLabel: String = "Current priorities"
+    var prioritisationSectionLabel: String = "🎯 Current priorities"
+    var prioritisationEmptyLabel: String = "🎯 Current priorities"
+    var prioritisationMissingLabel: String = "🎯 Current priorities"
 
     var activationStepsTitle: String = "Link your Twitch account"
     var activationCodeSeparator: String = "━━━━━━━━━━━━━━"
-    var setupLinkTitle: String = "Activate"
+    var setupLinkTitle: String = "🚀 Activate"
     var setupLinkLabel: String = "Click here to link Twitch"
-    var notificationsSectionLabel: String = "Notifications"
+    var notificationsSectionLabel: String = "🔔 Notifications"
     var notificationsSectionValue: String = "I'll DM you here if anything needs your attention."
 
     // MARK: - Help CTA Labels
 
     var learnMoreLabel: String = "Learn more"
-    var needHelpLabel: String = "Need help?"
+    var needHelpLabel: String = "❓ Need help?"
     var viewSetupGuideLabel: String = "View setup guide"
     var whatIsSwiftMinerLabel: String = "What is SwiftMiner?"
     var setupGuideValue: String = "Check out the setup guide for help with linking, troubleshooting, and commands."
@@ -61,11 +61,11 @@ struct SwiftMinerDMTheme: Sendable {
     var setupStep1: String = "Open **twitch.tv/activate**"
     var setupStep2: String = "Sign in to Twitch"
     var setupStep3: String = "Enter the code below"
-    var setupExpiresLabel: String = "Expires"
+    var setupExpiresLabel: String = "⏱️ Expires"
 
     var reauthDescription: String = "Your Twitch connection needs refreshing. This usually happens when Twitch expires your login session."
-    var reauthWhyLabel: String = "Why this happened"
-    var reauthHowLabel: String = "How to fix"
+    var reauthWhyLabel: String = "❓ Why this happened"
+    var reauthHowLabel: String = "🛠️ How to fix"
     var reauthHowValue: String = "Use `/miner action:setup` to reconnect your account."
 
     var linkedBodyWithUsername: String = "Your Twitch account **@%@** is now connected to SwiftMiner. I'll start watching for Drops automatically."
@@ -75,8 +75,8 @@ struct SwiftMinerDMTheme: Sendable {
     var campaignCompletedDescription: String = "You've claimed all Drops from **%@**."
     var campaignDetectedDescription: String = "A new Drops campaign started for **%@**. SwiftMiner will start watching automatically if your account is connected."
     var accountActionRequiredDescription: String = "There's a problem with your mining setup."
-    var accountActionIssueLabel: String = "Issue"
-    var accountActionFixLabel: String = "What to do"
+    var accountActionIssueLabel: String = "⚠️ Issue"
+    var accountActionFixLabel: String = "🛠️ What to do"
     var accountActionFixValue: String = "Use `/miner action:status` to see details, or `/miner action:setup` to reconnect if needed."
     var prioritisedGameNeedsLinkingDescription: String = "You prioritised **%@**, but there's no Twitch account linked to claim Drops for it."
 
