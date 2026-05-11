@@ -876,7 +876,6 @@ struct OverviewView: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(.white.opacity(0.18), lineWidth: 1)
         )
-        .shadow(color: operationalHealth.color.opacity(0.10), radius: 22, y: 10)
     }
 
     private func operationalStatusTile(_ metric: OperationalStatusMetric) -> some View {
