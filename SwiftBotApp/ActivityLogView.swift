@@ -61,13 +61,14 @@ struct ActivityLogView: View {
         for cmd in app.commandLog {
             let detailParts = [cmd.user, cmd.server, cmd.channel, cmd.executionRoute]
                 .filter { !$0.isEmpty }
+            let rawTitle = cmd.command.isEmpty ? "(empty command)" : cmd.command
             entries.append(
                 ActivityEntry(
                     id: "cmd-\(cmd.id.uuidString)",
                     time: cmd.time,
                     kind: .command,
                     level: cmd.ok ? .ok : .error,
-                    title: cmd.command.isEmpty ? "(empty command)" : cmd.command,
+                    title: Self.stripEmojis(rawTitle),
                     detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
                 )
             )
@@ -327,6 +328,8 @@ struct ActivityLogView: View {
             stripped = String(line[after...]).trimmingCharacters(in: .whitespaces)
         }
 
+        // Detect severity FROM the emoji markers *before* stripping them, so
+        // the SF Symbol on the row still reflects the original signal.
         let level: ActivityLevel = {
             if stripped.contains("❌") { return .error }
             if stripped.contains("⚠️") { return .warning }
@@ -334,7 +337,23 @@ struct ActivityLogView: View {
             return .info
         }()
 
-        return ParsedLogLine(time: time, title: stripped, level: level)
+        return ParsedLogLine(time: time, title: Self.stripEmojis(stripped), level: level)
+    }
+
+    /// Removes all emoji / pictographic glyphs from a log line so the row's
+    /// leading SF Symbol is the only place severity or topic is rendered.
+    /// Severity must be inferred from the *original* text before calling this.
+    static func stripEmojis(_ s: String) -> String {
+        var out = s.replacingOccurrences(
+            of: "\\p{Extended_Pictographic}",
+            with: "",
+            options: .regularExpression
+        )
+        // Drop variation selectors and ZWJ left behind by stripping emoji.
+        out.removeAll { $0 == "\u{FE0F}" || $0 == "\u{200D}" }
+        return out
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
     }
 }
 
