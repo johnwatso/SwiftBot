@@ -12,6 +12,7 @@
 		00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */; };
 		0684186AD516210645A6083C /* MeshFailoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C61277F888422928536026 /* MeshFailoverTests.swift */; };
 		085D20923E60B1599D77A36D /* PatchyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */; };
+		0C796BF553DC7A537A3E2702 /* GitHubService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBC4988CC079FA2CC02E66C /* GitHubService.swift */; };
 		0DE92D9DBC280ACE537C2209 /* DiscordService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BBDCEDB0E2FC18B5BD01F0 /* DiscordService.swift */; };
 		0E6027F2B5CEEDF280B843D4 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1886F81C765D477A60E46CBD /* AnalyticsView.swift */; };
 		0F8391EF95A66EB768F81BA8 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */; };
@@ -323,6 +324,7 @@
 		E5A84E95FDE31E5E752C2E2F /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleEngineModels.swift; sourceTree = "<group>"; };
 		E72DBCA95A64DF3580BEB869 /* OnboardingStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStyles.swift; sourceTree = "<group>"; };
+		ECBC4988CC079FA2CC02E66C /* GitHubService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubService.swift; sourceTree = "<group>"; };
 		F3A5EEE408384C33E6A68310 /* RuleExecutionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleExecutionService.swift; sourceTree = "<group>"; };
 		F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMStateTests.swift; sourceTree = "<group>"; };
 		F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordEvents.swift"; sourceTree = "<group>"; };
@@ -463,6 +465,7 @@
 				DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */,
 				7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */,
 				726607C6AA014293B0C7794D /* EmbedFormatter.swift */,
+				ECBC4988CC079FA2CC02E66C /* GitHubService.swift */,
 				316BE5EE23ADB08FD4042070 /* IntelService.swift */,
 				1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */,
 				D9386EDF3092943C62265C4E /* ReleaseNotes.swift */,
@@ -780,6 +783,7 @@
 				5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */,
 				382736874A4ABFC372B65199 /* GatewayModels.swift in Sources */,
 				00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */,
+				0C796BF553DC7A537A3E2702 /* GitHubService.swift in Sources */,
 				32EF85D74938EFC99D68448B /* HelpEngine.swift in Sources */,
 				403C97BE65696647F37FFD89 /* IntelService.swift in Sources */,
 				3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */,

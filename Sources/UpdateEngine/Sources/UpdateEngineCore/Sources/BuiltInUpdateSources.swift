@@ -78,6 +78,36 @@ public struct IntelUpdateSource: UpdateSource, Sendable {
     }
 }
 
+/// GitHub repository update source — watches latest release or latest commit on a branch.
+public struct GitHubUpdateSource: UpdateSource, Sendable {
+    public let owner: String
+    public let repo: String
+    public let mode: GitHubWatchMode
+    public let sourceKey: String
+    private let service: GitHubService
+
+    public init(owner: String, repo: String, mode: GitHubWatchMode, service: GitHubService = GitHubService()) {
+        self.owner = owner
+        self.repo = repo
+        self.mode = mode
+        let channel: String
+        switch mode {
+        case .releases:
+            channel = "\(owner)/\(repo)/releases"
+        case .commits(let branch):
+            let branchPart = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+            channel = "\(owner)/\(repo)/commits/\(branchPart.isEmpty ? "default" : branchPart)"
+        }
+        self.sourceKey = CacheKeyBuilder.build(vendor: "github", channel: channel)
+        self.service = service
+    }
+
+    public func fetchLatest() async throws -> any UpdateItem {
+        let info = try await service.fetchLatest(owner: owner, repo: repo, mode: mode)
+        return GitHubUpdateItem(sourceKey: sourceKey, info: info)
+    }
+}
+
 /// Steam news update source for a specific app.
 public struct SteamNewsUpdateSource: UpdateSource, Sendable {
     public let appID: String

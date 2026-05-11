@@ -52,6 +52,21 @@ public struct DriverUpdateItem: UpdateItem, Sendable {
     }
 }
 
+/// Rich update item used by GitHub repository sources.
+public struct GitHubUpdateItem: UpdateItem, Sendable {
+    public let sourceKey: String
+    public let identifier: String
+    public let version: String
+    public let info: GitHubUpdateInfo
+
+    public init(sourceKey: String, info: GitHubUpdateInfo) {
+        self.sourceKey = sourceKey
+        self.identifier = info.releaseIdentifier
+        self.version = info.displayVersion
+        self.info = info
+    }
+}
+
 /// Rich update item used by Steam news sources.
 public struct SteamUpdateItem: UpdateItem, Sendable {
     public let sourceKey: String
