@@ -76,7 +76,8 @@ actor MediaLibraryIndexer {
             ) else { continue }
 
             let allowedExtensions = Set(source.normalizedExtensions)
-            for case let fileURL as URL in enumerator {
+            let fileURLs = enumerator.allObjects.compactMap { $0 as? URL }
+            for fileURL in fileURLs {
                 let ext = fileURL.pathExtension.lowercased()
                 guard allowedExtensions.isEmpty || allowedExtensions.contains(ext) else { continue }
                 guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
