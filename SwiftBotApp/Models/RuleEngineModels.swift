@@ -367,7 +367,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case wikiBridge = "WikiBridge"
     case logs = "Logs"
     case aiBots = "AI Bots"
-    case diagnostics = "Diagnostics"
     case analytics = "Analytics"
     case swiftMesh = "SwiftMesh"
 
@@ -383,7 +382,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .wikiBridge: return "book.pages.fill"
         case .logs: return "list.bullet.clipboard.fill"
         case .aiBots: return "sparkles.rectangle.stack.fill"
-        case .diagnostics: return "waveform.path.ecg"
         case .analytics: return "chart.line.uptrend.xyaxis"
         case .swiftMesh: return "point.3.connected.trianglepath.dotted"
         }

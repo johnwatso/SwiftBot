@@ -69,7 +69,6 @@ struct UnifiedRootView: View {
                 case .wikiBridge: WikiBridgeView()
                 case .logs: LogsView()
                 case .aiBots: AIBotsView()
-                case .diagnostics: DiagnosticsView()
                 case .analytics: AnalyticsView()
                 case .swiftMesh: SwiftMeshView()
                 }
@@ -186,11 +185,6 @@ struct DashboardSidebar: View {
                             )
                             SidebarRow(
                                 item: .analytics,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .diagnostics,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
