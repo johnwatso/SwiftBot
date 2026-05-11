@@ -108,6 +108,7 @@ struct RemoteModeRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .background(SwiftBotGlassBackground())
+        .toolbar(removing: .sidebarToggle)
         .toolbar {
             toolbarContent
         }

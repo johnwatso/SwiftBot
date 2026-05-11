@@ -384,21 +384,41 @@ struct OverviewView: View {
             ))
         }
 
+        if status == .running,
+           let newestEventAt = provider.events.first?.timestamp {
+            let lag = Date().timeIntervalSince(newestEventAt)
+            if lag >= 900 {
+                let minutes = Int(lag / 60)
+                items.append(AttentionItem(
+                    id: "event-flow-stalled",
+                    title: "Event flow stalled",
+                    detail: "No runtime events for \(minutes) minute\(minutes == 1 ? "" : "s") — the gateway looks connected but dispatch may be stuck.",
+                    severity: lag >= 1800 ? .critical : .warning
+                ))
+            }
+        }
+
+        if settings.clusterMode == .worker || settings.clusterMode == .standby {
+            let workerState = clusterSnapshot.workerState
+            if workerState == .failed || workerState == .degraded {
+                let target = settings.clusterLeaderAddress.isEmpty
+                    ? "the configured primary"
+                    : settings.clusterLeaderAddress
+                items.append(AttentionItem(
+                    id: "cluster-leader",
+                    title: "Cluster primary unreachable",
+                    detail: "Cannot reach \(target): \(clusterSnapshot.workerStatusText)",
+                    severity: workerState == .failed ? .critical : .warning
+                ))
+            }
+        }
+
         if failedCommandsToday > 0 {
             items.append(AttentionItem(
                 id: "failed-commands",
                 title: "Command failures today",
                 detail: "\(failedCommandsToday) command\(failedCommandsToday == 1 ? "" : "s") failed and may need review.",
                 severity: failedCommandsToday >= 5 ? .critical : .warning
-            ))
-        }
-
-        if queueLoad >= 0.70 {
-            items.append(AttentionItem(
-                id: "queue",
-                title: "Runtime event queue is busy",
-                detail: "\(provider.events.count) retained events are pushing queue load to \(Int(queueLoad * 100))%.",
-                severity: queueLoad >= 0.90 ? .critical : .warning
             ))
         }
 
