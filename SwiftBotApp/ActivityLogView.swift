@@ -425,31 +425,39 @@ enum ActivityCategory: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .command: return "terminal"
-        case .gateway: return "network"
+        case .command: return "bubble.left.fill"
+        case .gateway: return "bubble.left.and.bubble.right.fill"
         case .voice: return "person.3.sequence"
         case .mesh: return "point.3.connected.trianglepath.dotted"
         case .patchy: return "hammer.fill"
         case .ai: return "sparkles"
         case .wiki: return "book.pages.fill"
         case .swiftMiner: return "pickaxe"
-        case .system: return "circle.fill"
+        case .system: return "info.circle.fill"
         }
     }
 
     var color: Color {
         switch self {
-        case .command: return .blue
-        case .gateway: return .indigo
+        // Discord blurple (#5865F2) for both Discord-driven rows: command +
+        // gateway. Matches the brand and visually groups them as "Discord".
+        case .command, .gateway: return Self.discordBlurple
         case .voice: return .pink
         case .mesh: return .teal
         case .patchy: return .orange
         case .ai: return .purple
         case .wiki: return .brown
         case .swiftMiner: return .mint
-        case .system: return .gray
+        case .system: return .secondary
         }
     }
+
+    /// Discord's brand blurple. Pulled from the official press kit (#5865F2).
+    private static let discordBlurple: Color = Color(
+        red: 88.0 / 255.0,
+        green: 101.0 / 255.0,
+        blue: 242.0 / 255.0
+    )
 
     var displayName: String {
         switch self {
