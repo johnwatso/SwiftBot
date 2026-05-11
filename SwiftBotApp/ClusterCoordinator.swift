@@ -49,6 +49,9 @@ actor ClusterCoordinator {
     typealias MediaFrameHandler = @Sendable (String, Double) async -> BinaryHTTPResponse?
     /// Returns (records, hasMore) for the given cursor position and batch limit.
     typealias ConversationFetcher = @Sendable (String?, Int) async -> (records: [MemoryRecord], hasMore: Bool)
+    /// Phase 3: each node implements this to report its current operational
+    /// state so the primary can surface follower activity in its GUI.
+    typealias FollowerStateProvider = @Sendable () async -> FollowerStateSummary
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -109,6 +112,12 @@ actor ClusterCoordinator {
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
     private var onDemotion: (@Sendable () async -> Void)?
+    private var followerStateProvider: FollowerStateProvider?
+    // Phase 3: primary stores the last polled state for each follower, keyed
+    // by node baseURL. Published into ClusterSnapshot on each refresh.
+    private var followerStates: [String: FollowerStateSummary] = [:]
+    private var followerStatePollTask: Task<Void, Never>?
+    private let followerStatePollIntervalNanoseconds: UInt64 = 4_000_000_000
     var snapshot = ClusterSnapshot()
 
     func configureHandlers(
@@ -160,6 +169,13 @@ actor ClusterCoordinator {
     /// passive-standby gating that normally happens at startup.
     func setDemotionHandler(_ handler: @escaping @Sendable () async -> Void) {
         self.onDemotion = handler
+    }
+
+    /// Phase 3: AppModel provides a closure that builds the local node's
+    /// follower-state summary on demand. Called by the local /v1/mesh/follower-state
+    /// endpoint and used by the leader to seed its own slot in followerStates.
+    func setFollowerStateProvider(_ provider: @escaping FollowerStateProvider) {
+        self.followerStateProvider = provider
     }
 
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
@@ -236,6 +252,7 @@ actor ClusterCoordinator {
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartStandbyMonitorIfNeeded()
+        restartFollowerStatePollIfNeeded()
         await refreshWorkerHealth()
         await publishSnapshot()
     }
@@ -305,6 +322,9 @@ actor ClusterCoordinator {
         workerRegistrationTask = nil
         standbyMonitorTask?.cancel()
         standbyMonitorTask = nil
+        followerStatePollTask?.cancel()
+        followerStatePollTask = nil
+        followerStates.removeAll()
         listener?.cancel()
         listener = nil
         listenerActivePort = nil
@@ -314,6 +334,7 @@ actor ClusterCoordinator {
         snapshot.serverStatusText = "Stopped"
         snapshot.workerState = .inactive
         snapshot.workerStatusText = "Stopped"
+        snapshot.followerStates = [:]
         snapshot.diagnostics = "Cluster services stopped"
         await publishSnapshot()
     }
@@ -1060,6 +1081,8 @@ actor ClusterCoordinator {
             return await handleMediaClipRequest(request.body)
         case ("POST", "/v1/media/multiview"):
             return await handleMediaMultiViewRequest(request.body)
+        case ("GET", "/v1/mesh/follower-state"):
+            return await handleFollowerStateRequest()
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -1253,6 +1276,8 @@ actor ClusterCoordinator {
 
         // Restart server as leader
         await restartServerIfNeeded()
+        // Begin polling follower state now that we're primary.
+        restartFollowerStatePollIfNeeded()
 
         // Notify workers of the new leader
         let workers = Array(registeredWorkers.values)
@@ -1389,6 +1414,11 @@ actor ClusterCoordinator {
         await restartStandbyMonitorIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartServerIfNeeded()
+        // No longer primary — stop polling follower state and clear the published map.
+        followerStatePollTask?.cancel()
+        followerStatePollTask = nil
+        followerStates.removeAll()
+        snapshot.followerStates = [:]
     }
 
     /// Build a JSON body for a 409 Conflict response that carries our current
@@ -2161,8 +2191,18 @@ actor ClusterCoordinator {
         snapshot.workerStatusText = "Re-registering with new Primary"
         await publishSnapshot()
 
-        if mode == .worker, let normalizedLeader = normalizedBaseURL(leaderAddress, defaultPort: leaderPort) {
-            await registerWithLeader(normalizedLeader)
+        // Phase 3 fix: re-register against the new primary for both worker AND
+        // standby modes (previously only `.worker` was handled). Without this,
+        // a former primary that demoted to standby would never re-register
+        // with the new primary, the new primary would never push sync to it,
+        // and the local GUI would show no live activity from the failover node.
+        // Also restart the standby health monitor so it watches the *new*
+        // primary, not the dead one.
+        if mode == .worker || mode == .standby {
+            await restartWorkerRegistrationIfNeeded()
+        }
+        if mode == .standby {
+            await restartStandbyMonitorIfNeeded()
         }
 
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
@@ -2220,6 +2260,69 @@ actor ClusterCoordinator {
         }
         await onSync?(payload)
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    /// Phase 3: every node serves its own current state at this endpoint so
+    /// the primary can poll and surface follower activity in the GUI.
+    private func handleFollowerStateRequest() async -> Data {
+        guard let provider = followerStateProvider else {
+            return httpResponse(status: "503 Service Unavailable", body: Data(#"{"error":"provider_unavailable"}"#.utf8))
+        }
+        let summary = await provider()
+        let body = (try? encoder.encode(summary)) ?? Data()
+        return httpResponse(status: "200 OK", body: body)
+    }
+
+    /// Primary-side polling: fetch /v1/mesh/follower-state from each registered
+    /// worker and stash the result in `followerStates`, then publish snapshot.
+    /// Started by `restartFollowerStatePollIfNeeded()`; quiet on non-leaders.
+    private func pollFollowerStates() async {
+        guard mode == .leader else { return }
+        let workers = sortedRegisteredWorkers()
+        if workers.isEmpty {
+            if !followerStates.isEmpty {
+                followerStates.removeAll()
+                snapshot.followerStates = [:]
+                await publishSnapshot()
+            }
+            return
+        }
+        var refreshed: [String: FollowerStateSummary] = [:]
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/mesh/follower-state") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            applyMeshAuth(to: &request, path: "/v1/mesh/follower-state")
+            request.timeoutInterval = 4
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                if let summary = try? decoder.decode(FollowerStateSummary.self, from: data) {
+                    refreshed[worker.baseURL.lowercased()] = summary
+                }
+            } catch {
+                // best effort: missing follower keeps its previous entry until
+                // the worker registry prunes it as stale.
+                if let previous = followerStates[worker.baseURL.lowercased()] {
+                    refreshed[worker.baseURL.lowercased()] = previous
+                }
+            }
+        }
+        followerStates = refreshed
+        snapshot.followerStates = refreshed
+        await publishSnapshot()
+    }
+
+    private func restartFollowerStatePollIfNeeded() {
+        followerStatePollTask?.cancel()
+        followerStatePollTask = nil
+        guard mode == .leader else { return }
+        followerStatePollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.pollFollowerStates()
+                try? await Task.sleep(nanoseconds: self?.followerStatePollIntervalNanoseconds ?? 4_000_000_000)
+            }
+        }
     }
 
     /// Leader handles a standby/worker resync request: return bounded page from the requested cursor.

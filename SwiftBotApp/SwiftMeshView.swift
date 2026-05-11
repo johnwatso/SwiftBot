@@ -41,6 +41,22 @@ struct SwiftMeshView: View {
                 SwiftMeshSection(title: "Cluster Metrics", symbol: "square.grid.2x2") {
                     SwiftMeshMetricsGrid(nodes: app.clusterNodes)
                 }
+
+                // Phase 3: live follower activity surfaced from primary's poll.
+                // Hidden until the primary has at least one follower state to show.
+                if !app.clusterSnapshot.followerStates.isEmpty {
+                    SwiftMeshSection(title: "Follower Activity", symbol: "dot.radiowaves.left.and.right") {
+                        VStack(spacing: 8) {
+                            ForEach(
+                                app.clusterSnapshot.followerStates
+                                    .sorted(by: { $0.value.nodeName < $1.value.nodeName }),
+                                id: \.key
+                            ) { _, state in
+                                FollowerActivityRow(state: state)
+                            }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -595,6 +611,70 @@ private struct MetricTile: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.primary.opacity(0.06), lineWidth: 1)
         )
+    }
+}
+
+// Phase 3: Compact view of one follower's live state polled by the primary.
+struct FollowerActivityRow: View {
+    let state: FollowerStateSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(state.gatewayConnected ? Color.green : Color.gray)
+                    .frame(width: 8, height: 8)
+                Text(state.nodeName)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(state.mode.capitalized)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.primary.opacity(0.08))
+                    )
+            }
+            HStack(spacing: 14) {
+                metric("Term", "\(state.leaderTerm)")
+                metric("Output", state.outputAllowed ? "On" : "Muted")
+                metric("Voice", "\(state.activeVoiceMembers)")
+                Spacer()
+                Text(state.collectedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            if let tail = state.recentLogTail.last, !tail.isEmpty {
+                Text(tail)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func metric(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+        }
     }
 }
 
