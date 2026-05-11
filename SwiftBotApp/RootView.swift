@@ -65,9 +65,8 @@ struct UnifiedRootView: View {
                 case .patchy: PatchyView()
                 case .voice: VoiceView()
                 case .commands: CommandsView()
-                case .commandLog: CommandLogView()
+                case .activity: ActivityLogView()
                 case .wikiBridge: WikiBridgeView()
-                case .logs: LogsView()
                 case .aiBots: AIBotsView()
                 case .analytics: AnalyticsView()
                 case .swiftMesh: SwiftMeshView()
@@ -151,14 +150,6 @@ struct DashboardSidebar: View {
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
-                            if selection == .commands || selection == .commandLog {
-                                SidebarRow(
-                                    item: .commandLog,
-                                    selection: $selection,
-                                    selectionHighlightNamespace: selectionHighlightNamespace,
-                                    isChild: true
-                                )
-                            }
                             SidebarRow(
                                 item: .voice,
                                 selection: $selection,
@@ -189,7 +180,7 @@ struct DashboardSidebar: View {
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
                             SidebarRow(
-                                item: .logs,
+                                item: .activity,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
