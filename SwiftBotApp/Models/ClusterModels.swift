@@ -280,6 +280,16 @@ struct MeshResyncRequest: Codable, Sendable {
     let pageSize: Int
 }
 
+/// Body returned with a 409 Conflict when a sender's leader term is stale.
+/// Carries the receiver's current term so the (now-demoted) sender can detect
+/// it is no longer authoritative and step down — preventing split-brain when
+/// a partitioned former leader rejoins after a successful failover promotion.
+struct StaleTermResponse: Codable, Sendable {
+    let error: String
+    let currentTerm: Int
+    let currentLeaderAddress: String?
+}
+
 /// Leader tracks one cursor per registered node (keyed by node base URL).
 /// Persisted to disk so leader restart does not force blind full-replay.
 struct ReplicationCursor: Codable, Sendable {

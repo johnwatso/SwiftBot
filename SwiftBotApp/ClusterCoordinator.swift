@@ -108,6 +108,7 @@ actor ClusterCoordinator {
     private var mediaFrameHandler: MediaFrameHandler?
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
+    private var onDemotion: (@Sendable () async -> Void)?
     var snapshot = ClusterSnapshot()
 
     func configureHandlers(
@@ -152,6 +153,13 @@ actor ClusterCoordinator {
 
     func setCursorsChangedHandler(_ handler: @escaping @Sendable ([String: ReplicationCursor]) async -> Void) {
         self.onCursorsChanged = handler
+    }
+
+    /// Invoked when a leader detects a higher-term peer and demotes itself to
+    /// standby. AppModel uses this to mute Discord output and re-engage the
+    /// passive-standby gating that normally happens at startup.
+    func setDemotionHandler(_ handler: @escaping @Sendable () async -> Void) {
+        self.onDemotion = handler
     }
 
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
@@ -1274,7 +1282,8 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/v1/mesh/leader-changed")
             request.timeoutInterval = 5
-            _ = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            await detectStaleSelfFromResponse(data: data, response: response)
         } catch {
             // Best effort — worker will re-register on its own next cycle if missed
         }
@@ -1315,7 +1324,8 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/v1/mesh/sync/conversations")
             request.timeoutInterval = 10
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            await detectStaleSelfFromResponse(data: data, response: response)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
             return true
         } catch {
@@ -1332,10 +1342,64 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: path)
             request.timeoutInterval = 10
-            _ = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            await detectStaleSelfFromResponse(data: data, response: response)
         } catch {
             // best effort
         }
+    }
+
+    /// Split-brain backstop: if a peer rejects our leader-mode request with a
+    /// StaleTermResponse carrying a term higher than ours, we are no longer the
+    /// authoritative leader — most likely the network partition that caused a
+    /// standby to promote has now healed. Demote ourselves to standby so the
+    /// real leader can resume control. This is the inverse of the
+    /// promotion-confirm path: that one prevents *false* promotion; this one
+    /// recovers from a *genuine* concurrent promotion.
+    private func detectStaleSelfFromResponse(data: Data, response: URLResponse) async {
+        guard mode == .leader,
+              let http = response as? HTTPURLResponse,
+              http.statusCode == 409,
+              let stale = try? decoder.decode(StaleTermResponse.self, from: data),
+              stale.currentTerm > leaderTerm else { return }
+        meshLogger.critical("Detected higher term \(stale.currentTerm, privacy: .public) from peer (was \(self.leaderTerm, privacy: .public)) — demoting self to standby")
+        await demoteToStandby(observedTerm: stale.currentTerm, newLeaderAddress: stale.currentLeaderAddress)
+    }
+
+    /// Step the leader down to standby after detecting a higher-term peer.
+    /// Adopts the peer's term so we don't immediately attempt to promote again,
+    /// then restarts standby monitoring against the new leader address (if any).
+    private func demoteToStandby(observedTerm: Int, newLeaderAddress: String?) async {
+        guard mode == .leader else { return }
+        mode = .standby
+        leaderTerm = observedTerm
+        if let addr = newLeaderAddress, !addr.isEmpty {
+            leaderAddress = addr
+        }
+        snapshot.mode = .standby
+        snapshot.leaderTerm = leaderTerm
+        snapshot.leaderAddress = leaderAddress
+        snapshot.workerState = .starting
+        snapshot.workerStatusText = "Demoted — another Primary holds a higher term"
+        snapshot.diagnostics = "Demoted to Standby (peer term \(observedTerm))"
+        await publishSnapshot()
+        await onTermChanged?(leaderTerm)
+        // Mute Discord output and restore passive-standby semantics in AppModel.
+        await onDemotion?()
+        await restartStandbyMonitorIfNeeded()
+        await restartWorkerRegistrationIfNeeded()
+        await restartServerIfNeeded()
+    }
+
+    /// Build a JSON body for a 409 Conflict response that carries our current
+    /// term so a peer (former leader) can detect its staleness and demote.
+    private func staleTermResponseBody(reason: String) -> Data {
+        let body = StaleTermResponse(
+            error: reason,
+            currentTerm: leaderTerm,
+            currentLeaderAddress: mode == .leader ? localWorkerAdvertisedBaseURL() : leaderAddress
+        )
+        return (try? encoder.encode(body)) ?? Data(#"{"error":"\#(reason)"}"#.utf8)
     }
 
     private func restartWorkerRegistrationIfNeeded() async {
@@ -2082,9 +2146,10 @@ actor ClusterCoordinator {
         guard let payload = try? decoder.decode(MeshLeaderChangedPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
         }
-        // Split-brain guard: reject stale or equal terms.
+        // Split-brain guard: reject stale or equal terms. Include our higher
+        // term so the requester can detect it is no longer authoritative.
         guard payload.term > leaderTerm else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "stale_term"))
         }
 
         leaderTerm = payload.term
@@ -2115,7 +2180,7 @@ actor ClusterCoordinator {
 
     private func handleMeshWorkerRegistrySync(_ body: Data) async -> Data {
         guard mode == .standby else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "standby_mode_required"))
         }
 
         guard let payload = try? decoder.decode(MeshWorkerRegistryPayload.self, from: body) else {
@@ -2123,7 +2188,7 @@ actor ClusterCoordinator {
         }
         guard payload.leaderTerm >= leaderTerm else {
             meshLogger.warning("Worker registry sync rejected: stale term \(payload.leaderTerm, privacy: .public) < current \(self.leaderTerm, privacy: .public)")
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "stale_term"))
         }
 
         for worker in payload.workers {
@@ -2144,14 +2209,14 @@ actor ClusterCoordinator {
 
     private func handleMeshConversationSync(_ body: Data) async -> Data {
         guard mode == .standby else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "standby_mode_required"))
         }
         guard let payload = try? decoder.decode(MeshSyncPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
         }
         guard payload.leaderTerm >= leaderTerm else {
             meshLogger.warning("Conversation sync rejected: stale term \(payload.leaderTerm, privacy: .public) < current \(self.leaderTerm, privacy: .public)")
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"stale_term"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "stale_term"))
         }
         await onSync?(payload)
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
