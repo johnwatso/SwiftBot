@@ -8,18 +8,10 @@ struct SwiftMeshView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("SwiftMesh")
-                        .font(.title2.weight(.semibold))
-                    Text("\(connectedNodeCount) connected")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                header
 
-                // Phase 4: manual promote + auto-reclaim countdown. Visible only
-                // when this node is currently a runtime standby (either Failover
-                // node or a demoted original Primary).
+                // Phase 4: manual promote + auto-reclaim countdown.
                 if app.clusterSnapshot.mode == .standby {
                     PromoteToPrimaryPanel(
                         countdownSeconds: app.autoReclaimRemainingSeconds,
@@ -27,45 +19,52 @@ struct SwiftMeshView: View {
                     )
                 }
 
-                SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
-                    if app.settings.clusterMode == .standalone {
+                metricTileRow
+
+                if app.settings.clusterMode == .standalone {
+                    SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
                         PlaceholderPanelLine(text: "Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.")
-                    } else if topologyNodes.isEmpty {
-                        PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
-                    } else {
-                        ClusterMapView(nodes: topologyNodes)
                     }
-                }
+                } else {
+                    SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
+                        if topologyNodes.isEmpty {
+                            PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
+                        } else {
+                            ClusterMapView(nodes: topologyNodes)
+                        }
+                    }
 
-                SwiftMeshSection(title: "Nodes", symbol: "cpu") {
-                    if app.clusterNodes.isEmpty {
-                        PlaceholderPanelLine(text: "No nodes available")
-                    } else {
-                        VStack(spacing: 8) {
-                            ForEach(app.clusterNodes) { node in
-                                ClusterNodeRow(node: node)
+                    diagnosticsAndJobsRow
+
+                    SwiftMeshSection(title: "Nodes", symbol: "cpu") {
+                        if app.clusterNodes.isEmpty {
+                            PlaceholderPanelLine(text: "No nodes available")
+                        } else {
+                            VStack(spacing: 8) {
+                                ForEach(app.clusterNodes) { node in
+                                    ClusterNodeRow(node: node)
+                                }
                             }
                         }
                     }
-                }
 
-                SwiftMeshSection(title: "Cluster Metrics", symbol: "square.grid.2x2") {
-                    SwiftMeshMetricsGrid(nodes: app.clusterNodes)
-                }
-
-                // Phase 3: live follower activity surfaced from primary's poll.
-                // Hidden until the primary has at least one follower state to show.
-                if !app.clusterSnapshot.followerStates.isEmpty {
-                    SwiftMeshSection(title: "Follower Activity", symbol: "dot.radiowaves.left.and.right") {
-                        VStack(spacing: 8) {
-                            ForEach(
-                                app.clusterSnapshot.followerStates
-                                    .sorted(by: { $0.value.nodeName < $1.value.nodeName }),
-                                id: \.key
-                            ) { _, state in
-                                FollowerActivityRow(state: state)
+                    // Phase 3: follower activity surfaced from primary's poll.
+                    if !app.clusterSnapshot.followerStates.isEmpty {
+                        SwiftMeshSection(title: "Follower Activity", symbol: "dot.radiowaves.left.and.right") {
+                            VStack(spacing: 8) {
+                                ForEach(
+                                    app.clusterSnapshot.followerStates
+                                        .sorted(by: { $0.value.nodeName < $1.value.nodeName }),
+                                    id: \.key
+                                ) { _, state in
+                                    FollowerActivityRow(state: state)
+                                }
                             }
                         }
+                    }
+
+                    SwiftMeshSection(title: "Configuration & Replication", symbol: "gearshape.2") {
+                        configurationGrid
                     }
                 }
             }
@@ -104,6 +103,280 @@ struct SwiftMeshView: View {
 
     private var topologyNodes: [ClusterNodeStatus] {
         app.clusterNodes
+    }
+
+    // MARK: - Dashboard sub-views
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("SwiftMesh")
+                    .font(.title2.weight(.semibold))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(headerStatusColor)
+                        .frame(width: 7, height: 7)
+                    Text(headerSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            ModeBadge(mode: app.clusterSnapshot.mode)
+        }
+    }
+
+    private var headerSubtitle: String {
+        let cs = app.clusterSnapshot
+        if app.settings.clusterMode == .standalone { return "Standalone — no mesh" }
+        let count = connectedNodeCount
+        let healthy = app.clusterNodes.filter { $0.status == .healthy }.count
+        let connectedSummary = count == 0 ? "No nodes" : "\(healthy)/\(count) healthy"
+        return "\(connectedSummary) · Term \(cs.leaderTerm) · \(cs.workerStatusText)"
+    }
+
+    private var headerStatusColor: Color {
+        let cs = app.clusterSnapshot
+        if app.settings.clusterMode == .standalone { return .gray }
+        switch cs.workerState {
+        case .connected, .listening: return .green
+        case .starting: return .yellow
+        case .degraded: return .orange
+        case .failed, .stopped, .inactive: return .red
+        }
+    }
+
+    private var metricTileRow: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+            DashboardMetricCard(
+                title: "Mode",
+                value: tileMode,
+                subtitle: tileModeSubtitle,
+                symbol: tileModeSymbol,
+                color: .accentColor
+            )
+            DashboardMetricCard(
+                title: "Leader Term",
+                value: "\(app.clusterSnapshot.leaderTerm)",
+                subtitle: app.clusterSnapshot.lastJobRoute.rawValue.capitalized,
+                symbol: "number.square",
+                color: .blue
+            )
+            DashboardMetricCard(
+                title: "Connected",
+                value: "\(connectedNodeCount)",
+                subtitle: "\(app.clusterNodes.filter { $0.status == .healthy }.count) healthy · \(app.clusterNodes.filter { $0.status == .disconnected }.count) offline",
+                symbol: "point.3.connected.trianglepath.dotted",
+                color: .green
+            )
+            DashboardMetricCard(
+                title: "Active Jobs",
+                value: "\(app.clusterNodes.reduce(0) { $0 + max(0, $1.jobsActive) })",
+                subtitle: app.registeredWorkersDebugCount > 0
+                    ? "\(app.registeredWorkersDebugCount) registered"
+                    : "No registered workers",
+                symbol: "chart.bar.fill",
+                color: .indigo
+            )
+            DashboardMetricCard(
+                title: "Avg Latency",
+                value: averageLatencyDisplay,
+                subtitle: latencyRangeSubtitle,
+                symbol: "speedometer",
+                color: latencyTone
+            )
+            DashboardMetricCard(
+                title: "Auto-Reclaim",
+                value: autoReclaimDisplay,
+                subtitle: autoReclaimSubtitle,
+                symbol: "arrow.uturn.up.circle",
+                color: app.autoReclaimRemainingSeconds != nil ? .purple : .gray
+            )
+        }
+    }
+
+    private var diagnosticsAndJobsRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SwiftMeshSection(title: "Diagnostics", symbol: "stethoscope") {
+                VStack(alignment: .leading, spacing: 6) {
+                    DiagnosticsLine(label: "Server", value: app.clusterSnapshot.serverStatusText, tone: tone(for: app.clusterSnapshot.serverState))
+                    DiagnosticsLine(label: "Worker", value: app.clusterSnapshot.workerStatusText, tone: tone(for: app.clusterSnapshot.workerState))
+                    DiagnosticsLine(label: "Status", value: app.clusterSnapshot.diagnostics, tone: .secondary, multiline: true)
+                }
+            }
+
+            SwiftMeshSection(title: "Last Job", symbol: "shippingbox") {
+                VStack(alignment: .leading, spacing: 6) {
+                    DiagnosticsLine(label: "Route", value: app.clusterSnapshot.lastJobRoute.rawValue.capitalized, tone: .primary)
+                    DiagnosticsLine(label: "Node", value: app.clusterSnapshot.lastJobNode, tone: .primary)
+                    DiagnosticsLine(label: "Summary", value: app.clusterSnapshot.lastJobSummary, tone: .secondary, multiline: true)
+                }
+            }
+        }
+    }
+
+    private var configurationGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+            DiagnosticsLine(label: "Node Name", value: app.settings.clusterNodeName, tone: .primary)
+            DiagnosticsLine(label: "Listen Port", value: "\(app.settings.clusterListenPort)", tone: .primary)
+            DiagnosticsLine(label: "Primary Host", value: primaryHostDisplay, tone: .primary)
+            DiagnosticsLine(label: "Primary Port", value: "\(app.settings.clusterLeaderPort)", tone: .primary)
+            DiagnosticsLine(label: "Configured Role", value: app.settings.clusterMode.displayName, tone: .primary)
+            DiagnosticsLine(label: "Runtime Role", value: app.clusterSnapshot.mode.displayName, tone: .primary)
+            DiagnosticsLine(label: "Registered Workers", value: app.registeredWorkersDebugSummary, tone: .secondary, multiline: true)
+        }
+    }
+
+    // MARK: - Tile values
+
+    private var tileMode: String {
+        app.settings.clusterMode == .standalone
+            ? "Standalone"
+            : app.clusterSnapshot.mode.displayName
+    }
+
+    private var tileModeSubtitle: String {
+        let configured = app.settings.clusterMode.displayName
+        let runtime = app.clusterSnapshot.mode.displayName
+        return configured == runtime ? "Configured \(configured)" : "Configured \(configured) · Runtime \(runtime)"
+    }
+
+    private var tileModeSymbol: String {
+        switch app.clusterSnapshot.mode {
+        case .leader: return "crown.fill"
+        case .standby: return "shield.lefthalf.filled"
+        case .worker: return "cpu"
+        case .standalone: return "circle"
+        }
+    }
+
+    private var averageLatencyDisplay: String {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard !latencies.isEmpty else { return "—" }
+        return "\(Int((latencies.reduce(0, +) / Double(latencies.count)).rounded())) ms"
+    }
+
+    private var latencyRangeSubtitle: String {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard let lo = latencies.min(), let hi = latencies.max() else { return "No samples" }
+        return "min \(Int(lo.rounded())) · max \(Int(hi.rounded())) ms"
+    }
+
+    private var latencyTone: Color {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard let max = latencies.max() else { return .gray }
+        if max >= 200 { return .red }
+        if max >= 140 { return .orange }
+        return .teal
+    }
+
+    private var autoReclaimDisplay: String {
+        if let secs = app.autoReclaimRemainingSeconds, secs > 0 {
+            return formatHM(secs)
+        }
+        return app.settings.clusterAutoReclaimAfterHours > 0 ? "Armed" : "Off"
+    }
+
+    private var autoReclaimSubtitle: String {
+        let hours = app.settings.clusterAutoReclaimAfterHours
+        if hours <= 0 { return "Disabled in Settings" }
+        if app.autoReclaimRemainingSeconds != nil { return "Until reclaim" }
+        if app.settings.clusterMode == .leader && app.clusterSnapshot.mode == .standby {
+            return "Awaiting stable window"
+        }
+        return "After \(hours)h healthy"
+    }
+
+    private var primaryHostDisplay: String {
+        let addr = app.settings.clusterLeaderAddress
+        return addr.isEmpty ? "—" : addr
+    }
+
+    private func tone(for state: ClusterConnectionState) -> Color {
+        switch state {
+        case .connected, .listening: return .green
+        case .starting: return .yellow
+        case .degraded: return .orange
+        case .failed: return .red
+        case .stopped, .inactive: return .secondary
+        }
+    }
+
+    private func formatHM(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m" }
+        return "<1m"
+    }
+}
+
+/// Small status badge shown in the SwiftMesh header.
+private struct ModeBadge: View {
+    let mode: ClusterMode
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+            Text(mode.displayName.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(0.4)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule().fill(color)
+        )
+    }
+
+    private var symbol: String {
+        switch mode {
+        case .leader: return "crown.fill"
+        case .standby: return "shield.lefthalf.filled"
+        case .worker: return "cpu"
+        case .standalone: return "circle"
+        }
+    }
+
+    private var color: Color {
+        switch mode {
+        case .leader: return .green
+        case .standby: return .orange
+        case .worker: return .blue
+        case .standalone: return .gray
+        }
+    }
+}
+
+/// Two-column label/value row used inside SwiftMesh dashboard panels.
+private struct DiagnosticsLine: View {
+    let label: String
+    let value: String
+    let tone: Color
+    var multiline: Bool = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 110, alignment: .leading)
+            Text(value.isEmpty ? "—" : value)
+                .font(.caption)
+                .foregroundStyle(tone)
+                .lineLimit(multiline ? 4 : 1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
     }
 }
 
@@ -176,7 +449,7 @@ struct ClusterMapView: View {
                         workerCenter: workerPosition
                     )
 
-                    HeartbeatConnectionView(
+                    StaticConnectionView(
                         start: endpoints.start,
                         end: endpoints.end,
                         status: worker.status,
@@ -470,7 +743,11 @@ struct ClusterConnectionShape: Shape {
     }
 }
 
-struct HeartbeatConnectionView: View {
+/// Replaces the previous `HeartbeatConnectionView`. Same visual layout (single
+/// stroke between leader and worker, latency capsule at the midpoint) but no
+/// timeline-driven pulse animation — the line is a flat color reflecting the
+/// connection's health state.
+struct StaticConnectionView: View {
     let start: CGPoint
     let end: CGPoint
     let status: ClusterNodeHealthStatus
@@ -486,15 +763,6 @@ struct HeartbeatConnectionView: View {
         }
     }
 
-    private var pulseEnabled: Bool {
-        status != .disconnected
-    }
-
-    private var pulseDuration: Double {
-        activeJobs > 0 ? 2.2 : 3.2
-    }
-
-    private let pulseStep: Double = 0.035
     private var latencyLabel: String? {
         guard let latencyMs else { return nil }
         return "\(Int(latencyMs.rounded()))ms"
@@ -510,36 +778,15 @@ struct HeartbeatConnectionView: View {
 
     var body: some View {
         ZStack {
-            if pulseEnabled {
-                TimelineView(.periodic(from: .now, by: pulseStep)) { context in
-                    let progress = context.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: pulseDuration) / pulseDuration
-                    let trailLength = activeJobs > 0 ? 0.32 : 0.24
-                    let trailStart = max(0, progress - trailLength)
-                    let trailEnd = min(1, progress)
-                    let lineWidth = activeJobs > 0 ? 3.0 : 2.5
-
-                    Canvas { context, _ in
-                        let fullPath = ClusterConnectionShape(start: start, end: end).path(in: .zero)
-                        let segmentPath = fullPath.trimmedPath(from: trailStart, to: trailEnd)
-                        let gradientStart = ClusterConnectionShape.point(at: trailStart, start: start, end: end)
-                        let gradientEnd = ClusterConnectionShape.point(at: trailEnd, start: start, end: end)
-                        let shading = GraphicsContext.Shading.linearGradient(
-                            Gradient(stops: [
-                                .init(color: lineColor.opacity(0.0), location: 0.0),
-                                .init(color: lineColor.opacity(activeJobs > 0 ? 0.92 : 0.68), location: 1.0)
-                            ]),
-                            startPoint: gradientStart,
-                            endPoint: gradientEnd
-                        )
-                        context.stroke(
-                            segmentPath,
-                            with: shading,
-                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                        )
-                    }
-                }
-            }
+            ClusterConnectionShape(start: start, end: end)
+                .stroke(
+                    lineColor.opacity(status == .disconnected ? 0.35 : 0.78),
+                    style: StrokeStyle(
+                        lineWidth: activeJobs > 0 ? 2.5 : 2.0,
+                        lineCap: .round,
+                        dash: status == .disconnected ? [3, 4] : []
+                    )
+                )
 
             if let latencyLabel {
                 Text(latencyLabel)
@@ -560,7 +807,6 @@ struct HeartbeatConnectionView: View {
     private var midpoint: CGPoint {
         CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
     }
-
 }
 
 private enum ConnectionVisualState {
