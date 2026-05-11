@@ -27,7 +27,7 @@ actor MediaLibraryIndexer {
         ownerNodeName: String,
         ownerBaseURL: String?,
         configFilePath: String
-    ) -> MediaLibraryPayload {
+    ) async -> MediaLibraryPayload {
         let signature = makeSignature(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL, configFilePath: configFilePath)
         if let cachedEntry, cachedEntry.signature == signature, Date().timeIntervalSince(cachedEntry.createdAt) < cacheTTL {
             return cachedEntry.payload
@@ -37,7 +37,7 @@ actor MediaLibraryIndexer {
             nodeName: ownerNodeName,
             configFilePath: configFilePath,
             sources: sources,
-            items: scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL),
+            items: await scanItems(sources: sources, ownerNodeName: ownerNodeName, ownerBaseURL: ownerBaseURL),
             generatedAt: Date()
         )
         cachedEntry = CacheEntry(signature: signature, payload: payload, createdAt: Date())
@@ -60,7 +60,7 @@ actor MediaLibraryIndexer {
         sources: [MediaLibrarySource],
         ownerNodeName: String,
         ownerBaseURL: String?
-    ) -> [MediaLibraryItem] {
+    ) async -> [MediaLibraryItem] {
         let fileManager = FileManager.default
         var items: [MediaLibraryItem] = []
 
@@ -83,7 +83,7 @@ actor MediaLibraryIndexer {
                       values.isRegularFile == true else { continue }
 
                 // Exclude AV1 and other unsupported codecs from the WebUI
-                if isCodecUnsupported(at: fileURL) { continue }
+                if await isCodecUnsupported(at: fileURL) { continue }
 
                 let relativePath = fileURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
                 let id = "\(source.id.uuidString)|\(relativePath)"
@@ -111,11 +111,11 @@ actor MediaLibraryIndexer {
         }
     }
 
-    private func isCodecUnsupported(at url: URL) -> Bool {
+    private func isCodecUnsupported(at url: URL) async -> Bool {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else { return false }
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return false }
 
-        guard let descriptions = track.formatDescriptions as? [CMFormatDescription] else { return false }
+        guard let descriptions = try? await track.load(.formatDescriptions) else { return false }
         for desc in descriptions {
             let codecType = CMFormatDescriptionGetMediaSubType(desc)
             // Exclude codecs this Mac cannot hardware decode (e.g. AV1 on M1/M2)
