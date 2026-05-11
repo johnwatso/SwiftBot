@@ -33,22 +33,54 @@ struct SwiftMeshSetupView: View {
                 .onboardingTextFieldStyle()
                 .frame(maxWidth: 560)
 
-            TextField("Cluster Address (host:port)", text: $app.settings.clusterLeaderAddress)
+            TextField("Cluster Host (e.g. 192.168.1.100 or server.example.com)", text: $app.settings.clusterLeaderAddress)
                 .onboardingTextFieldStyle()
                 .frame(maxWidth: 560)
 
-            HStack {
-                Text("Listen Port")
-                    .font(.callout)
-                Spacer()
-                TextField("Port", text: Binding(
-                    get: { String(app.settings.clusterListenPort) },
-                    set: { if let v = Int($0) { app.settings.clusterListenPort = v } }
-                ))
-                .onboardingTextFieldStyle()
-                .frame(width: 110)
+            HStack(spacing: 16) {
+                HStack {
+                    Text("Listen Port")
+                        .font(.callout)
+                    Spacer()
+                    TextField("Port", text: Binding(
+                        get: { String(app.settings.clusterListenPort) },
+                        set: { newValue in
+                            guard let v = Int(newValue) else { return }
+                            // If Leader Port still matches the old Listen Port
+                            // (typical dev pair: both nodes on the same custom
+                            // port), keep them in sync so users don't end up
+                            // with one custom port and one default.
+                            let wasInSync = app.settings.clusterLeaderPort == app.settings.clusterListenPort
+                            app.settings.clusterListenPort = v
+                            if wasInSync {
+                                app.settings.clusterLeaderPort = v
+                            }
+                        }
+                    ))
+                    .onboardingTextFieldStyle()
+                    .frame(width: 110)
+                }
+                .frame(maxWidth: .infinity)
+
+                HStack {
+                    Text("Leader Port")
+                        .font(.callout)
+                    Spacer()
+                    TextField("Port", text: Binding(
+                        get: { String(app.settings.clusterLeaderPort) },
+                        set: { if let v = Int($0) { app.settings.clusterLeaderPort = v } }
+                    ))
+                    .onboardingTextFieldStyle()
+                    .frame(width: 110)
+                }
+                .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: 560)
+
+            Text("Leader Port is the port the Primary listens on. For a single-machine dev setup or any pair using the same port on both sides, keep these equal — Listen Port edits propagate to Leader Port automatically while they match.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: 560, alignment: .leading)
 
             RevealableSecretField(
                 text: $app.settings.clusterSharedSecret,
