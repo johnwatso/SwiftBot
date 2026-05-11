@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 
 struct SwiftBotGlassBackground: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -255,5 +256,88 @@ struct PreferencesReadOnlyBanner: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 2)
+    }
+}
+
+/// Reusable field for editing a sensitive value (mesh shared secret, etc.)
+/// where the user still needs to copy and inspect the plaintext.
+///
+/// SwiftUI's built-in `SecureField` blocks the system Copy command and the
+/// right-click menu on macOS, which makes setting up the SwiftMesh shared
+/// secret painful — you can't paste the same value across nodes without
+/// retyping it. This view keeps the masked default for shoulder-surfing
+/// safety but offers a reveal toggle, an always-available Copy button, and
+/// an optional Regenerate action that fills the binding with a fresh
+/// URL-safe random token.
+struct RevealableSecretField: View {
+    @Binding var text: String
+    var placeholder: String = "Secret"
+    /// When true, exposes a Regenerate button that overwrites `text` with a
+    /// freshly generated 32-character URL-safe random token. Off by default
+    /// so existing call sites can opt in.
+    var allowRegenerate: Bool = false
+    var regenerateLength: Int = 32
+
+    @State private var isRevealed = false
+    @State private var justCopied = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Group {
+                if isRevealed {
+                    TextField(placeholder, text: $text)
+                } else {
+                    SecureField(placeholder, text: $text)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            // Auto-fill behaviors that complicate pasting between nodes:
+            // disable autocorrect and the macOS smart-completion path so a
+            // pasted token keeps its exact bytes.
+            .disableAutocorrection(true)
+            .textContentType(.password)
+
+            Button {
+                isRevealed.toggle()
+            } label: {
+                Image(systemName: isRevealed ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.borderless)
+            .help(isRevealed ? "Hide secret" : "Show secret")
+
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                withAnimation(.easeOut(duration: 0.15)) { justCopied = true }
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                    withAnimation(.easeOut(duration: 0.25)) { justCopied = false }
+                }
+            } label: {
+                Image(systemName: justCopied ? "checkmark" : "doc.on.doc")
+                    .foregroundStyle(justCopied ? .green : .primary)
+            }
+            .buttonStyle(.borderless)
+            .help("Copy to clipboard")
+            .disabled(text.isEmpty)
+
+            if allowRegenerate {
+                Button {
+                    text = Self.generateSecret(length: regenerateLength)
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.borderless)
+                .help("Generate a new random secret")
+            }
+        }
+    }
+
+    /// Generates a URL-safe random token of the requested length.
+    static func generateSecret(length: Int = 32) -> String {
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        var bytes = [UInt8](repeating: 0, count: length)
+        _ = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
+        return String(bytes.map { alphabet[Int($0) % alphabet.count] })
     }
 }
