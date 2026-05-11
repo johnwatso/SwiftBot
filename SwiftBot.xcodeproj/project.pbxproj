@@ -163,6 +163,7 @@
 		F88E9E996F631AB24753F151 /* AIBotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553AAF747AF590A5486827AA /* AIBotsView.swift */; };
 		F8B5C3B9C16141D761050DD6 /* ACMEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8828FF064E45A0519FB1640E /* ACMEClient.swift */; };
 		FC3942D9BA9BA24CC48B7F8E /* AdminWebOAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */; };
+		FD4D811D5468DE40B859303D /* LogExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98AA7F8CD81396418AA0127D /* LogExporter.swift */; };
 		FD624ED4D70CFAF9D943F0B5 /* RemoteModeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */; };
 		FDA57E1FBBE210E213A9292B /* RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */; };
 /* End PBXBuildFile section */
@@ -269,6 +270,7 @@
 		95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
 		966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshDiscoveryTests.swift; sourceTree = "<group>"; };
 		985814A00309DEBC6C7FD35F /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		98AA7F8CD81396418AA0127D /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
 		99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryIndexer.swift; sourceTree = "<group>"; };
 		9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleStateStore.swift; sourceTree = "<group>"; };
 		9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SlashCommandHelpers.swift"; sourceTree = "<group>"; };
@@ -391,6 +393,7 @@
 				3595DECC8AF4632DC5E33E83 /* GeneralPreferencesView.swift */,
 				A902D75D3824989E0F053C6B /* HelpEngine.swift */,
 				6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */,
+				98AA7F8CD81396418AA0127D /* LogExporter.swift */,
 				C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */,
 				AB88D227FA6059743642C852 /* MediaStreamDebug.swift */,
 				6F8C4A3FCA5EA303D85C157C /* MediaTranscodeCache.swift */,
@@ -786,6 +789,7 @@
 				3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */,
 				440F6A5F62FD1B7714FD1A2E /* KeychainHelper.swift in Sources */,
 				CB267C81149E545799E3E0E4 /* LocalBotProvider.swift in Sources */,
+				FD4D811D5468DE40B859303D /* LogExporter.swift in Sources */,
 				3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */,
 				2C30A3ECEFEBB1D412442557 /* MediaLibraryIndexer.swift in Sources */,
 				C0255EF4CA8E35E49D64C7FF /* MediaStreamDebug.swift in Sources */,
