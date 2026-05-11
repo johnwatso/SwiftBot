@@ -238,6 +238,10 @@ extension AppModel {
             aiReplies: settings.clusterOffloadAIReplies,
             wikiLookups: settings.clusterOffloadWikiLookups
         )
+        await cluster.setAutoReclaimPolicy(
+            isConfiguredPrimary: settings.clusterMode == .leader,
+            afterHours: settings.clusterAutoReclaimAfterHours
+        )
         // Sync secondary safety guard: only Primary nodes may send Discord output.
         let isPrimary = mode == .standalone || mode == .leader
         await service.setOutputAllowed(isPrimary)
@@ -249,6 +253,9 @@ extension AppModel {
     }
 
     func pollClusterStatus() async {
+        // Phase 4: refresh auto-reclaim countdown on every poll tick so the
+        // SwiftMesh GUI can show a live "Auto-reclaim in Xh Ym" indicator.
+        autoReclaimRemainingSeconds = await cluster.autoReclaimCountdownSeconds()
         guard settings.clusterMode != .standalone else {
             clusterNodes = []
             await refreshRegisteredWorkersDebugInfo()

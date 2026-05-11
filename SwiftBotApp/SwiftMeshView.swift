@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SwiftMeshView: View {
     @EnvironmentObject var app: AppModel
+    @State private var showPromoteConfirm = false
 
     private let pollingIntervalNanoseconds: UInt64 = 3_000_000_000
 
@@ -14,6 +15,16 @@ struct SwiftMeshView: View {
                     Text("\(connectedNodeCount) connected")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                }
+
+                // Phase 4: manual promote + auto-reclaim countdown. Visible only
+                // when this node is currently a runtime standby (either Failover
+                // node or a demoted original Primary).
+                if app.clusterSnapshot.mode == .standby {
+                    PromoteToPrimaryPanel(
+                        countdownSeconds: app.autoReclaimRemainingSeconds,
+                        onPromote: { showPromoteConfirm = true }
+                    )
                 }
 
                 SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
@@ -61,6 +72,18 @@ struct SwiftMeshView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 16)
+        }
+        .confirmationDialog(
+            "Promote this node to Primary?",
+            isPresented: $showPromoteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Promote", role: .destructive) {
+                Task { await app.manuallyPromoteToPrimary() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The current Primary will demote on its next sync. This may briefly interrupt Discord activity while roles change.")
         }
         .task(id: app.settings.clusterMode) {
             guard app.settings.clusterMode != .standalone else {
@@ -611,6 +634,55 @@ private struct MetricTile: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.primary.opacity(0.06), lineWidth: 1)
         )
+    }
+}
+
+// Phase 4: header panel for runtime-standby nodes — shows the auto-reclaim
+// countdown (if eligible) and exposes a manual Promote button.
+struct PromoteToPrimaryPanel: View {
+    let countdownSeconds: TimeInterval?
+    let onPromote: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Currently running as Failover (Standby)")
+                    .font(.subheadline.weight(.semibold))
+                if let secs = countdownSeconds, secs > 0 {
+                    Text("Auto-reclaim Primary in \(formatCountdown(secs))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Auto-reclaim disabled. Promote manually any time.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button(action: onPromote) {
+                Label("Promote to Primary", systemImage: "arrow.up.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.accentColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private func formatCountdown(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        if hours > 0 { return "\(hours)h \(mins)m" }
+        if mins > 0 { return "\(mins)m" }
+        return "<1m"
     }
 }
 

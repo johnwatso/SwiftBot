@@ -129,6 +129,39 @@ struct MeshPreferencesView: View {
                 }
             }
 
+            // Phase 4: only the originally-configured Primary is allowed to
+            // reclaim leadership after a failover, so this card is only shown
+            // when the node's role is Primary.
+            if app.settings.clusterMode == .leader {
+                PreferencesCard("Auto-Reclaim", systemImage: "arrow.uturn.up.circle") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(
+                            "Reclaim Primary automatically after failover",
+                            isOn: Binding(
+                                get: { app.settings.clusterAutoReclaimAfterHours > 0 },
+                                set: { app.settings.clusterAutoReclaimAfterHours = $0 ? max(1, app.settings.clusterAutoReclaimAfterHours) : 0 }
+                            )
+                        )
+                        .toggleStyle(.switch)
+
+                        if app.settings.clusterAutoReclaimAfterHours > 0 {
+                            Stepper(
+                                value: $app.settings.clusterAutoReclaimAfterHours,
+                                in: 1...72,
+                                step: 1
+                            ) {
+                                Text("After \(app.settings.clusterAutoReclaimAfterHours) hour\(app.settings.clusterAutoReclaimAfterHours == 1 ? "" : "s") of uninterrupted standby health")
+                                    .font(.subheadline)
+                            }
+                        }
+
+                        Text("If this Primary fails over to the Failover node, it will rejoin as Standby. Once it observes the new Primary as healthy for the configured window without any miss, it will automatically reclaim Primary. Set to off to require manual promotion.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             PreferencesCard("Worker Offload", systemImage: "point.3.connected.trianglepath.dotted") {
                 Toggle("Enable Worker Offload", isOn: workerOffloadBinding)
                     .toggleStyle(.switch)

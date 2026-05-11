@@ -30,6 +30,10 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
     @Published var clusterNodes: [ClusterNodeStatus] = []
+    /// Phase 4: seconds remaining until this node auto-reclaims Primary, or
+    /// `nil` if auto-reclaim is disabled / not eligible. Refreshed by
+    /// `pollClusterStatus()` on the regular mesh polling tick.
+    @Published var autoReclaimRemainingSeconds: TimeInterval?
     @Published var workerConnectionTestStatus: String = "Not tested"
     @Published var workerConnectionTestIsSuccess = false
     @Published var workerConnectionTestInProgress = false

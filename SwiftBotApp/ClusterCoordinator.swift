@@ -84,6 +84,16 @@ actor ClusterCoordinator {
     var standbyHealthMisses: Int = 0
     static let standbyHealthInterval: TimeInterval = 10.0
     static let standbyPromotionThreshold: Int = 3
+    /// Phase 4: auto-reclaim by configured-primary.
+    /// Whether THIS node was configured as Primary in settings (set by AppModel).
+    /// Only originally-configured Primary nodes are allowed to auto-reclaim.
+    private var isConfiguredPrimary: Bool = false
+    /// Auto-reclaim threshold in seconds. `0` disables auto-reclaim.
+    private var autoReclaimAfterSeconds: TimeInterval = 0
+    /// Timestamp of the first consecutive healthy probe of the current leader
+    /// while we're a runtime-demoted Primary. Reset to nil on any miss or on
+    /// settings/role changes.
+    private var standbyHealthySince: Date?
 
     // Phase 2: per-node replication cursors (keyed by nodeName, persisted on leader)
     var replicationCursors: [String: ReplicationCursor] = [:]
@@ -176,6 +186,37 @@ actor ClusterCoordinator {
     /// endpoint and used by the leader to seed its own slot in followerStates.
     func setFollowerStateProvider(_ provider: @escaping FollowerStateProvider) {
         self.followerStateProvider = provider
+    }
+
+    /// Phase 4: tells the coordinator whether THIS node was configured as the
+    /// original Primary (from settings, not the runtime role) and how long
+    /// it must be healthy as a standby before auto-reclaiming. `0` disables.
+    func setAutoReclaimPolicy(isConfiguredPrimary: Bool, afterHours: Int) {
+        self.isConfiguredPrimary = isConfiguredPrimary
+        self.autoReclaimAfterSeconds = TimeInterval(max(0, afterHours)) * 3600
+        // Any policy change resets the healthy clock — start clean.
+        self.standbyHealthySince = nil
+    }
+
+    /// Phase 4: time remaining (seconds) until auto-reclaim, or `nil` if
+    /// auto-reclaim is disabled / not eligible. Exposed for the GUI countdown.
+    func autoReclaimCountdownSeconds() -> TimeInterval? {
+        guard isConfiguredPrimary,
+              autoReclaimAfterSeconds > 0,
+              mode == .standby,
+              let since = standbyHealthySince else { return nil }
+        let elapsed = Date().timeIntervalSince(since)
+        return max(0, autoReclaimAfterSeconds - elapsed)
+    }
+
+    /// Phase 4: user-initiated promote. Skips the death-confirmation probe
+    /// because the user is explicitly asserting "take over now". Existing
+    /// stale-term backstop in `detectStaleSelfFromResponse` will demote the
+    /// previous primary on its next sync attempt.
+    func manuallyPromote() async {
+        guard mode == .standby else { return }
+        meshLogger.notice("Manual promote requested by user")
+        await promoteToLeader()
     }
 
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
@@ -1140,6 +1181,7 @@ actor ClusterCoordinator {
         standbyMonitorTask?.cancel()
         standbyMonitorTask = nil
         standbyHealthMisses = 0
+        standbyHealthySince = nil
 
         guard mode == .standby else { return }
         guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
@@ -1174,10 +1216,27 @@ actor ClusterCoordinator {
                 await publishSnapshot()
             }
             standbyHealthMisses = 0
+            // Phase 4: only the originally-configured primary, currently
+            // demoted to standby, with auto-reclaim enabled, accumulates a
+            // continuous healthy clock. Reclaim once the threshold elapses.
+            if isConfiguredPrimary && autoReclaimAfterSeconds > 0 {
+                if standbyHealthySince == nil {
+                    standbyHealthySince = Date()
+                } else if let since = standbyHealthySince,
+                          Date().timeIntervalSince(since) >= autoReclaimAfterSeconds {
+                    meshLogger.notice("Auto-reclaim threshold reached after \(self.autoReclaimAfterSeconds, privacy: .public)s healthy; reclaiming Primary")
+                    standbyHealthySince = nil
+                    await promoteToLeader()
+                    return
+                }
+            }
             // Safety net: keep refreshing registration while standby monitoring is healthy.
             // This avoids worker disappearance if the dedicated registration task is interrupted.
             await registerWithLeader(leaderBaseURL)
         } else {
+            // Any miss resets the auto-reclaim clock; reclaim only fires after
+            // a fully-uninterrupted healthy window.
+            standbyHealthySince = nil
             standbyHealthMisses += 1
             snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
         meshLogger.warning("Primary health miss \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")

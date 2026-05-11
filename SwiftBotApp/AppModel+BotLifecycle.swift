@@ -37,6 +37,10 @@ extension AppModel {
             aiReplies: settings.clusterOffloadAIReplies,
             wikiLookups: settings.clusterOffloadWikiLookups
         )
+        await cluster.setAutoReclaimPolicy(
+            isConfiguredPrimary: settings.clusterMode == .leader,
+            afterHours: settings.clusterAutoReclaimAfterHours
+        )
         configureMeshSync()
 
         let runtimeMode = await cluster.currentSnapshot().mode
@@ -59,6 +63,18 @@ extension AppModel {
 
         await connectDiscordInternal()
         startMediaMonitor()
+    }
+
+    /// Phase 4: user-initiated promote from the SwiftMesh GUI. Forwards to
+    /// the coordinator, which skips the death-confirmation probe and runs
+    /// the standard promotion path. Discord output is enabled by
+    /// `connectDiscordAfterPromotion()` invoked via the existing onPromotion
+    /// callback wired in AppModel.
+    func manuallyPromoteToPrimary() async {
+        await MainActor.run {
+            logs.append("👤 Manual promote to Primary requested.")
+        }
+        await cluster.manuallyPromote()
     }
 
     func connectDiscordAfterPromotion() async {
