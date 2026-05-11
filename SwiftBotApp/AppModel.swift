@@ -545,6 +545,14 @@ final class AppModel: ObservableObject {
                     await self?.saveMeshCursors(cursors)
                 }
             }
+            await cluster.setDemotionHandler { [weak self] in
+                guard let self else { return }
+                // Higher-term peer detected — mute Discord and revert to passive standby.
+                await self.service.setOutputAllowed(false)
+                await MainActor.run { [weak self] in
+                    self?.logs.append("⚠️ Demoted to Standby — another Primary holds a higher term. Output muted.")
+                }
+            }
             let restoredCursors = await meshCursorStore.load()
             await cluster.applyRestoredCursors(restoredCursors)
             await configureAdminWebServer()
