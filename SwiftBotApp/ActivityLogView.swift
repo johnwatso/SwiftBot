@@ -125,12 +125,6 @@ struct ActivityLogView: View {
             HStack {
                 ViewSectionHeader(title: "Activity", symbol: "list.bullet.clipboard.fill")
                 Spacer()
-                Button {
-                    LogExporter.presentSavePanel(app: app)
-                } label: {
-                    Label("Export Logs", systemImage: "square.and.arrow.up")
-                }
-                .help("Save a redacted diagnostic report (Discord token, mesh secret, API keys are scrubbed)")
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(

@@ -171,6 +171,14 @@ struct SwiftBotApp: App {
                     .disabled(appModel.viewMode == .remote)
                 }
             }
+            // Mirrors SwiftMiner's Help menu: a single entry to save a fully
+            // redacted diagnostic report for issue reports / debugging.
+            CommandGroup(after: .help) {
+                Button("Export Diagnostic Logs…") {
+                    LogExporter.presentSavePanel(app: appModel)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
         }
 
         Settings {
