@@ -295,6 +295,10 @@ struct FollowerStateSummary: Codable, Sendable, Hashable {
     let recentLogTail: [String]   // Last few log lines (bounded, redacted of tokens by caller)
     let activeVoiceMembers: Int   // Count of voice presences known to this node
     let collectedAt: Date         // When this snapshot was assembled
+    /// Most recent Discord gateway heartbeat → ACK round-trip in ms.
+    /// `nil` if the gateway hasn't received an ACK yet (or is disconnected).
+    /// Used by the primary to compute the cross-instance Gateway Delta.
+    let discordGatewayLatencyMs: Int?
 }
 
 /// Body returned with a 409 Conflict when a sender's leader term is stale.

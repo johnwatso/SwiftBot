@@ -192,7 +192,54 @@ struct SwiftMeshView: View {
                 symbol: "arrow.uturn.up.circle",
                 color: app.autoReclaimRemainingSeconds != nil ? .purple : .gray
             )
+            DashboardMetricCard(
+                title: "Gateway Δ",
+                value: gatewayDeltaDisplay,
+                subtitle: gatewayDeltaSubtitle,
+                symbol: "bolt.horizontal",
+                color: gatewayDeltaTone
+            )
         }
+    }
+
+    // MARK: - Gateway delta
+
+    /// Local node's most-recent Discord heartbeat→ACK round-trip in ms.
+    private var localGatewayLatencyMs: Int? {
+        app.connectionDiagnostics.heartbeatLatencyMs
+    }
+
+    /// Worst (largest) Discord latency reported by any follower in the most
+    /// recent poll. Returns nil if no follower has reported a latency yet.
+    private var worstFollowerGatewayLatencyMs: Int? {
+        app.clusterSnapshot.followerStates.values
+            .compactMap { $0.discordGatewayLatencyMs }
+            .max()
+    }
+
+    private var gatewayDeltaDisplay: String {
+        guard let local = localGatewayLatencyMs else { return "—" }
+        guard let follower = worstFollowerGatewayLatencyMs else { return "Solo" }
+        return "\(abs(local - follower)) ms"
+    }
+
+    private var gatewayDeltaSubtitle: String {
+        guard let local = localGatewayLatencyMs else { return "No local heartbeat" }
+        guard let follower = worstFollowerGatewayLatencyMs else {
+            return "Local \(local) ms · no follower"
+        }
+        return "Local \(local) ms · worst peer \(follower) ms"
+    }
+
+    /// Delta tone: green if <40 ms drift, yellow if <120, red beyond. Gray when
+    /// we don't have both sides yet.
+    private var gatewayDeltaTone: Color {
+        guard let local = localGatewayLatencyMs,
+              let follower = worstFollowerGatewayLatencyMs else { return .gray }
+        let delta = abs(local - follower)
+        if delta >= 120 { return .red }
+        if delta >= 40 { return .orange }
+        return .green
     }
 
     private var diagnosticsAndJobsRow: some View {
@@ -958,6 +1005,9 @@ struct FollowerActivityRow: View {
                 metric("Term", "\(state.leaderTerm)")
                 metric("Output", state.outputAllowed ? "On" : "Muted")
                 metric("Voice", "\(state.activeVoiceMembers)")
+                if let lat = state.discordGatewayLatencyMs {
+                    metric("Gateway", "\(lat) ms")
+                }
                 Spacer()
                 Text(state.collectedAt, style: .relative)
                     .font(.caption2)

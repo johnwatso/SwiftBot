@@ -573,7 +573,8 @@ final class AppModel: ObservableObject {
                         lastEventAt: nil,
                         recentLogTail: [],
                         activeVoiceMembers: 0,
-                        collectedAt: Date()
+                        collectedAt: Date(),
+                        discordGatewayLatencyMs: nil
                     )
                 }
                 let outputAllowed = await self.service.outputAllowed
@@ -589,7 +590,8 @@ final class AppModel: ObservableObject {
                             lastEventAt: nil,
                             recentLogTail: [],
                             activeVoiceMembers: 0,
-                            collectedAt: Date()
+                            collectedAt: Date(),
+                            discordGatewayLatencyMs: nil
                         )
                     }
                     let tail = Array(self.logs.lines.suffix(8))
@@ -605,7 +607,8 @@ final class AppModel: ObservableObject {
                         lastEventAt: self.lastVoiceStateAt,
                         recentLogTail: tail,
                         activeVoiceMembers: self.voiceStateEventCount,
-                        collectedAt: Date()
+                        collectedAt: Date(),
+                        discordGatewayLatencyMs: self.connectionDiagnostics.heartbeatLatencyMs
                     )
                 }
             }
