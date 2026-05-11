@@ -130,6 +130,9 @@ actor ClusterCoordinator {
     private var onTermChanged: (@Sendable (Int) async -> Void)?
     private var onPromotion: (@Sendable () async -> Void)?
     private var onDemotion: (@Sendable () async -> Void)?
+    /// Fires when the original Primary successfully reclaims at the end of a
+    /// Handover Test. Used by AppModel to persist a "last passed" timestamp.
+    private var onHandoverTestPassed: (@Sendable () async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
     // Phase 3: primary stores the last polled state for each follower, keyed
     // by node baseURL. Published into ClusterSnapshot on each refresh.
@@ -187,6 +190,11 @@ actor ClusterCoordinator {
     /// passive-standby gating that normally happens at startup.
     func setDemotionHandler(_ handler: @escaping @Sendable () async -> Void) {
         self.onDemotion = handler
+    }
+
+    /// Wires the AppModel-side "last handover test passed" persistence.
+    func setHandoverTestPassedHandler(_ handler: @escaping @Sendable () async -> Void) {
+        self.onHandoverTestPassed = handler
     }
 
     /// Phase 3: AppModel provides a closure that builds the local node's
@@ -345,6 +353,7 @@ actor ClusterCoordinator {
         snapshot.diagnostics = "Handover test complete; reclaiming Primary"
         await publishSnapshot()
         await promoteToLeader()
+        await onHandoverTestPassed?()
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
     }
 

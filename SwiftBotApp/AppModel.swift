@@ -313,8 +313,22 @@ final class AppModel: ObservableObject {
         switch settings.launchMode {
         case .remoteControl:
             return settings.remoteMode.isConfigured
-        case .standaloneBot, .swiftMeshClusterNode:
+        case .standaloneBot:
             return !settings.token.isEmpty
+        case .swiftMeshClusterNode:
+            // Failover / Worker nodes don't always carry their own Discord
+            // token — they relay via the Primary. Treat them as onboarded
+            // once the cluster is configured (host + shared secret), so that
+            // a term update → saveSettings → recompute doesn't kick a
+            // tokenless Standby back to the welcome screen mid-failover.
+            switch settings.clusterMode {
+            case .standby, .worker:
+                let host = settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                let secret = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !host.isEmpty && !secret.isEmpty
+            case .leader, .standalone:
+                return !settings.token.isEmpty
+            }
         }
     }
 
@@ -547,6 +561,15 @@ final class AppModel: ObservableObject {
             await cluster.setCursorsChangedHandler { [weak self] cursors in
                 Task { [weak self] in
                     await self?.saveMeshCursors(cursors)
+                }
+            }
+            await cluster.setHandoverTestPassedHandler { [weak self] in
+                guard let self else { return }
+                await MainActor.run {
+                    self.settings.clusterLastHandoverTestAt = Date()
+                    self.settings.clusterLastHandoverTestOK = true
+                    self.logs.append("✅ SwiftMesh handover test completed end-to-end.")
+                    self.saveSettings()
                 }
             }
             await cluster.setDemotionHandler { [weak self] in

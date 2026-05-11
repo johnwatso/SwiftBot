@@ -23,7 +23,11 @@ struct SwiftMeshView: View {
                 // Handover Test panel — Primary side only, requires at least
                 // one registered worker.
                 if app.clusterSnapshot.mode == .leader && app.registeredWorkersDebugCount > 0 {
-                    HandoverTestPanel(onRun: { showHandoverTestConfirm = true })
+                    HandoverTestPanel(
+                        lastRunAt: app.settings.clusterLastHandoverTestAt,
+                        lastRunOK: app.settings.clusterLastHandoverTestOK,
+                        onRun: { showHandoverTestConfirm = true }
+                    )
                 }
 
                 metricTileRow
@@ -1028,15 +1032,32 @@ struct PromoteToPrimaryPanel: View {
 }
 
 /// Trigger panel for the SwiftMesh end-to-end handover test. Visible on the
-/// Primary side when at least one Failover is registered.
+/// Primary side when at least one Failover is registered. Surfaces the most
+/// recent pass timestamp so an operator can see at a glance whether the
+/// failover path has been exercised lately.
 struct HandoverTestPanel: View {
+    let lastRunAt: Date?
+    let lastRunOK: Bool
     let onRun: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Test Failover handover")
-                    .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: statusSymbol)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                    Text("Test Failover handover")
+                        .font(.subheadline.weight(.semibold))
+                    Text(statusLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(statusColor.opacity(0.12))
+                        )
+                }
                 Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Useful for validating the swap path without a real outage.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1058,6 +1079,26 @@ struct HandoverTestPanel: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.orange.opacity(0.22), lineWidth: 1)
         )
+    }
+
+    private var statusLabel: String {
+        guard let lastRunAt else { return "Never run" }
+        let prefix = lastRunOK ? "Passed" : "Failed"
+        let seconds = max(0, -lastRunAt.timeIntervalSinceNow)
+        if seconds < 60 { return "\(prefix) just now" }
+        if seconds < 3_600 { return "\(prefix) \(Int(seconds / 60)) min ago" }
+        if seconds < 86_400 { return "\(prefix) \(Int(seconds / 3_600)) h ago" }
+        return "\(prefix) \(Int(seconds / 86_400)) d ago"
+    }
+
+    private var statusSymbol: String {
+        guard lastRunAt != nil else { return "questionmark.circle.fill" }
+        return lastRunOK ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
+    }
+
+    private var statusColor: Color {
+        guard lastRunAt != nil else { return .secondary }
+        return lastRunOK ? .green : .orange
     }
 }
 
