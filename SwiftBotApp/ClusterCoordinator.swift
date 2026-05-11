@@ -1879,28 +1879,29 @@ actor ClusterCoordinator {
             let workers = sortedRegisteredWorkers()
             var reachable = 0
 
+            // Previously this loop awaited `fetchRemoteClusterStatus` for each
+            // registered worker — a 3-second-per-worker network call. The
+            // *outer* HTTP request to /cluster/status (from the Primary's own
+            // pollClusterStatus) has a 3s timeout too, so a single
+            // network-isolated worker would consistently time out the entire
+            // response and the Primary's cluster map would silently fall back
+            // to just itself. Emit every registered worker synchronously from
+            // local state. Background tasks (registration heartbeat, mesh
+            // sync) already keep `lastSeen` fresh, so health is derived
+            // without blocking the response.
             for worker in workers {
-                if let remoteStatus = await fetchRemoteClusterStatus(baseURL: worker.baseURL) {
-                    touchRegisteredWorker(baseURL: worker.baseURL)
-                    reachable += 1
-                    for var node in remoteStatus.response.nodes where !nodes.contains(where: { $0.id == node.id }) {
-                        if node.role == .worker, node.latencyMs == nil {
-                            node.latencyMs = remoteStatus.latencyMs
-                        }
-                        nodes.append(node)
-                    }
+                let age = Date().timeIntervalSince(worker.lastSeen)
+                let recentlySeen = age <= registrationStaleAfter
+                if recentlySeen { reachable += 1 }
+                let status: ClusterNodeHealthStatus
+                if !recentlySeen {
+                    status = .disconnected
+                } else if age <= (registrationStaleAfter / 3) {
+                    status = .healthy
                 } else {
-                    let recentlySeen = Date().timeIntervalSince(worker.lastSeen) <= registrationStaleAfter
-                    if recentlySeen {
-                        reachable += 1
-                    }
-                    nodes.append(
-                        unreachableWorkerNode(
-                            worker: worker,
-                            status: recentlySeen ? .degraded : .disconnected
-                        )
-                    )
+                    status = .degraded
                 }
+                nodes.append(unreachableWorkerNode(worker: worker, status: status))
             }
 
             if workers.isEmpty {
@@ -1909,16 +1910,16 @@ actor ClusterCoordinator {
                 snapshot.diagnostics = "Waiting for worker registrations via /cluster/register"
             } else if reachable == workers.count {
                 snapshot.workerState = .connected
-                snapshot.workerStatusText = "\(reachable) workers connected"
-                snapshot.diagnostics = "All registered workers reachable"
+                snapshot.workerStatusText = "\(reachable) worker\(reachable == 1 ? "" : "s") connected"
+                snapshot.diagnostics = "All registered workers heard from in the last \(Int(registrationStaleAfter))s"
             } else if reachable > 0 {
                 snapshot.workerState = .degraded
                 snapshot.workerStatusText = "\(reachable)/\(workers.count) workers connected"
-                snapshot.diagnostics = "Some registered workers are unreachable"
+                snapshot.diagnostics = "Some registered workers haven't re-registered recently"
             } else {
                 snapshot.workerState = .failed
                 snapshot.workerStatusText = "Cluster status unavailable"
-                snapshot.diagnostics = "Unable to reach any registered workers"
+                snapshot.diagnostics = "No worker has re-registered in the last \(Int(registrationStaleAfter))s"
             }
         }
 

@@ -790,10 +790,10 @@ struct ClusterConnectionShape: Shape {
     }
 }
 
-/// Replaces the previous `HeartbeatConnectionView`. Same visual layout (single
-/// stroke between leader and worker, latency capsule at the midpoint) but no
-/// timeline-driven pulse animation — the line is a flat color reflecting the
-/// connection's health state.
+/// Straight line between leader and worker with a `personalhotspot` SF Symbol
+/// chip at the midpoint. Color and icon variant indicate connection state:
+/// green hotspot when healthy, yellow when degraded, red `personalhotspot.slash`
+/// when disconnected. Replaces the prior heartbeat / waveform styling.
 struct StaticConnectionView: View {
     let start: CGPoint
     let end: CGPoint
@@ -810,9 +810,18 @@ struct StaticConnectionView: View {
         }
     }
 
+    private var iconSymbol: String {
+        // Visual cue per state. `personalhotspot.slash` cleanly reads as
+        // "no connection"; `personalhotspot` reads as "linked / live".
+        switch visualState {
+        case .disconnected: return "personalhotspot.slash"
+        default: return "personalhotspot"
+        }
+    }
+
     private var latencyLabel: String? {
         guard let latencyMs else { return nil }
-        return "\(Int(latencyMs.rounded()))ms"
+        return "\(Int(latencyMs.rounded())) ms"
     }
 
     private var visualState: ConnectionVisualState {
@@ -825,29 +834,42 @@ struct StaticConnectionView: View {
 
     var body: some View {
         ZStack {
-            ClusterConnectionShape(start: start, end: end)
-                .stroke(
-                    lineColor.opacity(status == .disconnected ? 0.35 : 0.78),
-                    style: StrokeStyle(
-                        lineWidth: activeJobs > 0 ? 2.5 : 2.0,
-                        lineCap: .round,
-                        dash: status == .disconnected ? [3, 4] : []
-                    )
-                )
-
-            if let latencyLabel {
-                Text(latencyLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.primary.opacity(0.03), in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(lineColor.opacity(0.25), lineWidth: 1)
-                    )
-                    .position(midpoint)
+            Path { path in
+                path.move(to: start)
+                path.addLine(to: end)
             }
+            .stroke(
+                lineColor.opacity(status == .disconnected ? 0.35 : 0.55),
+                style: StrokeStyle(
+                    lineWidth: 1.5,
+                    lineCap: .round,
+                    dash: status == .disconnected ? [4, 4] : []
+                )
+            )
+
+            // Hotspot chip at the midpoint. Sits above the line so it's the
+            // primary signal for the connection's state.
+            VStack(spacing: 2) {
+                Image(systemName: iconSymbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(lineColor)
+                if let latencyLabel {
+                    Text(latencyLabel)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(lineColor.opacity(0.35), lineWidth: 1)
+            )
+            .position(midpoint)
         }
     }
 
