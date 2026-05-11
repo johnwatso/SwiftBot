@@ -359,6 +359,19 @@ struct FollowerStateSummary: Codable, Sendable, Hashable {
     let discordGatewayLatencyMs: Int?
 }
 
+/// Response body for `GET /v1/mesh/discord-token` — used by a Standby (or
+/// freshly-registered Worker) to pull the bot's Discord token from the
+/// Primary after a successful HMAC-authed handshake, so a Failover node
+/// never needs to be onboarded with its own copy of the token. The endpoint
+/// is gated by the same mesh shared-secret HMAC as every other /v1/mesh route.
+struct MeshDiscordTokenResponse: Codable, Sendable {
+    let token: String
+    /// True when the Primary actually has a token configured. False means the
+    /// Primary itself isn't onboarded; the caller should not overwrite a
+    /// known-good local value.
+    let available: Bool
+}
+
 /// Coordinated handover test payload. Sent by the current Primary to its
 /// Failover to request a temporary takeover, then sent back from the
 /// temporary-Primary at the end of the window so the original Primary can

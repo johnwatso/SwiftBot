@@ -133,6 +133,13 @@ actor ClusterCoordinator {
     /// Fires when the original Primary successfully reclaims at the end of a
     /// Handover Test. Used by AppModel to persist a "last passed" timestamp.
     private var onHandoverTestPassed: (@Sendable () async -> Void)?
+    /// Returns the Primary's currently-configured Discord token, if any.
+    /// Used by the Primary to serve `/v1/mesh/discord-token` requests so a
+    /// Standby can pull the token after registering.
+    private var discordTokenProvider: (@Sendable () async -> String?)?
+    /// Fires on the Standby side when a fresh Discord token has been pulled
+    /// from the Primary. AppModel persists it via the Keychain-backed path.
+    private var onDiscordTokenFetched: (@Sendable (String) async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
     // Phase 3: primary stores the last polled state for each follower, keyed
     // by node baseURL. Published into ClusterSnapshot on each refresh.
@@ -195,6 +202,16 @@ actor ClusterCoordinator {
     /// Wires the AppModel-side "last handover test passed" persistence.
     func setHandoverTestPassedHandler(_ handler: @escaping @Sendable () async -> Void) {
         self.onHandoverTestPassed = handler
+    }
+
+    /// Wires the Primary-side Discord-token provider.
+    func setDiscordTokenProvider(_ provider: @escaping @Sendable () async -> String?) {
+        self.discordTokenProvider = provider
+    }
+
+    /// Wires the Standby-side handler invoked when a pulled token arrives.
+    func setDiscordTokenFetchedHandler(_ handler: @escaping @Sendable (String) async -> Void) {
+        self.onDiscordTokenFetched = handler
     }
 
     /// Phase 3: AppModel provides a closure that builds the local node's
@@ -359,6 +376,49 @@ actor ClusterCoordinator {
 
     private func clearHandoverTestTask() {
         handoverTestTask = nil
+    }
+
+    // MARK: - Discord token auto-fetch
+
+    /// Primary-side responder for `GET /v1/mesh/discord-token`. The route is
+    /// already gated by the mesh HMAC, so any peer presenting a valid
+    /// signature with the shared secret is allowed to read the token. The
+    /// response sets `available=false` (rather than throwing) when the
+    /// Primary itself doesn't have a token, so the Standby doesn't overwrite
+    /// a previously-pulled value.
+    private func handleDiscordTokenRequest() async -> Data {
+        guard mode == .leader else {
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
+        }
+        let token = (await discordTokenProvider?())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let payload = MeshDiscordTokenResponse(token: token, available: !token.isEmpty)
+        let body = (try? encoder.encode(payload)) ?? Data()
+        return httpResponse(status: "200 OK", body: body)
+    }
+
+    /// Standby/worker-side helper: called from `registerWithLeader` on each
+    /// successful registration. AppModel only wires `onDiscordTokenFetched`
+    /// when the local token is empty, so once a token has been pulled this
+    /// becomes a no-op until the user clears the token again.
+    private func pullDiscordTokenFromLeaderIfNeeded(leaderBaseURL: String) async {
+        guard mode == .standby || mode == .worker else { return }
+        guard let handler = onDiscordTokenFetched else { return }
+        guard let url = URL(string: leaderBaseURL + "/v1/mesh/discord-token") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/discord-token")
+        request.timeoutInterval = 5
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            guard let payload = try? decoder.decode(MeshDiscordTokenResponse.self, from: data),
+                  payload.available,
+                  !payload.token.isEmpty else { return }
+            await handler(payload.token)
+            meshLogger.notice("Pulled Discord token from Primary after successful handshake")
+        } catch {
+            // best effort — next registration cycle will retry.
+        }
     }
 
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
@@ -1270,6 +1330,8 @@ actor ClusterCoordinator {
             return await handleHandoverTestBegin(request.body)
         case ("POST", "/v1/mesh/handover-test/end"):
             return await handleHandoverTestEnd(request.body)
+        case ("GET", "/v1/mesh/discord-token"):
+            return await handleDiscordTokenRequest()
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -1706,6 +1768,12 @@ actor ClusterCoordinator {
                 snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary via \(url.absoluteString)"
             }
             await publishSnapshot()
+
+            // Auto-pull Discord token after a successful handshake. AppModel
+            // sets onDiscordTokenFetched only when the local node has no
+            // token; the helper is a no-op otherwise. Failure is silent —
+            // the next registration cycle (every ~4s) will retry.
+            await pullDiscordTokenFromLeaderIfNeeded(leaderBaseURL: leaderBaseURL)
         } catch {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Primary unavailable"
