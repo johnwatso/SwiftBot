@@ -62,14 +62,18 @@ extension AppModel {
     }
 
     func connectDiscordAfterPromotion() async {
-        // Allow output immediately — the gateway connection is already live if this
-        // node was running in standby (passive) mode. Avoid reconnecting if already
-        // connected to prevent the brief downtime a disconnect/reconnect would cause.
+        // Bug 3 fix: a final tail-resync pull from the prior leader has already
+        // been attempted inside ClusterCoordinator.confirmLeaderDeadAndResync()
+        // BEFORE promotion was committed. By the time we get here, the standby's
+        // local state contains everything we could pull from the prior leader,
+        // so it is safe to enable output. The gateway connection is already
+        // live (passive standby kept it open) — flipping the output gate avoids
+        // the brief downtime of a disconnect/reconnect.
         await service.setOutputAllowed(true)
 
         if status == .running {
             // Already connected and receiving events — just flip the output gate.
-            logs.append("✅ Output enabled. Now responding as Primary.")
+            logs.append("✅ Output enabled. Now responding as Primary (post-resync).")
             return
         }
 
