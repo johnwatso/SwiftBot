@@ -7,6 +7,10 @@ struct SwiftMeshSetupView: View {
     let onBack: () -> Void
 
     @State private var step: MeshStep = .setup
+    /// Disclosure toggle for splitting Listen Port and Leader Port. Initialised
+    /// from the saved values so a user who returns to setup with diverged
+    /// ports sees the advanced section already revealed.
+    @State private var useSeparateLeaderPort: Bool = false
 
     private enum MeshStep {
         case setup, testing, confirmed, failed
@@ -37,32 +41,31 @@ struct SwiftMeshSetupView: View {
                 .onboardingTextFieldStyle()
                 .frame(maxWidth: 560)
 
-            HStack(spacing: 16) {
-                HStack {
-                    Text("Listen Port")
-                        .font(.callout)
-                    Spacer()
-                    TextField("Port", text: Binding(
-                        get: { String(app.settings.clusterListenPort) },
-                        set: { newValue in
-                            guard let v = Int(newValue) else { return }
-                            // If Leader Port still matches the old Listen Port
-                            // (typical dev pair: both nodes on the same custom
-                            // port), keep them in sync so users don't end up
-                            // with one custom port and one default.
-                            let wasInSync = app.settings.clusterLeaderPort == app.settings.clusterListenPort
-                            app.settings.clusterListenPort = v
-                            if wasInSync {
-                                app.settings.clusterLeaderPort = v
-                            }
+            HStack(spacing: 12) {
+                Text("Mesh Port")
+                    .font(.callout)
+                Spacer()
+                TextField("Port", text: Binding(
+                    get: { String(app.settings.clusterListenPort) },
+                    set: { newValue in
+                        guard let v = Int(newValue) else { return }
+                        app.settings.clusterListenPort = v
+                        // Keep the leader port mirrored unless the advanced
+                        // toggle is on (user is intentionally splitting ports
+                        // because the Primary is on the same machine or
+                        // behind a port-forward).
+                        if !useSeparateLeaderPort {
+                            app.settings.clusterLeaderPort = v
                         }
-                    ))
-                    .onboardingTextFieldStyle()
-                    .frame(width: 110)
-                }
-                .frame(maxWidth: .infinity)
+                    }
+                ))
+                .onboardingTextFieldStyle()
+                .frame(width: 110)
+            }
+            .frame(maxWidth: 560)
 
-                HStack {
+            DisclosureGroup(isExpanded: $useSeparateLeaderPort) {
+                HStack(spacing: 12) {
                     Text("Leader Port")
                         .font(.callout)
                     Spacer()
@@ -73,14 +76,23 @@ struct SwiftMeshSetupView: View {
                     .onboardingTextFieldStyle()
                     .frame(width: 110)
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+                Text("Only needed when the Primary listens on a different port than this node (e.g. two SwiftBot instances on the same machine, or a NAT port-forward).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Text("Advanced: use a different port for outbound")
+                    .font(.callout)
             }
-            .frame(maxWidth: 560)
-
-            Text("Leader Port is the port the Primary listens on. For a single-machine dev setup or any pair using the same port on both sides, keep these equal — Listen Port edits propagate to Leader Port automatically while they match.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: 560, alignment: .leading)
+            .onChange(of: useSeparateLeaderPort) { _, isOn in
+                // Collapsing snaps Leader Port back to Listen Port so the
+                // common-case invariant is restored.
+                if !isOn {
+                    app.settings.clusterLeaderPort = app.settings.clusterListenPort
+                }
+            }
+            .frame(maxWidth: 560, alignment: .leading)
 
             RevealableSecretField(
                 text: $app.settings.clusterSharedSecret,
@@ -112,6 +124,10 @@ struct SwiftMeshSetupView: View {
         .frame(maxWidth: 560)
         .onAppear {
             app.settings.launchMode = .swiftMeshClusterNode
+            // Reveal the advanced toggle if the saved configuration already
+            // has divergent ports — otherwise the user would lose visibility
+            // of why Leader Port differs.
+            useSeparateLeaderPort = app.settings.clusterLeaderPort != app.settings.clusterListenPort
         }
         .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
             guard step == .testing, !inProgress else { return }

@@ -4,6 +4,11 @@ struct MeshPreferencesView: View {
     @EnvironmentObject var app: AppModel
     @State private var showWorkerOffloadWarning = false
     @State private var showDiagnostics = false
+    /// Disclosure for the rare case of a Primary on a different port than
+    /// this node (two SwiftBots on the same machine, NAT port-forward, etc).
+    /// Initialised from the saved values so a returning user with diverged
+    /// ports sees the section already revealed.
+    @State private var useSeparateLeaderPort: Bool = false
 
     private static let defaultListenPort = 38787
 
@@ -26,10 +31,20 @@ struct MeshPreferencesView: View {
             get: { "\(app.settings.clusterListenPort)" },
             set: { newValue in
                 let filtered = String(newValue.filter(\.isNumber).prefix(5))
+                let resolved: Int
                 if let port = Int(filtered), (1...65535).contains(port) {
-                    app.settings.clusterListenPort = port
+                    resolved = port
                 } else if filtered.isEmpty {
-                    app.settings.clusterListenPort = Self.defaultListenPort
+                    resolved = Self.defaultListenPort
+                } else {
+                    return
+                }
+                app.settings.clusterListenPort = resolved
+                // Mirror the leader port unless the user has explicitly opted
+                // into a split (Advanced disclosure). 95% of users want both
+                // ports equal.
+                if !useSeparateLeaderPort {
+                    app.settings.clusterLeaderPort = resolved
                 }
             }
         )
@@ -90,34 +105,53 @@ struct MeshPreferencesView: View {
                 }
 
                 if app.settings.clusterMode == .standby {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Primary Host")
-                                .font(.subheadline.weight(.medium))
-                            TextField("192.168.1.100", text: $app.settings.clusterLeaderAddress)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        .frame(maxWidth: .infinity)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Port")
-                                .font(.subheadline.weight(.medium))
-                            TextField("38787", text: leaderPortBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Primary Host")
+                            .font(.subheadline.weight(.medium))
+                        TextField("192.168.1.100", text: $app.settings.clusterLeaderAddress)
+                            .textFieldStyle(.roundedBorder)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Listen Port")
+                    Text("Mesh Port")
                         .font(.subheadline.weight(.medium))
                     TextField("38787", text: listenPortBinding)
                         .textFieldStyle(.roundedBorder)
+                        .frame(width: 120)
                     if hasInvalidPort {
                         Text("Port must be between 1 and 65535.")
                             .font(.caption)
                             .foregroundStyle(.red)
+                    }
+                }
+
+                DisclosureGroup(isExpanded: $useSeparateLeaderPort) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            Text("Leader Port")
+                                .font(.subheadline.weight(.medium))
+                            TextField("38787", text: leaderPortBinding)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 120)
+                        }
+                        Text("Only needed when the Primary listens on a different port than this node (e.g. two SwiftBot instances on the same machine, or a NAT port-forward).")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        if hasInvalidLeaderPort {
+                            Text("Leader Port must be between 1 and 65535.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .padding(.top, 4)
+                } label: {
+                    Text("Advanced: use a different port for outbound")
+                        .font(.subheadline)
+                }
+                .onChange(of: useSeparateLeaderPort) { _, isOn in
+                    if !isOn {
+                        app.settings.clusterLeaderPort = app.settings.clusterListenPort
                     }
                 }
 
@@ -302,6 +336,10 @@ struct MeshPreferencesView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            // Reveal the advanced disclosure if saved values disagree.
+            useSeparateLeaderPort = app.settings.clusterLeaderPort != app.settings.clusterListenPort
         }
     }
 
