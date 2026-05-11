@@ -281,6 +281,11 @@ struct BotSettings: Codable, Hashable {
     var clusterWorkerOffloadEnabled: Bool = false
     var clusterOffloadAIReplies: Bool = false
     var clusterOffloadWikiLookups: Bool = false
+    /// Hours of continuous healthy standby state required before the
+    /// originally-configured primary (i.e. `clusterMode == .leader` that has
+    /// been runtime-demoted to standby) will automatically reclaim leadership.
+    /// `0` disables auto-reclaim. Manual promote always works regardless.
+    var clusterAutoReclaimAfterHours: Int = 6
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -367,6 +372,7 @@ struct BotSettings: Codable, Hashable {
         case clusterWorkerOffloadEnabled
         case clusterOffloadAIReplies
         case clusterOffloadWikiLookups
+        case clusterAutoReclaimAfterHours
         case localAIDMReplyEnabled
         case localAIProvider
         case preferredAIProvider
@@ -435,6 +441,7 @@ struct BotSettings: Codable, Hashable {
             ?? (decodedOffloadAIReplies || decodedOffloadWikiLookups)
         clusterOffloadAIReplies = decodedOffloadAIReplies
         clusterOffloadWikiLookups = decodedOffloadWikiLookups
+        clusterAutoReclaimAfterHours = try container.decodeIfPresent(Int.self, forKey: .clusterAutoReclaimAfterHours) ?? 6
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
@@ -501,6 +508,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterWorkerOffloadEnabled, forKey: .clusterWorkerOffloadEnabled)
         try container.encode(clusterOffloadAIReplies, forKey: .clusterOffloadAIReplies)
         try container.encode(clusterOffloadWikiLookups, forKey: .clusterOffloadWikiLookups)
+        try container.encode(clusterAutoReclaimAfterHours, forKey: .clusterAutoReclaimAfterHours)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
 
         try container.encode(localAIProvider, forKey: .localAIProvider)
