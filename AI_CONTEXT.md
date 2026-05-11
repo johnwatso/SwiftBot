@@ -11,12 +11,12 @@ SwiftBot is a **native macOS Discord bot manager** built entirely with Swift and
 
 | Property | Value |
 |----------|-------|
-| Platform | macOS 13+ |
+| Platform | macOS 26+ |
 | Language | Swift with Concurrency (async/await, actors) |
 | Framework | SwiftUI — Apple-platform-first, no web frameworks |
 | Design Language | Apple Human Interface Guidelines — Liquid Glass / modern macOS |
 | Architecture | MVVM + actor isolation + EventBus pub/sub |
-| Build System | Xcode + Swift Package Manager |
+| Build System | Xcode + XcodeGen for the app, SwiftPM only for `Sources/UpdateEngine` |
 
 **What it does:** Connects to Discord via WebSocket gateway, monitors server events, and executes automated rules when events match. Also supports AI replies, wiki lookups, update monitoring (Patchy), multi-node cluster failover (SwiftMesh), and a web-based admin UI.
 
@@ -99,7 +99,7 @@ struct PipelineContext {
 | File | Purpose |
 |------|---------|
 | `AppModel.swift` | Primary app state `@MainActor ObservableObject`. Bot lifecycle, settings, gateway coordination, rule engine orchestration, Patchy scheduler, plugin management. |
-| `AppModel+Commands.swift` | Slash and prefix command handlers |
+| `AppModel+Commands.swift` | Slash command handlers |
 | `AppModel+Gateway.swift` | Gateway event parsing and dispatch |
 | `AppModel+AI.swift` | AI provider routing and response generation |
 | `DiscordService.swift` | Discord WebSocket gateway + REST API actor. Rule action execution. AI replies. Wiki lookup. |
@@ -163,7 +163,7 @@ All UI in SwiftBot **must** follow:
 
 1. **Apple Human Interface Guidelines** — always, without exception
 2. **SwiftUI only** — no AppKit views unless unavoidable (use `NSViewRepresentable`)
-3. **System Settings layout style** — sidebar navigation, HSplitView, material backgrounds
+3. **System Settings layout style** — sidebar navigation, split-pane layouts where appropriate, material backgrounds
 4. **Liquid Glass / modern macOS design language** — `.ultraThinMaterial`, `.thinMaterial`, semantic system colors
 5. **No web-style patterns** — no CSS-like layouts, no custom scrollbars, no card grids
 6. **No external UI frameworks** — zero SwiftPM UI dependencies
@@ -179,7 +179,7 @@ All UI in SwiftBot **must** follow:
 ### 3-Pane View Architecture
 
 ```
-VoiceWorkspaceView (HSplitView)
+VoiceWorkspaceView (split-pane layout)
 ├── RuleListView (220–320px)             — VoiceRuleListView.swift
 │   ├── isLoading → ProgressView()
 │   ├── rules.isEmpty → RuleListEmptyStateView ("No Rules Yet")
@@ -233,7 +233,8 @@ var processedActions: [RuleAction]   // runtime migration: legacy booleans → m
 
 - ✅ Swift Concurrency (`async/await`, `actor`, `@MainActor`, `Task`)
 - ✅ Keychain for ALL secrets — never write to disk
-- ✅ Add new `.swift` files to `project.pbxproj` (4 entries: PBXFileReference, PBXBuildFile, PBXGroup, PBXSourcesBuildPhase)
+- ✅ Treat `project.yml` as the source of truth for app project settings
+- ✅ Run `xcodegen` after editing `project.yml`
 - ✅ `.id(selectionID)` on all list-detail views to prevent SwiftUI state leakage
 - ✅ Look up current selection INSIDE binding closures — never capture IDs at creation time
 - ✅ `await MainActor.run {}` when updating `@Published` from background actors
@@ -245,7 +246,8 @@ var processedActions: [RuleAction]   // runtime migration: legacy booleans → m
 - ❌ Pre-populate new rules with default trigger or actions
 - ❌ Change `Models.swift` structure without cross-agent approval
 - ❌ Add new SwiftPM dependencies without explicit justification
-- ❌ Break existing UI layouts or SplitView behaviors
+- ❌ Convert the main app target into a Swift package or add a repo-root `Package.swift`
+- ❌ Break existing UI layouts or split-pane behaviors
 - ❌ Send Discord output from Standby or Worker nodes
 - ❌ Use `#if DEBUG` to gate production logic
 - ❌ Call `test*` methods from production code paths
@@ -255,20 +257,11 @@ var processedActions: [RuleAction]   // runtime migration: legacy booleans → m
 
 ---
 
-## 8. Multi-Agent File Ownership
+## 8. Agent Coordination
 
-When multiple agents work on SwiftBot simultaneously, respect file ownership:
+If multiple agents are working in parallel, coordinate before editing the same files and prefer clear ownership by area for the duration of the task.
 
-| File | Owner |
-|------|-------|
-| `VoiceActionsView.swift` | **claude** |
-| `VoiceRuleListView.swift` | **claude** |
-| `EmptyRuleOnboardingView.swift` | **claude** |
-| `Models.swift` | **kimi** |
-| `AppModel.swift` | **gemini** |
-| `DiscordService.swift` | **gemini** |
-
-**Rule:** Post in `#swiftbotdev` before editing another agent's file. Coordinate task splits before starting any work.
+This file does not assign permanent file owners. Treat any historical ownership notes elsewhere as advisory, not authoritative.
 
 ---
 
@@ -306,11 +299,10 @@ static func empty() -> Rule { Rule(trigger: nil, actions: []) }
 - [ ] Build succeeds — 0 errors, 0 new warnings
 - [ ] Modified feature works as expected
 - [ ] No regressions in unrelated features
-- [ ] `CHANGELOG.md` updated
-- [ ] Any new `.swift` files added to `project.pbxproj`
-- [ ] Posted results in `#swiftbotdev`
+- [ ] If `project.yml` changed, regenerate with `xcodegen`
+- [ ] If versioning or release metadata changed, verify `project.yml`, `SwiftBot.xcodeproj/project.pbxproj`, and `docs/` stay aligned
 
 ---
 
-*Last updated: 2026-03-11*
+*Last updated: 2026-05-07*
 *See `ARCHITECTURE.md` for full technical detail · `AI_GUIDE.md` for common task recipes*

@@ -1,6 +1,11 @@
 import Foundation
 import SwiftUI
 
+struct PatchyMonitoringSnapshot: Equatable {
+    let patchySettings: PatchySettings
+    let clusterMode: ClusterMode
+}
+
 extension AppModel {
 
     // MARK: - Patchy Update Monitoring
@@ -146,10 +151,18 @@ extension AppModel {
     }
 
     func configurePatchyMonitoring() {
+        let snapshot = PatchyMonitoringSnapshot(
+            patchySettings: settings.patchy,
+            clusterMode: settings.clusterMode
+        )
+
+        guard snapshot != lastPatchyMonitoringSnapshot else { return }
+        lastPatchyMonitoringSnapshot = snapshot
+
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
 
-        guard settings.patchy.monitoringEnabled else {
+        guard usesLocalRuntime, settings.patchy.monitoringEnabled else {
             appendPatchyLog("Patchy monitoring paused.")
             return
         }
@@ -181,14 +194,14 @@ extension AppModel {
         let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty }
         guard !enabledTargets.isEmpty else {
             appendPatchyLog("Patchy cycle (\(trigger)) skipped: no enabled targets.")
-            patchyLastCycleAt = Date()
+            setPatchyLastCycleAt(Date())
             return
         }
 
         patchyIsCycleRunning = true
         defer {
             patchyIsCycleRunning = false
-            patchyLastCycleAt = Date()
+            setPatchyLastCycleAt(Date())
         }
 
         let grouped = Dictionary(grouping: enabledTargets) { target in

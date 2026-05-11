@@ -14,7 +14,7 @@ struct StatCounter {
     var errors = 0
 }
 
-struct ActivityEvent: Identifiable, Hashable {
+struct ActivityEvent: Identifiable, Hashable, Codable {
     enum Kind: String, Codable {
         case voiceJoin
         case voiceLeave
@@ -25,10 +25,17 @@ struct ActivityEvent: Identifiable, Hashable {
         case error
     }
 
-    let id = UUID()
+    let id: UUID
     let timestamp: Date
     let kind: Kind
     let message: String
+
+    init(id: UUID = UUID(), timestamp: Date, kind: Kind, message: String) {
+        self.id = id
+        self.timestamp = timestamp
+        self.kind = kind
+        self.message = message
+    }
 }
 
 struct CommandLogEntry: Identifiable, Hashable, Codable {

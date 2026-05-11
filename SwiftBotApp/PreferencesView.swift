@@ -43,17 +43,23 @@ struct PreferencesView: View {
                         }
                         .tag(2)
 
+                    SwiftMinerPreferencesView()
+                        .tabItem {
+                            Label("Integrations", systemImage: "app.connected.to.app.below.fill")
+                        }
+                        .tag(3)
+
                     UpdatesPreferencesView()
                         .tabItem {
                             Label("Updates", systemImage: "arrow.clockwise")
                         }
-                        .tag(3)
+                        .tag(4)
 
                     AdvancedPreferencesView()
                         .tabItem {
                             Label("Developer", systemImage: "wrench")
                         }
-                        .tag(4)
+                        .tag(5)
                 }
                 .onChange(of: app.createPreferencesSnapshot()) { _, _ in
                     autoSaveTask?.cancel()

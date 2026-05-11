@@ -886,6 +886,246 @@
       gap: 12px;
     }
 
+    .analytics-shell {
+      display: grid;
+      gap: 12px;
+    }
+
+    .analytics-pulse {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+      border-radius: 18px;
+    }
+
+    .analytics-card {
+      border-radius: 14px;
+      padding: 11px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.09);
+      min-width: 0;
+    }
+
+    .analytics-card .label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .analytics-card .value {
+      margin-top: 6px;
+      font-size: 20px;
+      line-height: 1.05;
+      font-weight: 760;
+      letter-spacing: -0.035em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .analytics-card .detail,
+    .analytics-card .trend {
+      margin-top: 5px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .analytics-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.8fr);
+      gap: 12px;
+    }
+
+    .analytics-panel {
+      border-radius: 20px;
+      padding: 12px;
+    }
+
+    .analytics-chart {
+      position: relative;
+      min-height: 190px;
+      padding: 12px 8px 4px;
+      border-radius: 16px;
+      background:
+        linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+        rgba(255,255,255,0.025);
+      background-size: 100% 38px;
+      border: 1px solid rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+
+    .analytics-line-svg {
+      width: 100%;
+      height: 180px;
+      display: block;
+      overflow: visible;
+    }
+
+    .analytics-axis-labels {
+      position: absolute;
+      left: 20px;
+      right: 18px;
+      bottom: 7px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .analytics-axis-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      min-width: 0;
+    }
+
+    .analytics-feed {
+      display: grid;
+      gap: 7px;
+    }
+
+    .analytics-feed-item {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      border-radius: 13px;
+      padding: 8px 9px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.075);
+    }
+
+    .analytics-feed-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,0.07);
+      color: #8ecbff;
+      font-family: "Material Symbols Rounded";
+      font-size: 15px;
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
+    }
+
+    .analytics-feed-title {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .analytics-feed-detail,
+    .analytics-feed-time {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .analytics-diagnostics,
+    .analytics-support {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .analytics-health-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .analytics-health-row,
+    .analytics-user-row,
+    .analytics-insight {
+      border-radius: 13px;
+      padding: 8px 9px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.075);
+    }
+
+    .analytics-health-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .analytics-health-row span:first-child {
+      color: var(--muted);
+    }
+
+    .analytics-user-row {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .analytics-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      background: rgba(112, 185, 255, 0.18);
+      border: 1px solid rgba(130, 205, 255, 0.28);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .analytics-user-name {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .analytics-user-meta {
+      margin-top: 3px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .analytics-progress {
+      height: 5px;
+      margin-top: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+
+    .analytics-progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(98, 198, 255, 0.9), rgba(163, 135, 255, 0.75));
+    }
+
+    .analytics-insight {
+      display: grid;
+      gap: 4px;
+    }
+
+    .analytics-insight-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .analytics-insight-body {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .tone-healthy { border-color: rgba(116, 235, 162, 0.20); }
+    .tone-warning { border-color: rgba(255, 191, 101, 0.28); }
+    .tone-danger { border-color: rgba(255, 137, 122, 0.30); }
+    .tone-automation { border-color: rgba(181, 167, 255, 0.24); }
+    .tone-usage { border-color: rgba(111, 196, 255, 0.22); }
+
     .commands-top {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1324,6 +1564,16 @@
     }
 
     @media (max-width: 980px) {
+      .analytics-pulse {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .analytics-main,
+      .analytics-diagnostics,
+      .analytics-support {
+        grid-template-columns: 1fr;
+      }
+
       .settings-top,
       .diagnostics-top,
       .settings-panels,
@@ -1827,6 +2077,10 @@
                 <span class="nav-icon"><span class="ms">dashboard</span></span>
                 <span class="nav-text">Overview</span>
               </button>
+              <button class="nav-link" data-view="analytics" type="button">
+                <span class="nav-icon"><span class="ms">monitoring</span></span>
+                <span class="nav-text">Analytics</span>
+              </button>
             </div>
 
             <div class="nav-section">
@@ -1940,6 +2194,49 @@
           <div class="commands-shell">
             <section id="commandsTop" class="commands-top glass"></section>
             <section id="commandsCatalog" class="commands-catalog glass"></section>
+          </div>
+        </section>
+
+        <section id="analyticsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><span class="ms">monitoring</span> Analytics</div>
+              <div id="analyticsUpdated" class="command-desc">Live analytics</div>
+            </div>
+          </div>
+          <div class="analytics-shell">
+            <section id="analyticsPulse" class="analytics-pulse glass"></section>
+            <section class="analytics-main">
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">stacked_line_chart</span> Activity Overview</div>
+                <div id="analyticsPeak" class="command-desc" style="margin-bottom:10px;">Peak activity</div>
+                <div id="analyticsChart" class="analytics-chart"></div>
+              </article>
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">dynamic_feed</span> Live Operations</div>
+                <div id="analyticsFeed" class="analytics-feed"></div>
+              </article>
+            </section>
+            <section class="analytics-diagnostics">
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">bolt</span> System Activity</div>
+                <div id="analyticsSystem" class="analytics-health-grid"></div>
+              </article>
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">ecg_heart</span> Bot Health</div>
+                <div id="analyticsHealth" class="analytics-health-grid"></div>
+              </article>
+            </section>
+            <section class="analytics-support">
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">auto_awesome</span> Insights</div>
+                <div id="analyticsInsights" class="analytics-health-grid"></div>
+              </article>
+              <article class="analytics-panel glass">
+                <div class="panel-title"><span class="ms">groups</span> Top Users</div>
+                <div id="analyticsUsers" class="analytics-health-grid"></div>
+              </article>
+            </section>
           </div>
         </section>
 
@@ -2103,6 +2400,7 @@
     let currentView = 'overview';
     let dashboardStatus = null;
     let dashboardOverview = null;
+    let dashboardAnalytics = null;
     let dashboardSettings = null;
     let dashboardConfig = null;
     let commandsCatalog = null;
@@ -2115,6 +2413,7 @@
     let selectedActionRuleID = null;
     let selectedMediaItemID = null;
     let mediaViewMode = 'library';
+    const activeMediaPlayback = { sessionID: '', itemID: '', started: false, completed: false, lastSentSeconds: 0 };
     let mediaFilterState = { source: '', dateRange: 'all', game: '', page: 1, pageSize: 24 };
     let mediaExportState = {
       secondaryID: '',
@@ -2129,7 +2428,8 @@
       multiEndSeconds: null,
       multiName: '',
       layout: 'stacked',
-      audio: 'primary'
+      audio: 'primary',
+      playbackQuality: 'auto'
     };
     let actionSaveTimer = null;
     let patchySaveTimers = {};
@@ -2665,18 +2965,12 @@
           <label class="switch"><input id="cmdMaster" type="checkbox" ${commandsCatalog.commandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Prefix</span>
-          <span class="value">! style</span>
-          <label class="switch"><input id="cmdPrefix" type="checkbox" ${commandsCatalog.prefixCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-        <div class="commands-toggle-card">
           <span class="label">Discord UI</span>
           <span class="value">/ slash</span>
           <label class="switch"><input id="cmdSlash" type="checkbox" ${commandsCatalog.slashCommandsEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
       `;
       top.querySelector('#cmdMaster')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      top.querySelector('#cmdPrefix')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
       top.querySelector('#cmdSlash')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
 
       const rows = (commandsCatalog.items || []).map(item => {
@@ -2709,12 +3003,211 @@
       });
     }
 
+    function analyticsToneClass(tone) {
+      const allowed = new Set(['healthy', 'warning', 'danger', 'automation', 'usage']);
+      return allowed.has(tone) ? `tone-${tone}` : 'tone-usage';
+    }
+
+    function analyticsIcon(category) {
+      switch ((category || '').toLowerCase()) {
+        case 'voice': return 'graphic_eq';
+        case 'command': return 'terminal';
+        case 'gateway': return 'wifi_tethering';
+        case 'automation': return 'auto_awesome';
+        case 'health': return 'ecg_heart';
+        default: return 'radio_button_checked';
+      }
+    }
+
+    function relativeTime(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    function smoothLinePath(points) {
+      if (!points.length) return '';
+      if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+      let path = `M ${points[0].x} ${points[0].y}`;
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const current = points[index];
+        const next = points[index + 1];
+        const controlX = current.x + ((next.x - current.x) * 0.5);
+        path += ` C ${controlX} ${current.y}, ${controlX} ${next.y}, ${next.x} ${next.y}`;
+      }
+      return path;
+    }
+
+    function renderAnalyticsLineChart(days) {
+      if (!days.length) {
+        return `<div class="placeholder">No voice sessions recorded yet.</div>`;
+      }
+
+      const width = 700;
+      const height = 180;
+      const inset = { top: 16, right: 22, bottom: 30, left: 24 };
+      const plotWidth = width - inset.left - inset.right;
+      const plotHeight = height - inset.top - inset.bottom;
+      const maxCount = Math.max(1, ...days.map(item => item.count || 0));
+      const denominator = Math.max(1, days.length - 1);
+      const points = days.map((item, index) => {
+        const x = inset.left + (plotWidth * (index / denominator));
+        const y = inset.top + plotHeight - (((item.count || 0) / maxCount) * plotHeight);
+        return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)), count: item.count || 0 };
+      });
+      const linePath = smoothLinePath(points);
+      const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - inset.bottom} L ${points[0].x} ${height - inset.bottom} Z`;
+      const gridLines = [0.25, 0.5, 0.75].map(ratio => {
+        const y = inset.top + plotHeight * ratio;
+        return `<line x1="${inset.left}" y1="${y}" x2="${width - inset.right}" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
+      }).join('');
+      const markers = points.map(point => `
+        <circle cx="${point.x}" cy="${point.y}" r="${point.count === maxCount ? 4 : 3}" fill="rgba(113, 203, 255, 0.96)" stroke="rgba(255,255,255,0.72)" stroke-width="1" />
+      `).join('');
+      const labels = days.map(item => `<span class="analytics-axis-label">${item.label}</span>`).join('');
+
+      return `
+        <svg class="analytics-line-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Voice sessions over the last seven days">
+          <defs>
+            <linearGradient id="analyticsLineFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="rgba(93, 186, 255, 0.28)" />
+              <stop offset="100%" stop-color="rgba(93, 186, 255, 0.02)" />
+            </linearGradient>
+          </defs>
+          ${gridLines}
+          <path d="${areaPath}" fill="url(#analyticsLineFill)" />
+          <path d="${linePath}" fill="none" stroke="rgba(111, 204, 255, 0.95)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+          ${markers}
+        </svg>
+        <div class="analytics-axis-labels">${labels}</div>
+      `;
+    }
+
+    function renderAnalyticsView() {
+      if (!dashboardAnalytics) return;
+
+      const data = dashboardAnalytics;
+      const updated = document.getElementById('analyticsUpdated');
+      if (updated) updated.textContent = `Updated ${relativeTime(data.generatedAt) || 'just now'}`;
+
+      const pulse = document.getElementById('analyticsPulse');
+      if (pulse) {
+        pulse.innerHTML = (data.metrics || []).map(metric => `
+          <article class="analytics-card ${analyticsToneClass(metric.tone)}">
+            <div class="label">${metric.title}</div>
+            <div class="value" title="${metric.value}">${metric.value}</div>
+            <div class="detail">${metric.detail}</div>
+            <div class="trend">${metric.trend}</div>
+          </article>
+        `).join('') || `<div class="placeholder">Analytics are waiting for runtime data.</div>`;
+      }
+
+      const peak = document.getElementById('analyticsPeak');
+      if (peak) peak.textContent = data.peakActivityLabel || 'Waiting for activity';
+
+      const chart = document.getElementById('analyticsChart');
+      if (chart) {
+        chart.innerHTML = renderAnalyticsLineChart(data.dailyActivity || []);
+      }
+
+      const feed = document.getElementById('analyticsFeed');
+      if (feed) {
+        feed.innerHTML = (data.feed || []).slice(0, 7).map(item => `
+          <article class="analytics-feed-item ${analyticsToneClass(item.tone)}">
+            <span class="analytics-feed-icon">${analyticsIcon(item.category)}</span>
+            <div style="min-width:0;">
+              <div class="analytics-feed-title">${item.title}</div>
+              <div class="analytics-feed-detail">${item.detail}</div>
+            </div>
+            <div class="analytics-feed-time">${relativeTime(item.timestamp)}</div>
+          </article>
+        `).join('') || `<div class="placeholder">No runtime events yet.</div>`;
+      }
+
+      const system = document.getElementById('analyticsSystem');
+      if (system) {
+        const metrics = new Map((data.metrics || []).map(metric => [metric.id, metric]));
+        const rows = ['commands-today', 'active-workflows', 'recordings-watched', 'clips-exported']
+          .map(id => metrics.get(id))
+          .filter(Boolean);
+        system.innerHTML = rows.map(metric => `
+          <div class="analytics-health-row ${analyticsToneClass(metric.tone)}">
+            <span>${metric.title}</span>
+            <strong>${metric.value}</strong>
+          </div>
+          <div class="analytics-card ${analyticsToneClass(metric.tone)}" style="padding:8px 9px;">
+            <div class="detail">${metric.detail}</div>
+            <div class="trend">${metric.trend}</div>
+          </div>
+        `).join('') || `<div class="placeholder">System metrics unavailable.</div>`;
+      }
+
+      const health = document.getElementById('analyticsHealth');
+      if (health) {
+        const h = data.health || {};
+        health.innerHTML = `
+          <div class="analytics-health-row ${analyticsToneClass(h.state === 'degraded' ? 'danger' : h.state)}">
+            <span>State</span>
+            <strong>${h.state || 'healthy'}</strong>
+          </div>
+          <div class="analytics-card ${analyticsToneClass(h.state === 'degraded' ? 'danger' : h.state)}" style="padding:8px 9px;">
+            <div class="detail">${h.detail || 'Runtime health is nominal.'}</div>
+          </div>
+          <div class="analytics-health-row"><span>Gateway Ping</span><strong>${h.websocketLatencyMs == null ? '-' : `${h.websocketLatencyMs} ms`}</strong></div>
+          <div class="analytics-health-row"><span>Event Queue</span><strong>${h.eventQueueDepth || 0}/20</strong></div>
+          <div class="analytics-health-row"><span>Active Tasks</span><strong>${h.activeTasks || 0}</strong></div>
+          <div class="analytics-health-row"><span>Memory</span><strong>${h.memoryText || '-'}</strong></div>
+        `;
+      }
+
+      const insights = document.getElementById('analyticsInsights');
+      if (insights) {
+        insights.innerHTML = (data.insights || []).map(item => `
+          <article class="analytics-insight ${analyticsToneClass(item.tone)}">
+            <div class="analytics-insight-title">${item.title}</div>
+            <div class="analytics-insight-body">${item.body}</div>
+          </article>
+        `).join('') || `<div class="placeholder">Insights will appear as activity builds.</div>`;
+      }
+
+      const users = document.getElementById('analyticsUsers');
+      if (users) {
+        users.innerHTML = (data.topUsers || []).map((user, index) => `
+          <article class="analytics-user-row ${index === 0 ? 'tone-usage' : ''}">
+            <div class="analytics-avatar">${user.initials}</div>
+            <div style="min-width:0;">
+              <div class="analytics-user-name">${index + 1}. ${user.username}${user.isActive ? ' · live' : ''}</div>
+              <div class="analytics-user-meta">${user.totalTime} · ${user.activityShare}% tracked activity</div>
+              <div class="analytics-progress"><span style="width:${Math.max(2, Math.min(100, user.activityShare || 0))}%;"></span></div>
+            </div>
+            <strong style="font-size:12px;">${user.activityShare}%</strong>
+          </article>
+        `).join('') || `<div class="placeholder">No completed voice sessions yet.</div>`;
+      }
+    }
+
     async function loadStatus() {
       const response = await fetch('/api/status');
       const data = await response.json();
       dashboardStatus = data;
       refreshBotToggleButton();
       return data;
+    }
+
+    async function loadAnalytics() {
+      const response = await fetch('/api/analytics');
+      if (!response.ok) {
+        throw new Error('Analytics unavailable');
+      }
+      dashboardAnalytics = await response.json();
+      renderAnalyticsView();
+      return dashboardAnalytics;
     }
 
     async function loadOverview() {
@@ -2921,8 +3414,8 @@
     }
 
     async function loadMediaExportStatus() {
-      const response = await fetch('/api/media/ffmpeg');
-      if (!response.ok) throw new Error('FFmpeg status unavailable');
+      const response = await fetch('/api/media/export-status');
+      if (!response.ok) throw new Error('Export status unavailable');
       const data = await response.json();
       mediaExportStatus = data;
       return data;
@@ -2960,15 +3453,68 @@
       return null;
     }
 
+    function createPlaybackSession(itemID) {
+      return `media-${itemID}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function sendMediaPlaybackEvent(payload) {
+      return fetch('/api/media/playback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-CSRF': csrfToken || ''
+        },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => null);
+    }
+
+    function flushActiveMediaPlayback(video, eventName = 'progress') {
+      if (!activeMediaPlayback.sessionID || !video) return;
+      const watchedSeconds = Math.max(0, Math.floor(video.currentTime || 0));
+      if (watchedSeconds <= activeMediaPlayback.lastSentSeconds && eventName !== 'completed') return;
+      activeMediaPlayback.lastSentSeconds = Math.max(activeMediaPlayback.lastSentSeconds, watchedSeconds);
+      sendMediaPlaybackEvent({
+        sessionID: activeMediaPlayback.sessionID,
+        itemID: activeMediaPlayback.itemID,
+        event: eventName,
+        watchedSeconds
+      });
+    }
+
+    function mediaPreviewAllowed() {
+      if (mediaViewMode !== 'library') return false;
+      const activePlayer = document.querySelector('#mediaPanels video:not(.hover-preview)');
+      if (activePlayer && !activePlayer.paused && !activePlayer.ended) return false;
+      return true;
+    }
+
+    function stopHoverPreview(video) {
+      if (!video) return;
+      if (video._hoverTimer) {
+        clearTimeout(video._hoverTimer);
+        video._hoverTimer = null;
+      }
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.style.display = 'none';
+      video.dataset.active = 'false';
+    }
+
+    window.addEventListener('beforeunload', () => {
+      flushActiveMediaPlayback(document.querySelector('#mediaPanels video'), 'progress');
+    });
+
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
-      await Promise.all([loadConfig(), loadOverview(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadConfig(), loadOverview(), loadAnalytics(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       refreshCurrentView();
     }
 
     async function toggleCommand(name, surface, enabled) {
       await postJSON('/api/commands/toggle', { name, surface, enabled });
-      await Promise.all([loadCommandsCatalog(), loadOverview(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadCommandsCatalog(), loadOverview(), loadAnalytics(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       renderCommandsView();
     }
 
@@ -2976,6 +3522,10 @@
       if (currentView === 'overview') return;
       if (currentView === 'commands') {
         renderCommandsView();
+        return;
+      }
+      if (currentView === 'analytics') {
+        renderAnalyticsView();
         return;
       }
       if (currentView === 'patchy') {
@@ -3803,9 +4353,9 @@
     function ffmpegPillHTML() {
       if (!mediaExportStatus) return '';
       if (mediaExportStatus.installed) {
-        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">FFmpeg ready</span>`;
+        return `<span class="chip" style="background:rgba(79, 216, 140, 0.18);color:#7ce9b0;">Exports ready</span>`;
       }
-      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">FFmpeg missing</span>`;
+      return `<span class="chip" style="background:rgba(255, 182, 77, 0.18);color:#ffd28a;">Exports unavailable</span>`;
     }
 
     function mediaTokenFromURL(url) {
@@ -4259,7 +4809,6 @@
         <section class="settings-panel glass">
           <div class="panel-title"><span class="ms">terminal</span> Commands</div>
           <div class="setting-row"><div class="left"><div class="title">Enable Command System</div><div class="desc">Master switch for all command handling.</div></div><label class="switch"><input id="setCmdEnabled" type="checkbox" ${cfg.commands.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Enable Prefix Commands</div><div class="desc">Allow legacy prefix commands.</div></div><label class="switch"><input id="setCmdPrefix" type="checkbox" ${cfg.commands.prefixEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Slash Commands</div><div class="desc">Allow Discord slash command UI.</div></div><label class="switch"><input id="setCmdSlash" type="checkbox" ${cfg.commands.slashEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Bug Tracking</div><div class="desc">Allow mention-based bug capture flow.</div></div><label class="switch"><input id="setCmdBug" type="checkbox" ${cfg.commands.bugTrackingEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
         </section>
@@ -4296,7 +4845,6 @@
 
       top.querySelector('#setAutoStart')?.addEventListener('change', e => saveConfigPatch({ autoStart: e.target.checked }));
       panels.querySelector('#setCmdEnabled')?.addEventListener('change', e => saveConfigPatch({ commandsEnabled: e.target.checked }));
-      panels.querySelector('#setCmdPrefix')?.addEventListener('change', e => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setAiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
@@ -4551,11 +5099,15 @@
                     </div>
                     <div style="font-size:12px;color:var(--muted);">${selected.nodeName} · ${selected.sourceName}</div>
                   </div>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <span class="chip">${selected.fileExtension.toUpperCase()}</span>
+                    <button id="mediaQualityToggle" class="mini-btn" type="button" title="Use a lower-bitrate transcode if the original buffers. The first switch may take a few seconds while the variant is generated.">
+                      <span class="ms">${mediaExportState.playbackQuality === 'low' ? 'hd' : 'sd'}</span>
+                      ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
+                    </button>
                   </div>
                 </div>
-                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : ''}"></video>
+                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${mediaExportState.playbackQuality === 'low' ? '&quality=low' : ''}${csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : ''}"></video>
                 <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
@@ -4563,7 +5115,7 @@
           <section class="settings-panel glass">
             <div class="panel-title"><span class="ms">content_cut</span> Clip</div>
             ${mediaExportStatus && !mediaExportStatus.installed ? `
-              <div class="placeholder" style="margin:0;">Install FFmpeg with <code>brew install ffmpeg</code> to enable exports.</div>
+              <div class="placeholder" style="margin:0;">Exports are currently unavailable on this node.</div>
             ` : ''}
             <div class="timeline-card">
               <div class="field-label">Primary clip window</div>
@@ -4647,8 +5199,26 @@
         `;
 
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
+          flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
           renderMediaView();
+        });
+
+        panels.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
+          const video = panels.querySelector('video');
+          const wasPlaying = video && !video.paused && !video.ended;
+          const resumeAt = video ? video.currentTime : 0;
+          mediaExportState.playbackQuality = mediaExportState.playbackQuality === 'low' ? 'auto' : 'low';
+          renderMediaView();
+          const refreshed = document.querySelector('section#mediaView video');
+          if (refreshed) {
+            const onLoaded = () => {
+              try { refreshed.currentTime = resumeAt; } catch (_) {}
+              if (wasPlaying) refreshed.play().catch(() => {});
+              refreshed.removeEventListener('loadedmetadata', onLoaded);
+            };
+            refreshed.addEventListener('loadedmetadata', onLoaded);
+          }
         });
 
         panels.querySelector('#clipExportStart')?.addEventListener('click', async () => {
@@ -4736,6 +5306,40 @@
         const primaryToken = selected ? mediaTokenFromURL(selected.streamURL) : '';
         let primaryState = null;
         if (primaryVideo) {
+          activeMediaPlayback.sessionID = createPlaybackSession(selected.id);
+          activeMediaPlayback.itemID = selected.id;
+          activeMediaPlayback.started = false;
+          activeMediaPlayback.completed = false;
+          activeMediaPlayback.lastSentSeconds = 0;
+
+          primaryVideo.addEventListener('play', () => {
+            if (activeMediaPlayback.started) return;
+            activeMediaPlayback.started = true;
+            sendMediaPlaybackEvent({
+              sessionID: activeMediaPlayback.sessionID,
+              itemID: activeMediaPlayback.itemID,
+              event: 'started',
+              watchedSeconds: Math.max(0, Math.floor(primaryVideo.currentTime || 0))
+            });
+          });
+
+          primaryVideo.addEventListener('timeupdate', () => {
+            const watchedSeconds = Math.max(0, Math.floor(primaryVideo.currentTime || 0));
+            if (watchedSeconds - activeMediaPlayback.lastSentSeconds >= 15) {
+              flushActiveMediaPlayback(primaryVideo, 'progress');
+            }
+          });
+
+          primaryVideo.addEventListener('pause', () => {
+            flushActiveMediaPlayback(primaryVideo, 'progress');
+          });
+
+          primaryVideo.addEventListener('ended', () => {
+            if (activeMediaPlayback.completed) return;
+            activeMediaPlayback.completed = true;
+            flushActiveMediaPlayback(primaryVideo, 'completed');
+          });
+
           primaryVideo.addEventListener('loadedmetadata', () => {
             const duration = primaryVideo.duration || 300;
             const state = initTimelineState(duration, maxLen);
@@ -4963,29 +5567,30 @@
 
       panels.querySelectorAll('[data-media-id]').forEach(node => {
         node.addEventListener('click', () => {
+          flushActiveMediaPlayback(document.querySelector('#mediaPanels video'), 'progress');
           selectedMediaItemID = node.dataset.mediaId;
           mediaViewMode = 'player';
           renderMediaView();
         });
         node.addEventListener('mouseenter', () => {
+          if (!mediaPreviewAllowed()) return;
           const video = node.querySelector('.hover-preview');
           if (!video || video.dataset.active === 'true') return;
           const item = items.find(entry => entry.id === node.dataset.mediaId);
           if (!item) return;
           const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
-          video.dataset.active = 'true';
-          video.style.display = 'block';
-          video.src = `${item.streamURL}${accessQuery}`;
-          video.play().catch(() => {});
+          video._hoverTimer = setTimeout(() => {
+            if (!mediaPreviewAllowed()) return;
+            video.dataset.active = 'true';
+            video.style.display = 'block';
+            video.src = `${item.streamURL}${accessQuery}`;
+            video.play().catch(() => {
+              stopHoverPreview(video);
+            });
+          }, 180);
         });
         node.addEventListener('mouseleave', () => {
-          const video = node.querySelector('.hover-preview');
-          if (!video) return;
-          video.pause();
-          video.removeAttribute('src');
-          video.load();
-          video.style.display = 'none';
-          video.dataset.active = 'false';
+          stopHoverPreview(node.querySelector('.hover-preview'));
         });
       });
       header.querySelector('#mediaApplyFilters')?.addEventListener('click', async () => {
@@ -5357,6 +5962,14 @@
         secondaryTitle: 'Configuration',
         eventsTitle: 'Recent Commands'
       },
+      analytics: {
+        title: 'Analytics',
+        icon: 'monitoring',
+        copy: 'Live operational analytics for activity, health, and automation signals.',
+        primaryTitle: 'Activity',
+        secondaryTitle: 'Health',
+        eventsTitle: 'Live Operations'
+      },
       actions: {
         title: 'Actions',
         icon: 'rule',
@@ -5505,12 +6118,11 @@
         case 'commands':
           primaryRows = [
             { label: 'System Enabled', value: config.commands.enabled ? 'On' : 'Off' },
-            { label: 'Prefix Commands', value: config.commands.prefixEnabled ? 'On' : 'Off' },
             { label: 'Slash Commands', value: config.commands.slashEnabled ? 'On' : 'Off' },
-            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' }
+            { label: 'Bug Tracking', value: config.commands.bugTrackingEnabled ? 'On' : 'Off' },
+            { label: 'Command Surface', value: '/ slash commands' }
           ];
           secondaryRows = [
-            { label: 'Prefix', value: settings.prefix || '/' },
             { label: 'Commands Run', value: metricLookup('Commands Run') }
           ];
           break;
@@ -5558,7 +6170,7 @@
         case 'settings':
           primaryRows = [
             { label: 'Auto Start', value: config.general.autoStart ? 'On' : 'Off' },
-            { label: 'Command Prefix', value: settings.prefix || '/' },
+            { label: 'Command Surface', value: '/ slash commands' },
             { label: 'Web UI URL', value: status.webUIBaseURL || '-' }
           ];
           secondaryRows = [
@@ -5642,13 +6254,11 @@
       if (view === 'commands') {
         controls.innerHTML = `
           <div class="control-row"><span class="control-label">Enable Command System</span><input id="cfgCommandsEnabled" type="checkbox" ${config.commands.enabled ? 'checked' : ''}></div>
-          <div class="control-row"><span class="control-label">Enable Prefix Commands</span><input id="cfgPrefixEnabled" type="checkbox" ${config.commands.prefixEnabled ? 'checked' : ''}></div>
           <div class="control-row"><span class="control-label">Enable Slash Commands</span><input id="cfgSlashEnabled" type="checkbox" ${config.commands.slashEnabled ? 'checked' : ''}></div>
           <div class="control-row"><span class="control-label">Enable Bug Tracking</span><input id="cfgBugEnabled" type="checkbox" ${config.commands.bugTrackingEnabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgCommandsEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ commandsEnabled: e.target.checked }));
-        controls.querySelector('#cfgPrefixEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ prefixCommandsEnabled: e.target.checked }));
         controls.querySelector('#cfgSlashEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
         controls.querySelector('#cfgBugEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       } else if (view === 'patchy') {
@@ -5703,6 +6313,7 @@
       });
       const overview = document.getElementById('overviewView');
       const commands = document.getElementById('commandsView');
+      const analytics = document.getElementById('analyticsView');
       const patchy = document.getElementById('patchyView');
       const wikibridge = document.getElementById('wikibridgeView');
       const settings = document.getElementById('settingsView');
@@ -5716,20 +6327,14 @@
       const section = document.getElementById('sectionView');
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
+      const hideAllViews = () => {
+        [overview, commands, analytics, patchy, wikibridge, settings, diagnostics, aibots, media, logs, swiftmesh, userprefs, actions, section]
+          .forEach(node => node?.classList.add('hidden'));
+      };
+
+      hideAllViews();
 
       if (isFailoverWebLocked(view)) {
-        overview.classList.add('hidden');
-        commands.classList.add('hidden');
-        patchy.classList.add('hidden');
-        wikibridge.classList.add('hidden');
-        settings.classList.add('hidden');
-        diagnostics.classList.add('hidden');
-        aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
-        swiftmesh.classList.add('hidden');
-        userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
         section.classList.remove('hidden');
         renderFailoverModeView(view);
         if (mobileSubtitle) mobileSubtitle.textContent = 'Failover Mode';
@@ -5754,6 +6359,11 @@
         actions.classList.add('hidden');
         section.classList.add('hidden');
         if (mobileSubtitle) mobileSubtitle.textContent = 'Overview';
+        setMessage('', '');
+      } else if (view === 'analytics') {
+        analytics.classList.remove('hidden');
+        renderAnalyticsView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Analytics';
         setMessage('', '');
       } else if (view === 'commands') {
         overview.classList.add('hidden');
@@ -5978,9 +6588,9 @@
       loadOverviewLayout();
 
       showDashboard();
-      await Promise.all([loadOverview(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'media', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
+      const allowed = new Set(['overview', 'analytics', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'media', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
     }
 
@@ -6043,7 +6653,7 @@
         const runningStates = ['running', 'connecting', 'reconnecting'];
         const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
         await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
-        await Promise.all([loadStatus(), loadOverview(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+        await Promise.all([loadStatus(), loadOverview(), loadAnalytics(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
         refreshCurrentView();
         setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
       } catch (error) {

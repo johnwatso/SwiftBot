@@ -1,6 +1,8 @@
 import AppKit
 import AVFoundation
+import CoreMedia
 import Foundation
+import VideoToolbox
 
 actor MediaLibraryIndexer {
     private struct CacheEntry {
@@ -80,6 +82,9 @@ actor MediaLibraryIndexer {
                 guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
                       values.isRegularFile == true else { continue }
 
+                // Exclude AV1 and other unsupported codecs from the WebUI
+                if isCodecUnsupported(at: fileURL) { continue }
+
                 let relativePath = fileURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
                 let id = "\(source.id.uuidString)|\(relativePath)"
                 items.append(
@@ -104,5 +109,20 @@ actor MediaLibraryIndexer {
             if $0.modifiedAt != $1.modifiedAt { return $0.modifiedAt > $1.modifiedAt }
             return $0.fileName.localizedCaseInsensitiveCompare($1.fileName) == .orderedAscending
         }
+    }
+
+    private func isCodecUnsupported(at url: URL) -> Bool {
+        let asset = AVURLAsset(url: url)
+        guard let track = asset.tracks(withMediaType: .video).first else { return false }
+
+        guard let descriptions = track.formatDescriptions as? [CMFormatDescription] else { return false }
+        for desc in descriptions {
+            let codecType = CMFormatDescriptionGetMediaSubType(desc)
+            // Exclude codecs this Mac cannot hardware decode (e.g. AV1 on M1/M2)
+            if !VTIsHardwareDecodeSupported(codecType) {
+                return true
+            }
+        }
+        return false
     }
 }

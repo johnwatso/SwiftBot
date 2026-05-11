@@ -792,32 +792,10 @@ struct AdminWebAuthenticationSection: View {
         app.settings.adminWebUI.normalizedHostname
     }
 
-    private func redirectURL(for provider: String) -> String {
-        var baseURL = app.adminWebBaseURL()
-        guard !baseURL.isEmpty else { return "" }
-
-        // Ensure scheme exists
-        if !baseURL.contains("://") {
-            baseURL = "https://" + baseURL
-        }
-
-        let path = app.normalizedAdminRedirectPath(app.settings.adminWebUI.redirectPath)
-
-        guard var components = URLComponents(string: baseURL) else {
-            return baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path)
-        }
-
-        // Handle existing path in base URL (e.g. proxy subpath)
-        if !components.path.isEmpty && components.path != "/" {
-            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let subPath = path.hasPrefix("/") ? path : "/" + path
-            components.path = basePath + subPath
-        } else {
-            components.path = path
-        }
-
-        return components.url?.absoluteString ?? (baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path))
+    private func redirectURL(for _: String) -> String {
+        app.adminWebDiscordRedirectURL()
     }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Sign-in")
@@ -828,7 +806,7 @@ struct AdminWebAuthenticationSection: View {
                 icon: "message.fill",
                 color: .indigo,
                 settings: $app.settings.adminWebUI.discordOAuth,
-                redirectURL: redirectURL(for: "discord")
+                redirectURL: app.adminWebDiscordRedirectURL()
             )
 
             if app.settings.devFeaturesEnabled {

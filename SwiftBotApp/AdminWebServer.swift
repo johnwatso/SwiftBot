@@ -85,6 +85,95 @@ struct AdminWebOverviewPayload: Codable {
     let botInfo: AdminWebBotInfoPayload
 }
 
+struct AdminWebAnalyticsMetricPayload: Codable {
+    let id: String
+    let title: String
+    let value: String
+    let detail: String
+    let trend: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsDayPayload: Codable {
+    let date: Date
+    let label: String
+    let count: Int
+}
+
+struct AdminWebAnalyticsHourPayload: Codable {
+    let hour: Int
+    let label: String
+    let count: Int
+}
+
+struct AdminWebAnalyticsTopUserPayload: Codable {
+    let id: String
+    let username: String
+    let initials: String
+    let totalTime: String
+    let activityShare: Int
+    let isActive: Bool
+}
+
+struct AdminWebAnalyticsFeedEntryPayload: Codable {
+    let id: String
+    let timestamp: Date
+    let title: String
+    let detail: String
+    let category: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsHealthPayload: Codable {
+    let state: String
+    let detail: String
+    let websocketLatencyMs: Int?
+    let reconnectCount: Int
+    let activeTasks: Int
+    let eventQueueDepth: Int
+    let eventQueueLoad: Double
+    let memoryText: String
+}
+
+struct AdminWebAnalyticsInsightPayload: Codable {
+    let title: String
+    let body: String
+    let tone: String
+}
+
+struct AdminWebAnalyticsPayload: Codable {
+    let generatedAt: Date
+    let peakActivityLabel: String
+    let metrics: [AdminWebAnalyticsMetricPayload]
+    let dailyActivity: [AdminWebAnalyticsDayPayload]
+    let hourlyActivity: [AdminWebAnalyticsHourPayload]
+    let topUsers: [AdminWebAnalyticsTopUserPayload]
+    let feed: [AdminWebAnalyticsFeedEntryPayload]
+    let health: AdminWebAnalyticsHealthPayload
+    let insights: [AdminWebAnalyticsInsightPayload]
+
+    static let empty = AdminWebAnalyticsPayload(
+        generatedAt: Date(),
+        peakActivityLabel: "Waiting for activity",
+        metrics: [],
+        dailyActivity: [],
+        hourlyActivity: [],
+        topUsers: [],
+        feed: [],
+        health: AdminWebAnalyticsHealthPayload(
+            state: "healthy",
+            detail: "Runtime analytics are waiting for the app state.",
+            websocketLatencyMs: nil,
+            reconnectCount: 0,
+            activeTasks: 0,
+            eventQueueDepth: 0,
+            eventQueueLoad: 0,
+            memoryText: "-"
+        ),
+        insights: []
+    )
+}
+
 struct AdminWebConfigPayload: Codable {
     struct Commands: Codable {
         let enabled: Bool
@@ -299,6 +388,13 @@ struct AdminWebMediaLibraryPayload: Codable {
     let totalPages: Int
 }
 
+struct AdminWebMediaPlaybackPatch: Codable {
+    let sessionID: String
+    let itemID: String
+    let event: String
+    let watchedSeconds: Int?
+}
+
 actor AdminWebServer {
     struct RuntimeState: Equatable {
         var isEnabled: Bool
@@ -418,6 +514,7 @@ actor AdminWebServer {
     private var activeTransportUsesTLS = false
     private var statusProvider: (@Sendable () async -> AdminWebStatusPayload)?
     private var overviewProvider: (@Sendable () async -> AdminWebOverviewPayload)?
+    private var analyticsProvider: (@Sendable () async -> AdminWebAnalyticsPayload)?
     private var remoteStatusProvider: (@Sendable () async -> RemoteStatusPayload)?
     private var remoteRulesProvider: (@Sendable () async -> RemoteRulesPayload)?
     private var updateRemoteRule: (@Sendable (Rule) async -> Bool)?
@@ -452,16 +549,20 @@ actor AdminWebServer {
     private var testWikiSource: (@Sendable (UUID) async -> Bool)?
     private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
-    private var mediaStreamProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
+    private var mediaStreamProvider: (@Sendable (String, String?, String?) async -> BinaryHTTPResponse?)?
     private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
     private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
     private var mediaExportJobsProvider: (@Sendable () async -> MediaExportJobsPayload)?
+    private var mediaPlaybackRecorder: (@Sendable (AdminWebMediaPlaybackPatch) async -> Bool)?
     private var mediaClipExportStarter: (@Sendable (MediaExportClipRequest) async -> MediaExportJobResponse)?
     private var mediaMultiViewExportStarter: (@Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse)?
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
+    private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
+    private var discordUsersProvider: (@Sendable () async -> [String: String])?
+    private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -480,6 +581,7 @@ actor AdminWebServer {
         remoteSettingsProvider: @escaping @Sendable () async -> AdminWebConfigPayload,
         updateRemoteSettings: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         overviewProvider: @escaping @Sendable () async -> AdminWebOverviewPayload,
+        analyticsProvider: @escaping @Sendable () async -> AdminWebAnalyticsPayload,
         connectedGuildIDsProvider: @escaping @Sendable () async -> Set<String>,
         currentPrefixProvider: @escaping @Sendable () async -> String,
         updatePrefix: @escaping @Sendable (String) async -> Bool,
@@ -508,16 +610,20 @@ actor AdminWebServer {
         testWikiSource: @escaping @Sendable (UUID) async -> Bool,
         deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
-        mediaStreamProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
+        mediaStreamProvider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?,
         mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
         mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
         mediaExportJobsProvider: @escaping @Sendable () async -> MediaExportJobsPayload,
+        mediaPlaybackRecorder: @escaping @Sendable (AdminWebMediaPlaybackPatch) async -> Bool,
         mediaClipExportStarter: @escaping @Sendable (MediaExportClipRequest) async -> MediaExportJobResponse,
         mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
+        swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
+        discordUsersProvider: @escaping @Sendable () async -> [String: String],
+        swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -528,6 +634,7 @@ actor AdminWebServer {
         self.remoteSettingsProvider = remoteSettingsProvider
         self.updateRemoteSettings = updateRemoteSettings
         self.overviewProvider = overviewProvider
+        self.analyticsProvider = analyticsProvider
         self.connectedGuildIDsProvider = connectedGuildIDsProvider
         self.currentPrefixProvider = currentPrefixProvider
         self.updatePrefix = updatePrefix
@@ -561,11 +668,15 @@ actor AdminWebServer {
         self.mediaFrameProvider = mediaFrameProvider
         self.mediaExportStatusProvider = mediaExportStatusProvider
         self.mediaExportJobsProvider = mediaExportJobsProvider
+        self.mediaPlaybackRecorder = mediaPlaybackRecorder
         self.mediaClipExportStarter = mediaClipExportStarter
         self.mediaMultiViewExportStarter = mediaMultiViewExportStarter
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
+        self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
+        self.discordUsersProvider = discordUsersProvider
+        self.swiftMinerTestDMSender = swiftMinerTestDMSender
         self.logger = log
 
         loadPersistedSessions()
@@ -876,6 +987,38 @@ actor AdminWebServer {
             return serveAsset(named: parts[0], ext: parts[1], subdirectories: ["admin/games", "Resources/admin/games"])
         case ("GET", "/health"):
             return jsonResponse(["status": "ok"])
+        case ("GET", "/v1/users"):
+            let usernamesById = await discordUsersProvider?() ?? [:]
+            let users = usernamesById
+                .map { ["discord_id": $0.key, "display_name": $0.value] }
+                .sorted { ($0["display_name"] ?? "") < ($1["display_name"] ?? "") }
+            return jsonResponse(["users": users])
+        case ("POST", let path) where path.hasPrefix("/v1/users/") && path.hasSuffix("/dm/test"):
+            let segments = path.split(separator: "/").map(String.init)
+            // Expected: ["v1", "users", "<discordUserId>", "dm", "test"]
+            guard segments.count == 5 else {
+                return jsonResponse(["error": "invalid_path"], status: "400 Bad Request")
+            }
+            let discordUserId = segments[2]
+            let dmRequest: SwiftMinerDMRequest
+            if !request.body.isEmpty {
+                do {
+                    dmRequest = try JSONDecoder().decode(SwiftMinerDMRequest.self, from: request.body)
+                } catch {
+                    return jsonResponse(["error": "invalid_payload", "detail": error.localizedDescription], status: "400 Bad Request")
+                }
+            } else {
+                dmRequest = SwiftMinerDMRequest(messageType: .linked)
+            }
+            await logger?("[SwiftMiner] DM request type=\(dmRequest.messageType.rawValue) debug=\(dmRequest.debug) for \(discordUserId)")
+            let sent = await swiftMinerTestDMSender?(dmRequest, discordUserId) ?? false
+            return jsonResponse(["ok": sent], status: sent ? "200 OK" : "502 Bad Gateway")
+        case ("POST", "/webhooks/swiftminer/events"):
+            guard let handler = swiftMinerWebhookHandler else {
+                return jsonResponse(["error": "swiftminer_unavailable"], status: "503 Service Unavailable")
+            }
+            let result = await handler(request.headers, request.body)
+            return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
         case ("GET", "/api/remote/status"):
             guard isRemoteRequestAuthorized(request) else {
                 return unauthorizedResponse()
@@ -953,6 +1096,12 @@ actor AdminWebServer {
                 recentCommands: [],
                 botInfo: AdminWebBotInfoPayload(uptime: "--", errors: 0, state: "Stopped", cluster: nil)
             )
+            return codableResponse(payload)
+        case ("GET", "/api/analytics"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            let payload = await analyticsProvider?() ?? AdminWebAnalyticsPayload.empty
             return codableResponse(payload)
         case ("GET", "/api/me"):
             guard let session = authenticatedSession(for: request) else {
@@ -1197,14 +1346,14 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "media_unavailable"], status: "503 Service Unavailable")
-        case ("GET", "/api/media/ffmpeg"):
+        case ("GET", "/api/media/ffmpeg"), ("GET", "/api/media/export-status"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
             }
             if let payload = await mediaExportStatusProvider?() {
                 return codableResponse(payload)
             }
-            return jsonResponse(["error": "ffmpeg_unavailable"], status: "503 Service Unavailable")
+            return jsonResponse(["error": "export_unavailable"], status: "503 Service Unavailable")
         case ("GET", "/api/media/exports"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -1213,6 +1362,20 @@ actor AdminWebServer {
                 return codableResponse(payload)
             }
             return jsonResponse(["error": "exports_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/media/playback"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let body = try? decoder.decode(AdminWebMediaPlaybackPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await mediaPlaybackRecorder?(body) == true else {
+                return jsonResponse(["error": "record_failed"], status: "500 Internal Server Error")
+            }
+            return jsonResponse(["ok": true])
         case ("GET", "/api/media/thumbnail"):
             guard mediaAccessAuthorized(request) else {
                 return unauthorizedResponse()
@@ -1254,7 +1417,8 @@ actor AdminWebServer {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             let rangeHeader = request.headers["range"]
-            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+            let quality = request.query["quality"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader, quality) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
@@ -1271,7 +1435,8 @@ actor AdminWebServer {
                 return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
             }
             let rangeHeader = request.headers["range"] ?? "bytes=0-0"
-            guard let response = await mediaStreamProvider?(token, rangeHeader) else {
+            let quality = request.query["quality"]
+            guard let response = await mediaStreamProvider?(token, rangeHeader, quality) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
@@ -1962,39 +2127,15 @@ actor AdminWebServer {
     }
 
     private func redirectURI() -> String {
-        var resolvedBase = activePublicBaseURL.isEmpty
+        let resolvedBase = activePublicBaseURL.isEmpty
             ? resolvedPublicBaseURL(usingTLS: config.https != nil)
             : activePublicBaseURL
 
-        // Ensure scheme exists
-        if !resolvedBase.isEmpty && !resolvedBase.contains("://") {
-            resolvedBase = "https://" + resolvedBase
-        }
-
-        let path = config.redirectPath.hasPrefix("/") ? config.redirectPath : "/" + config.redirectPath
-
         Task {
-            await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(path)'")
+            await logger?("[OAuth] Constructing redirectURI from base='\(resolvedBase)' and path='\(config.redirectPath)'")
         }
 
-        guard var components = URLComponents(string: resolvedBase) else {
-            let fallback = resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path)
-            Task {
-                await logger?("[OAuth] redirectURI fallback construction: \(fallback)")
-            }
-            return fallback
-        }
-
-        // Handle existing path in base URL (e.g. proxy subpath)
-        if !components.path.isEmpty && components.path != "/" {
-            let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
-            let subPath = path.hasPrefix("/") ? path : "/" + path
-            components.path = basePath + subPath
-        } else {
-            components.path = path
-        }
-
-        let result = components.url?.absoluteString ?? (resolvedBase + (resolvedBase.hasSuffix("/") ? String(path.dropFirst()) : path))
+        let result = adminWebOAuthRedirectURL(baseURL: resolvedBase, redirectPath: config.redirectPath)
 
         Task {
             await logger?("[OAuth] Resulting redirectURI: \(result)")
@@ -2111,7 +2252,10 @@ actor AdminWebServer {
         headers.forEach { key, value in
             response += "\(key): \(value)\r\n"
         }
-        response += "Connection: close\r\n\r\n"
+        if normalizedHeaders["connection"] == nil {
+            response += "Connection: keep-alive\r\n"
+        }
+        response += "\r\n"
 
         var data = Data(response.utf8)
         data.append(body)
@@ -2140,30 +2284,40 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        guard !hasWrittenResponse else { return }
-
         var chunk = unwrapInboundIn(data)
         if let bytes = chunk.readBytes(length: chunk.readableBytes) {
             buffer.append(contentsOf: bytes)
         }
 
         guard buffer.count <= maxHTTPRequestSize else {
-            writeResponse(Self.badRequestResponse, context: context)
+            writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true)
             return
         }
 
-        guard !isProcessing, Self.isCompleteHTTPRequest(buffer) else {
+        tryProcessNextRequest(context: context)
+    }
+
+    private func tryProcessNextRequest(context: ChannelHandlerContext) {
+        guard !isProcessing,
+              !hasWrittenResponse,
+              let frame = Self.extractNextHTTPRequest(buffer) else {
             return
         }
 
         isProcessing = true
-        let requestData = buffer
-        buffer.removeAll(keepingCapacity: false)
+        let requestData = frame.request
+        buffer = frame.remainder
+        let clientRequestedClose = frame.connectionClose
 
         processorTask = Task { [weak self] in
             guard let self else { return }
             let response = await self.processor(requestData)
-            self.writeResponse(response, context: context)
+            let serverRequestedClose = Self.responseRequestsClose(response)
+            self.writeResponse(
+                response,
+                context: context,
+                closeAfterWrite: clientRequestedClose || serverRequestedClose
+            )
         }
     }
 
@@ -2178,10 +2332,10 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
             return
         }
 
-        writeResponse(Self.badRequestResponse, context: context)
+        writeResponse(Self.badRequestResponse, context: context, closeAfterWrite: true)
     }
 
-    private func writeResponse(_ response: Data, context: ChannelHandlerContext) {
+    private func writeResponse(_ response: Data, context: ChannelHandlerContext, closeAfterWrite: Bool) {
         guard !hasWrittenResponse else { return }
         hasWrittenResponse = true
 
@@ -2189,20 +2343,65 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
             var buffer = context.channel.allocator.buffer(capacity: response.count)
             buffer.writeBytes(response)
             context.writeAndFlush(self.wrapOutboundOut(buffer)).whenComplete { _ in
-                context.close(promise: nil)
+                if closeAfterWrite {
+                    context.close(promise: nil)
+                    return
+                }
+                self.hasWrittenResponse = false
+                self.isProcessing = false
+                self.processorTask = nil
+                self.tryProcessNextRequest(context: context)
             }
         }
     }
 
-    private static func isCompleteHTTPRequest(_ buffer: Data) -> Bool {
-        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
-            return false
-        }
+    private struct HTTPFrame {
+        let request: Data
+        let remainder: Data
+        let connectionClose: Bool
+    }
 
+    private static func extractNextHTTPRequest(_ buffer: Data) -> HTTPFrame? {
+        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
+            return nil
+        }
         let headerData = buffer[..<headerRange.upperBound]
         let contentLength = parseContentLength(headerData)
-        let bodyLength = buffer.count - headerRange.upperBound
-        return bodyLength >= contentLength
+        let bodyEnd = headerRange.upperBound + contentLength
+        guard buffer.count >= bodyEnd else { return nil }
+        let request = buffer.subdata(in: 0..<bodyEnd)
+        let remainder = buffer.subdata(in: bodyEnd..<buffer.count)
+        let close = clientRequestedClose(headerData)
+        return HTTPFrame(request: request, remainder: remainder, connectionClose: close)
+    }
+
+    private static func clientRequestedClose(_ headerData: Data.SubSequence) -> Bool {
+        guard let text = String(data: Data(headerData), encoding: .utf8) else { return false }
+        for line in text.split(separator: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("connection:") {
+                return lower.contains("close")
+            }
+        }
+        // HTTP/1.0 defaults to close, HTTP/1.1 defaults to keep-alive.
+        return text.contains(" HTTP/1.0")
+    }
+
+    private static func responseRequestsClose(_ response: Data) -> Bool {
+        guard let headerEnd = response.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let headerData = response[..<headerEnd.upperBound]
+        guard let text = String(data: Data(headerData), encoding: .utf8) else { return false }
+        for line in text.split(separator: "\r\n") {
+            let lower = line.lowercased()
+            if lower.hasPrefix("connection:") {
+                return lower.contains("close")
+            }
+        }
+        return false
+    }
+
+    private static func isCompleteHTTPRequest(_ buffer: Data) -> Bool {
+        extractNextHTTPRequest(buffer) != nil
     }
 
     private static func parseContentLength(_ headerData: Data.SubSequence) -> Int {

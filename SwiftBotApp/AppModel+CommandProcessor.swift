@@ -17,10 +17,10 @@ extension AppModel {
                     }
                     return .init(
                         commandsEnabled: self.settings.commandsEnabled,
-                        prefixCommandsEnabled: self.settings.prefixCommandsEnabled,
+                        prefixCommandsEnabled: false,
                         slashCommandsEnabled: self.settings.slashCommandsEnabled,
                         wikiEnabled: self.settings.wikiBot.isEnabled,
-                        prefix: self.effectivePrefix(),
+                        prefix: "/",
                         helpSettings: self.settings.help
                     )
                 },
@@ -162,6 +162,12 @@ extension AppModel {
                         userID: userID,
                         channelID: channelID
                     )
+                },
+                swiftMinerCommand: { [weak self] action, userID, channelID in
+                    guard let self else {
+                        return (ok: false, message: "SwiftMiner integration is unavailable right now.")
+                    }
+                    return await self.swiftMinerCommand(action: action, userId: userID, channelId: channelID)
                 }
             )
         )

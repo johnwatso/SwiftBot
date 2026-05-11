@@ -149,6 +149,7 @@ extension AppModel {
         } else {
             botAvatarHash = nil
         }
+        persistCachedBotIdentityIfNeeded()
     }
 
     // MARK: - Onboarding integration

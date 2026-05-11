@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import CryptoKit
 import Foundation
+import OSLog
 import SwiftUI
 import Darwin
 
@@ -98,6 +99,7 @@ final class AppModel: ObservableObject {
     let ruleStore = RuleStore()
 
     let store = ConfigStore()
+    let analyticsRuntimeStore = AnalyticsRuntimeStore()
     let swiftMeshConfigStore = SwiftMeshConfigStore()
     let mediaLibraryConfigStore = MediaLibraryConfigStore()
     let discordCacheStore = DiscordCacheStore()
@@ -105,6 +107,12 @@ final class AppModel: ObservableObject {
     let mediaLibraryIndexer = MediaLibraryIndexer()
     let mediaThumbnailCache = MediaThumbnailCache()
     let mediaExportCoordinator = MediaExportCoordinator()
+    let mediaTranscodeCache: MediaTranscodeCache = {
+        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let root = baseCaches.appendingPathComponent("SwiftBot/MediaTranscodes", isDirectory: true)
+        return MediaTranscodeCache(cacheRoot: root)
+    }()
     let discordCache = DiscordCache()
 
     /// Shared session for general Discord REST API calls (gateway, guild, message operations).
@@ -175,10 +183,12 @@ final class AppModel: ObservableObject {
     ]
     lazy var memoryViewModel = MemoryViewModel(store: conversationStore, discordCache: discordCache)
     let eventBus = EventBus()
+    let swiftMinerLogger = Logger(subsystem: "com.swiftbot", category: "swiftminer")
     let pluginManager: PluginManager
     var weeklyPlugin: WeeklySummaryPlugin?
     let patchyChecker: UpdateChecker?
     var patchyMonitorTask: Task<Void, Never>?
+    var lastPatchyMonitoringSnapshot: PatchyMonitoringSnapshot?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
     var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
     var mediaMonitorTask: Task<Void, Never>?
@@ -200,6 +210,15 @@ final class AppModel: ObservableObject {
     // Max cache entries to prevent unbounded memory growth during extended operation
     private let maxAvatarCacheCount = 1000
 
+    var resolvedBotUsername: String {
+        let live = botUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !live.isEmpty, live != "OnlineBot" {
+            return live
+        }
+        let cached = settings.cachedBotIdentity.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cached.isEmpty ? "SwiftBot" : cached
+    }
+
     func cacheUserAvatar(_ hash: String, for userId: String) {
         userAvatarHashById[userId] = hash
         if userAvatarHashById.count > maxAvatarCacheCount {
@@ -216,6 +235,10 @@ final class AppModel: ObservableObject {
 
     @Published var mediaLibrarySettings = MediaLibrarySettings()
     @Published var mediaExportJobs: [MediaExportJob] = []
+    @Published var mediaPlaybackStarts = 0
+    @Published var mediaPlaybackCompletedViews = 0
+    @Published var mediaPlaybackTotalSeconds = 0
+    @Published var mediaPlaybackUniqueItemCount = 0
     var lastSlashRegistrationAt: Date?
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
@@ -227,9 +250,17 @@ final class AppModel: ObservableObject {
     var pendingMusicSelectionsByUserID: [String: PendingMusicSelection] = [:]
     var musicInteractionSessionsByID: [String: MusicInteractionSession] = [:]
     var playlistTrackCardsByKey: [String: PlaylistTrackCardState] = [:]
+    var mediaPlaybackStartedSessionIDs: Set<String> = []
+    var mediaPlaybackCompletedSessionIDs: Set<String> = []
+    var mediaPlaybackLastSecondsBySession: [String: Int] = [:]
+    var mediaPlaybackViewedItemIDs: Set<String> = []
 
     var botAvatarURL: URL? {
-        guard let userId = botUserId, let hash = botAvatarHash else { return nil }
+        let cachedUserId = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cachedAvatarHash = settings.cachedBotIdentity.avatarHash.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userId = botUserId ?? (cachedUserId.isEmpty ? nil : cachedUserId)
+        let hash = botAvatarHash ?? (cachedAvatarHash.isEmpty ? nil : cachedAvatarHash)
+        guard let userId, let hash else { return nil }
         let ext = hash.hasPrefix("a_") ? "gif" : "png"
         return URL(string: "https://cdn.discordapp.com/avatars/\(userId)/\(hash).\(ext)?size=128")
     }
@@ -294,6 +325,11 @@ final class AppModel: ObservableObject {
         self.ruleStore.onPersisted = { [weak self] in
             await self?.handleRuleStorePersisted()
         }
+        StreamDebug.inAppSink = { [weak self] line in
+            Task { @MainActor [weak self] in
+                self?.logs.append(line)
+            }
+        }
         Task { [weak self] in
             await self?.mediaExportCoordinator.setOnJobFinished { [weak self] (_: MediaExportJob) in
                 await self?.mediaLibraryIndexer.invalidate()
@@ -304,6 +340,8 @@ final class AppModel: ObservableObject {
             await startRateLimitCleanupTask()
 
             await voiceSessionStore.load()
+            let analyticsRuntimeSnapshot = await analyticsRuntimeStore.load()
+            restoreAnalyticsRuntime(analyticsRuntimeSnapshot)
             var loadedSettings = await store.load()
             let loadedMeshSettings = await swiftMeshConfigStore.load()
             let loadedMediaSettings = await mediaLibraryConfigStore.load()
@@ -341,8 +379,13 @@ final class AppModel: ObservableObject {
                 loadedSettings.remoteAccessToken = generatedRemoteAccessToken()
                 migrated = true
             }
+            if loadedSettings.swiftMiner.enabled && !loadedSettings.adminWebUI.enabled {
+                loadedSettings.adminWebUI.enabled = true
+                migrated = true
+            }
 
             settings = loadedSettings
+            restoreCachedBotIdentity()
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
 
             // Initialize the appropriate data provider
@@ -416,7 +459,7 @@ final class AppModel: ObservableObject {
                 onJobLog: { [weak self] entry in
                     let model = self
                     await MainActor.run {
-                        model?.commandLog.insert(entry, at: 0)
+                        model?.addCommandLogEntry(entry)
                     }
                 },
                 onSync: { [weak self] payload in
@@ -544,7 +587,6 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.localAuthPassword = settings.adminWebUI.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
         settings.adminWebUI.publicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
         settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile
@@ -707,10 +749,7 @@ final class AppModel: ObservableObject {
         lastGatewayEventName = "-"
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
-        botUserId = nil
-        botUsername = "OnlineBot"
-        botDiscriminator = nil
-        botAvatarHash = nil
+        restoreCachedBotIdentity()
         clusterNodes = []
         lastGoodClusterNodes = []
         lastClusterStatusSuccessAt = nil
@@ -804,6 +843,42 @@ final class AppModel: ObservableObject {
     func addEvent(_ event: ActivityEvent) {
         events.insert(event, at: 0)
         if events.count > 20 { events.removeLast(events.count - 20) }
+        persistAnalyticsRuntime()
+    }
+
+    func addCommandLogEntry(_ entry: CommandLogEntry) {
+        commandLog.insert(entry, at: 0)
+        persistAnalyticsRuntime()
+    }
+
+    func addVoiceLogEntry(_ entry: VoiceEventLogEntry) {
+        voiceLog.insert(entry, at: 0)
+        if voiceLog.count > 200 { voiceLog.removeLast(voiceLog.count - 200) }
+        persistAnalyticsRuntime()
+    }
+
+    func setPatchyLastCycleAt(_ date: Date?) {
+        patchyLastCycleAt = date
+        persistAnalyticsRuntime()
+    }
+
+    private func restoreAnalyticsRuntime(_ snapshot: AnalyticsRuntimeSnapshot) {
+        events = snapshot.events
+        commandLog = snapshot.commandLog
+        voiceLog = snapshot.voiceLog
+        patchyLastCycleAt = snapshot.patchyLastCycleAt
+    }
+
+    func persistAnalyticsRuntime() {
+        let snapshot = AnalyticsRuntimeSnapshot(
+            events: events,
+            commandLog: commandLog,
+            voiceLog: voiceLog,
+            patchyLastCycleAt: patchyLastCycleAt
+        )
+        Task {
+            await analyticsRuntimeStore.save(snapshot)
+        }
     }
 
     // MARK: - P0.5: Member join welcome
@@ -827,6 +902,41 @@ final class AppModel: ObservableObject {
         let m = interval / 60
         let s = interval % 60
         return "\(m)m \(s)s"
+    }
+
+    func restoreCachedBotIdentity() {
+        let cached = settings.cachedBotIdentity
+        let cachedUserId = cached.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cachedUserId.isEmpty {
+            botUserId = cachedUserId
+        }
+        let cachedUsername = cached.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cachedUsername.isEmpty {
+            botUsername = cachedUsername
+        }
+        let cachedDiscriminator = cached.discriminator.trimmingCharacters(in: .whitespacesAndNewlines)
+        botDiscriminator = cachedDiscriminator.isEmpty ? nil : cachedDiscriminator
+        let cachedAvatarHash = cached.avatarHash.trimmingCharacters(in: .whitespacesAndNewlines)
+        botAvatarHash = cachedAvatarHash.isEmpty ? nil : cachedAvatarHash
+    }
+
+    func persistCachedBotIdentityIfNeeded() {
+        var cached = settings.cachedBotIdentity
+        let nextUserId = botUserId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.userId
+        let nextUsername = botUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextDiscriminator = botDiscriminator?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.discriminator
+        let nextAvatarHash = botAvatarHash?.trimmingCharacters(in: .whitespacesAndNewlines) ?? cached.avatarHash
+
+        guard !nextUsername.isEmpty, nextUsername != "OnlineBot" else { return }
+
+        cached.userId = nextUserId
+        cached.username = nextUsername
+        cached.discriminator = nextDiscriminator == "0" ? "" : nextDiscriminator
+        cached.avatarHash = nextAvatarHash
+
+        guard cached != settings.cachedBotIdentity else { return }
+        settings.cachedBotIdentity = cached
+        saveSettings()
     }
 }
 

@@ -254,6 +254,9 @@ final class CommandProcessorTests: XCTestCase {
                 pickMusicLookup: { selection, userID, channelID in
                     await recorder.recordMusicPick(selection: selection, userId: userID, channelId: channelID)
                     return (true, "Music selection result")
+                },
+                swiftMinerCommand: { _, _, _ in
+                    (true, "SwiftMiner result")
                 }
             )
         )
