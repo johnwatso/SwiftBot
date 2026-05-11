@@ -10,6 +10,7 @@ struct ActivityLogView: View {
     @State private var searchText: String = ""
     @State private var selectedFilters: Set<ActivityFilter> = Set(ActivityFilter.allCases)
     @State private var showClearConfirm = false
+    @State private var isFilterHelpPresented = false
 
     enum ActivityKind {
         case command
@@ -238,10 +239,27 @@ struct ActivityLogView: View {
                 .buttonStyle(.plain)
                 .help("Toggle \(option.rawValue)")
             }
+            filterHelpButton
             Spacer()
             Text("\(visibleEntries.count) of \(unifiedEntries.count)")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var filterHelpButton: some View {
+        Button {
+            isFilterHelpPresented.toggle()
+        } label: {
+            Image(systemName: "questionmark.circle")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .help("Explain activity filters and icons")
+        .popover(isPresented: $isFilterHelpPresented, arrowEdge: .top) {
+            ActivityFilterHelpPopover()
         }
     }
 
@@ -353,21 +371,166 @@ private struct ActivityRow: View {
         .padding(.vertical, entry.detail == nil ? 1 : 2)
     }
 
+    private var category: ActivityCategory {
+        ActivityCategory.infer(from: entry)
+    }
+
     private var symbol: String {
-        switch entry.level {
-        case .error: return "xmark.octagon.fill"
-        case .warning: return "exclamationmark.triangle.fill"
-        case .ok: return entry.kind == .command ? "terminal.fill" : "checkmark.circle.fill"
-        case .info: return entry.kind == .command ? "terminal" : "circle.fill"
-        }
+        // Errors and warnings always win over the category icon so they stay
+        // scannable; otherwise the inferred topic icon is used.
+        if entry.level == .error { return "xmark.octagon.fill" }
+        if entry.level == .warning { return "exclamationmark.triangle.fill" }
+        return category.symbol
     }
 
     private var color: Color {
-        switch entry.level {
-        case .error: return .red
-        case .warning: return .yellow
-        case .ok: return entry.kind == .command ? .blue : .green
-        case .info: return entry.kind == .command ? .blue : .gray
+        if entry.level == .error { return .red }
+        if entry.level == .warning { return .yellow }
+        return category.color
+    }
+}
+
+/// Inferred topic of an activity row. Drives the per-row SF Symbol so the eye
+/// can scan the log by activity type at a glance (gateway / voice / mesh /
+/// patchy / etc.), in addition to the filter-level chips above.
+enum ActivityCategory: String, CaseIterable {
+    case command
+    case gateway
+    case voice
+    case mesh
+    case patchy
+    case ai
+    case wiki
+    case swiftMiner
+    case system
+
+    var symbol: String {
+        switch self {
+        case .command: return "terminal"
+        case .gateway: return "network"
+        case .voice: return "person.3.sequence"
+        case .mesh: return "point.3.connected.trianglepath.dotted"
+        case .patchy: return "hammer.fill"
+        case .ai: return "sparkles"
+        case .wiki: return "book.pages.fill"
+        case .swiftMiner: return "pickaxe"
+        case .system: return "circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .command: return .blue
+        case .gateway: return .indigo
+        case .voice: return .pink
+        case .mesh: return .teal
+        case .patchy: return .orange
+        case .ai: return .purple
+        case .wiki: return .brown
+        case .swiftMiner: return .mint
+        case .system: return .gray
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .command: return "Command"
+        case .gateway: return "Discord gateway"
+        case .voice: return "Voice"
+        case .mesh: return "SwiftMesh"
+        case .patchy: return "Patchy"
+        case .ai: return "AI"
+        case .wiki: return "WikiBridge"
+        case .swiftMiner: return "SwiftMiner"
+        case .system: return "System"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .command: return "A Discord slash- or prefix-command was executed."
+        case .gateway: return "Discord gateway connection events: connect, reconnect, intent rejection, heartbeats."
+        case .voice: return "Voice state changes — joins, leaves, channel moves, presence events."
+        case .mesh: return "SwiftMesh failover, replication, leader election, follower state."
+        case .patchy: return "Patchy update sources — GPU/Steam/GitHub release notifications."
+        case .ai: return "AI bot replies, model selection, provider routing."
+        case .wiki: return "WikiBridge lookups and Finals wiki queries."
+        case .swiftMiner: return "SwiftMiner DM relays and pairing state."
+        case .system: return "Anything else — generic app log lines."
+        }
+    }
+
+    static func infer(from entry: ActivityLogView.ActivityEntry) -> ActivityCategory {
+        if entry.kind == .command { return .command }
+        let text = ((entry.title) + " " + (entry.detail ?? "")).lowercased()
+
+        // Order matters: pick the first hit. Specific topics before generic ones.
+        if text.contains("swiftminer") || text.contains("swiftminer:") { return .swiftMiner }
+        if text.contains("patchy") || text.contains("update available") || text.contains("driver") { return .patchy }
+        if text.contains("mesh") || text.contains("standby") || text.contains("primary") || text.contains("failover")
+            || text.contains("cluster") || text.contains("replicat") || text.contains("reclaim") { return .mesh }
+        if text.contains("voice") || text.contains("vc ") || text.contains("voice state") { return .voice }
+        if text.contains("gateway") || text.contains("discord") || text.contains("intent") || text.contains("heartbeat")
+            || text.contains("connect") || text.contains("reconnect") { return .gateway }
+        if text.contains("ai ") || text.contains(" ai") || text.contains("openai") || text.contains("ollama")
+            || text.contains("model") || text.contains("apple intelligence") { return .ai }
+        if text.contains("wiki") { return .wiki }
+        return .system
+    }
+}
+
+private struct ActivityFilterHelpPopover: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Activity Filters & Icons")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Filters")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                filterRow(symbol: "terminal", color: .blue, title: "Commands",
+                          description: "Discord slash- and prefix-commands executed by the bot.")
+                filterRow(symbol: "doc.text", color: .gray, title: "System",
+                          description: "Plain app log lines (info-level). Excludes errors and warnings.")
+                filterRow(symbol: "xmark.octagon.fill", color: .red, title: "Errors",
+                          description: "Anything that failed — command errors, gateway errors, REST errors.")
+                filterRow(symbol: "exclamationmark.triangle.fill", color: .yellow, title: "Warnings",
+                          description: "Non-fatal warnings — rate-limit nudges, mesh health misses, etc.")
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Row icons")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Errors and warnings always show the alert icon. Otherwise the row's SF Symbol reflects the inferred topic:")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                ForEach(ActivityCategory.allCases.filter { $0 != .command }, id: \.self) { cat in
+                    filterRow(symbol: cat.symbol, color: cat.color, title: cat.displayName, description: cat.description)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 360, alignment: .leading)
+    }
+
+    private func filterRow(symbol: String, color: Color, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
