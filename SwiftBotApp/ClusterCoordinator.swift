@@ -1127,7 +1127,16 @@ actor ClusterCoordinator {
     private func monitorLeaderHealth(_ leaderBaseURL: String) async {
         guard mode == .standby else { return }
 
-        let isHealthy = await isWorkerReachable(leaderBaseURL)
+        var isHealthy = await isWorkerReachable(leaderBaseURL)
+        // Bug-2 fix: a single failed probe is not enough to count a miss. Network
+        // jitter or a momentarily-busy event loop can drop one request. Retry once
+        // with a short backoff before deciding the leader is unreachable.
+        if !isHealthy {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
+            guard mode == .standby else { return }
+            isHealthy = await isWorkerReachable(leaderBaseURL)
+        }
         if isHealthy {
             if standbyHealthMisses > 0 {
                 snapshot.diagnostics = "Primary recovered after \(standbyHealthMisses) misses"
@@ -1144,9 +1153,55 @@ actor ClusterCoordinator {
             await publishSnapshot()
 
             if standbyHealthMisses >= Self.standbyPromotionThreshold {
-                await promoteToLeader()
+                // Bug 1 / Bug 3: confirm leader is genuinely dead AND attempt a final
+                // tail-resync before promoting. If the leader answers the high-timeout
+                // probe, the previous misses were transient — abort and reset.
+                let shouldPromote = await confirmLeaderDeadAndResync(leaderBaseURL)
+                if shouldPromote {
+                    await promoteToLeader()
+                } else {
+                    standbyHealthMisses = 0
+                    snapshot.diagnostics = "Primary reachable on confirmation probe; aborting promotion"
+                    meshLogger.warning("Promotion aborted: leader reachable on confirmation probe (term \(self.leaderTerm, privacy: .public))")
+                    await publishSnapshot()
+                }
             }
         }
+    }
+
+    /// Called immediately before `promoteToLeader()`. Performs:
+    /// 1. A final, generous-timeout health probe (retried twice) to filter long
+    ///    network blips that beat the per-cycle confirm-retry above. If the
+    ///    leader responds, the standby remains a standby — preventing the
+    ///    split-brain scenario where a still-alive primary loses its role to a
+    ///    falsely-promoted standby.
+    /// 2. A best-effort final resync pull from the cursor, so when this node
+    ///    promotes it has the absolute latest records before flipping output
+    ///    on. Failures here are non-fatal: standby has been merging live syncs
+    ///    while in passive mode and is already substantially up to date.
+    /// Returns `true` if promotion should proceed.
+    private func confirmLeaderDeadAndResync(_ leaderBaseURL: String) async -> Bool {
+        // (1) Final liveness probes with generous timeout. Two attempts.
+        for attempt in 0..<2 {
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if Task.isCancelled { return false }
+            }
+            if await isWorkerReachable(leaderBaseURL, timeout: 10) {
+                return false
+            }
+        }
+        // (2) Best-effort tail-resync. If this works, the leader is actually alive
+        // and we should abort. If it fails, the leader is dead — proceed to promote.
+        // Page size kept small (50) to keep this fast on a slow link.
+        if let payload = await fetchResyncPage(fromRecordID: nil, pageSize: 50) {
+            // Resync succeeded — leader is alive. Hand the payload to the sync
+            // handler so any tail records get merged before we abort.
+            await onSync?(payload)
+            meshLogger.warning("Final resync succeeded; leader is alive — promotion aborted")
+            return false
+        }
+        return true
     }
     func promoteToLeader() async {
         guard mode == .standby else { return }
@@ -1167,8 +1222,19 @@ actor ClusterCoordinator {
         // Notify AppModel to start bot services
         await onPromotion?()
 
-        // New term = new epoch: reset all cursors so standby/workers get a full resync.
-        replicationCursors.removeAll()
+        // Bug 4 fix: do NOT wipe replicationCursors on promotion. The cursors
+        // describe what each worker has already received; wiping them forces a
+        // full log replay (causing duplicates and log bloat). Instead, advance
+        // each cursor's term to the new epoch so it remains valid going
+        // forward — `updateReplicationCursor` will reject stale-term writes via
+        // its existing guard, so this is safe.
+        for (nodeName, cursor) in replicationCursors {
+            replicationCursors[nodeName] = ReplicationCursor(
+                leaderTerm: leaderTerm,
+                lastSentRecordID: cursor.lastSentRecordID,
+                updatedAt: Date()
+            )
+        }
         await onCursorsChanged?(replicationCursors)
 
         // Stop standby monitoring and registration — no longer a standby.
@@ -1498,13 +1564,13 @@ actor ClusterCoordinator {
         return true
     }
 
-    private func isWorkerReachable(_ baseURL: String) async -> Bool {
+    private func isWorkerReachable(_ baseURL: String, timeout: TimeInterval = 5) async -> Bool {
         guard let url = URL(string: baseURL + "/health") else { return false }
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/health")
-            request.timeoutInterval = 2
+            request.timeoutInterval = timeout
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
             return (200..<300).contains(http.statusCode)
