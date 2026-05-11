@@ -118,7 +118,7 @@ struct SwiftMinerDMMockData: Sendable {
 // MARK: - Routing Result
 
 /// The outcome of routing a `SwiftMinerDMRequest` through `SwiftMinerDMRouter`.
-struct SwiftMinerDMResult: Sendable {
+struct SwiftMinerDMResult {
     /// The Discord embed payload to send.
     let embed: [String: Any]
 
