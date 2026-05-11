@@ -563,6 +563,7 @@ actor AdminWebServer {
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [String: String])?
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
+    private var swiftMinerPairedProvider: (@Sendable () async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
@@ -624,6 +625,7 @@ actor AdminWebServer {
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         discordUsersProvider: @escaping @Sendable () async -> [String: String],
         swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
+        swiftMinerPairedProvider: @escaping @Sendable () async -> Bool,
         log: @escaping @Sendable (String) async -> Void
     ) async -> RuntimeState {
         self.statusProvider = statusProvider
@@ -677,6 +679,7 @@ actor AdminWebServer {
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.discordUsersProvider = discordUsersProvider
         self.swiftMinerTestDMSender = swiftMinerTestDMSender
+        self.swiftMinerPairedProvider = swiftMinerPairedProvider
         self.logger = log
 
         loadPersistedSessions()
@@ -986,7 +989,8 @@ actor AdminWebServer {
             }
             return serveAsset(named: parts[0], ext: parts[1], subdirectories: ["admin/games", "Resources/admin/games"])
         case ("GET", "/health"):
-            return jsonResponse(["status": "ok"])
+            let paired = await swiftMinerPairedProvider?() ?? false
+            return jsonResponse(["status": "ok", "paired": paired])
         case ("GET", "/v1/users"):
             let usernamesById = await discordUsersProvider?() ?? [:]
             let users = usernamesById
