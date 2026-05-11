@@ -68,6 +68,10 @@ SwiftBot brings those pieces together in one place. It is intended to make the b
   <img src="assets/readme/ui-preview.png" alt="SwiftBot dashboard preview">
 </p>
 
+<p align="center">
+  <img src="assets/readme/webui-preview.png" alt="SwiftBot web UI preview">
+</p>
+
 ## How It Works
 
 - A Discord application and bot token are created in the Discord Developer Portal
