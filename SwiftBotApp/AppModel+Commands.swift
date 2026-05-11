@@ -2843,12 +2843,21 @@ extension AppModel {
 
         var request = URLRequest(url: pingURL)
         request.httpMethod = "GET"
-        request.timeoutInterval = 3
+        request.timeoutInterval = 12
         await applyMeshAuthToConnectionTestRequest(&request, path: "/cluster/ping")
 
+        // Hard total-time cap: URLSession.shared's per-request timeoutInterval
+        // doesn't strictly bound DNS resolve + TCP connect, so a misrouted
+        // host (e.g. VPN sending traffic to a black hole) can take 60+ seconds
+        // to give up. Race the request against an explicit sleep so the UI
+        // never blocks longer than `Self.connectionTestTimeoutSeconds`.
         do {
             let startedAt = Date()
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await Self.runWithTimeout(
+                seconds: Self.connectionTestTimeoutSeconds
+            ) {
+                try await URLSession.shared.data(for: request)
+            }
             let latencyMs = max(1.0, Date().timeIntervalSince(startedAt) * 1000)
 
             guard let http = response as? HTTPURLResponse else {
@@ -2927,8 +2936,44 @@ extension AppModel {
                     isSuccess: false
                 )
             }
+        } catch is ConnectionTestTimeoutError {
+            return WorkerConnectionTestOutcome(
+                message: "Connection test timed out after \(Int(Self.connectionTestTimeoutSeconds))s to \(pingURL.absoluteString). The host may be unreachable (e.g. VPN routing it to a black hole) or the Primary is not responding.",
+                isSuccess: false
+            )
         } catch {
             return WorkerConnectionTestOutcome(message: "Unexpected error for \(pingURL.absoluteString): \(error.localizedDescription)", isSuccess: false)
+        }
+    }
+
+    /// Hard upper bound on the entire connection test (DNS resolve + TCP
+    /// connect + TLS + HTTP). Keeps the onboarding "Testing connection…"
+    /// indicator from hanging when a misrouted host (e.g. VPN sinkhole)
+    /// silently swallows packets.
+    private static let connectionTestTimeoutSeconds: TimeInterval = 12
+
+    private struct ConnectionTestTimeoutError: Error {}
+
+    /// Races `work` against an explicit sleep. If `work` finishes first, its
+    /// value is returned. If the sleep wins, throws `ConnectionTestTimeoutError`
+    /// and cancels the in-flight task.
+    private static func runWithTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        @_inheritActorContext _ work: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await work()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw ConnectionTestTimeoutError()
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw ConnectionTestTimeoutError()
+            }
+            return first
         }
     }
 
