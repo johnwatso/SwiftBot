@@ -771,6 +771,18 @@ actor DiscordService {
         try await sendMessage(channelId: channelId, content: content, token: token)
     }
 
+    /// Send a DM using a Discord embed payload (e.g. for richer welcome / status messages).
+    func sendDMEmbed(userId: String, embed: [String: Any]) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendDMEmbed blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken else { return }
+
+        let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
+        _ = try await messageRESTClient.sendMessage(channelId: channelId, payload: ["embeds": [embed]], token: token)
+    }
+
     func deleteMessage(channelId: String, messageId: String, token: String) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: deleteMessage blocked — outputAllowed is false (node is not Primary).")

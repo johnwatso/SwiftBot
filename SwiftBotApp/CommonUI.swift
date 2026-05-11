@@ -5,63 +5,20 @@ struct SwiftBotGlassBackground: View {
 
     var body: some View {
         ZStack {
-            if colorScheme == .dark {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.06, green: 0.08, blue: 0.11),
-                        Color(red: 0.08, green: 0.12, blue: 0.17),
-                        Color(red: 0.10, green: 0.09, blue: 0.16)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+            Color(nsColor: .windowBackgroundColor)
 
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 520, height: 520)
-                    .blur(radius: 80)
-                    .offset(x: -260, y: -220)
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .controlBackgroundColor).opacity(colorScheme == .dark ? 0.34 : 0.24),
+                    Color(nsColor: .underPageBackgroundColor).opacity(colorScheme == .dark ? 0.24 : 0.16),
+                    Color(nsColor: .windowBackgroundColor).opacity(colorScheme == .dark ? 0.18 : 0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-                Circle()
-                    .fill(Color.cyan.opacity(0.14))
-                    .frame(width: 420, height: 420)
-                    .blur(radius: 70)
-                    .offset(x: 280, y: -160)
-
-                Circle()
-                    .fill(Color.blue.opacity(0.10))
-                    .frame(width: 480, height: 480)
-                    .blur(radius: 75)
-                    .offset(x: 220, y: 260)
-            } else {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.95, green: 0.98, blue: 1.0),
-                        Color(red: 0.89, green: 0.95, blue: 0.98),
-                        Color(red: 0.96, green: 0.93, blue: 0.98)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                Circle()
-                    .fill(Color.white.opacity(0.45))
-                    .frame(width: 520, height: 520)
-                    .blur(radius: 70)
-                    .offset(x: -260, y: -220)
-
-                Circle()
-                    .fill(Color.cyan.opacity(0.18))
-                    .frame(width: 420, height: 420)
-                    .blur(radius: 55)
-                    .offset(x: 280, y: -160)
-
-                Circle()
-                    .fill(Color.blue.opacity(0.12))
-                    .frame(width: 480, height: 480)
-                    .blur(radius: 65)
-                    .offset(x: 220, y: 260)
-            }
+            Color.primary
+                .opacity(colorScheme == .dark ? 0.030 : 0.012)
         }
         .ignoresSafeArea()
     }

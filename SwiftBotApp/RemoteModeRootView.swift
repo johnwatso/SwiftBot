@@ -24,10 +24,8 @@ private enum RemoteSection: String, CaseIterable, Identifiable {
 
 private struct RemoteSettingsDraft: Equatable {
     var commandsEnabled = true
-    var prefixCommandsEnabled = true
     var slashCommandsEnabled = true
     var bugTrackingEnabled = true
-    var prefix = "/"
     var localAIDMReplyEnabled = false
     var preferredProvider = AIProviderPreference.apple.rawValue
     var openAIEnabled = false
@@ -48,10 +46,8 @@ private struct RemoteSettingsDraft: Equatable {
 
     init(payload: AdminWebConfigPayload) {
         commandsEnabled = payload.commands.enabled
-        prefixCommandsEnabled = payload.commands.prefixEnabled
         slashCommandsEnabled = payload.commands.slashEnabled
         bugTrackingEnabled = payload.commands.bugTrackingEnabled
-        prefix = payload.commands.prefix
         localAIDMReplyEnabled = payload.aiBots.localAIDMReplyEnabled
         preferredProvider = payload.aiBots.preferredProvider
         openAIEnabled = payload.aiBots.openAIEnabled
@@ -72,10 +68,8 @@ private struct RemoteSettingsDraft: Equatable {
     var patch: AdminWebConfigPatch {
         AdminWebConfigPatch(
             commandsEnabled: commandsEnabled,
-            prefixCommandsEnabled: prefixCommandsEnabled,
             slashCommandsEnabled: slashCommandsEnabled,
             bugTrackingEnabled: bugTrackingEnabled,
-            prefix: prefix,
             localAIDMReplyEnabled: localAIDMReplyEnabled,
             preferredAIProvider: preferredProvider,
             openAIEnabled: openAIEnabled,
@@ -114,6 +108,7 @@ struct RemoteModeRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .background(SwiftBotGlassBackground())
+        .toolbar(removing: .sidebarToggle)
         .toolbar {
             toolbarContent
         }
@@ -409,11 +404,9 @@ struct RemoteModeRootView: View {
 
                 PreferencesCard("Automation", systemImage: "terminal") {
                     Toggle("Enable Commands", isOn: $settingsDraft.commandsEnabled)
-                    Toggle("Enable Prefix Commands", isOn: $settingsDraft.prefixCommandsEnabled)
                     Toggle("Enable Slash Commands", isOn: $settingsDraft.slashCommandsEnabled)
                     Toggle("Enable Bug Tracking", isOn: $settingsDraft.bugTrackingEnabled)
                     Toggle("Auto Start Bot", isOn: $settingsDraft.autoStart)
-                    TextField("Command Prefix", text: $settingsDraft.prefix)
                 }
 
                 PreferencesCard("AI + Integrations", systemImage: "sparkles.rectangle.stack.fill") {

@@ -1,6 +1,34 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Darwin
+
+func adminWebOAuthRedirectURL(baseURL rawBaseURL: String, redirectPath rawRedirectPath: String) -> String {
+    var baseURL = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !baseURL.isEmpty else { return "" }
+
+    if !baseURL.contains("://") {
+        baseURL = "https://" + baseURL
+    }
+
+    let trimmedPath = rawRedirectPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    let path = trimmedPath.isEmpty
+        ? "/auth/discord/callback"
+        : (trimmedPath.hasPrefix("/") ? trimmedPath : "/" + trimmedPath)
+
+    guard var components = URLComponents(string: baseURL) else {
+        return baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path)
+    }
+
+    if !components.path.isEmpty && components.path != "/" {
+        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        components.path = basePath + path
+    } else {
+        components.path = path
+    }
+
+    return components.url?.absoluteString ?? (baseURL + (baseURL.hasSuffix("/") ? String(path.dropFirst()) : path))
+}
 
 extension AppModel {
 
@@ -221,6 +249,421 @@ extension AppModel {
         )
     }
 
+    func adminWebAnalyticsSnapshot() async -> AdminWebAnalyticsPayload {
+        async let daily = voiceSessionStore.getVoiceActivityLast7Days()
+        async let hourly = voiceSessionStore.getVoiceActivityByHour()
+        async let users = voiceSessionStore.getTopVoiceUsers(limit: 5)
+        async let totalTime = voiceSessionStore.getTotalVoiceTimeThisWeek()
+        async let sessionCount = voiceSessionStore.getSessionCountThisWeek()
+
+        let now = Date()
+        let loadedDaily = await daily
+        let loadedHourly = await hourly
+        let loadedUsers = await users
+        let loadedTotalSeconds = Int(await totalTime)
+        let loadedSessionCount = await sessionCount
+        let activeUsernames = Set(activeVoice.map(\.username))
+        let commandsToday = commandLog.filter { Calendar.current.isDateInToday($0.time) }.count
+        let failedCommandsToday = commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count
+        let enabledRuleCount = ruleStore.rules.filter(\.isEnabled).count
+        let automationFailures = events.filter {
+            ($0.kind == .error || $0.kind == .warning)
+                && $0.message.localizedCaseInsensitiveContains("automation")
+        }.count
+        let activeTaskCount = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
+            + (patchyIsCycleRunning ? 1 : 0)
+            + activeBugAutoFixMessageIDs.count
+        let finishedExports = mediaExportJobs.filter { $0.status == .finished }.count
+        let failedExports = mediaExportJobs.filter { $0.status == .failed }.count
+        let activeExports = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
+        let queueDepth = events.count
+        let queueLoad = min(Double(queueDepth) / 20.0, 1.0)
+        let healthState = adminWebAnalyticsHealthState(
+            latencyMs: connectionDiagnostics.heartbeatLatencyMs,
+            queueLoad: queueLoad,
+            failedCommandsToday: failedCommandsToday,
+            automationFailures: automationFailures
+        )
+        let peakHour = loadedHourly.max { $0.count < $1.count }.flatMap { $0.count >= 1 ? $0 : nil }
+        let mostActiveDay = adminWebDeterministicMostActiveDay(from: loadedDaily)
+        let averageSession = loadedSessionCount > 0 ? loadedTotalSeconds / loadedSessionCount : 0
+        let averageWatchSeconds = mediaPlaybackStarts > 0 ? mediaPlaybackTotalSeconds / mediaPlaybackStarts : 0
+        let exportSuccessRate = finishedExports + failedExports > 0
+            ? Int((Double(finishedExports) / Double(finishedExports + failedExports)) * 100)
+            : 100
+        let successRate = stats.commandsRun > 0
+            ? Double(max(0, stats.commandsRun - stats.errors)) / Double(stats.commandsRun)
+            : 1
+
+        let metrics = [
+            AdminWebAnalyticsMetricPayload(
+                id: "voice-sessions",
+                title: "Voice Sessions",
+                value: "\(loadedSessionCount)",
+                detail: "\(activeVoice.count) currently active",
+                trend: averageSession > 0 ? "Average \(adminWebFormatDuration(averageSession))" : "Waiting for completed sessions",
+                tone: "usage"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "voice-time",
+                title: "Total Voice Time",
+                value: adminWebFormatDuration(loadedTotalSeconds),
+                detail: "Last 7 days",
+                trend: averageSession > 0 ? "Average session \(adminWebFormatDuration(averageSession))" : "No completed sessions yet",
+                tone: "usage"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "most-active-day",
+                title: "Most Active Day",
+                value: mostActiveDay,
+                detail: adminWebPeakDayDetail(from: loadedDaily),
+                trend: peakHour.map { "Peak activity at \(adminWebHourLabel($0.hour))" } ?? "No hourly peak yet",
+                tone: "automation"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "top-user",
+                title: "Top User",
+                value: loadedUsers.first?.username ?? "-",
+                detail: loadedUsers.first.map { "\(adminWebActivityShare(seconds: $0.seconds, total: loadedTotalSeconds))% of tracked voice time" } ?? "No voice leaders yet",
+                trend: activeVoice.isEmpty ? "No live voice sessions" : "\(activeVoice.count) live voice users",
+                tone: "healthy"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "commands-today",
+                title: "Commands Today",
+                value: "\(commandsToday)",
+                detail: "\(stats.commandsRun) lifetime",
+                trend: "\(Int(successRate * 100))% command success",
+                tone: failedCommandsToday > 0 ? "warning" : "usage"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "active-workflows",
+                title: "Active Workflows",
+                value: "\(enabledRuleCount)",
+                detail: patchyIsCycleRunning ? "Patchy running now" : "Rule engine ready",
+                trend: automationFailures > 0 ? "\(automationFailures) automation warnings" : "Automation nominal",
+                tone: automationFailures > 0 ? "warning" : "automation"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "recordings-watched",
+                title: "Videos Watched",
+                value: "\(mediaPlaybackStarts)",
+                detail: "\(mediaPlaybackUniqueItemCount) unique recordings opened",
+                trend: averageWatchSeconds > 0
+                    ? "Average watch \(adminWebFormatDuration(averageWatchSeconds))"
+                    : "Waiting for playback telemetry",
+                tone: "usage"
+            ),
+            AdminWebAnalyticsMetricPayload(
+                id: "clips-exported",
+                title: "Clips Exported",
+                value: "\(finishedExports)",
+                detail: activeExports > 0 ? "\(activeExports) exports in progress" : "No active exports",
+                trend: failedExports > 0
+                    ? "\(failedExports) failed · \(exportSuccessRate)% success"
+                    : "\(exportSuccessRate)% success rate",
+                tone: failedExports > 0 ? "warning" : "healthy"
+            )
+        ]
+
+        let topUsers = loadedUsers.map { user in
+            AdminWebAnalyticsTopUserPayload(
+                id: user.username,
+                username: user.username,
+                initials: adminWebInitials(for: user.username),
+                totalTime: adminWebFormatDuration(user.seconds),
+                activityShare: adminWebActivityShare(seconds: user.seconds, total: loadedTotalSeconds),
+                isActive: activeUsernames.contains(user.username)
+            )
+        }
+
+        return AdminWebAnalyticsPayload(
+            generatedAt: now,
+            peakActivityLabel: peakHour.map { "Peak activity at \(adminWebHourLabel($0.hour))" } ?? "Waiting for activity",
+            metrics: metrics,
+            dailyActivity: loadedDaily.map {
+                AdminWebAnalyticsDayPayload(date: $0.date, label: $0.date.formatted(.dateTime.weekday(.abbreviated)), count: $0.count)
+            },
+            hourlyActivity: loadedHourly.map {
+                AdminWebAnalyticsHourPayload(hour: $0.hour, label: adminWebHourLabel($0.hour), count: $0.count)
+            },
+            topUsers: topUsers,
+            feed: adminWebAnalyticsFeed(healthState: healthState, now: now),
+            health: AdminWebAnalyticsHealthPayload(
+                state: healthState.state,
+                detail: healthState.detail,
+                websocketLatencyMs: connectionDiagnostics.heartbeatLatencyMs,
+                reconnectCount: status == .reconnecting ? 1 : 0,
+                activeTasks: activeTaskCount,
+                eventQueueDepth: queueDepth,
+                eventQueueLoad: queueLoad,
+                memoryText: adminWebMemoryText()
+            ),
+            insights: adminWebAnalyticsInsights(
+                dailyActivity: loadedDaily,
+                healthState: healthState.state,
+                automationFailures: automationFailures,
+                commandsToday: commandsToday,
+                watchedVideos: mediaPlaybackStarts,
+                exportedClips: finishedExports
+            )
+        )
+    }
+
+    private func adminWebAnalyticsHealthState(
+        latencyMs: Int?,
+        queueLoad: Double,
+        failedCommandsToday: Int,
+        automationFailures: Int
+    ) -> (state: String, detail: String) {
+        if status == .reconnecting {
+            return ("recovering", "Gateway is reconnecting or stabilizing after disruption.")
+        }
+        if latencyMs.map({ $0 >= 500 }) == true || queueLoad >= 0.90 || failedCommandsToday >= 5 {
+            return ("degraded", "Latency, queue, or failures indicate degraded operation.")
+        }
+        if latencyMs.map({ $0 >= 300 }) == true || queueLoad >= 0.70 || automationFailures > 0 || failedCommandsToday > 0 {
+            return ("warning", "One operational signal is elevated and worth watching.")
+        }
+        return ("healthy", "Gateway, queue, and automation signals are nominal.")
+    }
+
+    private func adminWebAnalyticsFeed(
+        healthState: (state: String, detail: String),
+        now: Date
+    ) -> [AdminWebAnalyticsFeedEntryPayload] {
+        var output: [AdminWebAnalyticsFeedEntryPayload] = []
+
+        output += events.prefix(8).map { event in
+            AdminWebAnalyticsFeedEntryPayload(
+                id: "event-\(event.id)",
+                timestamp: event.timestamp,
+                title: adminWebAnalyticsEventTitle(for: event.kind),
+                detail: adminWebCleanEventMessage(event.message),
+                category: adminWebAnalyticsEventCategory(for: event.kind),
+                tone: adminWebAnalyticsEventTone(for: event.kind)
+            )
+        }
+
+        output += commandLog.prefix(5).map { command in
+            AdminWebAnalyticsFeedEntryPayload(
+                id: "command-\(command.id)",
+                timestamp: command.time,
+                title: command.ok ? "Command executed" : "Command failed",
+                detail: "\(command.user) ran \(command.command)",
+                category: "command",
+                tone: command.ok ? "usage" : "warning"
+            )
+        }
+
+        output += voiceLog.prefix(4).map { voice in
+            AdminWebAnalyticsFeedEntryPayload(
+                id: "voice-\(voice.id)",
+                timestamp: voice.time,
+                title: "Voice activity",
+                detail: adminWebCleanEventMessage(voice.description),
+                category: "voice",
+                tone: "usage"
+            )
+        }
+
+        if let patchyLastCycleAt {
+            output.append(AdminWebAnalyticsFeedEntryPayload(
+                id: "patchy-\(patchyLastCycleAt.timeIntervalSince1970)",
+                timestamp: patchyLastCycleAt,
+                title: patchyIsCycleRunning ? "Automation running" : "Automation completed",
+                detail: "Patchy update cycle processed",
+                category: "automation",
+                tone: "automation"
+            ))
+        }
+
+        if healthState.state != "healthy" {
+            output.append(AdminWebAnalyticsFeedEntryPayload(
+                id: "health-\(healthState.state)-\(Int(now.timeIntervalSince1970 / 60))",
+                timestamp: now,
+                title: "\(healthState.state.capitalized) health state",
+                detail: healthState.detail,
+                category: "health",
+                tone: healthState.state == "degraded" ? "danger" : "warning"
+            ))
+        }
+
+        output.append(AdminWebAnalyticsFeedEntryPayload(
+            id: "launch-\(launchedAt.timeIntervalSince1970)",
+            timestamp: launchedAt,
+            title: "Analytics pipeline initialized",
+            detail: "SwiftBot runtime metrics are being aggregated",
+            category: "system",
+            tone: "healthy"
+        ))
+
+        return Array(output.sorted {
+            if $0.timestamp != $1.timestamp {
+                return $0.timestamp > $1.timestamp
+            }
+            return $0.id < $1.id
+        }.prefix(12))
+    }
+
+    private func adminWebAnalyticsInsights(
+        dailyActivity: [(date: Date, count: Int)],
+        healthState: String,
+        automationFailures: Int,
+        commandsToday: Int,
+        watchedVideos: Int,
+        exportedClips: Int
+    ) -> [AdminWebAnalyticsInsightPayload] {
+        var output: [AdminWebAnalyticsInsightPayload] = []
+        let total = dailyActivity.reduce(0) { $0 + $1.count }
+        let average = dailyActivity.isEmpty ? 0 : Double(total) / Double(dailyActivity.count)
+
+        if let peak = dailyActivity.max(by: { $0.count < $1.count }), peak.count >= 1, average > 0 {
+            let lift = Int(((Double(peak.count) - average) / max(average, 1)) * 100)
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "\(peak.date.formatted(.dateTime.weekday(.wide))) led activity",
+                body: lift > 0 ? "\(lift)% above the 7-day average." : "Matched the current 7-day average.",
+                tone: "usage"
+            ))
+        }
+
+        output.append(AdminWebAnalyticsInsightPayload(
+            title: healthState == "healthy" ? "System health is stable" : "Health state needs attention",
+            body: healthState == "healthy"
+                ? "Gateway, queue, and automation signals are nominal."
+                : "Review latency, queue depth, and failed operations.",
+            tone: healthState == "healthy" ? "healthy" : "warning"
+        ))
+
+        if automationFailures > 0 {
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "Automation warnings detected",
+                body: "\(automationFailures) automation-related warning events are present.",
+                tone: "warning"
+            ))
+        } else {
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "Automation pipeline is quiet",
+                body: "No failed automation events are currently reported.",
+                tone: "automation"
+            ))
+        }
+
+        if commandsToday > 0 {
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "Command traffic is active",
+                body: "\(commandsToday) commands have been processed today.",
+                tone: "usage"
+            ))
+        }
+
+        if watchedVideos > 0 || exportedClips > 0 {
+            output.append(AdminWebAnalyticsInsightPayload(
+                title: "Recording activity is flowing",
+                body: "\(watchedVideos) playback sessions and \(exportedClips) completed exports have been observed in this runtime.",
+                tone: "usage"
+            ))
+        }
+
+        return output
+    }
+
+    private func adminWebDeterministicMostActiveDay(from dailyActivity: [(date: Date, count: Int)]) -> String {
+        let activeDays = dailyActivity
+            .filter { $0.count >= 1 }
+            .sorted {
+                if $0.count != $1.count {
+                    return $0.count > $1.count
+                }
+                return $0.date < $1.date
+            }
+        return activeDays.first?.date.formatted(.dateTime.weekday(.wide)) ?? "-"
+    }
+
+    private func adminWebPeakDayDetail(from dailyActivity: [(date: Date, count: Int)]) -> String {
+        guard let peak = dailyActivity.max(by: { $0.count < $1.count }), peak.count >= 1 else {
+            return "No completed sessions this week"
+        }
+        return "\(peak.count) sessions on \(peak.date.formatted(.dateTime.weekday(.wide)))"
+    }
+
+    private func adminWebAnalyticsEventTitle(for kind: ActivityEvent.Kind) -> String {
+        switch kind {
+        case .voiceJoin: return "Voice session started"
+        case .voiceLeave: return "Voice session ended"
+        case .voiceMove: return "Voice channel changed"
+        case .command: return "Command executed"
+        case .info: return "System event"
+        case .warning: return "Operational warning"
+        case .error: return "Operational error"
+        }
+    }
+
+    private func adminWebAnalyticsEventCategory(for kind: ActivityEvent.Kind) -> String {
+        switch kind {
+        case .voiceJoin, .voiceLeave, .voiceMove: return "voice"
+        case .command: return "command"
+        case .warning, .error: return "health"
+        case .info: return "system"
+        }
+    }
+
+    private func adminWebAnalyticsEventTone(for kind: ActivityEvent.Kind) -> String {
+        switch kind {
+        case .warning: return "warning"
+        case .error: return "danger"
+        case .command, .voiceJoin, .voiceLeave, .voiceMove: return "usage"
+        case .info: return "healthy"
+        }
+    }
+
+    private func adminWebCleanEventMessage(_ message: String) -> String {
+        ["🟢 ", "🔴 ", "🔀 ", "✅ ", "⚠️ ", "❌ "].reduce(message) { cleaned, marker in
+            cleaned.replacingOccurrences(of: marker, with: "")
+        }
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func adminWebActivityShare(seconds: Int, total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        return Int((Double(seconds) / Double(total) * 100).rounded())
+    }
+
+    private func adminWebInitials(for username: String) -> String {
+        let pieces = username.split(separator: " ").prefix(2)
+        let letters = pieces.compactMap(\.first).map(String.init).joined()
+        return letters.isEmpty ? "?" : letters.uppercased()
+    }
+
+    private func adminWebHourLabel(_ hour: Int) -> String {
+        switch hour {
+        case 0: return "12a"
+        case 12: return "12p"
+        case let hourBeforeNoon where hourBeforeNoon < 12: return "\(hourBeforeNoon)a"
+        default: return "\(hour - 12)p"
+        }
+    }
+
+    private func adminWebFormatDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m" }
+        return "<1m"
+    }
+
+    private func adminWebMemoryText() -> String {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return "-" }
+        return ByteCountFormatter.string(fromByteCount: Int64(info.resident_size), countStyle: .memory)
+    }
+
     func remoteStatusSnapshot() -> RemoteStatusPayload {
         let leaderName = clusterNodes.first(where: { $0.role == .leader })?.displayName
             ?? clusterNodes.first?.displayName
@@ -340,10 +783,10 @@ extension AppModel {
         AdminWebConfigPayload(
             commands: .init(
                 enabled: settings.commandsEnabled,
-                prefixEnabled: settings.prefixCommandsEnabled,
+                prefixEnabled: false,
                 slashEnabled: settings.slashCommandsEnabled,
                 bugTrackingEnabled: settings.bugTrackingEnabled,
-                prefix: settings.prefix
+                prefix: "/"
             ),
             aiBots: .init(
                 localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
@@ -381,10 +824,8 @@ extension AppModel {
 
     func applyAdminWebConfigPatch(_ patch: AdminWebConfigPatch) -> Bool {
         if let value = patch.commandsEnabled { settings.commandsEnabled = value }
-        if let value = patch.prefixCommandsEnabled { settings.prefixCommandsEnabled = value }
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
         if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
-        if let value = patch.prefix { settings.prefix = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
         if let value = patch.preferredAIProvider,
            let provider = AIProviderPreference(rawValue: value) {
@@ -422,19 +863,6 @@ extension AppModel {
             let adminOnly: Bool
         }
 
-        let prefixCatalog = buildFullHelpCatalog(prefix: effectivePrefix())
-        let prefixCommands = prefixCatalog.entries.map { entry in
-            VisualCommand(
-                id: "prefix-\(entry.name)",
-                name: entry.name,
-                usage: entry.usage,
-                description: entry.description,
-                category: entry.category.rawValue,
-                surface: "prefix",
-                aliases: entry.aliases,
-                adminOnly: entry.isAdminOnly
-            )
-        }
         let slashCommands = allSlashCommandDefinitions().compactMap { raw -> VisualCommand? in
             guard let name = raw["name"] as? String else { return nil }
             let description = (raw["description"] as? String) ?? "No description"
@@ -456,7 +884,7 @@ extension AppModel {
             )
         }
 
-        var commands = prefixCommands + slashCommands
+        var commands = slashCommands
         commands.append(
             VisualCommand(
                 id: "mention-bug",
@@ -495,7 +923,7 @@ extension AppModel {
 
         return AdminWebCommandCatalogPayload(
             commandsEnabled: settings.commandsEnabled,
-            prefixCommandsEnabled: settings.prefixCommandsEnabled,
+            prefixCommandsEnabled: false,
             slashCommandsEnabled: settings.slashCommandsEnabled,
             items: items
         )
@@ -742,7 +1170,7 @@ extension AppModel {
     /// 3. Dev mode (Internet Access off) → `http://localhost:<port>` — uses `localhost` rather
     ///    than the bind address (127.0.0.1) so redirect URIs match Discord developer portal
     ///    registrations, which typically list localhost not the loopback IP.
-    private func oauthPublicBaseURL() -> String {
+    func adminWebOAuthBaseURL() -> String {
         let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !explicit.isEmpty {
             return explicit.contains("://") ? explicit : "https://" + explicit
@@ -758,13 +1186,20 @@ extension AppModel {
         return "http://localhost:\(settings.adminWebUI.port)"
     }
 
+    func adminWebDiscordRedirectURL() -> String {
+        adminWebOAuthRedirectURL(
+            baseURL: adminWebOAuthBaseURL(),
+            redirectPath: normalizedAdminRedirectPath(settings.adminWebUI.redirectPath)
+        )
+    }
+
     func configureAdminWebServer() async {
         let httpsConfiguration = usesLocalRuntime ? await resolveAdminWebHTTPSConfiguration() : nil
         let config = AdminWebServer.Configuration(
             enabled: usesLocalRuntime && settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
-            publicBaseURL: oauthPublicBaseURL(),
+            publicBaseURL: adminWebOAuthBaseURL(),
             https: httpsConfiguration,
             discordOAuth: settings.adminWebUI.discordOAuth,
             localAuthEnabled: settings.adminWebUI.localAuthEnabled,
@@ -836,7 +1271,7 @@ extension AppModel {
             remoteSettingsProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
                         aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -864,22 +1299,27 @@ extension AppModel {
                 }
                 return await MainActor.run { model.adminWebOverviewSnapshot() }
             },
+            analyticsProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebAnalyticsPayload.empty
+                }
+                return await model.adminWebAnalyticsSnapshot()
+            },
             connectedGuildIDsProvider: { [weak self] in
                 guard let model = self else { return [] }
                 return await MainActor.run { Set(model.connectedServers.keys) }
             },
-            currentPrefixProvider: { [weak self] in
-                guard let model = self else { return "/" }
-                return await MainActor.run { model.settings.prefix }
+            currentPrefixProvider: {
+                "/"
             },
-            updatePrefix: { [weak self] prefix in
-                guard let model = self else { return false }
-                return await MainActor.run { model.updatePrefixFromAdmin(prefix) }
+            updatePrefix: { prefix in
+                _ = prefix
+                return false
             },
             configProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebConfigPayload(
-                        commands: .init(enabled: true, prefixEnabled: true, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
+                        commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
                         aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
@@ -897,7 +1337,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebCommandCatalogPayload(
                         commandsEnabled: true,
-                        prefixCommandsEnabled: true,
+                        prefixCommandsEnabled: false,
                         slashCommandsEnabled: true,
                         items: []
                     )
@@ -1032,9 +1472,9 @@ extension AppModel {
                 }
                 return await model.adminWebMediaLibrarySnapshot(query: query)
             },
-            mediaStreamProvider: { [weak self] token, rangeHeader in
+            mediaStreamProvider: { [weak self] token, rangeHeader, quality in
                 guard let model = self else { return nil }
-                return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader)
+                return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader, quality: quality)
             },
             mediaThumbnailProvider: { [weak self] token in
                 guard let model = self else { return nil }
@@ -1051,6 +1491,10 @@ extension AppModel {
             mediaExportJobsProvider: { [weak self] in
                 guard let model = self else { return MediaExportJobsPayload(jobs: []) }
                 return await model.adminWebMediaExportJobs()
+            },
+            mediaPlaybackRecorder: { [weak self] patch in
+                guard let model = self else { return false }
+                return await model.adminWebRecordMediaPlayback(patch)
             },
             mediaClipExportStarter: { [weak self] request in
                 guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
@@ -1074,6 +1518,20 @@ extension AppModel {
                 guard let model = self else { return false }
                 _ = await MainActor.run { model.refreshClusterStatus() }
                 return true
+            },
+            swiftMinerWebhookHandler: { [weak self] headers, body in
+                guard let model = self else {
+                    return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))
+                }
+                return await model.handleSwiftMinerWebhook(headers: headers, body: body)
+            },
+            discordUsersProvider: { [weak self] in
+                guard let model = self else { return [:] }
+                return await model.discordCache.humanUserNames()
+            },
+            swiftMinerTestDMSender: { [weak self] request, discordUserId in
+                guard let model = self else { return false }
+                return await model.sendSwiftMinerDM(request: request, discordUserId: discordUserId)
             },
             log: { [weak self] message in
                 guard let model = self else { return }

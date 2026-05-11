@@ -57,6 +57,7 @@ final class CommandProcessor {
         var lookupFinalsWiki: (String) async -> FinalsWikiLookupResult?
         var runMusicLookup: (String?, String?, String?, String, String) async -> (ok: Bool, message: String)
         var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
+        var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
     }
 
     private let dependencies: Dependencies
@@ -153,6 +154,11 @@ final class CommandProcessor {
                 userId,
                 context.channelId
             )
+            return await dependencies.send(context.channelId, result.message)
+        case "miner", "swiftminer":
+            let action = tokens.dropFirst().first ?? "status"
+            let userId = dependencies.authorId(context.raw) ?? "unknown-user"
+            let result = await dependencies.swiftMinerCommand(action, userId, context.channelId)
             return await dependencies.send(context.channelId, result.message)
         case "userinfo":
             return await dependencies.send(context.channelId, "👤 User: \(context.username)")
@@ -350,6 +356,11 @@ final class CommandProcessor {
             let artist = Self.slashOptionString(named: "artist", in: data)
             let result = await dependencies.runMusicLookup(query, title, artist, userId, context.channelId)
             return embed(title: "Music Lookup", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+        case "miner":
+            let action = Self.slashOptionString(named: "action", in: data) ?? "status"
+            let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
+            let result = await dependencies.swiftMinerCommand(action, userId, context.channelId)
+            return embed(title: "SwiftMiner", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "wiki":
             let query = Self.slashOptionString(named: "query", in: data) ?? ""
             guard config.wikiEnabled else {

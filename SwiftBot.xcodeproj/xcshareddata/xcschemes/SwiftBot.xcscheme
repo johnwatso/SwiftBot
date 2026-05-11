@@ -39,6 +39,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "6EC9144B3C29250D490878D2"
+               BuildableName = "SwiftBotTests.xctest"
+               BlueprintName = "SwiftBotTests"
+               ReferencedContainer = "container:SwiftBot.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
