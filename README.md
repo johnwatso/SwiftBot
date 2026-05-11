@@ -64,9 +64,13 @@ SwiftBot brings those pieces together in one place. It is intended to make the b
 
 ## Preview
 
+### App Preview
+
 <p align="center">
   <img src="assets/readme/ui-preview.png" alt="SwiftBot dashboard preview">
 </p>
+
+### Web UI Preview
 
 <p align="center">
   <img src="assets/readme/webui-preview.png" alt="SwiftBot web UI preview">
