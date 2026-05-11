@@ -1595,6 +1595,7 @@ actor ClusterCoordinator {
         registeredWorkers = registeredWorkers.filter { $0.value.nodeName.lowercased() != workerName.lowercased() }
 
         let key = baseURL.lowercased()
+        let isNewRegistration = registeredWorkers[key] == nil
         registeredWorkers[key] = RegisteredWorker(
             nodeName: workerName,
             baseURL: baseURL,
@@ -1603,17 +1604,24 @@ actor ClusterCoordinator {
         )
         pruneStaleRegistrations()
 
-        snapshot.workerState = .connected
         let workerCount = registeredWorkers.count
-        snapshot.workerStatusText = "\(workerCount) worker\(workerCount == 1 ? "" : "s") registered"
-        if let advertisedBaseURL,
-           let observedBaseURL,
-           advertisedBaseURL.lowercased() != observedBaseURL.lowercased() {
-            snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL) (advertised \(advertisedBaseURL))"
-        } else {
-            snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL)"
+        // Only refresh the snapshot's status text + diagnostics on a *new*
+        // registration. The Failover re-registers every 4 s — left untouched,
+        // that fights with the periodic clusterStatusPayload() poll (every
+        // ~3 s) which rewrites the same fields with slightly different
+        // phrasing, producing a visible flicker in the GUI.
+        if isNewRegistration {
+            snapshot.workerState = .connected
+            snapshot.workerStatusText = "\(workerCount) worker\(workerCount == 1 ? "" : "s") registered"
+            if let advertisedBaseURL,
+               let observedBaseURL,
+               advertisedBaseURL.lowercased() != observedBaseURL.lowercased() {
+                snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL) (advertised \(advertisedBaseURL))"
+            } else {
+                snapshot.diagnostics = "Worker \(workerName) registered from \(baseURL)"
+            }
+            await publishSnapshot()
         }
-        await publishSnapshot()
 
         let response = WorkerRegistrationResponse(
             status: "ok",

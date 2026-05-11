@@ -563,14 +563,17 @@ struct ClusterMapView: View {
     }
 
     private func connectionEndpoints(leaderCenter: CGPoint, workerCenter: CGPoint) -> (start: CGPoint, end: CGPoint) {
-        let leaderInset: CGFloat = 8
-        let workerInset: CGFloat = 8
+        // Start the line just *outside* each tile so a straight stroke doesn't
+        // visibly clip through the rounded-rect node chips. The original
+        // negative inset hid behind the waveform's bouncing path; with the
+        // line straight, even 8 px inside the tile clips badly.
+        let gap: CGFloat = 4
         let start = CGPoint(
-            x: leaderCenter.x + (leaderCardWidth / 2) - leaderInset,
+            x: leaderCenter.x + (leaderCardWidth / 2) + gap,
             y: leaderCenter.y
         )
         let end = CGPoint(
-            x: workerCenter.x - (workerCardWidth / 2) + workerInset,
+            x: workerCenter.x - (workerCardWidth / 2) - gap,
             y: workerCenter.y
         )
         return (start, end)
@@ -848,9 +851,13 @@ struct StaticConnectionView: View {
             )
 
             // Hotspot chip at the midpoint. Sits above the line so it's the
-            // primary signal for the connection's state.
+            // primary signal for the connection's state. Monochrome rendering
+            // mode forces `foregroundStyle` to win over the symbol's default
+            // multicolor palette — without it `personalhotspot` renders flat
+            // grey in some macOS versions.
             VStack(spacing: 2) {
                 Image(systemName: iconSymbol)
+                    .symbolRenderingMode(.monochrome)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(lineColor)
                 if let latencyLabel {
@@ -863,11 +870,11 @@ struct StaticConnectionView: View {
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(Color(nsColor: .windowBackgroundColor))
             )
             .overlay(
                 Capsule()
-                    .stroke(lineColor.opacity(0.35), lineWidth: 1)
+                    .stroke(lineColor.opacity(0.45), lineWidth: 1)
             )
             .position(midpoint)
         }
