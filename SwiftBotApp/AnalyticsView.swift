@@ -327,7 +327,8 @@ struct AnalyticsView: View {
         ) {
             HStack(alignment: .top, spacing: 14) {
                 runtimeActivityChart
-                    .frame(minWidth: 380, maxWidth: .infinity)
+                    .frame(minWidth: 320, maxWidth: .infinity)
+                    .layoutPriority(1)
 
                 VStack(alignment: .leading, spacing: 10) {
                     insightTile(
@@ -347,7 +348,8 @@ struct AnalyticsView: View {
                     peakHourChart
                         .frame(height: 112)
                 }
-                .frame(minWidth: 250, idealWidth: 300, maxWidth: 340)
+                .frame(minWidth: 300, idealWidth: 360, maxWidth: 420)
+                .layoutPriority(1)
             }
             .frame(minHeight: 230, alignment: .top)
         }
@@ -569,9 +571,10 @@ struct AnalyticsView: View {
                     plot
                         .background(.black.opacity(0.035))
                         .padding(.horizontal, 7)
+                        .padding(.vertical, 6)
                 }
                 .chartXScale(domain: dailyChartDomain)
-                .chartYScale(domain: 0...(max(1, snapshot.voice.peakDayCount) + 1))
+                .chartYScale(domain: 0...max(2, Int(ceil(Double(snapshot.voice.peakDayCount) * 1.35)) + 1))
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day)) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))

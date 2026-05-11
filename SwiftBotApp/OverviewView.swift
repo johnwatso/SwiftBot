@@ -17,6 +17,11 @@ struct OverviewView: View {
     @State private var isEditingDashboard = false
     @State private var draggingMetricID: String?
 
+    // Rolling memory samples for the Memory metric (smoothed instead of instantaneous).
+    @State private var memorySamples: [UInt64] = []
+    private let memorySampleTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    private static let memorySampleCapacity = 36 // ~3 minutes at 5s cadence
+
     private struct MetricWidget: Identifiable {
         let id: String
         let title: String
@@ -219,10 +224,7 @@ struct OverviewView: View {
     private var operationalStatusMetrics: [OperationalStatusMetric] {
         let latency = app.connectionDiagnostics.heartbeatLatencyMs
         let queueDepth = provider.events.count
-        let memoryBytes = currentResidentMemoryBytes()
-        let memoryText = memoryBytes > 0
-            ? ByteCountFormatter.string(fromByteCount: Int64(memoryBytes), countStyle: .memory)
-            : "--"
+        let memoryText = averageMemoryText
 
         return [
             OperationalStatusMetric(
@@ -277,7 +279,7 @@ struct OverviewView: View {
                 id: "memory",
                 title: "Memory",
                 value: memoryText,
-                detail: "Current resident footprint",
+                detail: "Average resident footprint",
                 symbol: "memorychip",
                 state: .neutral
             ),
@@ -384,16 +386,19 @@ struct OverviewView: View {
             ))
         }
 
+        // Only flag a quiet feed if the gateway is healthy AND the silence is unusually long.
+        // A quiet bot is not a broken bot — most servers have idle stretches.
         if status == .running,
+           app.connectionDiagnostics.heartbeatLatencyMs != nil,
            let newestEventAt = provider.events.first?.timestamp {
             let lag = Date().timeIntervalSince(newestEventAt)
-            if lag >= 900 {
-                let minutes = Int(lag / 60)
+            if lag >= 14_400 { // 4 hours
+                let hours = Int(lag / 3600)
                 items.append(AttentionItem(
-                    id: "event-flow-stalled",
-                    title: "Event flow stalled",
-                    detail: "No runtime events for \(minutes) minute\(minutes == 1 ? "" : "s") — the gateway looks connected but dispatch may be stuck.",
-                    severity: lag >= 1800 ? .critical : .warning
+                    id: "event-flow-quiet",
+                    title: "Runtime feed quiet",
+                    detail: "No runtime events in the last \(hours) hour\(hours == 1 ? "" : "s"). The gateway is connected, so Discord activity may simply be low. Restart the bot if you expect events.",
+                    severity: .info
                 ))
             }
         }
@@ -694,9 +699,9 @@ struct OverviewView: View {
 
                 HStack(alignment: .top, spacing: 16) {
                     liveActivityCard
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     attentionRequiredCard
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .padding(.horizontal, 16)
@@ -705,6 +710,10 @@ struct OverviewView: View {
         }
         .onAppear {
             syncDashboardPreferences()
+            recordMemorySample()
+        }
+        .onReceive(memorySampleTimer) { _ in
+            recordMemorySample()
         }
         .onChange(of: settings.clusterMode) { _, _ in
             syncDashboardPreferences()
@@ -973,7 +982,7 @@ struct OverviewView: View {
             content()
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 280, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 280, maxHeight: .infinity, alignment: .topLeading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -1147,6 +1156,24 @@ struct OverviewView: View {
         if seconds < 3600 { return "\(seconds / 60)m ago" }
         if seconds < 86_400 { return "\(seconds / 3600)h ago" }
         return "\(seconds / 86_400)d ago"
+    }
+
+    private var averageMemoryText: String {
+        let samples = memorySamples.isEmpty ? [currentResidentMemoryBytes()] : memorySamples
+        let valid = samples.filter { $0 > 0 }
+        guard !valid.isEmpty else { return "--" }
+        let avg = valid.reduce(UInt64(0), +) / UInt64(valid.count)
+        let megabytes = Int((Double(avg) / 1_048_576).rounded())
+        return "\(megabytes) MB"
+    }
+
+    private func recordMemorySample() {
+        let bytes = currentResidentMemoryBytes()
+        guard bytes > 0 else { return }
+        memorySamples.append(bytes)
+        if memorySamples.count > Self.memorySampleCapacity {
+            memorySamples.removeFirst(memorySamples.count - Self.memorySampleCapacity)
+        }
     }
 
     private func currentResidentMemoryBytes() -> UInt64 {
