@@ -286,6 +286,13 @@ struct BotSettings: Codable, Hashable {
     /// been runtime-demoted to standby) will automatically reclaim leadership.
     /// `0` disables auto-reclaim. Manual promote always works regardless.
     var clusterAutoReclaimAfterHours: Int = 6
+    /// Persisted "last Handover Test" outcome shown in the SwiftMesh GUI tile.
+    /// nil = never run on this node.
+    var clusterLastHandoverTestAt: Date?
+    /// True if the most recent handover test completed end-to-end (Failover
+    /// took over, original Primary reclaimed automatically). False if it
+    /// errored partway through.
+    var clusterLastHandoverTestOK: Bool = false
 
     // Local AI reply settings for DMs and guild mentions.
     var localAIDMReplyEnabled: Bool = false
@@ -373,6 +380,8 @@ struct BotSettings: Codable, Hashable {
         case clusterOffloadAIReplies
         case clusterOffloadWikiLookups
         case clusterAutoReclaimAfterHours
+        case clusterLastHandoverTestAt
+        case clusterLastHandoverTestOK
         case localAIDMReplyEnabled
         case localAIProvider
         case preferredAIProvider
@@ -442,6 +451,8 @@ struct BotSettings: Codable, Hashable {
         clusterOffloadAIReplies = decodedOffloadAIReplies
         clusterOffloadWikiLookups = decodedOffloadWikiLookups
         clusterAutoReclaimAfterHours = try container.decodeIfPresent(Int.self, forKey: .clusterAutoReclaimAfterHours) ?? 6
+        clusterLastHandoverTestAt = try container.decodeIfPresent(Date.self, forKey: .clusterLastHandoverTestAt)
+        clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
         localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
         preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
@@ -509,6 +520,8 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterOffloadAIReplies, forKey: .clusterOffloadAIReplies)
         try container.encode(clusterOffloadWikiLookups, forKey: .clusterOffloadWikiLookups)
         try container.encode(clusterAutoReclaimAfterHours, forKey: .clusterAutoReclaimAfterHours)
+        try container.encodeIfPresent(clusterLastHandoverTestAt, forKey: .clusterLastHandoverTestAt)
+        try container.encode(clusterLastHandoverTestOK, forKey: .clusterLastHandoverTestOK)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
 
         try container.encode(localAIProvider, forKey: .localAIProvider)
