@@ -3,6 +3,7 @@ import SwiftUI
 struct SwiftMeshView: View {
     @EnvironmentObject var app: AppModel
     @State private var showPromoteConfirm = false
+    @State private var showHandoverTestConfirm = false
 
     private let pollingIntervalNanoseconds: UInt64 = 3_000_000_000
 
@@ -17,6 +18,12 @@ struct SwiftMeshView: View {
                         countdownSeconds: app.autoReclaimRemainingSeconds,
                         onPromote: { showPromoteConfirm = true }
                     )
+                }
+
+                // Handover Test panel — Primary side only, requires at least
+                // one registered worker.
+                if app.clusterSnapshot.mode == .leader && app.registeredWorkersDebugCount > 0 {
+                    HandoverTestPanel(onRun: { showHandoverTestConfirm = true })
                 }
 
                 metricTileRow
@@ -83,6 +90,18 @@ struct SwiftMeshView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The current Primary will demote on its next sync. This may briefly interrupt Discord activity while roles change.")
+        }
+        .confirmationDialog(
+            "Run SwiftMesh Handover Test?",
+            isPresented: $showHandoverTestConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Run Test", role: .destructive) {
+                Task { await app.runSwiftMeshHandoverTest() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The Failover will take over as Primary for 60 seconds, then signal this node to reclaim automatically. Discord activity may briefly bounce between nodes during the swap.")
         }
         .task(id: app.settings.clusterMode) {
             guard app.settings.clusterMode != .standalone else {
@@ -1005,6 +1024,40 @@ struct PromoteToPrimaryPanel: View {
         if hours > 0 { return "\(hours)h \(mins)m" }
         if mins > 0 { return "\(mins)m" }
         return "<1m"
+    }
+}
+
+/// Trigger panel for the SwiftMesh end-to-end handover test. Visible on the
+/// Primary side when at least one Failover is registered.
+struct HandoverTestPanel: View {
+    let onRun: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Test Failover handover")
+                    .font(.subheadline.weight(.semibold))
+                Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Useful for validating the swap path without a real outage.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(action: onRun) {
+                Label("Run Handover Test", systemImage: "arrow.left.arrow.right.circle.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        )
     }
 }
 

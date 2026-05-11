@@ -76,7 +76,15 @@ actor ClusterCoordinator {
     private var usedNonces: [String: Date] = [:]
     private var activeJobs = 0
     private var registeredWorkers: [String: RegisteredWorker] = [:]
+    /// Sticky cache of every worker we have ever seen this session. Never
+    /// pruned. Used to keep previously-known nodes visible in the SwiftMesh
+    /// cluster map even after they go offline, with status derived from the
+    /// stored `lastSeen` timestamp.
+    private var everKnownWorkers: [String: RegisteredWorker] = [:]
     private var workerRegistrationTask: Task<Void, Never>?
+    /// Tracks an in-flight handover test so the button doesn't double-fire
+    /// and so the auto-reclaim timer can be cancelled if mode changes.
+    private var handoverTestTask: Task<Void, Never>?
 
     // SwiftMesh failover state
     var leaderTerm: Int = 0
@@ -217,6 +225,131 @@ actor ClusterCoordinator {
         guard mode == .standby else { return }
         meshLogger.notice("Manual promote requested by user")
         await promoteToLeader()
+    }
+
+    // MARK: - Handover Test (Primary ⇄ Failover round-trip)
+
+    /// Coordinated test triggered from the Primary's SwiftMesh GUI. Asks the
+    /// first registered Failover to take over for `durationSeconds`, then to
+    /// signal back via `/v1/mesh/handover-test/end` so the original Primary
+    /// can reclaim. Returns a short message for the caller to log.
+    func startHandoverTest(durationSeconds: Int = 60) async -> String {
+        guard mode == .leader else { return "Handover test requires this node to be Primary." }
+        let workers = sortedRegisteredWorkers()
+        guard let target = workers.first else {
+            return "Handover test needs at least one registered worker."
+        }
+        guard handoverTestTask == nil else { return "Handover test already in progress." }
+
+        let payload = MeshHandoverTestPayload(
+            originPrimaryNodeName: nodeName,
+            durationSeconds: durationSeconds
+        )
+        meshLogger.notice("Handover test: notifying \(target.nodeName, privacy: .public) for \(durationSeconds, privacy: .public)s")
+
+        guard let url = URL(string: target.baseURL + "/v1/mesh/handover-test/begin") else {
+            return "Handover test: target URL is invalid."
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try encoder.encode(payload)
+            applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/begin")
+            request.timeoutInterval = 8
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                return "Handover test: Failover refused (HTTP \(code))."
+            }
+            return "Handover test started. \(target.nodeName) will take over for \(durationSeconds)s; auto-reclaim on completion."
+        } catch {
+            return "Handover test: could not reach \(target.nodeName) — \(error.localizedDescription)"
+        }
+    }
+
+    /// Failover-side handler. Schedules promotion after a brief delay (so the
+    /// caller's HTTP response is sent before the role swap), then schedules
+    /// the end-of-test notification after the requested duration.
+    private func handleHandoverTestBegin(_ body: Data) async -> Data {
+        guard let payload = try? decoder.decode(MeshHandoverTestPayload.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        guard mode == .standby else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+        }
+        guard handoverTestTask == nil else {
+            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"already_running"}"#.utf8))
+        }
+        let duration = max(5, min(600, payload.durationSeconds))
+        let origin = payload.originPrimaryNodeName
+        meshLogger.notice("Handover test: signal received from \(origin, privacy: .public); promoting in 1s for \(duration, privacy: .public)s")
+        snapshot.diagnostics = "Handover test starting — promoting in 1s, will reclaim \(origin) after \(duration)s"
+        await publishSnapshot()
+
+        handoverTestTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await self?.promoteToLeader()
+            try? await Task.sleep(nanoseconds: UInt64(duration) * 1_000_000_000)
+            await self?.broadcastHandoverTestEnd(originPrimaryNodeName: origin, duration: duration)
+            await self?.clearHandoverTestTask()
+        }
+
+        return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    /// Now-Primary-temporarily side: tells every registered worker the test
+    /// window has elapsed. The original Primary's handler will reclaim.
+    private func broadcastHandoverTestEnd(originPrimaryNodeName: String, duration: Int) async {
+        guard mode == .leader else { return }
+        let workers = sortedRegisteredWorkers()
+        let payload = MeshHandoverTestPayload(
+            originPrimaryNodeName: originPrimaryNodeName,
+            durationSeconds: duration
+        )
+        guard let body = try? encoder.encode(payload) else { return }
+        meshLogger.notice("Handover test: \(duration, privacy: .public)s elapsed; signalling \(workers.count, privacy: .public) peer(s) to reclaim")
+        snapshot.diagnostics = "Handover test ending; notifying \(originPrimaryNodeName) to reclaim"
+        await publishSnapshot()
+        for worker in workers {
+            guard let url = URL(string: worker.baseURL + "/v1/mesh/handover-test/end") else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = body
+                applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/end")
+                request.timeoutInterval = 8
+                _ = try await URLSession.shared.data(for: request)
+            } catch {
+                // best effort — if a worker missed it, the next sync push will
+                // still demote the temporary leader via the stale-term path
+                // once the original Primary reclaims on a manual trigger.
+            }
+        }
+    }
+
+    /// Former-Primary side: original Primary is currently standby. Re-promote
+    /// to reclaim. Stale-term backstop demotes the temporary Primary on its
+    /// next sync push.
+    private func handleHandoverTestEnd(_ body: Data) async -> Data {
+        guard (try? decoder.decode(MeshHandoverTestPayload.self, from: body)) != nil else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        guard mode == .standby else {
+            // We may have already reclaimed via auto-reclaim, or never were
+            // the origin Primary. Either way, no work to do.
+            return httpResponse(status: "200 OK", body: Data(#"{"status":"noop"}"#.utf8))
+        }
+        meshLogger.notice("Handover test: end signal received; reclaiming Primary")
+        snapshot.diagnostics = "Handover test complete; reclaiming Primary"
+        await publishSnapshot()
+        await promoteToLeader()
+        return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
+    }
+
+    private func clearHandoverTestTask() {
+        handoverTestTask = nil
     }
 
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
@@ -1124,6 +1257,10 @@ actor ClusterCoordinator {
             return await handleMediaMultiViewRequest(request.body)
         case ("GET", "/v1/mesh/follower-state"):
             return await handleFollowerStateRequest()
+        case ("POST", "/v1/mesh/handover-test/begin"):
+            return await handleHandoverTestBegin(request.body)
+        case ("POST", "/v1/mesh/handover-test/end"):
+            return await handleHandoverTestEnd(request.body)
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -1596,20 +1733,21 @@ actor ClusterCoordinator {
 
         let key = baseURL.lowercased()
         let isNewRegistration = registeredWorkers[key] == nil
-        registeredWorkers[key] = RegisteredWorker(
+        let entry = RegisteredWorker(
             nodeName: workerName,
             baseURL: baseURL,
             listenPort: registration.listenPort,
             lastSeen: Date()
         )
+        registeredWorkers[key] = entry
+        everKnownWorkers[key] = entry
         pruneStaleRegistrations()
 
         let workerCount = registeredWorkers.count
-        // Only refresh the snapshot's status text + diagnostics on a *new*
-        // registration. The Failover re-registers every 4 s — left untouched,
-        // that fights with the periodic clusterStatusPayload() poll (every
-        // ~3 s) which rewrites the same fields with slightly different
-        // phrasing, producing a visible flicker in the GUI.
+        // Only refresh the snapshot on a *new* registration. The Failover
+        // re-registers every 4 s — left untouched, that fights with the
+        // periodic clusterStatusPayload() poll (every ~3 s), producing a
+        // visible flicker in the GUI.
         if isNewRegistration {
             snapshot.workerState = .connected
             snapshot.workerStatusText = "\(workerCount) worker\(workerCount == 1 ? "" : "s") registered"
@@ -1884,20 +2022,16 @@ actor ClusterCoordinator {
 
         if mode == .leader {
             pruneStaleRegistrations()
-            let workers = sortedRegisteredWorkers()
+            // Emit from the sticky `everKnownWorkers` cache rather than the
+            // active `registeredWorkers` map so a node that briefly drops out
+            // (re-register heartbeat missed, network blip, restart) keeps its
+            // tile in the cluster map with a disconnected state, instead of
+            // vanishing entirely.
+            let knownWorkers = everKnownWorkers.values
+                .filter { !isSelfClusterEndpoint($0.baseURL) }
+                .sorted { $0.lastSeen > $1.lastSeen }
             var reachable = 0
-
-            // Previously this loop awaited `fetchRemoteClusterStatus` for each
-            // registered worker — a 3-second-per-worker network call. The
-            // *outer* HTTP request to /cluster/status (from the Primary's own
-            // pollClusterStatus) has a 3s timeout too, so a single
-            // network-isolated worker would consistently time out the entire
-            // response and the Primary's cluster map would silently fall back
-            // to just itself. Emit every registered worker synchronously from
-            // local state. Background tasks (registration heartbeat, mesh
-            // sync) already keep `lastSeen` fresh, so health is derived
-            // without blocking the response.
-            for worker in workers {
+            for worker in knownWorkers {
                 let age = Date().timeIntervalSince(worker.lastSeen)
                 let recentlySeen = age <= registrationStaleAfter
                 if recentlySeen { reachable += 1 }
@@ -1912,22 +2046,37 @@ actor ClusterCoordinator {
                 nodes.append(unreachableWorkerNode(worker: worker, status: status))
             }
 
-            if workers.isEmpty {
-                snapshot.workerState = .inactive
-                snapshot.workerStatusText = "No workers registered"
-                snapshot.diagnostics = "Waiting for worker registrations via /cluster/register"
-            } else if reachable == workers.count {
-                snapshot.workerState = .connected
-                snapshot.workerStatusText = "\(reachable) worker\(reachable == 1 ? "" : "s") connected"
-                snapshot.diagnostics = "All registered workers heard from in the last \(Int(registrationStaleAfter))s"
+            // Compute the status text/diagnostics first, only write if changed.
+            // This is the second half of the flicker fix — the registration
+            // path is now one-shot (commit 2b25100) but the poll path was
+            // still rewriting the same fields every ~3 s with subtly
+            // different wording compared to the registration handler.
+            let nextState: ClusterConnectionState
+            let nextText: String
+            let nextDiagnostics: String?
+            if knownWorkers.isEmpty {
+                nextState = .inactive
+                nextText = "No workers registered"
+                nextDiagnostics = "Waiting for worker registrations via /cluster/register"
+            } else if reachable == knownWorkers.count {
+                nextState = .connected
+                nextText = "\(reachable) worker\(reachable == 1 ? "" : "s") registered"
+                // Leave the diagnostics line alone — the registration path
+                // already wrote a richer "Worker X registered from Y" message.
+                nextDiagnostics = nil
             } else if reachable > 0 {
-                snapshot.workerState = .degraded
-                snapshot.workerStatusText = "\(reachable)/\(workers.count) workers connected"
-                snapshot.diagnostics = "Some registered workers haven't re-registered recently"
+                nextState = .degraded
+                nextText = "\(reachable)/\(knownWorkers.count) workers registered"
+                nextDiagnostics = "Some known workers haven't re-registered in the last \(Int(registrationStaleAfter))s"
             } else {
-                snapshot.workerState = .failed
-                snapshot.workerStatusText = "Cluster status unavailable"
-                snapshot.diagnostics = "No worker has re-registered in the last \(Int(registrationStaleAfter))s"
+                nextState = .failed
+                nextText = "Cluster status unavailable"
+                nextDiagnostics = "No worker has re-registered in the last \(Int(registrationStaleAfter))s"
+            }
+            if snapshot.workerState != nextState { snapshot.workerState = nextState }
+            if snapshot.workerStatusText != nextText { snapshot.workerStatusText = nextText }
+            if let nextDiagnostics, snapshot.diagnostics != nextDiagnostics {
+                snapshot.diagnostics = nextDiagnostics
             }
         }
 
