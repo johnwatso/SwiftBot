@@ -1533,6 +1533,15 @@ extension AppModel {
                 guard let model = self else { return false }
                 return await model.sendSwiftMinerDM(request: request, discordUserId: discordUserId)
             },
+            swiftMinerPairedProvider: { [weak self] in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    let sm = model.settings.swiftMiner
+                    return sm.enabled
+                        && !sm.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && !sm.webhookSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+            },
             log: { [weak self] message in
                 guard let model = self else { return }
                 await MainActor.run { model.logs.append(message) }
