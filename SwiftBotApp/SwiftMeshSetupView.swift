@@ -17,15 +17,26 @@ struct SwiftMeshSetupView: View {
     }
 
     var body: some View {
-        switch step {
-        case .setup:
-            meshSetupFields
-        case .testing:
-            testingView
-        case .confirmed:
-            confirmedView
-        case .failed:
-            failedView
+        // Wrap the switch in a Group so the .onChange listener below stays
+        // mounted across every step. Previously the listener lived inside
+        // `meshSetupFields` and was unsubscribed the moment we switched to
+        // `.testing` — meaning the transition back to .confirmed/.failed
+        // never fired and the UI got stuck on "Testing connection…".
+        Group {
+            switch step {
+            case .setup:
+                meshSetupFields
+            case .testing:
+                testingView
+            case .confirmed:
+                confirmedView
+            case .failed:
+                failedView
+            }
+        }
+        .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
+            guard step == .testing, !inProgress else { return }
+            step = app.workerConnectionTestIsSuccess ? .confirmed : .failed
         }
     }
 
@@ -128,10 +139,6 @@ struct SwiftMeshSetupView: View {
             // has divergent ports — otherwise the user would lose visibility
             // of why Leader Port differs.
             useSeparateLeaderPort = app.settings.clusterLeaderPort != app.settings.clusterListenPort
-        }
-        .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
-            guard step == .testing, !inProgress else { return }
-            step = app.workerConnectionTestIsSuccess ? .confirmed : .failed
         }
     }
 
