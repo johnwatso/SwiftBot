@@ -563,6 +563,31 @@ final class AppModel: ObservableObject {
                     await self?.saveMeshCursors(cursors)
                 }
             }
+            // Primary-side: serve the Discord token to mesh-authenticated
+            // peers so a Failover can pull it after onboarding.
+            await cluster.setDiscordTokenProvider { [weak self] in
+                guard let self else { return nil }
+                return await MainActor.run {
+                    let trimmed = self.settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
+                }
+            }
+            // Standby/Worker-side: receive a pulled token from the Primary
+            // and persist via the existing Keychain-backed save path. Only
+            // applies when the local node has no token yet — the guard here
+            // prevents a stale Primary from overwriting a known-good local.
+            await cluster.setDiscordTokenFetchedHandler { [weak self] pulled in
+                guard let self else { return }
+                let trimmed = pulled.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                await MainActor.run {
+                    let existing = self.settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard existing.isEmpty else { return }
+                    self.settings.token = trimmed
+                    self.logs.append("🔑 Pulled Discord token from Primary (via mesh handshake).")
+                    self.saveSettings()
+                }
+            }
             await cluster.setHandoverTestPassedHandler { [weak self] in
                 guard let self else { return }
                 await MainActor.run {
