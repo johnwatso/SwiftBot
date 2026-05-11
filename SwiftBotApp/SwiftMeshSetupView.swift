@@ -50,9 +50,12 @@ struct SwiftMeshSetupView: View {
             }
             .frame(maxWidth: 560)
 
-            SecureField("Mesh Token", text: $app.settings.clusterSharedSecret)
-                .onboardingTextFieldStyle()
-                .frame(maxWidth: 560)
+            RevealableSecretField(
+                text: $app.settings.clusterSharedSecret,
+                placeholder: "Mesh Token",
+                allowRegenerate: true
+            )
+            .frame(maxWidth: 560)
 
             HStack(spacing: 12) {
                 Button(action: onBack) {

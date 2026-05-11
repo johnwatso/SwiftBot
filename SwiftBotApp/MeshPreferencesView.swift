@@ -124,8 +124,14 @@ struct MeshPreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Shared Secret")
                         .font(.subheadline.weight(.medium))
-                    SecureField("Required for clustered mode", text: $app.settings.clusterSharedSecret)
-                        .textFieldStyle(.roundedBorder)
+                    RevealableSecretField(
+                        text: $app.settings.clusterSharedSecret,
+                        placeholder: "Required for clustered mode",
+                        allowRegenerate: true
+                    )
+                    Text("Must match across every node in the mesh. Click the eye to reveal, the copy icon to copy, or the refresh icon to generate a new token.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
             }
 

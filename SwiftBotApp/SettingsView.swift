@@ -467,9 +467,12 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Shared Secret")
                         .font(.subheadline.weight(.medium))
-                    SecureField("Secret key for node authentication", text: $app.settings.clusterSharedSecret)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(isFailoverManagedNode)
+                    RevealableSecretField(
+                        text: $app.settings.clusterSharedSecret,
+                        placeholder: "Secret key for node authentication",
+                        allowRegenerate: !isFailoverManagedNode
+                    )
+                    .disabled(isFailoverManagedNode)
                 }
             }
 
