@@ -65,6 +65,17 @@ extension AppModel {
         startMediaMonitor()
     }
 
+    /// Triggered by the "Run Handover Test" button in SwiftMesh. Asks the
+    /// Failover to take over for ~1 minute and reclaim automatically — useful
+    /// for validating the failover path end-to-end without waiting on a real
+    /// outage.
+    func runSwiftMeshHandoverTest() async {
+        let message = await cluster.startHandoverTest(durationSeconds: 60)
+        await MainActor.run {
+            logs.append("🔁 \(message)")
+        }
+    }
+
     /// Phase 4: user-initiated promote from the SwiftMesh GUI. Forwards to
     /// the coordinator, which skips the death-confirmation probe and runs
     /// the standard promotion path. Discord output is enabled by

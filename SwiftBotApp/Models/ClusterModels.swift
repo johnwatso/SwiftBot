@@ -359,6 +359,16 @@ struct FollowerStateSummary: Codable, Sendable, Hashable {
     let discordGatewayLatencyMs: Int?
 }
 
+/// Coordinated handover test payload. Sent by the current Primary to its
+/// Failover to request a temporary takeover, then sent back from the
+/// temporary-Primary at the end of the window so the original Primary can
+/// reclaim. Carries the duration and the original Primary's node name so
+/// either side can render meaningful log entries.
+struct MeshHandoverTestPayload: Codable, Sendable {
+    let originPrimaryNodeName: String
+    let durationSeconds: Int
+}
+
 /// Body returned with a 409 Conflict when a sender's leader term is stale.
 /// Carries the receiver's current term so the (now-demoted) sender can detect
 /// it is no longer authoritative and step down — preventing split-brain when
