@@ -182,6 +182,9 @@ extension AppModel {
     struct PatchySourceGroupKey: Hashable {
         let source: PatchySourceKind
         let steamAppID: String
+        let githubRepo: String
+        let githubBranch: String
+        let githubWatchAllCommits: Bool
     }
 
     func runPatchyMonitoringCycle(trigger: String) async {
@@ -207,7 +210,10 @@ extension AppModel {
         let grouped = Dictionary(grouping: enabledTargets) { target in
             PatchySourceGroupKey(
                 source: target.source,
-                steamAppID: target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+                steamAppID: target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines),
+                githubRepo: target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                githubBranch: target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines),
+                githubWatchAllCommits: target.githubWatchAllCommits
             )
         }
 
@@ -273,6 +279,53 @@ extension AppModel {
                             }
                             if delivery.ok {
                                 try await patchyChecker.save(identifier: newestVersion, for: versionKey)
+                            }
+                        }
+                    }
+                } else if let githubItem = item as? GitHubUpdateItem {
+                    let identifier = githubItem.identifier
+                    let key = PatchyRuntime.lastPostedGitHubIdentifierKey(for: githubItem.sourceKey)
+                    let check = try await patchyChecker.check(identifier: identifier, for: key)
+                    mapped = PatchyRuntime.map(item: githubItem, change: check)
+
+                    for target in targets {
+                        updatePatchyTargetRuntimeState(id: target.id) { entry in
+                            entry.lastCheckedAt = Date()
+                            entry.lastStatus = mapped.statusSummary
+                        }
+                    }
+
+                    switch check {
+                    case .firstSeen:
+                        try await patchyChecker.save(identifier: identifier, for: key)
+                        appendPatchyLog("Patchy GitHub baseline initialized [\(referenceTarget.githubRepo)] id=\(identifier)")
+                    case .unchanged:
+                        break
+                    case .changed:
+                        let fallback = PatchyRuntime.fallbackMessage(for: mapped)
+                        for target in targets {
+                            let validation = await validatePatchyTarget(target)
+                            guard validation.isValid else {
+                                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                    entry.lastCheckedAt = Date()
+                                    entry.lastStatus = validation.detail
+                                }
+                                appendPatchyLog("Patchy cycle [GitHub] skipped target \(target.channelId): \(validation.detail)")
+                                continue
+                            }
+
+                            let delivery = await sendPatchyNotificationDetailed(
+                                channelId: target.channelId,
+                                message: fallback,
+                                embedJSON: mapped.embedJSON,
+                                roleIDs: target.roleIDs
+                            )
+                            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                                entry.lastRunAt = Date()
+                                entry.lastStatus = delivery.detail
+                            }
+                            if delivery.ok {
+                                try await patchyChecker.save(identifier: identifier, for: key)
                             }
                         }
                     }

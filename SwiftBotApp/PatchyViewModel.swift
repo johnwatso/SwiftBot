@@ -17,6 +17,7 @@ struct PatchyFetchResult: Sendable {
 enum PatchyRuntime {
     private static let lastPostedDriverVersionKey = "lastPostedDriverVersion"
     private static let lastPostedSteamIdentifierKey = "lastPostedSteamIdentifier"
+    private static let lastPostedGitHubIdentifierKey = "lastPostedGitHubIdentifier"
 
     static func makeSource(from target: PatchySourceTarget) throws -> any UpdateSource {
         switch target.source {
@@ -32,7 +33,30 @@ enum PatchyRuntime {
                 throw NSError(domain: "Patchy", code: 0, userInfo: [NSLocalizedDescriptionKey: "Steam App ID is required."])
             }
             return SteamNewsUpdateSource(appID: appID)
+        case .github:
+            let parsed = try parseGitHubRepo(target.githubRepo)
+            let mode: GitHubWatchMode = target.githubWatchAllCommits
+                ? .commits(branch: target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines))
+                : .releases
+            return GitHubUpdateSource(owner: parsed.owner, repo: parsed.repo, mode: mode)
         }
+    }
+
+    static func parseGitHubRepo(_ value: String) throws -> (owner: String, repo: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "Patchy", code: 0, userInfo: [NSLocalizedDescriptionKey: "GitHub repo is required (e.g. owner/repo)."])
+        }
+        let stripped = trimmed
+            .replacingOccurrences(of: "https://github.com/", with: "")
+            .replacingOccurrences(of: "http://github.com/", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let parts = stripped.split(separator: "/", maxSplits: 2, omittingEmptySubsequences: true)
+        guard parts.count >= 2 else {
+            throw NSError(domain: "Patchy", code: 0, userInfo: [NSLocalizedDescriptionKey: "GitHub repo must be in 'owner/repo' form."])
+        }
+        let repo = String(parts[1]).replacingOccurrences(of: ".git", with: "")
+        return (String(parts[0]), repo)
     }
 
     static func map(item: any UpdateItem, change: UpdateChangeResult) -> PatchyFetchResult {
@@ -53,6 +77,29 @@ enum PatchyRuntime {
                 statusSummary: "\(driver.releaseNotes.author): \(statusLabel(change))",
                 identifier: item.identifier,
                 cacheKey: item.sourceKey
+            )
+        }
+
+        if let gh = item as? GitHubUpdateItem {
+            let preview: String
+            switch gh.info.mode {
+            case .releases:
+                preview = gh.info.summary.isEmpty ? gh.info.title : gh.info.summary
+            case .commits:
+                preview = "\(gh.info.author): \(gh.info.title)"
+            }
+            return PatchyFetchResult(
+                sourceName: gh.info.author,
+                title: gh.info.title,
+                version: gh.info.displayVersion,
+                date: gh.info.date,
+                formattedDescription: gh.info.summary,
+                preview: String(preview.prefix(500)),
+                embedJSON: gh.info.embedJSON,
+                debugOutput: gh.info.rawDebug,
+                statusSummary: "GitHub: \(statusLabel(change))",
+                identifier: gh.identifier,
+                cacheKey: gh.sourceKey
             )
         }
 
@@ -116,6 +163,10 @@ enum PatchyRuntime {
 
     static func lastPostedSteamIdentifierKey(for sourceKey: String) -> String {
         "\(sourceKey):\(lastPostedSteamIdentifierKey)"
+    }
+
+    static func lastPostedGitHubIdentifierKey(for sourceKey: String) -> String {
+        "\(sourceKey):\(lastPostedGitHubIdentifierKey)"
     }
 
     static func makeSteamOrderingStamp(item: SteamUpdateItem) -> String {

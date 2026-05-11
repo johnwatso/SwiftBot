@@ -7,6 +7,7 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     case amd = "AMD"
     case intel = "Intel Arc"
     case steam = "Steam"
+    case github = "GitHub"
 
     var id: String { rawValue }
 }
@@ -25,12 +26,69 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var isEnabled: Bool = true
     var source: PatchySourceKind = .nvidia
     var steamAppID: String = "570"
+    var githubRepo: String = ""
+    var githubBranch: String = ""
+    var githubWatchAllCommits: Bool = false
     var serverId: String = ""
     var channelId: String = ""
     var roleIDs: [String] = []
     var lastCheckedAt: Date?
     var lastRunAt: Date?
     var lastStatus: String = "Never checked"
+
+    enum CodingKeys: String, CodingKey {
+        case id, isEnabled, source, steamAppID
+        case githubRepo, githubBranch, githubWatchAllCommits
+        case serverId, channelId, roleIDs
+        case lastCheckedAt, lastRunAt, lastStatus
+    }
+
+    init(
+        id: UUID = UUID(),
+        isEnabled: Bool = true,
+        source: PatchySourceKind = .nvidia,
+        steamAppID: String = "570",
+        githubRepo: String = "",
+        githubBranch: String = "",
+        githubWatchAllCommits: Bool = false,
+        serverId: String = "",
+        channelId: String = "",
+        roleIDs: [String] = [],
+        lastCheckedAt: Date? = nil,
+        lastRunAt: Date? = nil,
+        lastStatus: String = "Never checked"
+    ) {
+        self.id = id
+        self.isEnabled = isEnabled
+        self.source = source
+        self.steamAppID = steamAppID
+        self.githubRepo = githubRepo
+        self.githubBranch = githubBranch
+        self.githubWatchAllCommits = githubWatchAllCommits
+        self.serverId = serverId
+        self.channelId = channelId
+        self.roleIDs = roleIDs
+        self.lastCheckedAt = lastCheckedAt
+        self.lastRunAt = lastRunAt
+        self.lastStatus = lastStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        source = try c.decodeIfPresent(PatchySourceKind.self, forKey: .source) ?? .nvidia
+        steamAppID = try c.decodeIfPresent(String.self, forKey: .steamAppID) ?? "570"
+        githubRepo = try c.decodeIfPresent(String.self, forKey: .githubRepo) ?? ""
+        githubBranch = try c.decodeIfPresent(String.self, forKey: .githubBranch) ?? ""
+        githubWatchAllCommits = try c.decodeIfPresent(Bool.self, forKey: .githubWatchAllCommits) ?? false
+        serverId = try c.decodeIfPresent(String.self, forKey: .serverId) ?? ""
+        channelId = try c.decodeIfPresent(String.self, forKey: .channelId) ?? ""
+        roleIDs = try c.decodeIfPresent([String].self, forKey: .roleIDs) ?? []
+        lastCheckedAt = try c.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
+        lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)
+        lastStatus = try c.decodeIfPresent(String.self, forKey: .lastStatus) ?? "Never checked"
+    }
 }
 
 struct PatchySettings: Codable, Hashable {

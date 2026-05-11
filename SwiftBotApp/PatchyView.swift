@@ -231,13 +231,23 @@ struct PatchyView: View {
     }
 
     private func sourceDisplayName(for target: PatchySourceTarget) -> String {
-        guard target.source == .steam else { return target.source.rawValue }
-        let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !appID.isEmpty else { return "Steam" }
-        if let name = app.settings.patchy.steamAppNames[appID], !name.isEmpty {
-            return "Steam • \(name) (\(appID))"
+        switch target.source {
+        case .steam:
+            let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !appID.isEmpty else { return "Steam" }
+            if let name = app.settings.patchy.steamAppNames[appID], !name.isEmpty {
+                return "Steam • \(name) (\(appID))"
+            }
+            return "Steam (\(appID))"
+        case .github:
+            let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = target.githubWatchAllCommits
+                ? "commits\(target.githubBranch.isEmpty ? "" : " · \(target.githubBranch)")"
+                : "releases"
+            return repo.isEmpty ? "GitHub" : "GitHub • \(repo) (\(suffix))"
+        default:
+            return target.source.rawValue
         }
-        return "Steam (\(appID))"
     }
 
     private func sourceIcon(_ source: PatchySourceKind) -> String {
@@ -246,6 +256,7 @@ struct PatchyView: View {
         case .nvidia: return "n.square.fill"
         case .intel: return "i.circle.fill"
         case .steam: return "gamecontroller.fill"
+        case .github: return "chevron.left.forwardslash.chevron.right"
         }
     }
 
@@ -411,33 +422,21 @@ private struct PatchyTargetDraft: Identifiable {
     var isEnabled: Bool
     var source: PatchySourceKind
     var steamAppID: String
+    var githubRepo: String
+    var githubBranch: String
+    var githubWatchAllCommits: Bool
     var serverId: String
     var channelId: String
     var roleIDs: [String]
-
-    init(
-        id: UUID,
-        isEnabled: Bool,
-        source: PatchySourceKind,
-        steamAppID: String,
-        serverId: String,
-        channelId: String,
-        roleIDs: [String]
-    ) {
-        self.id = id
-        self.isEnabled = isEnabled
-        self.source = source
-        self.steamAppID = steamAppID
-        self.serverId = serverId
-        self.channelId = channelId
-        self.roleIDs = roleIDs
-    }
 
     init(target: PatchySourceTarget) {
         id = target.id
         isEnabled = target.isEnabled
         source = target.source
         steamAppID = target.steamAppID
+        githubRepo = target.githubRepo
+        githubBranch = target.githubBranch
+        githubWatchAllCommits = target.githubWatchAllCommits
         serverId = target.serverId
         channelId = target.channelId
         roleIDs = target.roleIDs
@@ -447,15 +446,10 @@ private struct PatchyTargetDraft: Identifiable {
     static func makeNew(defaultServer: String?, app: AppModel) -> PatchyTargetDraft {
         let server = defaultServer ?? ""
         let channel = app.availableTextChannelsByServer[server]?.first?.id ?? ""
-        return PatchyTargetDraft(
-            id: UUID(),
-            isEnabled: true,
-            source: .nvidia,
-            steamAppID: "570",
+        return PatchyTargetDraft(target: PatchySourceTarget(
             serverId: server,
-            channelId: channel,
-            roleIDs: []
-        )
+            channelId: channel
+        ))
     }
 
     func toTarget() -> PatchySourceTarget {
@@ -464,6 +458,9 @@ private struct PatchyTargetDraft: Identifiable {
             isEnabled: isEnabled,
             source: source,
             steamAppID: steamAppID,
+            githubRepo: githubRepo,
+            githubBranch: githubBranch,
+            githubWatchAllCommits: githubWatchAllCommits,
             serverId: serverId,
             channelId: channelId,
             roleIDs: roleIDs
@@ -497,6 +494,24 @@ private struct PatchyTargetEditorSheet: View {
                 if draft.source == .steam {
                     TextField("Steam App ID", text: $draft.steamAppID)
                         .textFieldStyle(.roundedBorder)
+                }
+
+                if draft.source == .github {
+                    TextField("Repo (owner/repo)", text: $draft.githubRepo)
+                        .textFieldStyle(.roundedBorder)
+                    Toggle("Watch all commits", isOn: $draft.githubWatchAllCommits)
+                        .toggleStyle(.switch)
+                    if draft.githubWatchAllCommits {
+                        TextField("Branch (blank = default)", text: $draft.githubBranch)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Posts every new commit on this branch. Can be chatty on active repos.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Posts when a new release/tag is published.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Picker("Server", selection: $draft.serverId) {
@@ -551,6 +566,15 @@ private struct PatchyTargetEditorSheet: View {
     private var isValid: Bool {
         if draft.source == .steam && draft.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return false
+        }
+        if draft.source == .github {
+            let trimmed = draft.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return false }
+            let parts = trimmed
+                .replacingOccurrences(of: "https://github.com/", with: "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                .split(separator: "/", omittingEmptySubsequences: true)
+            if parts.count < 2 { return false }
         }
         return !draft.serverId.isEmpty && !draft.channelId.isEmpty
     }
