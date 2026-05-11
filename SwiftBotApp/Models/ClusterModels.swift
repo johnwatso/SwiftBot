@@ -280,6 +280,23 @@ struct MeshResyncRequest: Codable, Sendable {
     let pageSize: Int
 }
 
+/// Per-node operational state surfaced to the primary so the GUI can show
+/// what each follower is doing in real time (Phase 3 / bidirectional GUI sync).
+/// Each node exposes its own summary at `GET /v1/mesh/follower-state`; the
+/// primary polls registered workers and stores them in `ClusterSnapshot`.
+struct FollowerStateSummary: Codable, Sendable, Hashable {
+    let nodeName: String
+    let baseURL: String
+    let mode: String              // "leader" | "standby" | "worker" | "standalone"
+    let leaderTerm: Int
+    let gatewayConnected: Bool    // Discord gateway state on the node
+    let outputAllowed: Bool       // Whether the node is currently allowed to send Discord messages
+    let lastEventAt: Date?        // Most recent gateway event observed on this node
+    let recentLogTail: [String]   // Last few log lines (bounded, redacted of tokens by caller)
+    let activeVoiceMembers: Int   // Count of voice presences known to this node
+    let collectedAt: Date         // When this snapshot was assembled
+}
+
 /// Body returned with a 409 Conflict when a sender's leader term is stale.
 /// Carries the receiver's current term so the (now-demoted) sender can detect
 /// it is no longer authoritative and step down — preventing split-brain when
@@ -548,4 +565,7 @@ struct ClusterSnapshot: Hashable {
     var lastJobSummary: String = "No remote jobs yet"
     var lastJobNode: String = Host.current().localizedName ?? "SwiftBot Node"
     var diagnostics: String = "No diagnostics yet"
+    /// Phase 3: per-follower state polled by the primary. Keyed by node baseURL.
+    /// Empty on followers and on standalone nodes.
+    var followerStates: [String: FollowerStateSummary] = [:]
 }

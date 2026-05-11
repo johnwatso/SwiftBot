@@ -553,6 +553,58 @@ final class AppModel: ObservableObject {
                     self?.logs.append("⚠️ Demoted to Standby — another Primary holds a higher term. Output muted.")
                 }
             }
+            // Phase 3: provide this node's follower-state summary on demand.
+            // Called by the local /v1/mesh/follower-state endpoint when the
+            // primary polls. Read on MainActor since most of the source fields
+            // are @Published; bridge into a Sendable struct before returning.
+            await cluster.setFollowerStateProvider { [weak self] in
+                guard let self else {
+                    return FollowerStateSummary(
+                        nodeName: Host.current().localizedName ?? "SwiftBot Node",
+                        baseURL: "",
+                        mode: "unknown",
+                        leaderTerm: 0,
+                        gatewayConnected: false,
+                        outputAllowed: false,
+                        lastEventAt: nil,
+                        recentLogTail: [],
+                        activeVoiceMembers: 0,
+                        collectedAt: Date()
+                    )
+                }
+                let outputAllowed = await self.service.outputAllowed
+                return await MainActor.run { [weak self] in
+                    guard let self else {
+                        return FollowerStateSummary(
+                            nodeName: Host.current().localizedName ?? "SwiftBot Node",
+                            baseURL: "",
+                            mode: "unknown",
+                            leaderTerm: 0,
+                            gatewayConnected: false,
+                            outputAllowed: false,
+                            lastEventAt: nil,
+                            recentLogTail: [],
+                            activeVoiceMembers: 0,
+                            collectedAt: Date()
+                        )
+                    }
+                    let tail = Array(self.logs.lines.suffix(8))
+                    return FollowerStateSummary(
+                        nodeName: self.settings.clusterNodeName.isEmpty
+                            ? (Host.current().localizedName ?? "SwiftBot Node")
+                            : self.settings.clusterNodeName,
+                        baseURL: "http://127.0.0.1:\(self.settings.clusterListenPort)",
+                        mode: self.settings.clusterMode.rawValue,
+                        leaderTerm: self.settings.clusterLeaderTerm,
+                        gatewayConnected: self.status == .running,
+                        outputAllowed: outputAllowed,
+                        lastEventAt: self.lastVoiceStateAt,
+                        recentLogTail: tail,
+                        activeVoiceMembers: self.voiceStateEventCount,
+                        collectedAt: Date()
+                    )
+                }
+            }
             let restoredCursors = await meshCursorStore.load()
             await cluster.applyRestoredCursors(restoredCursors)
             await configureAdminWebServer()
