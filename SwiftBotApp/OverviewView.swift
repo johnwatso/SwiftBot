@@ -697,6 +697,8 @@ struct OverviewView: View {
 
                 operationalStatusCard
 
+                connectionHealthCard
+
                 HStack(alignment: .top, spacing: 16) {
                     liveActivityCard
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1069,6 +1071,157 @@ struct OverviewView: View {
                 }
         }
         .frame(width: 28, height: 28)
+    }
+
+    // MARK: - Connection Health (migrated from former Diagnostics tab)
+
+    private var connectionHealthCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "stethoscope")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Connection Health")
+                    .font(.headline.weight(.semibold))
+                Spacer()
+                Button {
+                    Task { await app.runTestConnection() }
+                } label: {
+                    Label("Test Connection", systemImage: "bolt.horizontal.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!app.canRunTestConnection || app.status != .running)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
+                healthIndicator(
+                    label: "Gateway",
+                    value: app.status.rawValue.capitalized,
+                    symbol: "network",
+                    ok: app.status == .running
+                )
+                healthIndicator(
+                    label: "Latency",
+                    value: app.connectionDiagnostics.heartbeatLatencyMs.map { "\($0) ms" } ?? "-",
+                    symbol: "waveform.path.ecg",
+                    ok: app.connectionDiagnostics.heartbeatLatencyMs != nil
+                )
+                healthIndicator(
+                    label: "REST",
+                    value: restHealthLabel,
+                    symbol: "arrow.up.arrow.down.circle",
+                    ok: {
+                        if case .ok = app.connectionDiagnostics.restHealth { return true }
+                        return false
+                    }()
+                )
+                healthIndicator(
+                    label: "Rate Limit",
+                    value: app.connectionDiagnostics.rateLimitRemaining.map { "\($0) rem." } ?? "-",
+                    symbol: "gauge.with.needle",
+                    ok: app.connectionDiagnostics.rateLimitRemaining.map { $0 > 0 } ?? true
+                )
+                healthIndicator(
+                    label: "Permissions",
+                    value: permissionsLabel,
+                    symbol: "lock.shield",
+                    ok: {
+                        if case .ok = app.connectionDiagnostics.restHealth { return true }
+                        return false
+                    }()
+                )
+                let intentsRejected = app.connectionDiagnostics.lastGatewayCloseCode == 4014
+                healthIndicator(
+                    label: "Intents",
+                    value: intentsRejected ? "Rejected (4014)" : (app.intentsAccepted.map { $0 ? "Accepted" : "Unknown" } ?? "-"),
+                    symbol: "checklist",
+                    ok: app.intentsAccepted == true && !intentsRejected
+                )
+            }
+
+            if !app.connectionDiagnostics.lastTestMessage.isEmpty {
+                HStack(spacing: 6) {
+                    Text(app.connectionDiagnostics.lastTestMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                    if let at = app.connectionDiagnostics.lastTestAt {
+                        Text(at, style: .time)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+
+            if case let .error(code, msg) = app.connectionDiagnostics.restHealth, code > 0 {
+                remediationBanner(message: msg)
+            }
+            if let closeCode = app.connectionDiagnostics.lastGatewayCloseCode {
+                remediationBanner(message: app.gatewayCloseRemediationMessage(code: closeCode))
+            }
+            if app.status == .running,
+               let until = app.testConnectionCooldownUntil, !app.canRunTestConnection {
+                Text("Test Connection available in \(max(0, Int(until.timeIntervalSinceNow)))s")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .commandCatalogSurface(cornerRadius: 14)
+    }
+
+    private var restHealthLabel: String {
+        switch app.connectionDiagnostics.restHealth {
+        case .unknown: return "-"
+        case .ok: return "OK"
+        case let .error(code, _): return code > 0 ? "Error \(code)" : "Failed"
+        }
+    }
+
+    private var permissionsLabel: String {
+        switch app.connectionDiagnostics.restHealth {
+        case .unknown: return "-"
+        case .ok: return "OK"
+        case .error(403, _): return "Insufficient"
+        case let .error(code, _): return code > 0 ? "Error \(code)" : "-"
+        }
+    }
+
+    private func healthIndicator(label: String, value: String, symbol: String, ok: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ok ? Color.green : Color.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value.isEmpty ? "-" : value)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ok ? .primary : .secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .commandCatalogSurface(cornerRadius: 12)
+    }
+
+    private func remediationBanner(message: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.caption)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var discordConnectivityLabel: String {
