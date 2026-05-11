@@ -254,6 +254,11 @@ extension AppModel {
                case let .object(user)? = memberMap["user"],
                case let .string(userId)? = user["id"] {
                 await discordCache.upsertUser(id: userId, preferredName: nick)
+                if user["bot"] == .bool(true) {
+                    await discordCache.markBot(id: userId)
+                } else {
+                    await discordCache.markGuildMember(id: userId)
+                }
                 continue
             }
 
@@ -268,6 +273,12 @@ extension AppModel {
                 await discordCache.upsertUser(id: userId, preferredName: globalName)
             } else if case let .string(username)? = user["username"], !username.isEmpty {
                 await discordCache.upsertUser(id: userId, preferredName: username)
+            }
+
+            if user["bot"] == .bool(true) {
+                await discordCache.markBot(id: userId)
+            } else {
+                await discordCache.markGuildMember(id: userId)
             }
         }
     }

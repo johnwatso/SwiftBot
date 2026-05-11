@@ -11,12 +11,53 @@ enum SwiftBotStorage {
     static let mediaLibraryConfigFileName = "media-library.json"
     static let voiceActiveSessionsFileName = "voice-active-sessions.json"
     static let voiceSessionHistoryFileName = "voice-session-history.json"
+    static let analyticsRuntimeFileName = "analytics-runtime.json"
 
     static func folderURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let folder = appSupport.appendingPathComponent(appFolderName, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
+    }
+}
+
+struct AnalyticsRuntimeSnapshot: Codable {
+    var events: [ActivityEvent] = []
+    var commandLog: [CommandLogEntry] = []
+    var voiceLog: [VoiceEventLogEntry] = []
+    var patchyLastCycleAt: Date?
+}
+
+actor AnalyticsRuntimeStore {
+    private let url: URL
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    init(filename: String = SwiftBotStorage.analyticsRuntimeFileName) {
+        let folder = SwiftBotStorage.folderURL()
+        self.url = folder.appendingPathComponent(filename)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        self.encoder = encoder
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        self.decoder = decoder
+    }
+
+    func load() -> AnalyticsRuntimeSnapshot {
+        guard let data = try? Data(contentsOf: url),
+              let snapshot = try? decoder.decode(AnalyticsRuntimeSnapshot.self, from: data) else {
+            return AnalyticsRuntimeSnapshot()
+        }
+        return snapshot
+    }
+
+    func save(_ snapshot: AnalyticsRuntimeSnapshot) {
+        guard let data = try? encoder.encode(snapshot) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }
 

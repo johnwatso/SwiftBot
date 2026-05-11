@@ -342,7 +342,6 @@ Binding(
 
 When modifying this project, update these files:
 
-- [ ] **CHANGELOG.md** - Document what changed and why
 - [ ] **This file** - If you discover new patterns or gotchas
 - [ ] **ARCHITECTURE.md** - If you change core architecture
 
@@ -435,7 +434,6 @@ Before marking changes complete:
 - [ ] Modified features work as expected
 - [ ] Existing features still work (no regressions)
 - [ ] Settings persist across restart
-- [ ] CHANGELOG.md updated
 - [ ] No console errors or warnings
 
 ## Resources

@@ -8,6 +8,8 @@ struct DiscordCacheSnapshot: Codable, Hashable {
     var availableRolesByServer: [String: [GuildRole]] = [:]
     var usernamesById: [String: String] = [:]
     var channelTypesById: [String: Int] = [:]
+    var botUserIds: Set<String> = []
+    var guildMemberIds: Set<String> = []
 
     private enum CodingKeys: String, CodingKey {
         case updatedAt
@@ -17,6 +19,8 @@ struct DiscordCacheSnapshot: Codable, Hashable {
         case availableRolesByServer
         case usernamesById
         case channelTypesById
+        case botUserIds
+        case guildMemberIds
     }
 
     init() {}
@@ -30,6 +34,8 @@ struct DiscordCacheSnapshot: Codable, Hashable {
         availableRolesByServer = try container.decodeIfPresent([String: [GuildRole]].self, forKey: .availableRolesByServer) ?? [:]
         usernamesById = try container.decodeIfPresent([String: String].self, forKey: .usernamesById) ?? [:]
         channelTypesById = try container.decodeIfPresent([String: Int].self, forKey: .channelTypesById) ?? [:]
+        botUserIds = try container.decodeIfPresent(Set<String>.self, forKey: .botUserIds) ?? []
+        guildMemberIds = try container.decodeIfPresent(Set<String>.self, forKey: .guildMemberIds) ?? []
     }
 }
 
@@ -125,6 +131,27 @@ actor DiscordCache {
 
     func allUserNames() -> [String: String] {
         snapshot.usernamesById
+    }
+
+    /// Returns only Discord users not flagged as bots/webhooks.
+    func humanUserNames() -> [String: String] {
+        snapshot.usernamesById.filter { !snapshot.botUserIds.contains($0.key) }
+    }
+
+    func markBot(id userID: String) {
+        guard !snapshot.botUserIds.contains(userID) else { return }
+        snapshot.botUserIds.insert(userID)
+        emitUpdate()
+    }
+
+    func markGuildMember(id userID: String) {
+        guard !snapshot.guildMemberIds.contains(userID) else { return }
+        snapshot.guildMemberIds.insert(userID)
+        emitUpdate()
+    }
+
+    func isGuildMember(id userID: String) -> Bool {
+        snapshot.guildMemberIds.contains(userID)
     }
 
     func upsertGuild(id guildID: String, name: String?) {

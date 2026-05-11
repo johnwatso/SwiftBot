@@ -89,9 +89,7 @@ final class RemoteBotProvider: BotDataProvider {
 
         // Construct partial BotSettings from config payload
         var s = BotSettings()
-        s.prefix = config.commands.prefix
         s.commandsEnabled = config.commands.enabled
-        s.prefixCommandsEnabled = config.commands.prefixEnabled
         s.slashCommandsEnabled = config.commands.slashEnabled
         s.bugTrackingEnabled = config.commands.bugTrackingEnabled
         s.autoStart = config.general.autoStart
@@ -143,10 +141,8 @@ final class RemoteBotProvider: BotDataProvider {
     func saveSettings(_ settings: BotSettings) async throws {
         let patch = AdminWebConfigPatch(
             commandsEnabled: settings.commandsEnabled,
-            prefixCommandsEnabled: settings.prefixCommandsEnabled,
             slashCommandsEnabled: settings.slashCommandsEnabled,
             bugTrackingEnabled: settings.bugTrackingEnabled,
-            prefix: settings.prefix,
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
             preferredAIProvider: settings.preferredAIProvider.rawValue,
             openAIEnabled: settings.openAIEnabled,

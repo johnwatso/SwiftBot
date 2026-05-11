@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.3 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #111827;
+    }
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.foundation { --accent: #0a67a3; }
+    section.features { --accent: #4f46a5; }
+    section.reliability { --accent: #a21caf; }
+    section.operations { --accent: #0f766e; }
+    section.media { --accent: #b45309; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.92);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
+      }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.3</h1>
+    <p class="meta">Version 1.3</p>
+    <p class="intro">The first complete SwiftBot foundation release.</p>
+    <section class="foundation">
+      <h2><span class="badge" aria-hidden="true">🚀</span>Native Discord Bot Foundation</h2>
+      <p class="summary">The core macOS app, Discord runtime, and first-run setup came together here.</p>
+      <ul>
+        <li>Introduced the native SwiftUI control surface for running SwiftBot locally on macOS.</li>
+        <li>Added Discord bot onboarding, token validation, invite flow support, runtime status, and persistent app configuration.</li>
+        <li>Established the main navigation, dashboard cards, logs, command management, and diagnostics surfaces that later releases expanded.</li>
+        <li>Built the secure local settings model for bot credentials, server/channel targets, automation rules, and app state.</li>
+      </ul>
+    </section>
+    <section class="features">
+      <h2><span class="badge" aria-hidden="true">🧠</span>Automation, AI, and Patchy Foundations</h2>
+      <p class="summary">This release set up the pieces that made SwiftBot more than a basic bot wrapper.</p>
+      <ul>
+        <li>Added the early automation rule engine for Discord events, responses, and configurable bot actions.</li>
+        <li>Laid the groundwork for local AI replies, WikiBridge lookups, Patchy update monitoring, and helper-bot workflows.</li>
+        <li>Introduced the first UpdateEngine and release-monitoring direction that later became the Patchy dashboard.</li>
+        <li>Prepared the project structure for multiple feature modules while keeping the first release usable as a single native app.</li>
+      </ul>
+    </section>
+    <section class="operations">
+      <h2><span class="badge" aria-hidden="true">🛠️</span>Self-Update and High Availability Prep</h2>
+      <p class="summary">The release also started SwiftBot down the path toward being easier to ship and operate.</p>
+      <ul>
+        <li>Added the initial Sparkle self-update path and release publishing assumptions for distributing signed builds.</li>
+        <li>Started the high-availability and SwiftMesh groundwork so SwiftBot could eventually coordinate more than one running node.</li>
+        <li>Captured the first operational patterns for appcasts, versioning, release notes, and signed downloadable builds.</li>
+      </ul>
+    </section>
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/964d40e11ec8c2086b6c584b992bf72b90405749">964d40e</a></p>
+  </main>
+</body>
+</html>

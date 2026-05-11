@@ -153,10 +153,22 @@ extension AppModel {
         return snapshot.items.first(where: { $0.id == itemID })
     }
 
-    func localMediaStreamResponse(itemID: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+    func localMediaStreamResponse(itemID: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
         guard let item = await localMediaItem(for: itemID) else { return nil }
 
-        let fileURL = URL(fileURLWithPath: item.absolutePath)
+        let originalURL = URL(fileURLWithPath: item.absolutePath)
+        let normalizedQuality = quality?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let resolvedURL: URL
+        let resolvedSource: String
+        if normalizedQuality == "low",
+           let variantURL = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: .low) {
+            resolvedURL = variantURL
+            resolvedSource = "low"
+        } else {
+            resolvedURL = originalURL
+            resolvedSource = "raw"
+        }
+        let fileURL = resolvedURL
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let fileSizeNumber = attributes[.size] as? NSNumber else {
             return nil
@@ -165,26 +177,54 @@ extension AppModel {
         let fileSize = fileSizeNumber.uint64Value
         let contentType = mediaContentType(for: fileURL.path)
         let requestedRange = parseByteRange(rangeHeader, fileSize: fileSize)
-        let initialChunkLength = min(fileSize, 5 * 1024 * 1024)
+        // Serve modest chunks so we don't load hundreds of MB into RAM
+        // before the first byte hits the wire. Browsers will issue follow-up
+        // range requests as the playback buffer drains, and each request
+        // returns quickly instead of stalling for seconds.
+        let chunkLength: UInt64 = 8 * 1024 * 1024
+        let initialChunkLength = min(fileSize, chunkLength)
+        let maxRangeResponseLength = min(fileSize, chunkLength)
         let effectiveRange: (offset: UInt64, length: UInt64)
+        let responseStatus: String
         if let requestedRange {
-            effectiveRange = (offset: requestedRange.offset, length: min(requestedRange.length, initialChunkLength))
+            effectiveRange = (offset: requestedRange.offset, length: min(requestedRange.length, maxRangeResponseLength))
+            responseStatus = "206 Partial Content"
+        } else if fileSize <= initialChunkLength {
+            effectiveRange = (offset: 0, length: fileSize)
+            responseStatus = "200 OK"
         } else {
             effectiveRange = (offset: 0, length: initialChunkLength)
+            responseStatus = "206 Partial Content"
         }
 
-        let isRangeRequest = requestedRange != nil
-        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isRangeRequest] in
+        let debugStream = StreamDebug.enabled
+        let debugContext = StreamDebug.context(itemID: itemID, source: resolvedSource, rangeHeader: rangeHeader)
+        let debugStart = debugStream ? Date() : nil
+        let isPartialResponse = responseStatus == "206 Partial Content"
+        return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isPartialResponse, responseStatus, debugStream, debugContext, debugStart] in
             do {
                 let handle = try FileHandle(forReadingFrom: fileURL)
                 defer { try? handle.close() }
 
                 try handle.seek(toOffset: effectiveRange.offset)
                 let data = try handle.read(upToCount: Int(effectiveRange.length)) ?? Data()
-                if isRangeRequest {
-                    let end = effectiveRange.offset + UInt64(data.count) - 1
+                if debugStream, let started = debugStart {
+                    StreamDebug.log(
+                        context: debugContext,
+                        offset: effectiveRange.offset,
+                        requestedLength: effectiveRange.length,
+                        deliveredLength: UInt64(data.count),
+                        fileSize: fileSize,
+                        status: responseStatus,
+                        elapsedMs: Date().timeIntervalSince(started) * 1000.0
+                    )
+                }
+                if isPartialResponse {
+                    let end = data.isEmpty
+                        ? effectiveRange.offset
+                        : effectiveRange.offset + UInt64(data.count) - 1
                     return BinaryHTTPResponse(
-                        status: "206 Partial Content",
+                        status: responseStatus,
                         contentType: contentType,
                         headers: [
                             "Accept-Ranges": "bytes",
@@ -195,7 +235,7 @@ extension AppModel {
                     )
                 } else {
                     return BinaryHTTPResponse(
-                        status: "200 OK",
+                        status: responseStatus,
                         contentType: contentType,
                         headers: [
                             "Accept-Ranges": "bytes",
@@ -213,6 +253,34 @@ extension AppModel {
                 )
             }
         }.value
+    }
+
+    func adminWebRecordMediaPlayback(_ patch: AdminWebMediaPlaybackPatch) async -> Bool {
+        let normalizedEvent = patch.event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let watchedSeconds = max(0, patch.watchedSeconds ?? 0)
+
+        mediaPlaybackViewedItemIDs.insert(patch.itemID)
+        mediaPlaybackUniqueItemCount = mediaPlaybackViewedItemIDs.count
+
+        if normalizedEvent == "started",
+           mediaPlaybackStartedSessionIDs.insert(patch.sessionID).inserted {
+            mediaPlaybackStarts += 1
+        }
+
+        if normalizedEvent == "progress" || normalizedEvent == "completed" {
+            let lastReported = mediaPlaybackLastSecondsBySession[patch.sessionID] ?? 0
+            if watchedSeconds > lastReported {
+                mediaPlaybackTotalSeconds += watchedSeconds - lastReported
+                mediaPlaybackLastSecondsBySession[patch.sessionID] = watchedSeconds
+            }
+        }
+
+        if normalizedEvent == "completed",
+           mediaPlaybackCompletedSessionIDs.insert(patch.sessionID).inserted {
+            mediaPlaybackCompletedViews += 1
+        }
+
+        return true
     }
 
     func localMediaThumbnailResponse(itemID: String) async -> BinaryHTTPResponse? {
@@ -436,7 +504,7 @@ extension AppModel {
         )
     }
 
-    func adminWebMediaStreamResponse(token: String, rangeHeader: String?) async -> BinaryHTTPResponse? {
+    func adminWebMediaStreamResponse(token: String, rangeHeader: String?, quality: String? = nil) async -> BinaryHTTPResponse? {
         guard let descriptor = decodedMediaStreamToken(token) else { return nil }
         let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? (Host.current().localizedName ?? "SwiftBot Node")
@@ -448,7 +516,7 @@ extension AppModel {
             return await cluster.fetchRemoteMediaStream(from: ownerBaseURL, itemID: descriptor.itemID, rangeHeader: rangeHeader)
         }
 
-        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader)
+        return await localMediaStreamResponse(itemID: descriptor.itemID, rangeHeader: rangeHeader, quality: quality)
     }
 
     func adminWebMediaThumbnailResponse(token: String) async -> BinaryHTTPResponse? {
@@ -482,7 +550,7 @@ extension AppModel {
     }
 
     func adminWebMediaExportStatus() async -> MediaExportStatus {
-        await mediaExportCoordinator.ffmpegStatus()
+        await mediaExportCoordinator.exportStatus()
     }
 
     func adminWebMediaExportJobs() async -> MediaExportJobsPayload {
@@ -520,11 +588,6 @@ extension AppModel {
                 return MediaExportJobResponse(job: job, error: nil)
             }
             return MediaExportJobResponse(job: nil, error: "Failed to start export on remote node.")
-        }
-
-        let status = await mediaExportCoordinator.ffmpegStatus()
-        guard status.installed else {
-            return MediaExportJobResponse(job: nil, error: "FFmpeg is not installed on this node.")
         }
 
         guard let item = await localMediaItem(for: descriptor.itemID) else {
@@ -585,11 +648,6 @@ extension AppModel {
             return MediaExportJobResponse(job: nil, error: "Failed to start multiview export on remote node.")
         }
 
-        let status = await mediaExportCoordinator.ffmpegStatus()
-        guard status.installed else {
-            return MediaExportJobResponse(job: nil, error: "FFmpeg is not installed on this node.")
-        }
-
         guard let primary = await localMediaItem(for: primaryDescriptor.itemID),
               let secondary = await localMediaItem(for: secondaryDescriptor.itemID) else {
             return MediaExportJobResponse(job: nil, error: "Media item not found.")
@@ -611,8 +669,6 @@ extension AppModel {
     func localMediaClipExport(request: MeshMediaClipRequest) async -> MediaExportJob? {
         guard request.endSeconds > request.startSeconds else { return nil }
         guard request.endSeconds - request.startSeconds <= maxMediaClipDurationSeconds else { return nil }
-        let status = await mediaExportCoordinator.ffmpegStatus()
-        guard status.installed else { return nil }
         guard let item = await localMediaItem(for: request.itemID) else { return nil }
         let exportRoot = mediaExportRootURL()
         try? FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
@@ -635,8 +691,6 @@ extension AppModel {
     }
 
     func localMediaMultiViewExport(request: MeshMediaMultiViewRequest) async -> MediaExportJob? {
-        let status = await mediaExportCoordinator.ffmpegStatus()
-        guard status.installed else { return nil }
         if let start = request.startSeconds, let end = request.endSeconds {
             guard end > start, end - start <= maxMediaClipDurationSeconds else { return nil }
         }

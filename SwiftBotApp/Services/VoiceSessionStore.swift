@@ -134,11 +134,12 @@ actor VoiceSessionStore {
     func getVoiceActivityLast7Days() -> [(date: Date, count: Int)] {
         let calendar = Calendar.current
         let now = Date()
+        let recentSessions = sessionsInLast7Days(relativeTo: now)
         return (0..<7).reversed().map { daysAgo in
             let day = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
             let startOfDay = calendar.startOfDay(for: day)
             let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-            let count = history.filter { $0.joinedAt >= startOfDay && $0.joinedAt < endOfDay }.count
+            let count = recentSessions.filter { $0.joinedAt >= startOfDay && $0.joinedAt < endOfDay }.count
             return (startOfDay, count)
         }
     }
@@ -146,7 +147,7 @@ actor VoiceSessionStore {
     func getVoiceActivityByHour() -> [(hour: Int, count: Int)] {
         let calendar = Calendar.current
         var counts = [Int: Int]()
-        for session in history {
+        for session in sessionsInLast7Days() {
             let hour = calendar.component(.hour, from: session.joinedAt)
             counts[hour, default: 0] += 1
         }
@@ -155,10 +156,30 @@ actor VoiceSessionStore {
 
     func getTopVoiceUsers(limit: Int = 5) -> [(username: String, seconds: Int)] {
         var totals = [String: Int]()
-        for session in history {
+        for session in sessionsInLast7Days() {
             totals[session.username, default: 0] += session.durationSeconds ?? 0
         }
         return totals.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+    }
+
+    func getTopUserStreakLast7Days() -> (username: String, days: Int)? {
+        let calendar = Calendar.current
+        let recentSessions = sessionsInLast7Days()
+        let groupedDays = Dictionary(grouping: recentSessions, by: \.username).mapValues { sessions in
+            Set(sessions.map { calendar.startOfDay(for: $0.joinedAt) })
+        }
+
+        let ranked = groupedDays.compactMap { username, days -> (username: String, days: Int)? in
+            let streak = currentDayStreak(from: days, calendar: calendar)
+            guard streak > 0 else { return nil }
+            return (username, streak)
+        }
+        .sorted {
+            if $0.days != $1.days { return $0.days > $1.days }
+            return $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+        }
+
+        return ranked.first
     }
 
     func getMostActiveDay() -> String? {
@@ -173,28 +194,42 @@ actor VoiceSessionStore {
     }
 
     func getTotalVoiceTimeThisWeek() -> TimeInterval {
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
         return TimeInterval(
-            history
-                .filter { $0.joinedAt >= startOfWeek }
+            sessionsInLast7Days()
                 .compactMap { $0.durationSeconds }
                 .reduce(0, +)
         )
     }
 
     func getSessionCountThisWeek() -> Int {
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-        return history.filter { $0.joinedAt >= startOfWeek }.count
+        sessionsInLast7Days().count
     }
 
     // MARK: - Private
 
     private func sessionKey(guildId: String, userId: String) -> String {
         "\(guildId)-\(userId)"
+    }
+
+    private func sessionsInLast7Days(relativeTo now: Date = Date()) -> [VoiceSession] {
+        let calendar = Calendar.current
+        let windowStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))
+            ?? now.addingTimeInterval(-6 * 24 * 60 * 60)
+        return history.filter { $0.joinedAt >= windowStart && $0.joinedAt <= now }
+    }
+
+    private func currentDayStreak(from activeDays: Set<Date>, calendar: Calendar) -> Int {
+        guard !activeDays.isEmpty else { return 0 }
+        var streak = 0
+        var day = calendar.startOfDay(for: Date())
+
+        while activeDays.contains(day) {
+            streak += 1
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previousDay
+        }
+
+        return streak
     }
 
     private func trimHistory() {

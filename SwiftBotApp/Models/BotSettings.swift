@@ -315,6 +315,8 @@ struct BotSettings: Codable, Hashable {
     var behavior = BotBehaviorSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
+    var swiftMiner = SwiftMinerSettings()
+    var cachedBotIdentity = CachedBotIdentity()
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
 
@@ -397,6 +399,8 @@ struct BotSettings: Codable, Hashable {
         case behavior
         case wikiBot
         case patchy
+        case swiftMiner
+        case cachedBotIdentity
         case help
         case adminWebUI
     }
@@ -463,6 +467,8 @@ struct BotSettings: Codable, Hashable {
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
+        swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
+        cachedBotIdentity = try container.decodeIfPresent(CachedBotIdentity.self, forKey: .cachedBotIdentity) ?? CachedBotIdentity()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
         remoteMode.normalize()
@@ -528,8 +534,187 @@ struct BotSettings: Codable, Hashable {
         try container.encode(behavior, forKey: .behavior)
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
+        try container.encode(swiftMiner, forKey: .swiftMiner)
+        try container.encode(cachedBotIdentity, forKey: .cachedBotIdentity)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
+    }
+}
+
+struct CachedBotIdentity: Codable, Hashable {
+    var userId: String = ""
+    var username: String = ""
+    var discriminator: String = ""
+    var avatarHash: String = ""
+
+    var hasValue: Bool {
+        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !userId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !avatarHash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+struct SwiftMinerDMNotificationPreferences: Codable, Hashable, Sendable {
+    /// Whether drop claimed DMs are enabled.
+    var dropClaimedEnabled: Bool = true
+    /// Whether campaign complete DMs are enabled.
+    var campaignCompletedEnabled: Bool = true
+    /// Whether connection expired (re-auth) DMs are enabled.
+    var connectionExpiredEnabled: Bool = true
+    /// Whether welcome back DMs are enabled.
+    var welcomeBackEnabled: Bool = true
+    /// Whether prioritised game needs linking DMs are enabled.
+    var linkRequiredEnabled: Bool = true
+    /// Whether new campaign detected DMs are enabled.
+    var campaignDetectedEnabled: Bool = true
+    /// Whether account action required DMs are enabled.
+    var accountActionRequiredEnabled: Bool = true
+}
+
+struct SwiftMinerSettings: Codable, Hashable {
+    var enabled: Bool = false
+    var baseURL: String = "http://127.0.0.1:8080"
+    var apiKey: String = ""
+    var webhookSecret: String = ""
+    var webhookHint: String = ""
+    var artworkURL: String = ""
+    var cachedArtworkFileName: String = ""
+    /// User IDs who have already received a SwiftMiner welcome DM.
+    /// Used to ensure welcome messages are only sent once per user.
+    var welcomeMessageSentUserIds: Set<String> = []
+    /// User IDs who have completed the initial SwiftMiner DM onboarding flow.
+    var completedInitialDMFlowUserIds: Set<String> = []
+    /// Controls which event DM types are sent. Onboarding messages always pass through.
+    var notificationPreferences: SwiftMinerDMNotificationPreferences = SwiftMinerDMNotificationPreferences()
+    /// Event signatures already delivered, to suppress duplicates across relaunches.
+    /// Format: "<discordUserId>|<eventId>"
+    var sentEventSignatures: Set<String> = []
+
+    var normalizedBaseURL: String {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "http://127.0.0.1:8080" }
+        return trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    mutating func apply(pairingBundle: SwiftMinerPairingBundle) {
+        enabled = true
+        let apiEndpoint = pairingBundle.swiftMinerEndpoint.nonEmpty ?? pairingBundle.endpoint.nonEmpty
+        if let apiEndpoint {
+            baseURL = apiEndpoint
+        }
+        apiKey = pairingBundle.apiKey
+        webhookSecret = pairingBundle.hmacSecret
+        webhookHint = pairingBundle.webhookHint
+        artworkURL = pairingBundle.artworkURL
+    }
+}
+
+struct SwiftMinerPairingBundle: Codable, Hashable {
+    let version: Int?
+    let endpoint: String
+    let swiftMinerEndpoint: String
+    let swiftBotEndpoint: String
+    let apiKey: String
+    let hmacSecret: String
+    let webhookHint: String
+    let artworkURL: String
+    let artworkDataBase64: String
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case endpoint
+        case swiftMinerEndpoint
+        case swiftBotEndpoint
+        case apiKey
+        case hmacSecret
+        case webhookHint
+        case artworkURL
+        case imageURL
+        case iconURL
+        case logoURL
+        case artwork
+        case image
+        case icon
+        case logo
+        case artworkData
+        case imageData
+        case iconData
+        case logoData
+    }
+
+    init(
+        version: Int? = nil,
+        endpoint: String,
+        swiftMinerEndpoint: String = "",
+        swiftBotEndpoint: String = "",
+        apiKey: String,
+        hmacSecret: String,
+        webhookHint: String,
+        artworkURL: String = "",
+        artworkDataBase64: String = ""
+    ) {
+        self.version = version
+        self.endpoint = endpoint
+        self.swiftMinerEndpoint = swiftMinerEndpoint
+        self.swiftBotEndpoint = swiftBotEndpoint
+        self.apiKey = apiKey
+        self.hmacSecret = hmacSecret
+        self.webhookHint = webhookHint
+        self.artworkURL = artworkURL
+        self.artworkDataBase64 = artworkDataBase64
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version)
+        endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        swiftMinerEndpoint = try container.decodeIfPresent(String.self, forKey: .swiftMinerEndpoint) ?? ""
+        swiftBotEndpoint = try container.decodeIfPresent(String.self, forKey: .swiftBotEndpoint) ?? ""
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        hmacSecret = try container.decodeIfPresent(String.self, forKey: .hmacSecret) ?? ""
+        webhookHint = try container.decodeIfPresent(String.self, forKey: .webhookHint) ?? ""
+        let artworkValue = try Self.firstDecodedString(
+            in: container,
+            keys: [.artworkURL, .imageURL, .iconURL, .logoURL, .artwork, .image, .icon, .logo]
+        )
+        if artworkValue.localizedCaseInsensitiveContains(";base64,"),
+           let base64 = artworkValue.components(separatedBy: ";base64,").last {
+            artworkURL = ""
+            artworkDataBase64 = base64
+        } else {
+            artworkURL = artworkValue
+            artworkDataBase64 = try Self.firstDecodedString(
+                in: container,
+                keys: [.artworkData, .imageData, .iconData, .logoData]
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(version, forKey: .version)
+        try container.encode(endpoint, forKey: .endpoint)
+        try container.encode(swiftMinerEndpoint, forKey: .swiftMinerEndpoint)
+        try container.encode(swiftBotEndpoint, forKey: .swiftBotEndpoint)
+        try container.encode(apiKey, forKey: .apiKey)
+        try container.encode(hmacSecret, forKey: .hmacSecret)
+        try container.encode(webhookHint, forKey: .webhookHint)
+        try container.encode(artworkURL, forKey: .artworkURL)
+        try container.encode(artworkDataBase64, forKey: .artworkData)
+    }
+
+    private static func firstDecodedString(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        keys: [CodingKeys]
+    ) throws -> String {
+        for key in keys {
+            let value = try container.decodeIfPresent(String.self, forKey: key) ?? ""
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return ""
     }
 }
 
