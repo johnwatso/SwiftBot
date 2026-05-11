@@ -4,20 +4,11 @@
         <title>SwiftBot</title>
         <item>
             <title>1.10</title>
-            <sparkle:releaseNotesLink>https://johnwatso.github.io/SwiftBot/release-notes/1.10.html</sparkle:releaseNotesLink>
-            <pubDate>Fri, 08 May 2026 12:00:00 +1200</pubDate>
-            <sparkle:version>2026050813</sparkle:version>
+            <pubDate>Mon, 11 May 2026 15:00:04 +1200</pubDate>
+            <sparkle:version>2026050814</sparkle:version>
             <sparkle:shortVersionString>1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.10/SwiftBot-1.10.zip" length="0" type="application/octet-stream" sparkle:edSignature=""/>
-        </item>
-        <item>
-            <title>1.9.8</title>
-            <pubDate>Wed, 01 Apr 2026 21:25:04 +1300</pubDate>
-            <sparkle:version>1940004</sparkle:version>
-            <sparkle:shortVersionString>1.9.8</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.9.8/SwiftBot-1.9.8.zip" length="16987759" type="application/octet-stream" sparkle:edSignature="D+RDylWUs0jiLtQTs3s36cZsWDgttGoX/mTqsg4fog9JmoxftOcYUzCpAo3xl5d6RjsipTMusnxsjAsdjCa2Cw=="/>
+            <enclosure url="https://github.com/johnwatso/SwiftBot/releases/download/v1.10/SwiftBot-1.10.zip" length="17921658" type="application/octet-stream" sparkle:edSignature="tFnyQPtot5mU7MKzPF9yEGDrmQ9sgT6XSbvYFvKM6WBoRq9kaqTEWnPIGcvxOxa1Hxa4p0RGko3bSmX1Zik5Aw=="/>
         </item>
     </channel>
 </rss>
