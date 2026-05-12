@@ -425,7 +425,7 @@ private struct ModeBadge: View {
 }
 
 /// Two-column label/value row used inside SwiftMesh dashboard panels.
-private struct DiagnosticsLine: View {
+struct DiagnosticsLine: View {
     let label: String
     let value: String
     let tone: Color
@@ -453,7 +453,7 @@ private struct DiagnosticsLine: View {
     }
 }
 
-private struct SwiftMeshSection<Content: View>: View {
+struct SwiftMeshSection<Content: View>: View {
     let title: String
     let symbol: String
     @ViewBuilder var content: Content

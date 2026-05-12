@@ -5,28 +5,21 @@ struct PatchyView: View {
 
     @State private var editorDraft: PatchyTargetDraft?
     @State private var editorMode: PatchyEditorMode = .create
-    @State private var debugExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             header
             if app.isFailoverManagedNode {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(.orange)
-                    Text("Read-only on Failover nodes. Patchy settings sync from Primary.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 2)
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Patchy settings sync from Primary.")
             }
-            monitoringControls
+            statusRail
+            monitoringControlsSection
             sourceTargetList
-            debugArea
+            activityFeed
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .sheet(item: $editorDraft) { draft in
@@ -49,106 +42,162 @@ struct PatchyView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
         HStack(spacing: 12) {
             ViewSectionHeader(title: "Patchy", symbol: "hammer.fill")
-
             Spacer()
-
             Button {
                 editorMode = .create
                 editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
             } label: {
                 Label("Add Target", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                    )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassActionButtonStyle())
         }
     }
 
-    private var monitoringControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Monitoring", systemImage: "dot.radiowaves.left.and.right")
-                .font(.headline)
+    // MARK: - Status Rail
 
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Start Monitoring", isOn: Binding(
-                    get: { app.settings.patchy.monitoringEnabled },
-                    set: { newValue in
-                        app.settings.patchy.monitoringEnabled = newValue
-                        app.saveSettings()
-                    }
-                ))
-                .toggleStyle(.switch)
-                Text("Enable scheduled checks for release updates.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 2)
+    private var statusRail: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
+            spacing: 8
+        ) {
+            DashboardMetricCard(
+                title: "Sources",
+                value: "\(Set(app.settings.patchy.sourceTargets.map(\.source)).count)",
+                subtitle: sourceBreakdownSubtitle,
+                symbol: "square.stack.3d.up.fill",
+                color: .orange
+            )
+            DashboardMetricCard(
+                title: "Active",
+                value: "\(app.settings.patchy.sourceTargets.filter(\.isEnabled).count)",
+                subtitle: "Monitoring",
+                symbol: "checkmark.circle.fill",
+                color: .green
+            )
+            DashboardMetricCard(
+                title: "Targets",
+                value: "\(app.settings.patchy.sourceTargets.count)",
+                subtitle: "Configured",
+                symbol: "hammer.fill",
+                color: .secondary
+            )
+            DashboardMetricCard(
+                title: "Last Cycle",
+                value: lastCycleValue,
+                subtitle: lastCycleSubtitle,
+                symbol: "clock.arrow.circlepath",
+                color: .gray
+            )
+        }
+    }
 
-                Divider()
+    private var sourceBreakdownSubtitle: String {
+        let counts = Dictionary(grouping: app.settings.patchy.sourceTargets) { $0.source }
+            .mapValues { $0.count }
+        let parts = PatchySourceKind.allCases.compactMap { kind -> String? in
+            guard let count = counts[kind], count > 0 else { return nil }
+            return "\(sourceLabel(kind)) \(count)"
+        }
+        return parts.isEmpty ? "No sources" : parts.joined(separator: "  ")
+    }
 
-                Toggle("Show Debug", isOn: Binding(
-                    get: { app.settings.patchy.showDebug },
-                    set: { newValue in
-                        app.settings.patchy.showDebug = newValue
-                        app.saveSettings()
-                    }
-                ))
-                .toggleStyle(.switch)
-                Text("Show additional diagnostic logs and controls.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var lastCycleValue: String {
+        guard let last = app.patchyLastCycleAt else { return "—" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: last, relativeTo: Date())
+    }
 
-            HStack(spacing: 10) {
-                if let last = app.patchyLastCycleAt {
-                    Text("Last cycle: \(last.formatted(date: .abbreviated, time: .standard))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+    private var lastCycleSubtitle: String {
+        if app.patchyIsCycleRunning {
+            return "Running now…"
+        }
+        guard app.patchyLastCycleAt != nil else { return "Never" }
+        return "Idle"
+    }
+
+    // MARK: - Monitoring Controls Section
+
+    private var monitoringControlsSection: some View {
+        HStack(spacing: 12) {
+            Toggle("Monitoring", isOn: Binding(
+                get: { app.settings.patchy.monitoringEnabled },
+                set: { newValue in
+                    app.settings.patchy.monitoringEnabled = newValue
+                    app.saveSettings()
                 }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
+            Toggle("Debug", isOn: Binding(
+                get: { app.settings.patchy.showDebug },
+                set: { newValue in
+                    app.settings.patchy.showDebug = newValue
+                    app.saveSettings()
+                }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            Spacer()
+
+            HStack(spacing: 6) {
                 if app.patchyIsCycleRunning {
                     ProgressView()
-                        .controlSize(.small)
+                        .controlSize(.mini)
+                    Text("Running…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if let last = app.patchyLastCycleAt {
+                    Text(last, style: .relative)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
-
-                Spacer()
             }
+
+            Button {
+                app.runPatchyManualCheck()
+            } label: {
+                Label("Run Now", systemImage: "play.fill")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(app.patchyIsCycleRunning)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
+
+    // MARK: - Source Target List
 
     private var sourceTargetList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 10) {
                 if app.settings.patchy.sourceTargets.isEmpty {
-                    Text("No SourceTargets configured.")
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 8)
+                    emptyTargetsState
                 }
 
                 ForEach(groupedTargets(), id: \.source) { group in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Image(systemName: sourceIcon(group.source))
-                            Text(sourceLabel(group.source))
-                                .font(.headline)
-                        }
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-
-                        LazyVStack(spacing: 12) {
+                    SwiftMeshSection(
+                        title: sourceLabel(group.source),
+                        symbol: sourceIcon(group.source)
+                    ) {
+                        LazyVStack(spacing: 8) {
                             ForEach(group.targets) { target in
                                 PatchTargetCard(
                                     target: target,
@@ -156,6 +205,7 @@ struct PatchyView: View {
                                     serverName: serverName(for: target),
                                     channelName: channelName(for: target),
                                     roleSummary: roleSummary(for: target),
+                                    sourceColor: sourceColor(target.source),
                                     onTestSend: { app.sendPatchyTest(targetID: target.id) },
                                     onPull: { app.pullPatchyUpdate(targetID: target.id) },
                                     onEdit: {
@@ -170,48 +220,118 @@ struct PatchyView: View {
                     }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    @ViewBuilder
-    private var debugArea: some View {
-        if app.settings.patchy.showDebug {
-            GroupBox {
-                DisclosureGroup("Debug / Optional Output", isExpanded: $debugExpanded) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Button("Run Check Now") {
-                                app.runPatchyManualCheck()
-                            }
-                            .buttonStyle(.bordered)
-                            Spacer()
-                        }
+    private var emptyTargetsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "hammer.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No targets configured")
+                .font(.subheadline.weight(.semibold))
+            Text("Monitor release updates from Steam, GitHub, and GPU vendors.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                editorMode = .create
+                editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
+            } label: {
+                Label("Add First Target", systemImage: "plus")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+    }
 
-                        if app.patchyDebugLogs.isEmpty {
-                            Text("No debug logs yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(Array(app.patchyDebugLogs.enumerated()), id: \.offset) { _, line in
-                                        Text(line)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(minHeight: 140, maxHeight: 240)
+    // MARK: - Activity Feed
+
+    private var activityFeed: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Activity")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+            }
+
+            if app.patchyDebugLogs.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("No activity")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(app.patchyDebugLogs.prefix(60).enumerated()), id: \.offset) { index, line in
+                        patchyActivityRow(line)
+                        if index < min(app.patchyDebugLogs.count, 60) - 1 {
+                            Divider()
+                                .opacity(0.18)
+                                .padding(.leading, 28)
                         }
                     }
-                    .padding(.top, 6)
                 }
             }
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 280, alignment: .topLeading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
     }
+
+    private func patchyActivityRow(_ line: String) -> some View {
+        let parsed = PatchyLogParser.parse(line)
+        return HStack(alignment: .center, spacing: 8) {
+            Image(systemName: parsed.symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(parsed.color)
+                .frame(width: 18, height: 18)
+                .background(parsed.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(parsed.title)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                if !parsed.detail.isEmpty {
+                    Text(parsed.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Helpers
 
     private func groupedTargets() -> [PatchySourceGroup] {
         let grouped = Dictionary(grouping: app.settings.patchy.sourceTargets) { $0.source }
@@ -228,6 +348,16 @@ struct PatchyView: View {
 
     private func sourceLabel(_ source: PatchySourceKind) -> String {
         source.rawValue
+    }
+
+    private func sourceColor(_ source: PatchySourceKind) -> Color {
+        switch source {
+        case .nvidia: return .green
+        case .amd: return .red
+        case .intel: return .blue
+        case .steam: return .indigo
+        case .github: return .orange
+        }
     }
 
     private func sourceDisplayName(for target: PatchySourceTarget) -> String {
@@ -272,7 +402,6 @@ struct PatchyView: View {
     private func channelName(for target: PatchySourceTarget) -> String {
         let channelID = target.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !channelID.isEmpty else { return "Not set" }
-
         if let channel = app.availableTextChannelsByServer[target.serverId]?.first(where: { $0.id == channelID }) {
             return "#\(channel.name)"
         }
@@ -294,10 +423,65 @@ struct PatchyView: View {
     }
 }
 
+// MARK: - Patchy Log Parser
+
+private enum PatchyLogParser {
+    struct ParsedLine {
+        let title: String
+        let detail: String
+        let symbol: String
+        let color: Color
+    }
+
+    static func parse(_ line: String) -> ParsedLine {
+        let lower = line.lowercased()
+        let (symbol, color): (String, Color) = {
+            if lower.contains("error") || lower.contains("failed") || lower.contains("❌") || lower.contains("[err]") {
+                return ("xmark.circle.fill", .red)
+            }
+            if lower.contains("warning") || lower.contains("cannot") || lower.contains("not found") || lower.contains("permissions") || lower.contains("[warn]") {
+                return ("exclamationmark.triangle.fill", .yellow)
+            }
+            if lower.contains("success") || lower.contains("sent") || lower.contains("ready") || lower.contains("succeeded") || lower.contains("✅") || lower.contains("[ok]") {
+                return ("checkmark.circle.fill", .green)
+            }
+            return ("info.circle.fill", .secondary)
+        }()
+
+        // Strip common prefixes
+        var cleaned = line
+            .replacingOccurrences(of: #"\[(OK|WARN|ERR|INFO)\]\s*"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "\\p{Extended_Pictographic}", with: "", options: .regularExpression)
+        cleaned.removeAll { $0 == "\u{FE0F}" || $0 == "\u{200D}" }
+        cleaned = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+
+        // Split title / detail at first sentence boundary or colon
+        let title: String
+        let detail: String
+        if let colonRange = cleaned.range(of: ": "), cleaned.distance(from: cleaned.startIndex, to: colonRange.lowerBound) < 60 {
+            title = String(cleaned[..<colonRange.lowerBound])
+            detail = String(cleaned[colonRange.upperBound...])
+        } else if cleaned.count > 80 {
+            let idx = cleaned.index(cleaned.startIndex, offsetBy: 60)
+            title = String(cleaned[..<idx]) + "…"
+            detail = cleaned
+        } else {
+            title = cleaned
+            detail = ""
+        }
+
+        return ParsedLine(title: title, detail: detail, symbol: symbol, color: color)
+    }
+}
+
+// MARK: - Source Group
+
 private struct PatchySourceGroup {
     let source: PatchySourceKind
     let targets: [PatchySourceTarget]
 }
+
+// MARK: - Target Card
 
 private struct PatchTargetCard: View {
     let target: PatchySourceTarget
@@ -305,64 +489,84 @@ private struct PatchTargetCard: View {
     let serverName: String
     let channelName: String
     let roleSummary: String
+    let sourceColor: Color
     let onTestSend: () -> Void
     let onPull: () -> Void
     let onEdit: () -> Void
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
+
+    @State private var isHovering = false
     @State private var showDeleteConfirm = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Text(sourceDisplayName)
-                    .font(.headline)
-                Spacer()
-                Text(target.isEnabled ? "Enabled" : "Disabled")
+        VStack(alignment: .leading, spacing: 10) {
+            // Title row
+            HStack(spacing: 8) {
+                Image(systemName: sourceIcon(target.source))
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        target.isEnabled
-                            ? Color.green.opacity(0.18)
-                            : Color.secondary.opacity(0.14),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(target.isEnabled ? .green : .secondary)
+                    .foregroundStyle(sourceColor)
+                    .frame(width: 22, height: 22)
+                    .background(sourceColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(sourceDisplayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                PatchyStatusPill(isEnabled: target.isEnabled)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                PatchTargetDetailRow(label: "Server", value: serverName)
-                PatchTargetDetailRow(label: "Channel", value: channelName)
-                PatchTargetDetailRow(label: "Mentions", value: roleSummary)
-                PatchTargetDetailRow(label: "Last Run", value: timestamp(target.lastRunAt))
+            // Detail rows
+            VStack(alignment: .leading, spacing: 4) {
+                DiagnosticsLine(label: "Server", value: serverName, tone: .primary)
+                DiagnosticsLine(label: "Channel", value: channelName, tone: .primary)
+                DiagnosticsLine(label: "Mentions", value: roleSummary, tone: .primary)
+                DiagnosticsLine(
+                    label: "Last Run",
+                    value: timestamp(target.lastRunAt),
+                    tone: target.lastRunAt == nil ? .secondary : .primary
+                )
             }
-            .font(.subheadline)
 
+            // Status line
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if target.lastStatus != "Ready" && target.lastStatus != "Never checked" && !target.lastStatus.contains("succeeded") && !target.lastStatus.contains("successfully") && !target.lastStatus.contains("Unchanged") && !target.lastStatus.contains("unchanged") {
+                if target.lastStatus != "Ready"
+                    && target.lastStatus != "Never checked"
+                    && !target.lastStatus.contains("succeeded")
+                    && !target.lastStatus.contains("successfully")
+                    && !target.lastStatus.contains("Unchanged")
+                    && !target.lastStatus.contains("unchanged")
+                {
                     Image(systemName: isWarning(target.lastStatus) ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
                         .foregroundStyle(isWarning(target.lastStatus) ? .yellow : .red)
                         .font(.caption)
                 }
-
                 Text(target.lastStatus)
                     .font(.caption)
                     .foregroundStyle(statusColor(target.lastStatus))
                     .lineLimit(2)
+                Spacer()
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(statusColor(target.lastStatus).opacity(0.06))
+            )
 
-            HStack(spacing: 8) {
-                Button("Test", action: onTestSend)
-                    .buttonStyle(.bordered)
-                Button("Pull", action: onPull)
-                    .buttonStyle(.bordered)
-                Button("Edit", action: onEdit)
-                    .buttonStyle(.bordered)
-                Button(target.isEnabled ? "Disable" : "Enable", action: onToggleEnabled)
-                    .buttonStyle(.bordered)
-                Button("Delete", role: .destructive) { showDeleteConfirm = true }
-                    .buttonStyle(.bordered)
+            // Action buttons
+            HStack(spacing: 6) {
+                PatchyIconButton(symbol: "paperplane.fill", color: .primary, help: "Test send") { onTestSend() }
+                PatchyIconButton(symbol: "arrow.down.circle.fill", color: .primary, help: "Pull update") { onPull() }
+                PatchyIconButton(symbol: "pencil", color: .primary, help: "Edit target") { onEdit() }
+                PatchyIconButton(
+                    symbol: target.isEnabled ? "pause.circle.fill" : "play.circle.fill",
+                    color: target.isEnabled ? .orange : .green,
+                    help: target.isEnabled ? "Disable" : "Enable"
+                ) { onToggleEnabled() }
+                PatchyIconButton(symbol: "trash", color: .red, help: "Delete target") { showDeleteConfirm = true }
                     .alert("Delete Target?", isPresented: $showDeleteConfirm) {
                         Button("Delete", role: .destructive) { onDelete() }
                         Button("Cancel", role: .cancel) {}
@@ -372,11 +576,18 @@ private struct PatchTargetCard: View {
                 Spacer()
             }
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.quaternary.opacity(0.45), lineWidth: 1)
+        .padding(10)
+        .glassCard(
+            cornerRadius: 14,
+            tint: sourceColor.opacity(isHovering ? 0.12 : 0.06),
+            stroke: sourceColor.opacity(isHovering ? 0.30 : 0.18)
+        )
+        .scaleEffect(isHovering ? 1.006 : 1)
+        .shadow(color: sourceColor.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
         }
     }
 
@@ -395,22 +606,71 @@ private struct PatchTargetCard: View {
         if isWarning(status) { return .yellow }
         return .red
     }
-}
 
-private struct PatchTargetDetailRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .multilineTextAlignment(.trailing)
+    private func sourceIcon(_ source: PatchySourceKind) -> String {
+        switch source {
+        case .amd: return "a.circle.fill"
+        case .nvidia: return "n.square.fill"
+        case .intel: return "i.circle.fill"
+        case .steam: return "gamecontroller.fill"
+        case .github: return "chevron.left.forwardslash.chevron.right"
         }
     }
 }
+
+// MARK: - Patchy Icon Button
+
+private struct PatchyIconButton: View {
+    let symbol: String
+    let color: Color
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 24, height: 24)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+// MARK: - Patchy Status Pill
+
+private struct PatchyStatusPill: View {
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isEnabled ? Color.green : Color.secondary)
+                .frame(width: 6, height: 6)
+            Text(isEnabled ? "Enabled" : "Disabled")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isEnabled ? .green : .secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            (isEnabled ? Color.green : Color.secondary).opacity(0.12),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder((isEnabled ? Color.green : Color.secondary).opacity(0.30), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Editor
 
 private enum PatchyEditorMode {
     case create

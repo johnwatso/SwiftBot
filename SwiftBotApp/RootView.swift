@@ -401,12 +401,12 @@ private struct DashboardSidebarHeader: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(10)
+        .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.07), lineWidth: 1)
         )
     }
 }
@@ -440,7 +440,7 @@ private struct SidebarAvatarView: View {
         .frame(width: 40, height: 40)
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
         )
     }
 
@@ -449,7 +449,7 @@ private struct SidebarAvatarView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.blue, .indigo],
+                        colors: [.blue.opacity(0.85), .indigo.opacity(0.85)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -497,9 +497,9 @@ private struct SidebarInfoRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

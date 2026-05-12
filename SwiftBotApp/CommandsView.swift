@@ -1,20 +1,57 @@
 import SwiftUI
 
+// MARK: - Command Category
+
+private enum CommandGroup: String, CaseIterable {
+    case general = "General"
+    case utilities = "Utilities & AI"
+    case moderation = "Moderation"
+    case infrastructure = "Infrastructure"
+    case gaming = "Gaming"
+
+    var color: Color {
+        switch self {
+        case .general: return .blue
+        case .utilities: return .purple
+        case .moderation: return .orange
+        case .infrastructure: return .cyan
+        case .gaming: return .green
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "gearshape.2.fill"
+        case .utilities: return "wand.and.stars"
+        case .moderation: return "shield.lefthalf.filled"
+        case .infrastructure: return "server.rack"
+        case .gaming: return "gamecontroller.fill"
+        }
+    }
+}
+
+// MARK: - Visual Command
+
+private struct VisualCommand: Identifiable {
+    let id: String
+    let name: String
+    let usage: String
+    let description: String
+    let category: CommandGroup
+    let surfaces: [String]
+    let aliases: [String]
+    let adminOnly: Bool
+    let icon: String
+}
+
+// MARK: - Command Control Center
+
 struct CommandsView: View {
     @EnvironmentObject var app: AppModel
     @State private var showSettingsUpdatedToast = false
     @State private var settingsToastTask: Task<Void, Never>?
 
-    private struct VisualCommand: Identifiable {
-        let id: String
-        let name: String
-        let usage: String
-        let description: String
-        let category: String
-        let surfaces: [String]
-        let aliases: [String]
-        let adminOnly: Bool
-    }
+    // MARK: - Visual Commands
 
     private var visualSlashCommands: [VisualCommand] {
         app.allSlashCommandDefinitions().compactMap { raw in
@@ -31,33 +68,13 @@ struct CommandsView: View {
                 name: name,
                 usage: "/\(name)\(usageSuffix)",
                 description: description,
-                category: "Slash",
+                category: group(for: name),
                 surfaces: ["Slash"],
                 aliases: [],
-                adminOnly: name == "debug"
+                adminOnly: name == "debug",
+                icon: icon(for: name)
             )
         }
-    }
-
-    private func commandEnabledBinding(for command: VisualCommand) -> Binding<Bool> {
-        if command.id == "mention-bug" {
-            return Binding(
-                get: { app.settings.bugTrackingEnabled },
-                set: { app.settings.bugTrackingEnabled = $0 }
-            )
-        }
-        return Binding(
-            get: {
-                command.surfaces.allSatisfy { surface in
-                    app.isCommandEnabled(name: command.name, surface: surface.lowercased())
-                }
-            },
-            set: { enabled in
-                for surface in command.surfaces {
-                    app.setCommandEnabled(name: command.name, surface: surface.lowercased(), enabled: enabled)
-                }
-            }
-        )
     }
 
     private var allVisualCommands: [VisualCommand] {
@@ -78,7 +95,8 @@ struct CommandsView: View {
                         category: existing.category,
                         surfaces: mergedSurfaces,
                         aliases: existing.aliases,
-                        adminOnly: existing.adminOnly || command.adminOnly
+                        adminOnly: existing.adminOnly || command.adminOnly,
+                        icon: existing.icon
                     )
                     commandsByName[key] = existing
                 } else {
@@ -86,22 +104,46 @@ struct CommandsView: View {
                 }
             }
         }
-        commandsByName["bug-mention"] = (
-            VisualCommand(
-                id: "mention-bug",
-                name: "bug",
-                usage: "@swiftbot bug (reply to a message)",
-                description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
-                category: "Server",
-                surfaces: ["Mention"],
-                aliases: [],
-                adminOnly: true
-            )
+        commandsByName["bug-mention"] = VisualCommand(
+            id: "mention-bug",
+            name: "bug",
+            usage: "@swiftbot bug (reply to a message)",
+            description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
+            category: CommandGroup.moderation,
+            surfaces: ["Mention"],
+            aliases: [],
+            adminOnly: true,
+            icon: "ant.fill"
         )
 
         return commandsByName.values.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private func commandEnabledBinding(for command: VisualCommand) -> Binding<Bool> {
+        if command.id == "mention-bug" {
+            return Binding(
+                get: { app.settings.bugTrackingEnabled },
+                set: {
+                    app.settings.bugTrackingEnabled = $0
+                    persistCommandSettings(syncSlash: false)
+                }
+            )
+        }
+        return Binding(
+            get: {
+                command.surfaces.allSatisfy { surface in
+                    app.isCommandEnabled(name: command.name, surface: surface.lowercased())
+                }
+            },
+            set: { enabled in
+                for surface in command.surfaces {
+                    app.setCommandEnabled(name: command.name, surface: surface.lowercased(), enabled: enabled)
+                }
+                persistCommandSettings(syncSlash: true)
+            }
+        )
     }
 
     private func persistCommandSettings(syncSlash: Bool) {
@@ -124,140 +166,23 @@ struct CommandsView: View {
         }
     }
 
+    // MARK: - Body
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
+        VStack(alignment: .leading, spacing: 10) {
+            header
             if app.isFailoverManagedNode {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(.orange)
-                    Text("Read-only on Failover nodes. Command settings sync from Primary.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 2)
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Command settings sync from Primary.")
             }
-            VStack(alignment: .leading, spacing: 26) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Command System")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 12) {
-                        compactToggleCard(
-                            title: "All",
-                            subtitle: "Master switch",
-                            icon: "switch.2",
-                            isOn: $app.settings.commandsEnabled
-                        )
-                        compactToggleCard(
-                            title: "Slash",
-                            subtitle: "Discord UI",
-                            icon: "command",
-                            isOn: $app.settings.slashCommandsEnabled,
-                            disabled: !app.settings.commandsEnabled
-                        )
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .controlSize(.small)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                )
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Command Catalog")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    if allVisualCommands.isEmpty {
-                        VStack {
-                            Spacer(minLength: 0)
-                            VStack(spacing: 6) {
-                                Text("No Commands Available")
-                                    .font(.headline)
-                                Text("Commands will appear here once the bot registers them.")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .multilineTextAlignment(.center)
-                            Spacer(minLength: 0)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 13) {
-                                ForEach(allVisualCommands) { command in
-                                    HStack(alignment: .center, spacing: 16) {
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            HStack(spacing: 8) {
-                                                Text(command.name)
-                                                    .font(.body.weight(.semibold))
-                                                ForEach(command.surfaces, id: \.self) { surface in
-                                                    CommandTag(text: surface, tint: surface == "Slash" ? .orange : .secondary)
-                                                }
-                                                if !command.surfaces.contains(where: { $0.caseInsensitiveCompare(command.category) == .orderedSame }) {
-                                                    CommandTag(text: command.category, tint: .secondary)
-                                                }
-                                                if command.adminOnly {
-                                                    CommandTag(text: "Admin", tint: .red)
-                                                }
-                                            }
-
-                                            Text(command.usage)
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundStyle(.secondary)
-                                                .textSelection(.enabled)
-
-                                            Text(command.description)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-
-                                            if !command.aliases.isEmpty {
-                                                Text("Aliases: " + command.aliases.joined(separator: ", "))
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                                        Toggle("Enabled", isOn: commandEnabledBinding(for: command))
-                                            .labelsHidden()
-                                            .toggleStyle(.switch)
-                                            .frame(maxHeight: .infinity, alignment: .center)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 14)
-                                    .padding(.trailing, 22)
-                                    .padding(.vertical, 10)
-                                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                                    )
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
-            }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            metricRail
+            masterControls
+            commandCatalog
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .overlay(alignment: .topTrailing) {
             if showSettingsUpdatedToast {
                 Text("Settings updated")
@@ -288,57 +213,304 @@ struct CommandsView: View {
         }
     }
 
-    @ViewBuilder
-    private func compactToggleCard(
-        title: String,
-        subtitle: String,
-        icon: String,
-        isOn: Binding<Bool>,
-        disabled: Bool = false
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-            }
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Toggle("", isOn: isOn)
-                .labelsHidden()
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            ViewSectionHeader(title: "Commands", symbol: "terminal.fill")
+            Spacer()
+        }
+    }
+
+    // MARK: - Metric Rail
+
+    private var metricRail: some View {
+        let commands = allVisualCommands
+        let enabledCount = commands.filter { cmd in
+            commandEnabledBinding(for: cmd).wrappedValue
+        }.count
+        return LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
+            spacing: 8
+        ) {
+            DashboardMetricCard(
+                title: "Commands",
+                value: "\(commands.count)",
+                subtitle: "Total",
+                symbol: "terminal.fill",
+                color: .secondary
+            )
+            DashboardMetricCard(
+                title: "Enabled",
+                value: "\(enabledCount)",
+                subtitle: "Active",
+                symbol: "checkmark.circle.fill",
+                color: .green
+            )
+            DashboardMetricCard(
+                title: "Utilities",
+                value: "\(commandsInGroup(.utilities, commands: commands).count)",
+                subtitle: "AI & Tools",
+                symbol: "wand.and.stars",
+                color: .purple
+            )
+            DashboardMetricCard(
+                title: "Moderation",
+                value: "\(commandsInGroup(.moderation, commands: commands).count)",
+                subtitle: "Admin",
+                symbol: "shield.lefthalf.filled",
+                color: .orange
+            )
+            DashboardMetricCard(
+                title: "Infra",
+                value: "\(commandsInGroup(.infrastructure, commands: commands).count)",
+                subtitle: "Cluster",
+                symbol: "server.rack",
+                color: .cyan
+            )
+        }
+    }
+
+    // MARK: - Master Controls
+
+    private var masterControls: some View {
+        HStack(spacing: 12) {
+            Toggle("Commands", isOn: $app.settings.commandsEnabled)
                 .toggleStyle(.switch)
-                .disabled(disabled)
+                .controlSize(.small)
+
+            Toggle("Slash", isOn: $app.settings.slashCommandsEnabled)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(!app.settings.commandsEnabled)
+
+            Spacer()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Command Catalog
+
+    private var commandCatalog: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if allVisualCommands.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(CommandGroup.allCases, id: \.self) { category in
+                        let group = commandsInGroup(category, commands: allVisualCommands)
+                        if !group.isEmpty {
+                            CommandSection(
+                                category: category,
+                                commands: group,
+                                commandEnabledBinding: commandEnabledBinding
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "terminal.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No commands available")
+                .font(.subheadline.weight(.semibold))
+            Text("Commands appear once the bot registers them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Helpers
+
+    private func commandsInGroup(_ group: CommandGroup, commands: [VisualCommand]) -> [VisualCommand] {
+        commands.filter { $0.category == group }
+    }
+
+    private func group(for commandName: String) -> CommandGroup {
+        switch commandName.lowercased() {
+        case "help", "ping", "userinfo":
+            return .general
+        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki":
+            return .utilities
+        case "debug", "bugreport", "logabug", "featurerequest", "ignorechannel", "setchannel", "notifystatus":
+            return .moderation
+        case "cluster", "miner", "weekly":
+            return .infrastructure
+        case "compare", "meta":
+            return .gaming
+        default:
+            return .general
+        }
+    }
+
+    private func icon(for commandName: String) -> String {
+        switch commandName.lowercased() {
+        case "help": return "questionmark.circle.fill"
+        case "ping": return "antenna.radiowaves.left.and.right"
+        case "roll": return "dice.fill"
+        case "8ball": return "circle.hexagongrid.fill"
+        case "poll": return "chart.bar.fill"
+        case "userinfo": return "person.crop.circle.fill"
+        case "cluster": return "network"
+        case "debug": return "stethoscope"
+        case "notifystatus": return "bell.badge.fill"
+        case "setchannel": return "gearshape.fill"
+        case "ignorechannel": return "speaker.slash.fill"
+        case "weekly": return "calendar.badge.clock"
+        case "bugreport": return "ant.fill"
+        case "logabug": return "doc.text.badge.plus"
+        case "featurerequest": return "lightbulb.fill"
+        case "image": return "photo.fill"
+        case "music": return "music.note"
+        case "playlist": return "list.bullet"
+        case "miner": return "hammer.fill"
+        case "wiki": return "books.vertical.fill"
+        case "compare": return "square.split.2x1"
+        case "meta": return "crown.fill"
+        default: return "command"
+        }
     }
 }
 
-private struct CommandTag: View {
-    let text: String
+// MARK: - Command Section
+
+private struct CommandSection: View {
+    let category: CommandGroup
+    let commands: [VisualCommand]
+    let commandEnabledBinding: (VisualCommand) -> Binding<Bool>
+
+    var body: some View {
+        SwiftMeshSection(
+            title: category.rawValue,
+            symbol: category.icon
+        ) {
+            LazyVStack(spacing: 6) {
+                ForEach(commands) { command in
+                    CommandRow(
+                        command: command,
+                        isOn: commandEnabledBinding(command),
+                        tint: category.color
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Command Row
+
+private struct CommandRow: View {
+    let command: VisualCommand
+    @Binding var isOn: Bool
     let tint: Color
+
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: command.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 26, height: 26)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(command.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+
+                    HStack(spacing: 4) {
+                        ForEach(command.surfaces, id: \.self) { surface in
+                            CommandBadge(
+                                text: surface,
+                                color: surface == "Slash" ? .orange : .secondary
+                            )
+                        }
+                        if command.adminOnly {
+                            CommandBadge(text: "Admin", color: .red)
+                        }
+                    }
+                }
+
+                Text(command.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if !command.usage.isEmpty {
+                    Text(command.usage)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassCard(
+            cornerRadius: 12,
+            tint: tint.opacity(isHovering ? 0.08 : 0.04),
+            stroke: tint.opacity(isHovering ? 0.25 : 0.14)
+        )
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Command Badge
+
+private struct CommandBadge: View {
+    let text: String
+    let color: Color
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .foregroundStyle(.primary)
-            .background(tint.opacity(0.14), in: Capsule())
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .foregroundStyle(color)
+            .background(color.opacity(0.12), in: Capsule())
             .overlay(
                 Capsule()
-                    .strokeBorder(tint.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(color.opacity(0.28), lineWidth: 1)
             )
     }
 }
-
