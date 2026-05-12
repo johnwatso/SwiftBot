@@ -201,6 +201,9 @@ extension AppModel {
         let debugContext = StreamDebug.context(itemID: itemID, source: resolvedSource, rangeHeader: rangeHeader)
         let debugStart = debugStream ? Date() : nil
         let isPartialResponse = responseStatus == "206 Partial Content"
+        // Task.detached is intentional here: FileHandle I/O is synchronous and must not
+        // block the MainActor. All captures are value types (no self), so there is no
+        // object-lifecycle race. This is the one justified Task.detached in the codebase.
         return await Task.detached(priority: .utility) { [fileURL, fileSize, contentType, effectiveRange, isPartialResponse, responseStatus, debugStream, debugContext, debugStart] in
             do {
                 let handle = try FileHandle(forReadingFrom: fileURL)

@@ -307,7 +307,7 @@ actor CertificateManager {
                 detail: "Enter a hostname to continue."
             )
         } else {
-            let resolution = await Task.detached(priority: .userInitiated) {
+            let resolution = await Task(priority: .userInitiated) {
                 Self.resolveHostname(normalizedDomain)
             }.value
             domainResolves = resolution.success
@@ -710,7 +710,7 @@ actor CertificateManager {
         log: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> StoredCertificate {
         // Background verify Cloudflare token to identify connectivity issues early without blocking
-        Task.detached {
+        Task {
             if await dnsProvider.verifyAPIToken() {
                 #if DEBUG
                 self.logger.debug("Cloudflare: Token verified successfully in background.")

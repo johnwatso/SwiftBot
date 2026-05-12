@@ -204,6 +204,7 @@ final class AppModel: ObservableObject {
     var lastGoodClusterNodes: [ClusterNodeStatus] = []
     var registeredWorkersDebugCount: Int = 0
     var registeredWorkersDebugSummary: String = "none"
+    private var lastSettingsSaveAt: Date = .distantPast
     // P1b: off-peak background mesh refresh
     var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
@@ -522,7 +523,7 @@ final class AppModel: ObservableObject {
                     // in passive standby mode, no reconnect is needed; output gate flips instantly.
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        logs.append("🚀 Promoted to Primary.")
+                        logs.append("[OK] SwiftMesh promoted to Primary.")
                         Task { await self.connectDiscordAfterPromotion() }
                     }
                 }
@@ -584,7 +585,7 @@ final class AppModel: ObservableObject {
                     let existing = self.settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard existing.isEmpty else { return }
                     self.settings.token = trimmed
-                    self.logs.append("🔑 Pulled Discord token from Primary (via mesh handshake).")
+                    self.logs.append("[INFO] SwiftMesh pulled Discord token from Primary (via mesh handshake).")
                     self.saveSettings()
                 }
             }
@@ -593,7 +594,7 @@ final class AppModel: ObservableObject {
                 await MainActor.run {
                     self.settings.clusterLastHandoverTestAt = Date()
                     self.settings.clusterLastHandoverTestOK = true
-                    self.logs.append("✅ SwiftMesh handover test completed end-to-end.")
+                    self.logs.append("[OK] SwiftMesh handover test completed end-to-end.")
                     self.saveSettings()
                 }
             }
@@ -602,7 +603,7 @@ final class AppModel: ObservableObject {
                 // Higher-term peer detected — mute Discord and revert to passive standby.
                 await self.service.setOutputAllowed(false)
                 await MainActor.run { [weak self] in
-                    self?.logs.append("⚠️ Demoted to Standby — another Primary holds a higher term. Output muted.")
+                    self?.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Output muted.")
                 }
             }
             // Phase 3: provide this node's follower-state summary on demand.
@@ -675,19 +676,27 @@ final class AppModel: ObservableObject {
     }
 
     func saveSettings() {
+        let now = Date()
+        let throttleInterval: TimeInterval = 3
+        if now.timeIntervalSince(lastSettingsSaveAt) < throttleInterval {
+            // Too soon — skip the save to prevent cascading config-change storms.
+            return
+        }
+        lastSettingsSaveAt = now
+
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if normalizedToken != settings.token {
             settings.token = normalizedToken
-            logs.append("⚠️ Token format normalized (removed surrounding whitespace or Bot prefix)")
+            logs.append("[WARN] Token format normalized (removed surrounding whitespace or Bot prefix)")
         }
 
         let trimmedPrefix = settings.prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPrefix.isEmpty {
             settings.prefix = "/"
-            logs.append("⚠️ Prefix cannot be empty. Reset to default.")
+            logs.append("[WARN] Prefix cannot be empty. Reset to default.")
         } else if trimmedPrefix == "!" {
             settings.prefix = "/"
-            logs.append("ℹ️ Legacy command prefix migrated to '/'.")
+            logs.append("[INFO] Legacy command prefix migrated to '/'.")
         } else {
             settings.prefix = trimmedPrefix
         }
@@ -721,11 +730,11 @@ final class AppModel: ObservableObject {
                 try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
                 try await mediaLibraryConfigStore.save(mediaLibrarySettings)
                 await mediaLibraryIndexer.invalidate()
-                logs.append("✅ Settings saved")
+                logs.append("[OK] Settings saved")
                 await refreshAIStatus()
             } catch {
                 stats.errors += 1
-                logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+                logs.append("[ERR] Failed saving settings: \(error.localizedDescription)")
                 return
             }
 

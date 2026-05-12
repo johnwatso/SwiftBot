@@ -57,7 +57,10 @@ actor ClusterCoordinator {
     private let decoder = JSONDecoder()
     private let startedAt = Date()
     private let hardwareInfo = HardwareInfo.current()
-    private let workerRegistrationIntervalNanoseconds: UInt64 = 4_000_000_000
+    /// Registration heartbeat interval. 30s is sufficient for a healthy standby;
+    /// the old 4s interval caused excessive load on the primary and overlapping
+    /// requests that contributed to CFNetwork timer races.
+    private let workerRegistrationIntervalNanoseconds: UInt64 = 30_000_000_000
     private let registrationStaleAfter: TimeInterval = 45
     static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
@@ -90,7 +93,9 @@ actor ClusterCoordinator {
     var leaderTerm: Int = 0
     private var standbyMonitorTask: Task<Void, Never>?
     var standbyHealthMisses: Int = 0
-    static let standbyHealthInterval: TimeInterval = 10.0
+    /// Standby health probe interval. 15s balances fast failover detection with
+    /// avoiding request storms on the primary.
+    static let standbyHealthInterval: TimeInterval = 15.0
     static let standbyPromotionThreshold: Int = 3
     /// Phase 4: auto-reclaim by configured-primary.
     /// Whether THIS node was configured as Primary in settings (set by AppModel).
@@ -249,15 +254,19 @@ actor ClusterCoordinator {
     func manuallyPromote() async {
         guard mode == .standby else { return }
         meshLogger.notice("Manual promote requested by user")
+        handoverTestTask?.cancel()
+        handoverTestTask = nil
         await promoteToLeader()
     }
 
     // MARK: - Handover Test (Primary ⇄ Failover round-trip)
 
-    /// Coordinated test triggered from the Primary's SwiftMesh GUI. Asks the
-    /// first registered Failover to take over for `durationSeconds`, then to
-    /// signal back via `/v1/mesh/handover-test/end` so the original Primary
-    /// can reclaim. Returns a short message for the caller to log.
+    /// Coordinated test triggered from the Primary's SwiftMesh GUI. Steps:
+    /// 1. Demote self to standby so the Failover can promote cleanly.
+    /// 2. Ask the Failover to take over for `durationSeconds`.
+    /// 3. Start a watchdog on this node that auto-reclaims if the Failover
+    ///    never signals back (duration + 15s grace).
+    /// Returns a short message for the caller to log.
     func startHandoverTest(durationSeconds: Int = 60) async -> String {
         guard mode == .leader else { return "Handover test requires this node to be Primary." }
         let workers = sortedRegisteredWorkers()
@@ -266,14 +275,41 @@ actor ClusterCoordinator {
         }
         guard handoverTestTask == nil else { return "Handover test already in progress." }
 
+        let ownBaseURL = localWorkerAdvertisedBaseURL()
         let payload = MeshHandoverTestPayload(
             originPrimaryNodeName: nodeName,
+            originPrimaryBaseURL: ownBaseURL,
             durationSeconds: durationSeconds
         )
-        meshLogger.notice("Handover test: notifying \(target.nodeName, privacy: .public) for \(durationSeconds, privacy: .public)s")
+
+        // STEP 1: Demote self to standby FIRST so the Failover can promote
+        // without creating a split-brain.
+        await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: target.baseURL)
+        meshLogger.notice("Handover test: demoted self; asking \(target.nodeName, privacy: .public) to take over for \(durationSeconds, privacy: .public)s")
+
+        // STEP 2: Start a watchdog that reclaims if the Failover never signals back.
+        let graceSeconds = 15
+        handoverTestTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(durationSeconds + graceSeconds) * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard mode == .standby else {
+                handoverTestTask = nil
+                return
+            }
+            meshLogger.warning("Handover test watchdog fired — Failover never signalled back; reclaiming Primary")
+            snapshot.diagnostics = "Handover test watchdog — reclaiming Primary after timeout"
+            await publishSnapshot()
+            await promoteToLeader()
+            await onHandoverTestPassed?()
+            handoverTestTask = nil
+        }
 
         guard let url = URL(string: target.baseURL + "/v1/mesh/handover-test/begin") else {
-            return "Handover test: target URL is invalid."
+            // If the URL is bad, cancel the watchdog and reclaim immediately.
+            handoverTestTask?.cancel()
+            handoverTestTask = nil
+            await promoteToLeader()
+            return "Handover test: target URL is invalid; reclaimed immediately."
         }
         do {
             var request = URLRequest(url: url)
@@ -287,7 +323,7 @@ actor ClusterCoordinator {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 return "Handover test: Failover refused (HTTP \(code))."
             }
-            return "Handover test started. \(target.nodeName) will take over for \(durationSeconds)s; auto-reclaim on completion."
+            return "Handover test started. \(target.nodeName) will take over for \(durationSeconds)s; auto-reclaim on completion or after \(durationSeconds + graceSeconds)s timeout."
         } catch {
             return "Handover test: could not reach \(target.nodeName) — \(error.localizedDescription)"
         }
@@ -308,49 +344,60 @@ actor ClusterCoordinator {
         }
         let duration = max(5, min(600, payload.durationSeconds))
         let origin = payload.originPrimaryNodeName
+        let originBaseURL = payload.originPrimaryBaseURL
         meshLogger.notice("Handover test: signal received from \(origin, privacy: .public); promoting in 1s for \(duration, privacy: .public)s")
         snapshot.diagnostics = "Handover test starting — promoting in 1s, will reclaim \(origin) after \(duration)s"
         await publishSnapshot()
 
-        handoverTestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            await self?.promoteToLeader()
-            try? await Task.sleep(nanoseconds: UInt64(duration) * 1_000_000_000)
-            await self?.broadcastHandoverTestEnd(originPrimaryNodeName: origin, duration: duration)
-            await self?.clearHandoverTestTask()
+        handoverTestTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            } catch {
+                meshLogger.debug("Handover test start sleep cancelled")
+                return
+            }
+            await promoteToLeader()
+            do {
+                try await Task.sleep(nanoseconds: UInt64(duration) * 1_000_000_000)
+            } catch {
+                meshLogger.debug("Handover test duration sleep cancelled")
+                return
+            }
+            await broadcastHandoverTestEnd(originPrimaryNodeName: origin, originPrimaryBaseURL: originBaseURL, duration: duration)
+            handoverTestTask = nil
         }
 
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
     }
 
-    /// Now-Primary-temporarily side: tells every registered worker the test
-    /// window has elapsed. The original Primary's handler will reclaim.
-    private func broadcastHandoverTestEnd(originPrimaryNodeName: String, duration: Int) async {
+    /// Now-Primary-temporarily side: signals the original Primary directly
+    /// that the test window has elapsed so it can reclaim.
+    private func broadcastHandoverTestEnd(originPrimaryNodeName: String, originPrimaryBaseURL: String, duration: Int) async {
         guard mode == .leader else { return }
-        let workers = sortedRegisteredWorkers()
         let payload = MeshHandoverTestPayload(
             originPrimaryNodeName: originPrimaryNodeName,
+            originPrimaryBaseURL: originPrimaryBaseURL,
             durationSeconds: duration
         )
         guard let body = try? encoder.encode(payload) else { return }
-        meshLogger.notice("Handover test: \(duration, privacy: .public)s elapsed; signalling \(workers.count, privacy: .public) peer(s) to reclaim")
+        meshLogger.notice("Handover test: \(duration, privacy: .public)s elapsed; signalling \(originPrimaryNodeName, privacy: .public) to reclaim")
         snapshot.diagnostics = "Handover test ending; notifying \(originPrimaryNodeName) to reclaim"
         await publishSnapshot()
-        for worker in workers {
-            guard let url = URL(string: worker.baseURL + "/v1/mesh/handover-test/end") else { continue }
-            do {
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.httpBody = body
-                applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/end")
-                request.timeoutInterval = 8
-                _ = try await URLSession.shared.data(for: request)
-            } catch {
-                // best effort — if a worker missed it, the next sync push will
-                // still demote the temporary leader via the stale-term path
-                // once the original Primary reclaims on a manual trigger.
-            }
+
+        guard let url = URL(string: originPrimaryBaseURL + "/v1/mesh/handover-test/end") else {
+            meshLogger.error("Handover test: invalid origin primary URL \(originPrimaryBaseURL, privacy: .public)")
+            return
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+            applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/end")
+            request.timeoutInterval = 8
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            meshLogger.warning("Handover test: failed to notify \(originPrimaryNodeName, privacy: .public) — \(error.localizedDescription)")
         }
     }
 
@@ -370,12 +417,19 @@ actor ClusterCoordinator {
         snapshot.diagnostics = "Handover test complete; reclaiming Primary"
         await publishSnapshot()
         await promoteToLeader()
+        handoverTestTask?.cancel()
+        handoverTestTask = nil
         await onHandoverTestPassed?()
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
     }
 
     private func clearHandoverTestTask() {
         handoverTestTask = nil
+    }
+
+    /// Awaits the current handover test task so callers can serialize around it.
+    private func awaitHandoverTestTaskIfNeeded() async {
+        _ = await handoverTestTask?.value
     }
 
     // MARK: - Discord token auto-fetch
@@ -495,7 +549,7 @@ actor ClusterCoordinator {
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartStandbyMonitorIfNeeded()
-        restartFollowerStatePollIfNeeded()
+        await restartFollowerStatePollIfNeeded()
         await refreshWorkerHealth()
         await publishSnapshot()
     }
@@ -560,12 +614,19 @@ actor ClusterCoordinator {
     }
 
     func stopAll() async {
+        meshLogger.notice("Stopping all cluster services")
         stopMeshDiscovery()
+        handoverTestTask?.cancel()
+        _ = await handoverTestTask?.value
+        handoverTestTask = nil
         workerRegistrationTask?.cancel()
+        _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
         standbyMonitorTask?.cancel()
+        _ = await standbyMonitorTask?.value
         standbyMonitorTask = nil
         followerStatePollTask?.cancel()
+        _ = await followerStatePollTask?.value
         followerStatePollTask = nil
         followerStates.removeAll()
         listener?.cancel()
@@ -1430,6 +1491,7 @@ actor ClusterCoordinator {
 
     private func restartStandbyMonitorIfNeeded() async {
         standbyMonitorTask?.cancel()
+        _ = await standbyMonitorTask?.value
         standbyMonitorTask = nil
         standbyHealthMisses = 0
         standbyHealthySince = nil
@@ -1439,12 +1501,14 @@ actor ClusterCoordinator {
             return
         }
 
+        meshLogger.debug("Starting standby health monitor for \(leaderBaseURL, privacy: .public)")
         standbyMonitorTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(Self.standbyHealthInterval * 1_000_000_000))
                 if Task.isCancelled { break }
                 await monitorLeaderHealth(leaderBaseURL)
             }
+            meshLogger.debug("Standby health monitor exited")
         }
     }
 
@@ -1481,9 +1545,10 @@ actor ClusterCoordinator {
                     return
                 }
             }
-            // Safety net: keep refreshing registration while standby monitoring is healthy.
-            // This avoids worker disappearance if the dedicated registration task is interrupted.
-            await registerWithLeader(leaderBaseURL)
+            // NOTE: Removed the duplicate `registerWithLeader` safety-net call.
+            // The dedicated `workerRegistrationTask` already registers every 30s.
+            // Calling it here too caused overlapping HTTP requests to the primary,
+            // which contributed to CFNetwork loader-queue races on the standby.
         } else {
             // Any miss resets the auto-reclaim clock; reclaim only fires after
             // a fully-uninterrupted healthy window.
@@ -1580,14 +1645,16 @@ actor ClusterCoordinator {
 
         // Stop standby monitoring and registration — no longer a standby.
         standbyMonitorTask?.cancel()
+        _ = await standbyMonitorTask?.value
         standbyMonitorTask = nil
         workerRegistrationTask?.cancel()
+        _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
 
         // Restart server as leader
         await restartServerIfNeeded()
         // Begin polling follower state now that we're primary.
-        restartFollowerStatePollIfNeeded()
+        await restartFollowerStatePollIfNeeded()
 
         // Notify workers of the new leader
         let workers = Array(registeredWorkers.values)
@@ -1706,6 +1773,11 @@ actor ClusterCoordinator {
     /// then restarts standby monitoring against the new leader address (if any).
     private func demoteToStandby(observedTerm: Int, newLeaderAddress: String?) async {
         guard mode == .leader else { return }
+
+        // Cancel any in-flight handover test task before demoting.
+        handoverTestTask?.cancel()
+        handoverTestTask = nil
+
         mode = .standby
         leaderTerm = observedTerm
         if let addr = newLeaderAddress, !addr.isEmpty {
@@ -1726,6 +1798,7 @@ actor ClusterCoordinator {
         await restartServerIfNeeded()
         // No longer primary — stop polling follower state and clear the published map.
         followerStatePollTask?.cancel()
+        _ = await followerStatePollTask?.value
         followerStatePollTask = nil
         followerStates.removeAll()
         snapshot.followerStates = [:]
@@ -1744,6 +1817,7 @@ actor ClusterCoordinator {
 
     private func restartWorkerRegistrationIfNeeded() async {
         workerRegistrationTask?.cancel()
+        _ = await workerRegistrationTask?.value
         workerRegistrationTask = nil
 
         guard mode == .worker || mode == .standby else { return }
@@ -1754,11 +1828,13 @@ actor ClusterCoordinator {
             return
         }
 
+        meshLogger.debug("Starting worker registration to \(normalizedLeader, privacy: .public)")
         workerRegistrationTask = Task {
             while !Task.isCancelled {
                 await registerWithLeader(normalizedLeader)
                 try? await Task.sleep(nanoseconds: workerRegistrationIntervalNanoseconds)
             }
+            meshLogger.debug("Worker registration task exited")
         }
     }
 
@@ -2650,15 +2726,18 @@ actor ClusterCoordinator {
         await publishSnapshot()
     }
 
-    private func restartFollowerStatePollIfNeeded() {
+    private func restartFollowerStatePollIfNeeded() async {
         followerStatePollTask?.cancel()
+        _ = await followerStatePollTask?.value
         followerStatePollTask = nil
         guard mode == .leader else { return }
-        followerStatePollTask = Task { [weak self] in
+        meshLogger.debug("Starting follower state poll")
+        followerStatePollTask = Task {
             while !Task.isCancelled {
-                await self?.pollFollowerStates()
-                try? await Task.sleep(nanoseconds: self?.followerStatePollIntervalNanoseconds ?? 4_000_000_000)
+                await pollFollowerStates()
+                try? await Task.sleep(nanoseconds: followerStatePollIntervalNanoseconds)
             }
+            meshLogger.debug("Follower state poll exited")
         }
     }
 

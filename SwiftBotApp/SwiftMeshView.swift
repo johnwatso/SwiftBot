@@ -5,7 +5,10 @@ struct SwiftMeshView: View {
     @State private var showPromoteConfirm = false
     @State private var showHandoverTestConfirm = false
 
-    private let pollingIntervalNanoseconds: UInt64 = 3_000_000_000
+    /// 10s polling interval for the SwiftMesh UI. The old 3s interval caused
+    /// excessive standby-to-primary HTTP load (up to 40 req/min) and overlapping
+    /// URLSession requests that contributed to CFNetwork loader-queue races.
+    private let pollingIntervalNanoseconds: UInt64 = 10_000_000_000
 
     var body: some View {
         ScrollView {

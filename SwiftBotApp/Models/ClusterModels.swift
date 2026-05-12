@@ -375,10 +375,11 @@ struct MeshDiscordTokenResponse: Codable, Sendable {
 /// Coordinated handover test payload. Sent by the current Primary to its
 /// Failover to request a temporary takeover, then sent back from the
 /// temporary-Primary at the end of the window so the original Primary can
-/// reclaim. Carries the duration and the original Primary's node name so
-/// either side can render meaningful log entries.
+/// reclaim. Carries the duration, the original Primary's node name, and its
+/// base URL so the temporary Primary can signal reclaim directly.
 struct MeshHandoverTestPayload: Codable, Sendable {
     let originPrimaryNodeName: String
+    let originPrimaryBaseURL: String
     let durationSeconds: Int
 }
 
