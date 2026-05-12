@@ -29,8 +29,8 @@ actor MediaExportCoordinator {
     ) async -> MediaExportJob {
         let job = createJob(kind: .clip, nodeName: nodeName)
         jobs[job.id] = job
-        Task.detached { [weak self] in
-            await self?.runClip(jobID: job.id, item: item, request: request, exportRoot: exportRoot)
+        Task {
+            await runClip(jobID: job.id, item: item, request: request, exportRoot: exportRoot)
         }
         return job
     }
@@ -44,8 +44,8 @@ actor MediaExportCoordinator {
     ) async -> MediaExportJob {
         let job = createJob(kind: .multiview, nodeName: nodeName)
         jobs[job.id] = job
-        Task.detached { [weak self] in
-            await self?.runMultiView(jobID: job.id, primary: primary, secondary: secondary, request: request, exportRoot: exportRoot)
+        Task {
+            await runMultiView(jobID: job.id, primary: primary, secondary: secondary, request: request, exportRoot: exportRoot)
         }
         return job
     }

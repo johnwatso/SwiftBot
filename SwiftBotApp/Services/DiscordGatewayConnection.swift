@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 actor DiscordGatewayConnection {
     protocol Socket: AnyObject, Sendable {
@@ -25,6 +26,8 @@ actor DiscordGatewayConnection {
         }
     }
 
+    private static let logger = Logger(subsystem: "com.swiftbot", category: "discord.gateway")
+
     private let session: URLSession
     private let gatewayURL: URL
     private let dependencies: Dependencies
@@ -40,6 +43,7 @@ actor DiscordGatewayConnection {
     private var botToken: String?
     private var reconnectAttempts = 0
     private var userInitiatedDisconnect = false
+    private var connectionGeneration = 0
 
     private var onPayload: ((GatewayPayload) async -> Void)?
     private var onConnectionState: ((BotStatus) async -> Void)?
@@ -81,18 +85,26 @@ actor DiscordGatewayConnection {
 
         userInitiatedDisconnect = false
         reconnectTask?.cancel()
+        _ = await reconnectTask?.value
         reconnectTask = nil
         reconnectAttempts = 0
         botToken = normalizedToken
+        Self.logger.info("Gateway connect initiated")
         await openGatewayConnection(token: normalizedToken, isReconnect: false)
     }
 
     func disconnect() async {
+        Self.logger.info("Gateway disconnect requested (user-initiated)")
         userInitiatedDisconnect = true
         reconnectTask?.cancel()
+        _ = await reconnectTask?.value
         reconnectTask = nil
         heartbeatTask?.cancel()
+        _ = await heartbeatTask?.value
+        heartbeatTask = nil
         receiveTask?.cancel()
+        _ = await receiveTask?.value
+        receiveTask = nil
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
         botToken = nil
@@ -114,13 +126,18 @@ actor DiscordGatewayConnection {
         await sendRaw(payload)
     }
 
-    private func receiveLoop(token: String) async {
+    private func receiveLoop(token: String, generation: Int) async {
         while !Task.isCancelled, let socket {
             do {
                 let message = try await socket.receive()
                 guard case .string(let text) = message,
                       let payload = dependencies.decodePayload(text)
                 else { continue }
+
+                guard generation == connectionGeneration else {
+                    Self.logger.debug("Ignoring message for stale generation \(generation)")
+                    break
+                }
 
                 sequence = payload.s ?? sequence
                 if payload.t == "READY",
@@ -129,20 +146,29 @@ actor DiscordGatewayConnection {
                     sessionId = readySessionId
                 }
 
-                await handleGatewayPayload(payload, token: token)
+                await handleGatewayPayload(payload, token: token, generation: generation)
                 await onPayload?(payload)
             } catch {
                 let closeRawValue = socket.closeCode.rawValue
                 if closeRawValue != 1000, closeRawValue > 0 {
                     await onGatewayClose?(closeRawValue)
                 }
-                await scheduleReconnect(reason: "Gateway receive failed: \(error.localizedDescription)")
+                if generation == connectionGeneration {
+                    await scheduleReconnect(reason: "Gateway receive failed: \(error.localizedDescription)")
+                } else {
+                    Self.logger.debug("Old receive loop error ignored (generation \(generation) != current \(self.connectionGeneration))")
+                }
                 break
             }
         }
     }
 
-    private func handleGatewayPayload(_ payload: GatewayPayload, token: String) async {
+    private func handleGatewayPayload(_ payload: GatewayPayload, token: String, generation: Int) async {
+        guard generation == connectionGeneration else {
+            Self.logger.debug("Ignoring payload for stale generation \(generation)")
+            return
+        }
+
         switch payload.op {
         case 10:
             if case let .object(hello)? = payload.d,
@@ -151,9 +177,10 @@ actor DiscordGatewayConnection {
             }
             reconnectAttempts = 0
             reconnectTask?.cancel()
+            _ = await reconnectTask?.value
             reconnectTask = nil
             await identify(token: token)
-            startHeartbeat()
+            await startHeartbeat()
             await onConnectionState?(.running)
         case 1:
             await sendHeartbeat()
@@ -176,20 +203,39 @@ actor DiscordGatewayConnection {
     }
 
     private func openGatewayConnection(token: String, isReconnect: Bool) async {
+        connectionGeneration += 1
+        let generation = connectionGeneration
+
+        Self.logger.info("Opening gateway connection (generation \(generation), reconnect: \(isReconnect))")
+
         if isReconnect {
             await onConnectionState?(.reconnecting)
         } else {
             await onConnectionState?(.connecting)
         }
 
+        // Cancel and await old tasks to prevent overlapping sockets and CFNetwork races
         heartbeatTask?.cancel()
+        _ = await heartbeatTask?.value
+        heartbeatTask = nil
+
         receiveTask?.cancel()
-        socket?.cancel(with: .goingAway, reason: nil)
+        _ = await receiveTask?.value
+        receiveTask = nil
+
+        if let oldSocket = socket {
+            Self.logger.debug("Cancelling old socket (generation \(generation - 1))")
+            oldSocket.cancel(with: .goingAway, reason: nil)
+            socket = nil
+        }
 
         let nextSocket = await dependencies.socketFactory(session, gatewayURL)
         socket = nextSocket
         nextSocket.resume()
-        receiveTask = Task { await self.receiveLoop(token: token) }
+        Self.logger.debug("New socket resumed (generation \(generation))")
+        receiveTask = Task { [generation] in
+            await self.receiveLoop(token: token, generation: generation)
+        }
     }
 
     private func scheduleReconnect(reason: String) async {
@@ -199,26 +245,37 @@ actor DiscordGatewayConnection {
 
         reconnectAttempts += 1
         let delaySeconds = min(30, 1 << min(reconnectAttempts, 5))
+        let generation = connectionGeneration
         await onConnectionState?(.reconnecting)
+
+        Self.logger.info("Scheduling reconnect in \(delaySeconds)s (generation \(generation), reason: \(reason))")
 
         reconnectTask = Task { [weak self] in
             guard let self else { return }
             await self.dependencies.sleep(UInt64(delaySeconds) * 1_000_000_000)
-            guard !Task.isCancelled else { return }
-            await self.reconnectTaskDidFire(token: token)
+            guard !Task.isCancelled else {
+                Self.logger.debug("Reconnect task cancelled (generation \(generation))")
+                return
+            }
+            await self.reconnectTaskDidFire(token: token, generation: generation)
         }
-        _ = reason
     }
 
-    private func reconnectTaskDidFire(token: String) async {
+    private func reconnectTaskDidFire(token: String, generation: Int) async {
         reconnectTask = nil
         guard !userInitiatedDisconnect else { return }
         guard botToken == token else { return }
+        guard generation == connectionGeneration else {
+            Self.logger.info("Stale reconnect dropped (generation \(generation) != current \(self.connectionGeneration))")
+            return
+        }
+        Self.logger.info("Reconnect firing (generation \(generation))")
         await openGatewayConnection(token: token, isReconnect: true)
     }
 
-    private func startHeartbeat() {
+    private func startHeartbeat() async {
         heartbeatTask?.cancel()
+        _ = await heartbeatTask?.value
         heartbeatTask = Task {
             while !Task.isCancelled {
                 await dependencies.sleep(heartbeatInterval)
@@ -263,7 +320,7 @@ actor DiscordGatewayConnection {
                 try await socket.send(.string(text))
             }
         } catch {
-            // noop, routed to reconnect by receive loop if needed.
+            Self.logger.warning("Gateway send failed: \(error.localizedDescription)")
         }
     }
 }

@@ -15,6 +15,7 @@ struct ActivityLogView: View {
     enum ActivityKind {
         case command
         case system
+        case mesh
     }
 
     enum ActivityLevel {
@@ -24,6 +25,7 @@ struct ActivityLogView: View {
     enum ActivityFilter: String, CaseIterable, Identifiable {
         case commands = "Commands"
         case system = "System"
+        case mesh = "Mesh"
         case errors = "Errors"
         case warnings = "Warnings"
 
@@ -32,6 +34,7 @@ struct ActivityLogView: View {
             switch self {
             case .commands: return "terminal"
             case .system: return "doc.text"
+            case .mesh: return "point.3.connected.trianglepath.dotted"
             case .errors: return "xmark.octagon"
             case .warnings: return "exclamationmark.triangle"
             }
@@ -40,6 +43,7 @@ struct ActivityLogView: View {
             switch self {
             case .commands: return .blue
             case .system: return .gray
+            case .mesh: return .cyan
             case .errors: return .red
             case .warnings: return .yellow
             }
@@ -68,7 +72,7 @@ struct ActivityLogView: View {
                     time: cmd.time,
                     kind: .command,
                     level: cmd.ok ? .ok : .error,
-                    title: Self.stripEmojis(rawTitle),
+                    title: Self.stripMarkers(rawTitle),
                     detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
                 )
             )
@@ -76,11 +80,15 @@ struct ActivityLogView: View {
 
         for (idx, line) in app.logs.lines.enumerated() {
             let parsed = parseLogLine(line)
+            let text = parsed.title.lowercased()
+            let isMesh = text.contains("mesh") || text.contains("standby") || text.contains("primary")
+                || text.contains("failover") || text.contains("cluster") || text.contains("replicat")
+                || text.contains("reclaim") || text.contains("worker") || text.contains("leader")
             entries.append(
                 ActivityEntry(
                     id: "log-\(idx)",
                     time: parsed.time,
-                    kind: .system,
+                    kind: isMesh ? .mesh : .system,
                     level: parsed.level,
                     title: parsed.title,
                     detail: nil
@@ -104,6 +112,10 @@ struct ActivityLogView: View {
         case .command:
             if entry.level == .error && selectedFilters.contains(.errors) { return true }
             return selectedFilters.contains(.commands)
+        case .mesh:
+            if entry.level == .error && selectedFilters.contains(.errors) { return true }
+            if entry.level == .warning && selectedFilters.contains(.warnings) { return true }
+            return selectedFilters.contains(.mesh)
         case .system:
             switch entry.level {
             case .error: return selectedFilters.contains(.errors) || selectedFilters.contains(.system)
@@ -328,23 +340,31 @@ struct ActivityLogView: View {
             stripped = String(line[after...]).trimmingCharacters(in: .whitespaces)
         }
 
-        // Detect severity FROM the emoji markers *before* stripping them, so
-        // the SF Symbol on the row still reflects the original signal.
+        // Detect severity from bracket prefixes *or* legacy emoji markers,
+        // then strip them so the row's leading SF Symbol is the only visual.
         let level: ActivityLevel = {
-            if stripped.contains("❌") { return .error }
-            if stripped.contains("⚠️") { return .warning }
-            if stripped.contains("✅") { return .ok }
+            if stripped.hasPrefix("[ERR]") || stripped.contains("❌") { return .error }
+            if stripped.hasPrefix("[WARN]") || stripped.contains("⚠️") { return .warning }
+            if stripped.hasPrefix("[OK]") || stripped.contains("✅") { return .ok }
             return .info
         }()
 
-        return ParsedLogLine(time: time, title: Self.stripEmojis(stripped), level: level)
+        return ParsedLogLine(time: time, title: Self.stripMarkers(stripped), level: level)
     }
 
-    /// Removes all emoji / pictographic glyphs from a log line so the row's
-    /// leading SF Symbol is the only place severity or topic is rendered.
-    /// Severity must be inferred from the *original* text before calling this.
-    static func stripEmojis(_ s: String) -> String {
-        var out = s.replacingOccurrences(
+    /// Removes bracket severity prefixes and emoji glyphs from a log line so
+    /// the row's leading SF Symbol is the only place severity is rendered.
+    static func stripMarkers(_ s: String) -> String {
+        var out = s
+        // Strip bracket severity prefixes
+        for prefix in ["[ERR]", "[WARN]", "[OK]", "[INFO]"] {
+            if out.hasPrefix(prefix) {
+                out.removeFirst(prefix.count)
+                break
+            }
+        }
+        // Strip emoji / pictographic glyphs
+        out = out.replacingOccurrences(
             of: "\\p{Extended_Pictographic}",
             with: "",
             options: .regularExpression
@@ -520,6 +540,8 @@ private struct ActivityFilterHelpPopover: View {
                           description: "Discord slash- and prefix-commands executed by the bot.")
                 filterRow(symbol: "doc.text", color: .gray, title: "System",
                           description: "Plain app log lines (info-level). Excludes errors and warnings.")
+                filterRow(symbol: "point.3.connected.trianglepath.dotted", color: .cyan, title: "Mesh",
+                          description: "SwiftMesh cluster events — promotion, demotion, sync, handover.")
                 filterRow(symbol: "xmark.octagon.fill", color: .red, title: "Errors",
                           description: "Anything that failed — command errors, gateway errors, REST errors.")
                 filterRow(symbol: "exclamationmark.triangle.fill", color: .yellow, title: "Warnings",
@@ -532,7 +554,7 @@ private struct ActivityFilterHelpPopover: View {
                 Text("Row icons")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text("Errors and warnings always show the alert icon. Otherwise the row's SF Symbol reflects the inferred topic:")
+                Text("Errors and warnings always use the alert icon. Otherwise, the row icon reflects the inferred topic.:")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 ForEach(ActivityCategory.allCases.filter { $0 != .command }, id: \.self) { cat in

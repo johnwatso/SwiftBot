@@ -72,7 +72,7 @@ extension AppModel {
     func runSwiftMeshHandoverTest() async {
         let message = await cluster.startHandoverTest(durationSeconds: 60)
         await MainActor.run {
-            logs.append("🔁 \(message)")
+            logs.append("[INFO] SwiftMesh handover test: \(message)")
         }
     }
 

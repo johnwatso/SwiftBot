@@ -1748,7 +1748,7 @@ extension AppModel {
 
         // Verify token in background (non-blocking, warning-level logging only)
         progress(.verifyingCloudflareAccess)
-        Task.detached(priority: .background) {
+        Task(priority: .background) {
             let tokenIsValid = await dnsProvider.verifyAPIToken()
             if tokenIsValid {
                 await self.logs.append("✅ Cloudflare API verified (background)")
@@ -1970,7 +1970,7 @@ extension AppModel {
 
         // Step 1: Verify Cloudflare API (non-blocking, background task)
         progress(.verifyingCloudflareAccess)
-        Task.detached(priority: .background) {
+        Task(priority: .background) {
             let tokenIsValid = await dnsProvider.verifyAPIToken()
             if tokenIsValid {
                 await self.logs.append("✅ Cloudflare API verified (background)")

@@ -78,8 +78,9 @@ extension AppModel {
         meshSyncTask = Task { [weak self] in
             while !Task.isCancelled {
                 // Leader pushes, Standby pulls
-                // Sync every 10 seconds so failover config changes propagate quickly.
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                // Sync every 60 seconds. The old 10s interval caused excessive
+                // standby-to-primary load and overlapping URLSession requests.
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
                 if Task.isCancelled { break }
 
                 guard let self else { break }
@@ -227,8 +228,10 @@ extension AppModel {
             leaderTerm: settings.clusterLeaderTerm
         )
 
-        // Phase 4: Configuration Consistency - log final mesh endpoint
-        if mode != .standalone {
+        // Phase 4: Configuration Consistency - log final mesh endpoint only
+        // when mode or port actually changes to avoid spam during rapid saves.
+        let snapshot = await cluster.currentSnapshot()
+        if mode != .standalone, (snapshot.mode != mode || snapshot.listenPort != listenPort) {
             let host = ProcessInfo.processInfo.hostName
             logs.append("SwiftMesh listening on \(host):\(listenPort)")
         }
