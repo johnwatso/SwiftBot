@@ -812,17 +812,41 @@ actor ClusterCoordinator {
         return mac.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Adds `X-Mesh-Nonce`, `X-Mesh-Timestamp`, and `X-Mesh-Signature` headers to a URLRequest.
-    /// Only adds headers when sharedSecret is non-empty; otherwise leaves the request untouched
-    /// (standalone mode makes no clustered calls so this is safe).
+    /// Adds `X-Mesh-Nonce`, `X-Mesh-Timestamp`, `X-Mesh-Signature`, and (when
+    /// the request has a non-empty body) `X-Mesh-Encrypted: v1` headers to a
+    /// URLRequest. The body is encrypted via `MeshCrypto.seal` *before*
+    /// signing so the receiver can verify HMAC over the wire ciphertext
+    /// without decrypting first (textbook verify-then-decrypt).
+    ///
+    /// Only adds headers when sharedSecret is non-empty; otherwise leaves the
+    /// request untouched (standalone mode makes no clustered calls so this
+    /// is safe).
     private func applyMeshAuth(to request: inout URLRequest, path: String) {
         let normalizedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSecret.isEmpty else { return }
         let method = request.httpMethod ?? "GET"
         let nonce = UUID().uuidString
         let timestamp = Int(Date().timeIntervalSince1970)
-        let body = request.httpBody ?? Data()
-        let sig = meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: body)
+        let plaintext = request.httpBody ?? Data()
+
+        // Encrypt non-empty bodies. Empty-body calls (most GETs) go unencrypted
+        // — they carry no secrets and the HMAC still authenticates the call.
+        var wireBody = plaintext
+        if !plaintext.isEmpty {
+            do {
+                let key = try MeshCrypto.deriveKey(from: normalizedSecret)
+                wireBody = try MeshCrypto.seal(plaintext, using: key)
+                request.setValue(MeshCrypto.headerValueV1, forHTTPHeaderField: MeshCrypto.headerName)
+                request.httpBody = wireBody
+            } catch {
+                // Falling back to plaintext would silently weaken every call.
+                // Better to fail closed so the receiver's HMAC rejects rather
+                // than send unencrypted secrets across the WAN.
+                meshLogger.error("Mesh body encryption failed; sending will likely 401: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        let sig = meshSignature(method: method, nonce: nonce, timestamp: timestamp, path: path, body: wireBody)
         request.setValue(nonce, forHTTPHeaderField: "X-Mesh-Nonce")
         request.setValue(String(timestamp), forHTTPHeaderField: "X-Mesh-Timestamp")
         request.setValue(sig, forHTTPHeaderField: "X-Mesh-Signature")
@@ -1131,7 +1155,7 @@ actor ClusterCoordinator {
     }
 
     func processHTTPRequest(_ requestData: Data, remoteHost: String? = nil) async -> Data {
-        guard let request = parseRequest(requestData) else {
+        guard var request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_request"}"#.utf8))
         }
 
@@ -1147,9 +1171,28 @@ actor ClusterCoordinator {
                 return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
             }
             if !normalizedSecret.isEmpty {
+                // verify-then-decrypt: HMAC is computed over the wire body
+                // (ciphertext), so validation runs without touching crypto.
                 guard verifyMeshAuth(headers: request.headers, method: request.method, path: request.path, body: request.body) else {
                     meshLogger.warning("Mesh auth rejected: invalid HMAC, stale timestamp, or replay for path \(request.path, privacy: .public)")
                     return httpResponse(status: "401 Unauthorized", body: Data(#"{"error":"unauthorized"}"#.utf8))
+                }
+
+                // If the peer flagged the body as encrypted, decrypt before
+                // dispatching to the route handler. The HMAC layer already
+                // guaranteed the ciphertext is authentic, but AES-GCM's auth
+                // tag is the *cryptographic* integrity check — a malformed
+                // ciphertext that somehow survived HMAC would still throw
+                // here. Empty bodies are never encrypted (see applyMeshAuth).
+                if request.headers[MeshCrypto.headerName.lowercased()] == MeshCrypto.headerValueV1,
+                   !request.body.isEmpty {
+                    do {
+                        let key = try MeshCrypto.deriveKey(from: normalizedSecret)
+                        request.body = try MeshCrypto.open(request.body, using: key)
+                    } catch {
+                        meshLogger.warning("Mesh body decryption failed for \(request.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"decryption_failed"}"#.utf8))
+                    }
                 }
             }
         }
@@ -3006,7 +3049,10 @@ private struct HTTPRequest {
     let path: String
     let query: [String: String]
     let headers: [String: String]
-    let body: Data
+    /// Mutable so the HMAC-then-decrypt path in `processHTTPRequest` can swap
+    /// the wire ciphertext for the decrypted plaintext before dispatching to
+    /// the route handler.
+    var body: Data
 }
 
 private struct AIJobRequest: Codable {

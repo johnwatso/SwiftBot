@@ -84,6 +84,7 @@
 		749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */; };
 		77A6A8DB1F994205038B1F55 /* AppModel+SwiftMiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C860E3F668A714ABB7F68FD5 /* AppModel+SwiftMiner.swift */; };
 		7894B179A8B556313CC7492A /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */; };
+		7896B40DCECCAB2473F0774D /* MeshCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625DB0CE520199209A20F7FC /* MeshCrypto.swift */; };
 		795E1B910968188CC57BA263 /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059780457BD592C5364C934 /* RemoteControlService.swift */; };
 		7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB32D13A6D673323296304C /* AdminWebServer.swift */; };
 		7A8F1F65E34BD4BFFE7BCAA9 /* AdvancedPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */; };
@@ -235,6 +236,7 @@
 		5C516D7E2A82E384871ADA77 /* TunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
 		5C883C3445CFB25BE95819B5 /* BotStateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotStateModels.swift; sourceTree = "<group>"; };
 		5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandaloneSetupView.swift; sourceTree = "<group>"; };
+		625DB0CE520199209A20F7FC /* MeshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCrypto.swift; sourceTree = "<group>"; };
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManagerTests.swift; sourceTree = "<group>"; };
 		6A7A4945675389627AFBFB2F /* admin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = admin; path = SwiftBotApp/Resources/admin; sourceTree = SOURCE_ROOT; };
@@ -531,6 +533,7 @@
 				B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */,
 				1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */,
 				C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */,
+				625DB0CE520199209A20F7FC /* MeshCrypto.swift */,
 				5C516D7E2A82E384871ADA77 /* TunnelManager.swift */,
 			);
 			path = Security;
@@ -795,6 +798,7 @@
 				C0255EF4CA8E35E49D64C7FF /* MediaStreamDebug.swift in Sources */,
 				6E8FB330BD0BE5ADFCA0FC6B /* MediaThumbnailCache.swift in Sources */,
 				00DBA7D6C8B57266F01FAA6B /* MediaTranscodeCache.swift in Sources */,
+				7896B40DCECCAB2473F0774D /* MeshCrypto.swift in Sources */,
 				5C11B6D31A6225BC9D878539 /* MeshPreferencesView.swift in Sources */,
 				8754C1BE68873E719DB6E909 /* ModeSelectionView.swift in Sources */,
 				4440417E51C60D48DDE07270 /* Models.swift in Sources */,
