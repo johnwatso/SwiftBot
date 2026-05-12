@@ -1280,8 +1280,6 @@ enum SwiftMeshNodeIconCatalog {
         .init(symbol: "macpro.gen2", label: "Mac Pro (gen 2)"),
         .init(symbol: "macpro.gen3", label: "Mac Pro (gen 3)"),
         .init(symbol: "server.rack", label: "Server rack"),
-        .init(symbol: "xserve", label: "Xserve"),
-        .init(symbol: "pc", label: "PC"),
-        .init(symbol: "display", label: "Display")
+        .init(symbol: "xserve", label: "Xserve")
     ]
 }
