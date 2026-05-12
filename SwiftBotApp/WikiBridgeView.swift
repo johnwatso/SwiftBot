@@ -15,31 +15,28 @@ struct WikiBridgeView: View {
         }
     }
 
+    private var totalCommands: Int {
+        app.settings.wikiBot.sources.reduce(0) { $0 + $1.commands.count }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             header
             if app.isFailoverManagedNode {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(.orange)
-                    Text("Read-only on Failover nodes. WikiBridge settings sync from Primary.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 2)
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. WikiBridge settings sync from Primary.")
             }
 
             if app.settings.wikiBot.isEnabled {
-                overviewCard
-                sourcesCard
+                metricRail
+                masterControls
+                sourcesList
             } else {
                 disabledStateContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -60,156 +57,206 @@ struct WikiBridgeView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
         HStack(spacing: 12) {
             ViewSectionHeader(title: "WikiBridge", symbol: "book.pages.fill")
             Spacer()
-            Button {
-                var updated = app.settings
-                updated.wikiBot.isEnabled.toggle()
-                app.settings = updated
-                app.saveSettings()
-            } label: {
-                Label(
-                    app.settings.wikiBot.isEnabled ? "Disable" : "Enable",
-                    systemImage: app.settings.wikiBot.isEnabled ? "xmark.circle.fill" : "checkmark.circle.fill"
-                )
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .help("Enable or disable WikiBridge")
         }
     }
 
-    private var overviewCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            let primarySource = app.settings.wikiBot.primarySource()
+    // MARK: - Metric Rail
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-                compactMetric(
-                    title: "Configured",
-                    value: "\(app.settings.wikiBot.sources.count)",
-                    symbol: "square.stack.3d.up"
-                )
-                compactMetric(
-                    title: "Enabled",
-                    value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)",
-                    symbol: "checkmark.seal"
-                )
-                compactMetric(
-                    title: "Primary Source",
-                    value: primarySource?.name ?? "Not set",
-                    symbol: "star.fill"
-                )
-            }
+    private var metricRail: some View {
+        let primary = app.settings.wikiBot.primarySource()
+        return LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
+            spacing: 8
+        ) {
+            DashboardMetricCard(
+                title: "Sources",
+                value: "\(app.settings.wikiBot.sources.count)",
+                subtitle: "Configured",
+                symbol: "square.stack.3d.up.fill",
+                color: .indigo
+            )
+            DashboardMetricCard(
+                title: "Enabled",
+                value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)",
+                subtitle: "Active",
+                symbol: "checkmark.circle.fill",
+                color: .green
+            )
+            DashboardMetricCard(
+                title: "Commands",
+                value: "\(totalCommands)",
+                subtitle: "Total",
+                symbol: "command",
+                color: .teal
+            )
+            DashboardMetricCard(
+                title: "Primary",
+                value: primary?.name ?? "—",
+                subtitle: primary?.isPrimary == true ? "Active" : "Auto",
+                symbol: "star.fill",
+                color: .orange
+            )
         }
-        .padding(12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 
-    private var sourcesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Wiki Sources", systemImage: "books.vertical.fill")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Button {
-                    editorMode = .create
-                    editorDraft = WikiSourceDraft.makeNew()
-                } label: {
-                    Label("Add Source", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                        )
+    // MARK: - Master Controls
+
+    private var masterControls: some View {
+        HStack(spacing: 12) {
+            Toggle("WikiBridge", isOn: Binding(
+                get: { app.settings.wikiBot.isEnabled },
+                set: { newValue in
+                    var updated = app.settings
+                    updated.wikiBot.isEnabled = newValue
+                    app.settings = updated
+                    app.saveSettings()
                 }
-                .buttonStyle(.plain)
-            }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
-            if sortedSources.isEmpty {
-                Text("No wiki sources configured.")
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(sortedSources) { source in
-                            WikiSourceCard(
-                                source: source,
-                                onSetPrimary: {
-                                    app.setWikiBridgePrimarySource(source.id)
-                                },
-                                onTest: {
-                                    app.testWikiBridgeSource(targetID: source.id)
-                                },
-                                onEdit: {
-                                    editorMode = .edit
-                                    editorDraft = WikiSourceDraft(source: source)
-                                },
-                                onToggleEnabled: {
-                                    app.toggleWikiBridgeSourceTargetEnabled(source.id)
-                                },
-                                onDelete: {
-                                    app.deleteWikiBridgeSourceTarget(source.id)
-                                }
-                            )
-                        }
-                    }
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
-        }
-        .padding(12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-    }
-
-    private var disabledStateContent: some View {
-        VStack(spacing: 14) {
-            Spacer(minLength: 0)
-            Image(systemName: "book.pages")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Enable WikiBridge to Configure")
-                .font(.title3.weight(.semibold))
-            Text("Turn on the toggle above to manage sources and commands.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func compactMetric(title: String, value: String, symbol: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.subheadline.weight(.semibold))
-            }
             Spacer()
+
+            Button {
+                editorMode = .create
+                editorDraft = WikiSourceDraft.makeNew()
+            } label: {
+                Label("Add Source", systemImage: "plus")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Sources List
+
+    private var sourcesList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if sortedSources.isEmpty {
+                    emptySourcesState
+                } else {
+                    ForEach(sortedSources) { source in
+                        WikiSourceCard(
+                            source: source,
+                            onSetPrimary: {
+                                app.setWikiBridgePrimarySource(source.id)
+                            },
+                            onTest: {
+                                app.testWikiBridgeSource(targetID: source.id)
+                            },
+                            onEdit: {
+                                editorMode = .edit
+                                editorDraft = WikiSourceDraft(source: source)
+                            },
+                            onToggleEnabled: {
+                                app.toggleWikiBridgeSourceTargetEnabled(source.id)
+                            },
+                            onDelete: {
+                                app.deleteWikiBridgeSourceTarget(source.id)
+                            }
+                        )
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var emptySourcesState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "book.pages.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No wiki sources configured")
+                .font(.subheadline.weight(.semibold))
+            Text("Add a source to enable wiki lookups in Discord.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                editorMode = .create
+                editorDraft = WikiSourceDraft.makeNew()
+            } label: {
+                Label("Add First Source", systemImage: "plus")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Disabled State
+
+    private var disabledStateContent: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "book.pages.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("WikiBridge is disabled")
+                .font(.subheadline.weight(.semibold))
+            Text("Enable WikiBridge to manage wiki sources and commands.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                var updated = app.settings
+                updated.wikiBot.isEnabled = true
+                app.settings = updated
+                app.saveSettings()
+            } label: {
+                Label("Enable WikiBridge", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
     }
 }
+
+// MARK: - Wiki Source Card
 
 private struct WikiSourceCard: View {
     let source: WikiSource
@@ -219,69 +266,196 @@ private struct WikiSourceCard: View {
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
 
+    @State private var isHovering = false
+    @State private var showDeleteConfirm = false
+
+    private let tint: Color = .indigo
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(source.name)
-                .font(.headline)
-
-            Text(statusText)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Text("Commands: \(source.commands.count)")
-                .font(.subheadline)
-            Text("Parsing Rules: \(source.parsingRules.count)")
-                .font(.subheadline)
-            Text("Last Lookup: \(lastLookupLabel)")
-                .font(.subheadline)
-
+            // Title row
             HStack(spacing: 8) {
-                if !source.isPrimary {
-                    Button("Set Primary", action: onSetPrimary)
-                        .buttonStyle(.bordered)
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 26, height: 26)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(source.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if source.isPrimary {
+                        WikiStatusPill(text: "Primary", color: .orange)
+                    }
+                    WikiStatusPill(
+                        text: source.enabled ? "Enabled" : "Disabled",
+                        color: source.enabled ? .green : .secondary
+                    )
                 }
-                Button("Test", action: onTest)
-                    .buttonStyle(.bordered)
-                Button("Edit Source", action: onEdit)
-                    .buttonStyle(.bordered)
-                Button(source.enabled ? "Disable" : "Enable", action: onToggleEnabled)
-                    .buttonStyle(.bordered)
-                Button("Delete", role: .destructive, action: onDelete)
-                    .buttonStyle(.bordered)
+            }
+
+            // Detail rows
+            VStack(alignment: .leading, spacing: 4) {
+                DiagnosticsLine(
+                    label: "Base URL",
+                    value: source.baseURL,
+                    tone: .primary
+                )
+                DiagnosticsLine(
+                    label: "Commands",
+                    value: "\(source.commands.count) \(source.commands.map(\.trigger).joined(separator: ", "))",
+                    tone: .primary
+                )
+                DiagnosticsLine(
+                    label: "Parsing Rules",
+                    value: source.parsingRules.isEmpty ? "None" : "\(source.parsingRules.count) configured",
+                    tone: .primary
+                )
+                DiagnosticsLine(
+                    label: "Last Lookup",
+                    value: lastLookupLabel,
+                    tone: source.lastLookupAt == nil ? .secondary : .primary
+                )
+            }
+
+            // Status line
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: statusIcon)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
+                Text(source.lastStatus.isEmpty ? "Ready" : source.lastStatus)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(statusColor.opacity(0.06))
+            )
+
+            // Action buttons
+            HStack(spacing: 6) {
+                if !source.isPrimary {
+                    WikiIconButton(symbol: "star.fill", color: .orange, help: "Set Primary") { onSetPrimary() }
+                }
+                WikiIconButton(symbol: "bolt.fill", color: .primary, help: "Test source") { onTest() }
+                WikiIconButton(symbol: "pencil", color: .primary, help: "Edit source") { onEdit() }
+                WikiIconButton(
+                    symbol: source.enabled ? "pause.circle.fill" : "play.circle.fill",
+                    color: source.enabled ? .orange : .green,
+                    help: source.enabled ? "Disable" : "Enable"
+                ) { onToggleEnabled() }
+                WikiIconButton(symbol: "trash", color: .red, help: "Delete source") { showDeleteConfirm = true }
+                    .alert("Delete Source?", isPresented: $showDeleteConfirm) {
+                        Button("Delete", role: .destructive) { onDelete() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("\"\(source.name)\" and all its commands will be permanently deleted.")
+                    }
                 Spacer()
             }
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.quaternary.opacity(0.45), lineWidth: 1)
+        .padding(10)
+        .glassCard(
+            cornerRadius: 14,
+            tint: tint.opacity(isHovering ? 0.10 : 0.05),
+            stroke: tint.opacity(isHovering ? 0.28 : 0.16)
+        )
+        .scaleEffect(isHovering ? 1.006 : 1)
+        .shadow(color: tint.opacity(isHovering ? 0.06 : 0.03), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
         }
-    }
-
-    private var statusText: String {
-        let enabledLabel = source.enabled ? "Enabled" : "Disabled"
-        return source.isPrimary ? "Primary • \(enabledLabel)" : enabledLabel
     }
 
     private var lastLookupLabel: String {
-        let status = source.lastStatus.trimmingCharacters(in: .whitespacesAndNewlines)
-        if status.hasPrefix("Resolved:") {
-            return status.replacingOccurrences(of: "Resolved:", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let date = source.lastLookupAt else { return "Never" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var statusColor: Color {
+        let status = source.lastStatus.lowercased()
+        if status.contains("error") || status.contains("failed") || status.contains("no result") {
+            return .red
         }
-        if status.hasPrefix("No match for \"") {
-            if let start = status.firstIndex(of: "\""),
-               let end = status[start...].dropFirst().firstIndex(of: "\"") {
-                return String(status[status.index(after: start)..<end])
-            }
+        if status.contains("resolved") {
+            return .green
         }
-        if status == "Ready" || status == "Never used" || status.isEmpty {
-            return "Never"
+        if source.lastLookupAt == nil || status == "ready" || status == "never used" {
+            return .secondary
         }
-        return status
+        return .green
+    }
+
+    private var statusIcon: String {
+        switch statusColor {
+        case .red: return "exclamationmark.circle.fill"
+        case .green: return "checkmark.circle.fill"
+        default: return "info.circle.fill"
+        }
     }
 }
+
+// MARK: - Wiki Icon Button
+
+private struct WikiIconButton: View {
+    let symbol: String
+    let color: Color
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 24, height: 24)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+// MARK: - Wiki Status Pill
+
+private struct WikiStatusPill: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(text)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.10), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(color.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Editor
 
 private enum WikiBridgeEditorMode {
     case create
