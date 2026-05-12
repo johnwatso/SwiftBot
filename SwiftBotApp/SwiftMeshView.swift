@@ -617,12 +617,16 @@ private struct ClusterTopologyLayout {
 }
 
 private struct ClusterMapNodeChip: View {
+    @EnvironmentObject var app: AppModel
     let node: ClusterNodeStatus
     var showLeaderSymbol: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: SwiftMeshHardwareSymbols.symbolName(for: node.hardwareModel))
+            Image(systemName: SwiftMeshHardwareSymbols.symbolName(
+                for: node.hardwareModel,
+                override: app.settings.clusterNodeIconOverrides[node.displayName]
+            ))
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -661,6 +665,9 @@ private struct ClusterMapNodeChip: View {
                 .stroke(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .opacity(node.status == .disconnected ? 0.7 : 1.0)
+        .contextMenu {
+            NodeIconContextMenu(nodeName: node.displayName)
+        }
     }
 
     private var statusColor: Color {
@@ -673,11 +680,15 @@ private struct ClusterMapNodeChip: View {
 }
 
 private struct ClusterNodeRow: View {
+    @EnvironmentObject var app: AppModel
     let node: ClusterNodeStatus
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: SwiftMeshHardwareSymbols.symbolName(for: node.hardwareModel))
+            Image(systemName: SwiftMeshHardwareSymbols.symbolName(
+                for: node.hardwareModel,
+                override: app.settings.clusterNodeIconOverrides[node.displayName]
+            ))
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 22)
@@ -730,6 +741,9 @@ private struct ClusterNodeRow: View {
                 .stroke(Color.primary.opacity(0.06), lineWidth: 1)
         )
         .opacity(node.status == .disconnected ? 0.64 : 1.0)
+        .contextMenu {
+            NodeIconContextMenu(nodeName: node.displayName)
+        }
     }
 
     private var statusColor: Color {
@@ -737,6 +751,38 @@ private struct ClusterNodeRow: View {
         case .healthy: return .green
         case .degraded: return .yellow
         case .disconnected: return .red
+        }
+    }
+}
+
+/// Shared "Set Icon" submenu used by both the cluster-map chip and the
+/// Nodes-table row's contextual menu. Writes into
+/// `settings.clusterNodeIconOverrides[nodeName]`, keyed by display name.
+private struct NodeIconContextMenu: View {
+    @EnvironmentObject var app: AppModel
+    let nodeName: String
+
+    var body: some View {
+        let current = app.settings.clusterNodeIconOverrides[nodeName]
+        Menu("Set Icon") {
+            ForEach(SwiftMeshNodeIconCatalog.all) { option in
+                Button {
+                    app.settings.clusterNodeIconOverrides[nodeName] = option.symbol
+                    app.saveSettings()
+                } label: {
+                    if current == option.symbol {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Label(option.label, systemImage: option.symbol)
+                    }
+                }
+            }
+        }
+        if current != nil {
+            Button("Reset Icon to Auto-detect") {
+                app.settings.clusterNodeIconOverrides.removeValue(forKey: nodeName)
+                app.saveSettings()
+            }
         }
     }
 }
@@ -1170,16 +1216,33 @@ struct FollowerActivityRow: View {
 }
 
 enum SwiftMeshHardwareSymbols {
-    static func symbolName(for hardwareModel: String) -> String {
+    /// Returns the symbol the user has explicitly chosen for this node, or
+    /// the auto-detected fallback if none is configured. Falls back further
+    /// to a generic "desktopcomputer" if the override string ever contains
+    /// an SF Symbol that doesn't exist on this macOS version (shouldn't
+    /// happen given the curated picker, but kept defensive).
+    static func symbolName(for hardwareModel: String, override: String? = nil) -> String {
+        if let trimmed = override?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !trimmed.isEmpty {
+            return trimmed
+        }
         let normalized = normalizeHardwareModel(hardwareModel)
         if normalized.hasPrefix("macbook") {
             return "laptopcomputer"
         }
-        if normalized.hasPrefix("macmini")
-            || normalized.hasPrefix("macstudio")
-            || normalized.hasPrefix("macpro")
-            || normalized.hasPrefix("imac")
-            || normalized.hasPrefix("mac") {
+        if normalized.hasPrefix("macstudio") {
+            return "macstudio"
+        }
+        if normalized.hasPrefix("macmini") {
+            return "macmini"
+        }
+        if normalized.hasPrefix("macpro") {
+            return "macpro.gen3"
+        }
+        if normalized.hasPrefix("imac") {
+            return "desktopcomputer"
+        }
+        if normalized.hasPrefix("mac") {
             return "server.rack"
         }
         return "desktopcomputer"
@@ -1190,4 +1253,35 @@ enum SwiftMeshHardwareSymbols {
             .lowercased()
             .filter { $0.isLetter || $0.isNumber }
     }
+}
+
+/// Curated catalogue of SF Symbols offered by the SwiftMesh node-icon
+/// contextual menu. Each entry pairs a system symbol name with the
+/// human-readable label shown in the picker. Order here is the order shown
+/// in the menu (laptops → desktops → servers → generic).
+enum SwiftMeshNodeIconCatalog {
+    struct Option: Identifiable {
+        let symbol: String
+        let label: String
+        var id: String { symbol }
+    }
+
+    static let all: [Option] = [
+        .init(symbol: "laptopcomputer", label: "Laptop"),
+        .init(symbol: "macbook", label: "MacBook"),
+        .init(symbol: "macbook.gen1", label: "MacBook (gen 1)"),
+        .init(symbol: "macbook.gen2", label: "MacBook (gen 2)"),
+        .init(symbol: "desktopcomputer", label: "Desktop"),
+        .init(symbol: "macmini", label: "Mac mini"),
+        .init(symbol: "macmini.fill", label: "Mac mini (filled)"),
+        .init(symbol: "macstudio", label: "Mac Studio"),
+        .init(symbol: "macstudio.fill", label: "Mac Studio (filled)"),
+        .init(symbol: "macpro.gen1", label: "Mac Pro (gen 1)"),
+        .init(symbol: "macpro.gen2", label: "Mac Pro (gen 2)"),
+        .init(symbol: "macpro.gen3", label: "Mac Pro (gen 3)"),
+        .init(symbol: "server.rack", label: "Server rack"),
+        .init(symbol: "xserve", label: "Xserve"),
+        .init(symbol: "pc", label: "PC"),
+        .init(symbol: "display", label: "Display")
+    ]
 }
