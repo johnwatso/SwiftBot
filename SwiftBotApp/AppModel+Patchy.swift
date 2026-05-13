@@ -98,7 +98,11 @@ extension AppModel {
                 let delivery = await sendPatchyNotificationDetailed(
                     channelId: target.channelId,
                     message: fallback,
-                    embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
+                    embedJSON: await patchyEmbedJSON(
+                        mapped.embedJSON,
+                        for: target,
+                        item: item
+                    ),
                     roleIDs: target.roleIDs
                 )
 
@@ -277,7 +281,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
+                                embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: driverItem),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -324,7 +328,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
+                                embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: githubItem),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -382,7 +386,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
+                                embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: steamItem),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -422,7 +426,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
+                                embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: item),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -457,7 +461,7 @@ extension AppModel {
         return now.timeIntervalSince(lastCheckedAt) >= Double(clampedInterval * 60)
     }
 
-    private func patchyEmbedJSON(_ embedJSON: String, for target: PatchySourceTarget) -> String {
+    private func patchyEmbedJSON(_ embedJSON: String, for target: PatchySourceTarget, item: (any UpdateItem)? = nil) async -> String {
         let trimmed = embedJSON.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let data = trimmed.data(using: .utf8),
@@ -469,6 +473,16 @@ extension AppModel {
         }
 
         embeds[0]["color"] = PatchyEmbedAccent.discordColorInt(hex: target.embedColorHex, source: target.source)
+        if target.summarizeWithAppleIntelligence, let summaryInput = patchySummaryInput(for: item) {
+            if let summary = await aiService.summarizePatchyUpdateWithAppleIntelligence(
+                updateText: summaryInput.text,
+                source: summaryInput.source
+            ) {
+                embeds[0] = patchyEmbedWithAISummary(embeds[0], summary: summary)
+            } else {
+                appendPatchyLog("AI summary skipped [\(target.source.rawValue)]: Apple Intelligence unavailable or returned no summary.")
+            }
+        }
         payload["embeds"] = embeds
 
         guard let encoded = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes]),
@@ -477,6 +491,111 @@ extension AppModel {
             return embedJSON
         }
         return output
+    }
+
+    private func patchySummaryInput(for item: (any UpdateItem)?) -> (source: String, text: String)? {
+        guard let item else { return nil }
+
+        if let driver = item as? DriverUpdateItem {
+            let text = """
+            Title: \(driver.releaseNotes.title)
+            Vendor: \(driver.releaseNotes.author)
+            Version: \(driver.releaseNotes.version)
+            Release date: \(driver.releaseNotes.date)
+
+            \(patchyReleaseNotesText(driver.releaseNotes))
+            """
+            return ("\(driver.releaseNotes.author) driver release", text)
+        }
+
+        if let github = item as? GitHubUpdateItem {
+            let modeLabel: String
+            switch github.info.mode {
+            case .releases:
+                modeLabel = "release"
+            case .commits:
+                modeLabel = "commit"
+            case .allCommits:
+                modeLabel = "commit across branches"
+            }
+            let text = """
+            Repository/source: \(github.info.author)
+            Type: GitHub \(modeLabel)
+            Title: \(github.info.title)
+            Version/identifier: \(github.info.displayVersion)
+            Date: \(github.info.date)
+            URL: \(github.info.url)
+
+            \(github.info.summary)
+            """
+            return ("GitHub \(modeLabel)", text)
+        }
+
+        if let steam = item as? SteamUpdateItem {
+            let cleaned = steam.newsItem.contents
+                .replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"\[[^\]]+\]"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = """
+            Game/source: \(steam.newsItem.feedLabel)
+            Title: \(steam.newsItem.title)
+            Date: \(steam.newsItem.dateFormatted)
+            URL: \(steam.newsItem.url)
+
+            \(cleaned)
+            """
+            return ("Steam patch notes", text)
+        }
+
+        return nil
+    }
+
+    private func patchyReleaseNotesText(_ releaseNotes: ReleaseNotes) -> String {
+        releaseNotes.sections.map { section in
+            var lines = [section.title]
+            for bullet in section.bullets {
+                lines.append("- \(bullet.text)")
+                lines += bullet.subBullets.map { "  - \($0)" }
+            }
+            return lines.joined(separator: "\n")
+        }
+        .joined(separator: "\n\n")
+    }
+
+    private func patchyEmbedWithAISummary(_ embed: [String: Any], summary: String) -> [String: Any] {
+        let cleanedSummary = patchyNormalizedAISummary(summary)
+        guard !cleanedSummary.isEmpty else { return embed }
+
+        var updated = embed
+        let existingDescription = (embed["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let summaryBlock = "**AI Summary**\n\(cleanedSummary)"
+        let combined = existingDescription.isEmpty ? summaryBlock : "\(summaryBlock)\n\n\(existingDescription)"
+        updated["description"] = patchyTruncateDiscordDescription(combined)
+        return updated
+    }
+
+    private func patchyNormalizedAISummary(_ summary: String) -> String {
+        let lines = summary
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let normalized = lines.prefix(3).map { line -> String in
+            var text = line
+            while text.hasPrefix("-") || text.hasPrefix("•") || text.hasPrefix("*") {
+                text.removeFirst()
+                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return "• \(text)"
+        }
+        return normalized.joined(separator: "\n")
+    }
+
+    private func patchyTruncateDiscordDescription(_ description: String) -> String {
+        let limit = 4096
+        guard description.count > limit else { return description }
+        return String(description.prefix(limit - 3)) + "..."
     }
 
     func updatePatchyTargetRuntimeState(id: UUID, apply: (inout PatchySourceTarget) -> Void) {

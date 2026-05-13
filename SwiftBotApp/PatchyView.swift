@@ -944,6 +944,7 @@ private struct PatchTargetCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 PatchyStatusMetadataRow(label: "Last Check", value: relativeTimestamp(target.lastCheckedAt))
                 PatchyStatusMetadataRow(label: "Last Run", value: relativeTimestamp(target.lastRunAt))
+                PatchyStatusMetadataRow(label: "Next Run", value: nextRunTimestamp())
             }
         }
         .padding(.horizontal, 10)
@@ -972,6 +973,13 @@ private struct PatchTargetCard: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func nextRunTimestamp() -> String {
+        guard target.isEnabled else { return "Paused" }
+        guard let lastCheckedAt = target.lastCheckedAt else { return "When started" }
+        let clampedInterval = max(1, min(target.pollingIntervalMinutes, 10_080))
+        return relativeTimestamp(lastCheckedAt.addingTimeInterval(Double(clampedInterval * 60)))
     }
 
     private func isWarning(_ status: String) -> Bool {
@@ -1150,6 +1158,7 @@ private struct PatchyTargetDraft: Identifiable {
     var githubBranchMode: PatchyGitHubBranchMode
     var pollingIntervalMinutes: Int
     var embedColorHex: String
+    var summarizeWithAppleIntelligence: Bool
     var serverId: String
     var channelId: String
     var roleIDs: [String]
@@ -1168,6 +1177,7 @@ private struct PatchyTargetDraft: Identifiable {
         githubBranchMode = target.githubBranchMode
         pollingIntervalMinutes = target.pollingIntervalMinutes
         embedColorHex = target.embedColorHex
+        summarizeWithAppleIntelligence = target.summarizeWithAppleIntelligence
         serverId = target.serverId
         channelId = target.channelId
         roleIDs = target.roleIDs
@@ -1198,6 +1208,7 @@ private struct PatchyTargetDraft: Identifiable {
             githubBranchMode: githubBranchMode,
             pollingIntervalMinutes: pollingIntervalMinutes,
             embedColorHex: PatchyEmbedAccent.resolvedHex(embedColorHex, for: source),
+            summarizeWithAppleIntelligence: summarizeWithAppleIntelligence,
             serverId: serverId,
             channelId: channelId,
             roleIDs: roleIDs,
@@ -1296,6 +1307,15 @@ private struct PatchyTargetEditorSheet: View {
                     PatchyEditorSection(title: "Notification Appearance", systemImage: "paintpalette") {
                         PatchyEditorRow(title: "Embed Accent", detail: "Used as the Discord embed color for this target.") {
                             PatchyAccentChipPicker(selectedHex: $draft.embedColorHex)
+                        }
+
+                        PatchyEditorRow(
+                            title: "AI Summary",
+                            detail: "Use Apple Intelligence to summarise this update before posting."
+                        ) {
+                            Toggle("", isOn: $draft.summarizeWithAppleIntelligence)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
                         }
                     }
                 }
