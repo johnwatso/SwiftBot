@@ -448,6 +448,9 @@ struct RuleEditorView: View {
                                 badge: rule.incompatibleBlocks.contains(condition.id) ? "Review" : nil,
                                 action: {
                                     inspectorSelection = .condition(condition.id)
+                                },
+                                onDelete: {
+                                    deleteCondition(condition.id)
                                 }
                             )
                         }
@@ -483,6 +486,9 @@ struct RuleEditorView: View {
                                 isSelected: inspectorSelection == .ai(action.id),
                                 action: {
                                     inspectorSelection = .ai(action.id)
+                                },
+                                onDelete: {
+                                    deleteAction(action.id, from: \.aiBlocks)
                                 }
                             )
                         }
@@ -518,6 +524,9 @@ struct RuleEditorView: View {
                                 isSelected: inspectorSelection == .modifier(action.id),
                                 action: {
                                     inspectorSelection = .modifier(action.id)
+                                },
+                                onDelete: {
+                                    deleteAction(action.id, from: \.modifiers)
                                 }
                             )
                         }
@@ -554,6 +563,9 @@ struct RuleEditorView: View {
                                 badge: rule.incompatibleBlocks.contains(action.id) ? "Review" : nil,
                                 action: {
                                     inspectorSelection = .action(action.id)
+                                },
+                                onDelete: {
+                                    deleteAction(action.id, from: \.actions)
                                 }
                             )
                         }
@@ -2368,53 +2380,79 @@ private struct WorkflowStepSummaryRow: View {
     var isSelected: Bool = false
     var badge: String? = nil
     let action: () -> Void
+    var onDelete: (() -> Void)? = nil
+    @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(accent)
+                .frame(width: 22, height: 22)
+                .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            if let badge, !badge.isEmpty {
+                Text(badge)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(accent)
-                    .frame(width: 22, height: 22)
-                    .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(accent.opacity(0.10), in: Capsule())
+            }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
-
-                Spacer(minLength: 8)
-
-                if let badge, !badge.isEmpty {
-                    Text(badge)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(accent.opacity(0.10), in: Capsule())
-                }
-
+                .buttonStyle(.plain)
+                .help("Remove block")
+                .opacity(isHovering || isSelected ? 1 : 0)
+            } else {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? AnyShapeStyle(accent.opacity(0.075)) : AnyShapeStyle(.clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isSelected ? accent.opacity(0.14) : .clear, lineWidth: 1)
-            )
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? AnyShapeStyle(accent.opacity(0.075)) : AnyShapeStyle(.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(isSelected ? accent.opacity(0.14) : .clear, lineWidth: 1)
+        )
+        .onTapGesture(perform: action)
+        .contextMenu {
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Remove Block", systemImage: "trash")
+                }
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.14)) {
+                isHovering = hovering
+            }
+        }
     }
 }
 

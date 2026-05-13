@@ -819,36 +819,36 @@ private struct PatchTargetCard: View {
 
     @State private var isHovering = false
     @State private var showDeleteConfirm = false
+    private let statusSidebarWidth: CGFloat = 232
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top, spacing: 10) {
-                sourceBadge
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .top, spacing: 10) {
+                        sourceBadge
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 7) {
-                        Text(sourceDisplayName)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        PatchyStatusPill(isEnabled: target.isEnabled)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 7) {
+                                Text(sourceDisplayName)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                PatchyStatusPill(isEnabled: target.isEnabled)
+                            }
+                            Text(sourceSubtitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
-                    Text(sourceSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+
+                    metadataBlock
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 8)
-
-                statusTelemetry
-            }
-
-            HStack(alignment: .top, spacing: 10) {
-                metadataBlock
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                lastCheckBlock
-                    .frame(width: 116, alignment: .leading)
+                statusSidebar
+                    .frame(minWidth: 200, idealWidth: statusSidebarWidth, maxWidth: 260, alignment: .leading)
+                    .layoutPriority(1)
             }
 
             HStack(spacing: 6) {
@@ -918,35 +918,42 @@ private struct PatchTargetCard: View {
         .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
-    private var lastCheckBlock: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            PatchyMetadataLine(label: "Last Check", value: relativeTimestamp(target.lastCheckedAt))
-            PatchyMetadataLine(label: "Last Run", value: relativeTimestamp(target.lastRunAt))
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-    }
+    private var statusSidebar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: statusSymbol(target.lastStatus))
+                        .font(.subheadline.weight(.semibold))
+                    Text(statusTitle(target.lastStatus))
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(statusColor(target.lastStatus))
 
-    private var statusTelemetry: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            HStack(spacing: 5) {
-                Image(systemName: statusSymbol(target.lastStatus))
-                    .font(.caption.weight(.semibold))
-                Text(statusTitle(target.lastStatus))
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
+                Text(statusDetail(target.lastStatus))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(statusColor(target.lastStatus))
 
-            Text(statusDetail(target.lastStatus))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            Rectangle()
+                .fill(Color.primary.opacity(0.07))
+                .frame(height: 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                PatchyStatusMetadataRow(label: "Last Check", value: relativeTimestamp(target.lastCheckedAt))
+                PatchyStatusMetadataRow(label: "Last Run", value: relativeTimestamp(target.lastRunAt))
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(statusColor(target.lastStatus).opacity(0.075), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(statusColor(target.lastStatus).opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(statusColor(target.lastStatus).opacity(0.16), lineWidth: 1)
+        )
     }
 
     private var sourceSubtitle: String {
@@ -1003,7 +1010,6 @@ private struct PatchTargetCard: View {
         if status.contains("GitHub") && status.contains("commits") { return "Commit activity" }
         if status.contains("GitHub") { return "Release notes available" }
         if status.contains("Unchanged") || status.contains("unchanged") { return "Last sync clean" }
-        if status.count > 34 { return String(status.prefix(34)) + "…" }
         return status
     }
 
@@ -1079,6 +1085,30 @@ private struct PatchyMetadataLine: View {
     }
 }
 
+private struct PatchyStatusMetadataRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+            Text("·")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(.primary.opacity(0.82))
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
+    }
+}
+
 private struct PatchyActionButton: View {
     let title: String
     let symbol: String
@@ -1123,6 +1153,9 @@ private struct PatchyTargetDraft: Identifiable {
     var serverId: String
     var channelId: String
     var roleIDs: [String]
+    var lastCheckedAt: Date?
+    var lastRunAt: Date?
+    var lastStatus: String
 
     init(target: PatchySourceTarget) {
         id = target.id
@@ -1138,6 +1171,9 @@ private struct PatchyTargetDraft: Identifiable {
         serverId = target.serverId
         channelId = target.channelId
         roleIDs = target.roleIDs
+        lastCheckedAt = target.lastCheckedAt
+        lastRunAt = target.lastRunAt
+        lastStatus = target.lastStatus
     }
 
     @MainActor
@@ -1164,7 +1200,10 @@ private struct PatchyTargetDraft: Identifiable {
             embedColorHex: PatchyEmbedAccent.resolvedHex(embedColorHex, for: source),
             serverId: serverId,
             channelId: channelId,
-            roleIDs: roleIDs
+            roleIDs: roleIDs,
+            lastCheckedAt: lastCheckedAt,
+            lastRunAt: lastRunAt,
+            lastStatus: lastStatus
         )
     }
 }

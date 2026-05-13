@@ -484,6 +484,7 @@ extension AppModel {
         var target = settings.patchy.sourceTargets[idx]
         apply(&target)
         settings.patchy.sourceTargets[idx] = target
+        persistSettingsQuietly()
     }
 
     func appendPatchyLog(_ line: String) {
@@ -494,6 +495,7 @@ extension AppModel {
             patchyDebugLogs.removeLast(patchyDebugLogs.count - 200)
         }
         logs.append("Patchy: \(line)")
+        persistAnalyticsRuntime()
     }
 
     func persistSettingsQuietly() {
