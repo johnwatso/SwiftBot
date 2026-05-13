@@ -96,7 +96,9 @@ public struct GitHubUpdateSource: UpdateSource, Sendable {
             channel = "\(owner)/\(repo)/releases"
         case .commits(let branch):
             let branchPart = branch.trimmingCharacters(in: .whitespacesAndNewlines)
-            channel = "\(owner)/\(repo)/commits/\(branchPart.isEmpty ? "default" : branchPart)"
+            channel = "\(owner)/\(repo)/commits/\(branchPart.isEmpty ? "main" : branchPart)"
+        case .allCommits:
+            channel = "\(owner)/\(repo)/commits/all"
         }
         self.sourceKey = CacheKeyBuilder.build(vendor: "github", channel: channel)
         self.service = service

@@ -449,7 +449,7 @@ enum ActivityCategory: String, CaseIterable {
         case .gateway: return "bubble.left.and.bubble.right.fill"
         case .voice: return "person.3.sequence"
         case .mesh: return "point.3.connected.trianglepath.dotted"
-        case .patchy: return "hammer.fill"
+        case .patchy: return "square.and.arrow.down.badge.checkmark"
         case .ai: return "sparkles"
         case .wiki: return "book.pages.fill"
         case .swiftMiner: return "pickaxe"

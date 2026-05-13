@@ -16,75 +16,98 @@ struct VoiceWorkspaceView: View {
     @State private var showRecipeWizard: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-        if app.isFailoverManagedNode {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.orange)
-                Text("Read-only on Failover nodes. Action rules sync from Primary.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
+        VStack(alignment: .leading, spacing: 15) {
+            if app.isFailoverManagedNode {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.orange)
+                    Text("Read-only on Failover nodes. Action rules sync from Primary.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.orange.opacity(0.08))
+                )
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-        }
-        HSplitView {
-            RuleListView(
-                rules: rulesBinding,
-                selectedRuleID: appSelectionBinding,
-                onAddNew: {
-                    showRecipeWizard = true
-                },
-                onDeleteRuleID: { ruleID in
-                    ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
-                },
-                isLoading: ruleStore.isLoading
-            )
-            .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
 
-            Group {
-                if let selectedRuleBinding {
-                    RuleEditorView(rule: selectedRuleBinding)
-                        .id(ruleStore.selectedRuleID)
-                } else {
-                    VStack(spacing: 8) {
-                        Image(systemName: "list.bullet.rectangle")
-                            .font(.largeTitle)
-                            .foregroundStyle(.secondary)
-                        Text("Select an Action Rule")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
+            ActionsWorkspaceHeader(
+                rules: ruleStore.rules,
+                commandLog: app.commandLog
+            )
+
+            ActionsWorkspaceSurface {
+                HSplitView {
+                    RuleListView(
+                        rules: rulesBinding,
+                        selectedRuleID: appSelectionBinding,
+                        onAddNew: {
+                            showRecipeWizard = true
+                        },
+                        onDeleteRuleID: { ruleID in
+                            ruleStore.deleteRule(id: ruleID, undoManager: undoManager)
+                        },
+                        isLoading: ruleStore.isLoading
+                    )
+                    .frame(minWidth: 204, idealWidth: 224, maxWidth: 256)
+
+                    Group {
+                        if let selectedRuleBinding {
+                            RuleEditorView(rule: selectedRuleBinding)
+                                .id(ruleStore.selectedRuleID)
+                        } else {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Selected Workflow")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                    .tracking(0.5)
+
+                                VStack(spacing: 8) {
+                                    Image(systemName: "list.bullet.rectangle")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(.secondary)
+                                    Text("Select an Action Rule")
+                                        .font(.headline)
+                                        .foregroundStyle(.secondary)
+                                    Text("Choose a rule from the navigator to open its workflow and inspector in this workspace.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                            .padding(24)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .background(.clear)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.clear)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .disabled(app.isFailoverManagedNode)
+            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+            .sheet(isPresented: $showRecipeWizard) {
+                RecipeWizardView { rule in
+                    ruleStore.addRule(rule)
+                }
+                .environmentObject(app)
+            }
+            .onChange(of: ruleStore.rules) {
+                if let selected = ruleStore.selectedRuleID,
+                   !ruleStore.rules.contains(where: { $0.id == selected }) {
+                    ruleStore.selectedRuleID = nil
+                }
+                ruleStore.scheduleAutoSave()
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.white.opacity(0.04))
-        )
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
-        .sheet(isPresented: $showRecipeWizard) {
-            RecipeWizardView { rule in
-                ruleStore.addRule(rule)
-            }
-            .environmentObject(app)
-        }
-        .onChange(of: ruleStore.rules) {
-            if let selected = ruleStore.selectedRuleID,
-               !ruleStore.rules.contains(where: { $0.id == selected }) {
-                ruleStore.selectedRuleID = nil
-            }
-            ruleStore.scheduleAutoSave()
-        }
-        } // end VStack
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var rulesBinding: Binding<[Rule]> {
@@ -124,11 +147,179 @@ struct VoiceWorkspaceView: View {
         )
     }
 
-    private var serverIds: [String] {
-        app.connectedServers.keys.sorted {
-            (app.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(app.connectedServers[$1] ?? $1) == .orderedAscending
+}
+
+private struct ActionsWorkspaceHeader: View {
+    let rules: [Rule]
+    let commandLog: [CommandLogEntry]
+
+    private var activeRuleCount: Int {
+        rules.filter(\.isEnabled).count
+    }
+
+    private var commandsToday: Int {
+        commandLog.filter { Calendar.current.isDateInToday($0.time) }.count
+    }
+
+    private var globalValidationSummary: String {
+        if rules.flatMap(\.validationIssues).contains(where: { $0.severity == .error }) { return "Errors" }
+        if rules.flatMap(\.validationIssues).contains(where: { $0.severity == .warning }) { return "Warnings" }
+        return "Healthy"
+    }
+
+    private var globalValidationSubtitle: String {
+        let issueCount = rules.flatMap(\.validationIssues).count
+        return issueCount == 0 ? "All rules" : "\(issueCount) issue\(issueCount == 1 ? "" : "s")"
+    }
+
+    private var validationColor: Color {
+        switch globalValidationSummary {
+        case "Errors": return .red
+        case "Warnings": return .orange
+        default: return .green
         }
     }
+
+    private var lastTriggeredRuleTitle: String {
+        "Not tracked"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.badge.automatic.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text("Automations")
+                    .font(.title3.weight(.semibold))
+            }
+
+            Text("Build automations that react to Discord events.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                ActionsOverviewMetricCard(
+                    title: "Active Rules",
+                    value: "\(activeRuleCount)",
+                    subtitle: "\(rules.count) total rules",
+                    symbol: "checkmark.circle.fill",
+                    color: .green
+                )
+                ActionsOverviewMetricCard(
+                    title: "Validation Status",
+                    value: globalValidationSummary,
+                    subtitle: globalValidationSubtitle,
+                    symbol: "checkmark.seal.fill",
+                    color: validationColor
+                )
+                ActionsOverviewMetricCard(
+                    title: "Last Triggered Rule",
+                    value: lastTriggeredRuleTitle,
+                    subtitle: "Runtime history",
+                    symbol: "clock",
+                    color: .orange
+                )
+                ActionsOverviewMetricCard(
+                    title: "Commands Today",
+                    value: "\(commandsToday)",
+                    subtitle: "Executed today",
+                    symbol: "terminal.fill",
+                    color: .blue
+                )
+            }
+        }
+    }
+}
+
+private struct ActionsOverviewMetricCard: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let symbol: String
+    let color: Color
+    @State private var isHovering = false
+
+    private let cornerRadius: CGFloat = 22
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 22, height: 22)
+                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassCard(
+            cornerRadius: cornerRadius,
+            tint: color.opacity(isHovering ? 0.15 : 0.10),
+            stroke: color.opacity(isHovering ? 0.38 : 0.24)
+        )
+        .scaleEffect(isHovering ? 1.012 : 1)
+        .shadow(color: color.opacity(isHovering ? 0.14 : 0.06), radius: isHovering ? 14 : 8, y: isHovering ? 8 : 4)
+        .animation(.smooth(duration: 0.18), value: isHovering)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+    }
+}
+
+private struct ActionsWorkspaceSurface<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay(Color.primary.opacity(0.016))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.primary.opacity(0.065), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.025), radius: 2, x: 0, y: 1)
+    }
+}
+
+private enum WorkflowInspectorSelection: Equatable {
+    case overview
+    case trigger
+    case condition(UUID)
+    case ai(UUID)
+    case modifier(UUID)
+    case action(UUID)
+}
+
+private enum WorkflowStageKind {
+    case condition
+    case ai
+    case modifier
+    case action
 }
 
 struct RuleEditorView: View {
@@ -138,6 +329,8 @@ struct RuleEditorView: View {
     @State private var hasSeenRuleOnboarding: Bool = false
     @State private var guidedStep: GuidedBuildStep = .none
     @State private var scrollToTriggersSignal: Bool = false
+    @State private var showBlockLibrary: Bool = false
+    @State private var inspectorSelection: WorkflowInspectorSelection = .overview
 
     private var serverIds: [String] {
         app.connectedServers.keys.sorted {
@@ -149,19 +342,51 @@ struct RuleEditorView: View {
         app.connectedServers[serverId] ?? "Server \(serverId.suffix(4))"
     }
 
+    private var primaryServerName: String? {
+        if let serverCondition = rule.conditions.first(where: { $0.type == .server && !$0.value.isEmpty }) {
+            return serverName(for: serverCondition.value)
+        }
+
+        if !rule.triggerServerId.isEmpty {
+            return serverName(for: rule.triggerServerId)
+        }
+
+        if let actionServerId = rule.actions.first(where: { !$0.serverId.isEmpty })?.serverId {
+            return serverName(for: actionServerId)
+        }
+
+        return nil
+    }
+
+    private var workflowBlockCount: Int {
+        rule.conditions.count + rule.aiBlocks.count + rule.modifiers.count + rule.actions.count
+    }
+
+    private var workflowPermissionCount: Int {
+        let actionPermissions = rule.actions.flatMap { $0.type.requiredPermissions }
+        let modifierPermissions = rule.modifiers.flatMap { $0.type.requiredPermissions }
+        return Set(actionPermissions + modifierPermissions).count
+    }
+
+    private var workflowValidationSummary: String {
+        if rule.validationIssues.contains(where: { $0.severity == .error }) { return "Errors" }
+        if rule.validationIssues.contains(where: { $0.severity == .warning }) { return "Warnings" }
+        return "Healthy"
+    }
+
     private var ruleCanvasContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             if rule.trigger == nil && !hasSeenRuleOnboarding {
                 EmptyRuleStateView(
                     icon: "bolt.circle",
                     title: "Choose a Trigger",
-                    description: "Select a trigger from the Block Library to begin building this rule.",
+                    description: "Select a trigger from the Blocks library to begin building this rule.",
                     onShowMe: {
-                        scrollToTriggersSignal = true
-                        guidedStep = .trigger
+                        openBlockLibrary(focusTrigger: true)
                     },
                     onContinue: {
                         hasSeenRuleOnboarding = true
+                        inspectorSelection = .trigger
                     }
                 )
                 .padding(.top, 40)
@@ -172,197 +397,415 @@ struct RuleEditorView: View {
                     )
                 )
             } else {
-                RuleCanvasSection(title: "Trigger", systemImage: "bolt.fill", accent: .yellow,
-                                  guidedHighlight: guidedStep == .trigger) {
-                    TriggerSectionView(
-                        triggerType: rule.trigger
+                WorkflowStageView(
+                    title: "Trigger",
+                    systemImage: "bolt.fill",
+                    accent: .yellow,
+                    subtitle: "The event that starts this automation",
+                    trailingMeta: "Stage 1",
+                    isFocused: inspectorSelection == .trigger || guidedStep == .trigger
+                ) {
+                    WorkflowStepSummaryRow(
+                        title: rule.trigger?.rawValue ?? "Choose Trigger",
+                        subtitle: rule.trigger == nil ? "Select the event that starts this automation." : rule.triggerSummary,
+                        systemImage: rule.trigger?.symbol ?? "bolt.badge.questionmark",
+                        accent: .yellow,
+                        isSelected: inspectorSelection == .trigger,
+                        badge: rule.trigger == nil ? "Required" : nil,
+                        action: {
+                            inspectorSelection = .trigger
+                        }
                     )
-                    if guidedStep == .trigger {
-                        Label("Select a trigger from the Block Library to begin.", systemImage: "arrow.left")
-                            .font(.caption)
-                            .foregroundStyle(.yellow.opacity(0.8))
-                            .padding(.top, 4)
+                }
+
+                WorkflowInsertionLane(title: "Add Filter", accent: .blue) {
+                    inspectorSelection = .overview
+                    openBlockLibrary()
+                }
+
+                WorkflowStageView(
+                    title: "Filters",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    accent: .blue,
+                    subtitle: "Conditions that gate execution",
+                    trailingMeta: "Stage 2",
+                    isFocused: isInspectorFocused(in: rule.conditions.map(\.id), matching: .condition)
+                ) {
+                    if rule.conditions.isEmpty {
+                        WorkflowStagePlaceholder(
+                            title: "No filters configured",
+                            subtitle: "Add conditions to narrow when the rule should run.",
+                            accent: .blue
+                        )
+                    } else {
+                        ForEach(rule.conditions) { condition in
+                            WorkflowStepSummaryRow(
+                                title: condition.type.rawValue,
+                                subtitle: summary(for: condition),
+                                systemImage: condition.type.symbol,
+                                accent: .blue,
+                                isSelected: inspectorSelection == .condition(condition.id),
+                                badge: rule.incompatibleBlocks.contains(condition.id) ? "Review" : nil,
+                                action: {
+                                    inspectorSelection = .condition(condition.id)
+                                }
+                            )
+                        }
                     }
-                    // Trigger can be replaced but not deleted
-                    Button {
-                        rule.isEditingTrigger = true
-                        scrollToTriggersSignal = true
-                        guidedStep = .trigger
-                    } label: {
-                        Label("Change Trigger", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
+                }
+
+                WorkflowInsertionLane(title: "Add AI Block", accent: .purple) {
+                    inspectorSelection = .overview
+                    openBlockLibrary()
+                }
+
+                WorkflowStageView(
+                    title: "AI Processing",
+                    systemImage: "sparkles",
+                    accent: .purple,
+                    subtitle: "Optional processing that runs before message output",
+                    trailingMeta: "Optional",
+                    isFocused: isInspectorFocused(in: rule.aiBlocks.map(\.id), matching: .ai)
+                ) {
+                    if rule.aiBlocks.isEmpty {
+                        WorkflowStagePlaceholder(
+                            title: "No AI stage configured",
+                            subtitle: "Add AI blocks when the rule needs generation, classification, or extraction.",
+                            accent: .purple
+                        )
+                    } else {
+                        ForEach(rule.aiBlocks) { action in
+                            WorkflowStepSummaryRow(
+                                title: action.type.rawValue,
+                                subtitle: summary(for: action, category: .ai),
+                                systemImage: action.type.symbol,
+                                accent: .purple,
+                                isSelected: inspectorSelection == .ai(action.id),
+                                action: {
+                                    inspectorSelection = .ai(action.id)
+                                }
+                            )
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.yellow)
-                    .padding(.top, 4)
                 }
 
-                Divider().opacity(0.4)
-
-                // Filters Section
-                RuleCanvasSection(title: "Filters", systemImage: "line.3.horizontal.decrease.circle", accent: .blue) {
-                    ConditionsSectionView(
-                        conditions: $rule.conditions,
-                        hasTrigger: rule.trigger != nil,
-                        serverIds: serverIds,
-                        serverName: serverName(for:),
-                        voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
-                        textChannels: app.availableTextChannelsByServer.values.flatMap { $0 },
-                        roles: app.availableRolesByServer.values.flatMap { $0 },
-                        incompatibleBlocks: rule.incompatibleBlocks,
-                        availableVariables: rule.trigger?.providedVariables ?? []
-                    )
+                WorkflowInsertionLane(title: "Add Modifier", accent: .orange) {
+                    inspectorSelection = .overview
+                    openBlockLibrary()
                 }
 
-                Divider().opacity(0.4)
-
-                // AI Processing Section
-                RuleCanvasSection(title: "AI Processing", systemImage: "sparkles", accent: .purple) {
-                    ActionsSectionView(
-                        actions: $rule.aiBlocks,
-                        category: .ai,
-                        allModifiers: rule.modifiers,
-                        currentTrigger: rule.trigger,
-                        hasTrigger: rule.trigger != nil,
-                        serverIds: serverIds,
-                        serverName: serverName(for:),
-                        textChannelsByServer: app.availableTextChannelsByServer,
-                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                        rolesByServer: app.availableRolesByServer,
-                        knownUsers: app.knownUsersById,
-                        incompatibleBlocks: rule.incompatibleBlocks,
-                        availableVariables: rule.trigger?.providedVariables ?? []
-                    )
+                WorkflowStageView(
+                    title: "Modifiers",
+                    systemImage: "slider.horizontal.3",
+                    accent: .orange,
+                    subtitle: "Routing and formatting changes applied before outputs",
+                    trailingMeta: "Stage 3",
+                    isFocused: isInspectorFocused(in: rule.modifiers.map(\.id), matching: .modifier)
+                ) {
+                    if rule.modifiers.isEmpty {
+                        WorkflowStagePlaceholder(
+                            title: "No modifiers configured",
+                            subtitle: "Add message routing and formatting changes here.",
+                            accent: .orange
+                        )
+                    } else {
+                        ForEach(rule.modifiers) { action in
+                            WorkflowStepSummaryRow(
+                                title: action.type.rawValue,
+                                subtitle: summary(for: action, category: .messaging),
+                                systemImage: action.type.symbol,
+                                accent: .orange,
+                                isSelected: inspectorSelection == .modifier(action.id),
+                                action: {
+                                    inspectorSelection = .modifier(action.id)
+                                }
+                            )
+                        }
+                    }
                 }
 
-                Divider().opacity(0.4)
-
-                RuleCanvasSection(title: "Message Modifiers", systemImage: "slider.horizontal.3", accent: .orange) {
-                    ActionsSectionView(
-                        actions: $rule.modifiers,
-                        category: .messaging,
-                        allModifiers: rule.modifiers,
-                        currentTrigger: rule.trigger,
-                        hasTrigger: rule.trigger != nil,
-                        serverIds: serverIds,
-                        serverName: serverName(for:),
-                        textChannelsByServer: app.availableTextChannelsByServer,
-                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                        rolesByServer: app.availableRolesByServer,
-                        knownUsers: app.knownUsersById,
-                        incompatibleBlocks: rule.incompatibleBlocks,
-                        availableVariables: rule.trigger?.providedVariables ?? []
-                    )
+                WorkflowInsertionLane(title: "Add Action", accent: .mint) {
+                    inspectorSelection = .overview
+                    openBlockLibrary()
                 }
 
-                RuleFlowArrow()
-
-                RuleCanvasSection(title: "Actions", systemImage: "paperplane.fill", accent: .mint,
-                                  guidedHighlight: guidedStep == .action) {
-                    ActionsSectionView(
-                        actions: $rule.actions,
-                        category: .actions,
-                        allModifiers: rule.modifiers,
-                        currentTrigger: rule.trigger,
-                        hasTrigger: rule.trigger != nil,
-                        serverIds: serverIds,
-                        serverName: serverName(for:),
-                        textChannelsByServer: app.availableTextChannelsByServer,
-                        voiceChannelsByServer: app.availableVoiceChannelsByServer,
-                        rolesByServer: app.availableRolesByServer,
-                        knownUsers: app.knownUsersById,
-                        isGuided: guidedStep == .action,
-                        incompatibleBlocks: rule.incompatibleBlocks,
-                        availableVariables: rule.trigger?.providedVariables ?? []
-                    )
+                WorkflowStageView(
+                    title: "Actions",
+                    systemImage: "paperplane.fill",
+                    accent: .mint,
+                    subtitle: "Outputs executed in order",
+                    trailingMeta: "Stage 4",
+                    isFocused: isInspectorFocused(in: rule.actions.map(\.id), matching: .action) || guidedStep == .action
+                ) {
+                    if rule.actions.isEmpty {
+                        WorkflowStagePlaceholder(
+                            title: "No output actions configured",
+                            subtitle: "Add at least one action so the rule produces an effect.",
+                            accent: .mint
+                        )
+                    } else {
+                        ForEach(rule.actions) { action in
+                            WorkflowStepSummaryRow(
+                                title: action.type.rawValue,
+                                subtitle: summary(for: action, category: action.type.category),
+                                systemImage: action.type.symbol,
+                                accent: .mint,
+                                isSelected: inspectorSelection == .action(action.id),
+                                badge: rule.incompatibleBlocks.contains(action.id) ? "Review" : nil,
+                                action: {
+                                    inspectorSelection = .action(action.id)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
         .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
-        .frame(maxWidth: 880, alignment: .leading)
+        .frame(maxWidth: 940, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
     }
 
+    @ViewBuilder
+    private var inspectorContent: some View {
+        switch inspectorSelection {
+        case .overview:
+            RuleInspectorOverview(
+                issues: rule.validationIssues,
+                availableVariables: availableVariables,
+                hasTrigger: rule.trigger != nil,
+                previewMessage: previewMessage,
+                onShowBlocks: {
+                    openBlockLibrary(focusTrigger: rule.trigger == nil)
+                }
+            )
+        case .trigger:
+            TriggerInspectorView(
+                trigger: rule.trigger,
+                triggerSummary: rule.triggerSummary,
+                providedVariables: availableVariables,
+                onChangeTrigger: {
+                    rule.isEditingTrigger = true
+                    openBlockLibrary(focusTrigger: true)
+                }
+            )
+        case .condition(let id):
+            if let binding = conditionBinding(for: id) {
+                ConditionRowView(
+                    condition: binding,
+                    isIncompatible: rule.incompatibleBlocks.contains(id),
+                    missingContext: missingContextText(forConditionID: id),
+                    serverIds: serverIds,
+                    serverName: serverName(for:),
+                    voiceChannels: app.availableVoiceChannelsByServer.values.flatMap { $0 },
+                    textChannels: app.availableTextChannelsByServer.values.flatMap { $0 },
+                    roles: app.availableRolesByServer.values.flatMap { $0 },
+                    onDelete: {
+                        deleteCondition(id)
+                    }
+                )
+            } else {
+                RuleInspectorOverview(
+                    issues: rule.validationIssues,
+                    availableVariables: availableVariables,
+                    hasTrigger: rule.trigger != nil,
+                    previewMessage: previewMessage,
+                    onShowBlocks: {
+                        openBlockLibrary(focusTrigger: rule.trigger == nil)
+                    }
+                )
+            }
+        case .ai(let id):
+            inspectorActionView(id: id, keyPath: \.aiBlocks, category: .ai, title: "AI Block")
+        case .modifier(let id):
+            inspectorActionView(id: id, keyPath: \.modifiers, category: .messaging, title: "Modifier")
+        case .action(let id):
+            inspectorActionView(id: id, keyPath: \.actions, category: .actions, title: "Action")
+        }
+    }
+
+    private var inspectorTitle: String {
+        switch inspectorSelection {
+        case .overview:
+            return "Inspector"
+        case .trigger:
+            return "Trigger"
+        case .condition(let id):
+            return rule.conditions.first(where: { $0.id == id })?.type.rawValue ?? "Filter"
+        case .ai(let id):
+            return rule.aiBlocks.first(where: { $0.id == id })?.type.rawValue ?? "AI Block"
+        case .modifier(let id):
+            return rule.modifiers.first(where: { $0.id == id })?.type.rawValue ?? "Modifier"
+        case .action(let id):
+            return rule.actions.first(where: { $0.id == id })?.type.rawValue ?? "Action"
+        }
+    }
+
+    private var inspectorSubtitle: String {
+        switch inspectorSelection {
+        case .overview:
+            return "Select a workflow step to edit its configuration."
+        case .trigger:
+            return "Choose the event that starts this automation."
+        case .condition:
+            return "Filter configuration lives here so the canvas can stay focused on flow."
+        case .ai:
+            return "Tune AI prompts and processing options for this stage."
+        case .modifier:
+            return "Adjust message routing and formatting for this step."
+        case .action:
+            return "Configure how this workflow produces its final output."
+        }
+    }
+
+    private var inspectorSymbol: String {
+        switch inspectorSelection {
+        case .overview:
+            return "sidebar.right"
+        case .trigger:
+            return "bolt.fill"
+        case .condition:
+            return "line.3.horizontal.decrease.circle"
+        case .ai:
+            return "sparkles"
+        case .modifier:
+            return "slider.horizontal.3"
+        case .action:
+            return "paperplane.fill"
+        }
+    }
+
+    private var inspectorAccent: Color {
+        switch inspectorSelection {
+        case .overview:
+            return .secondary
+        case .trigger:
+            return .yellow
+        case .condition:
+            return .blue
+        case .ai:
+            return .purple
+        case .modifier:
+            return .orange
+        case .action:
+            return .mint
+        }
+    }
+
+    private var availableVariables: [ContextVariable] {
+        Array(rule.trigger?.providedVariables ?? []).sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private var previewMessage: String? {
+        guard let messageAction = rule.actions.first(where: { $0.type == .sendMessage }) else { return nil }
+        switch messageAction.contentSource {
+        case .custom:
+            let trimmed = messageAction.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        default:
+            return "Uses \(messageAction.contentSource.displayName) at runtime."
+        }
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        VStack(spacing: 0) {
+            RuleEditorSummaryHeader(
+                ruleSymbol: rule.trigger?.symbol ?? "bolt.circle",
+                ruleName: $rule.name,
+                ruleSubtitle: rule.triggerSummary,
+                workflowStatus: rule.isEnabled ? "Enabled" : "Disabled",
+                triggerLabel: rule.trigger?.rawValue,
+                serverLabel: primaryServerName,
+                lastTriggeredLabel: "Not yet",
+                blockCount: workflowBlockCount,
+                permissionCount: workflowPermissionCount,
+                validationLabel: workflowValidationSummary,
+                onShowLibrary: {
+                    openBlockLibrary(focusTrigger: rule.trigger == nil)
+                }
+            )
+            .padding(.horizontal, 16)
+            .frame(height: 76)
+
+            HSplitView {
+                ScrollView {
+                    ruleCanvasContent
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 18)
+                }
+                .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.primary.opacity(0.006))
+
+                VStack(spacing: 0) {
+                    RulePaneHeader(
+                        title: inspectorTitle,
+                        subtitle: inspectorSubtitle,
+                        systemImage: inspectorSymbol
+                    )
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            InspectorSelectionContextView(
+                                title: inspectorTitle,
+                                subtitle: inspectorSubtitle,
+                                systemImage: inspectorSymbol,
+                                accent: inspectorAccent
+                            )
+
+                            inspectorContent
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 16)
+                    }
+                }
+                .frame(minWidth: 280, idealWidth: 312, maxWidth: 360)
+                .background(
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(Color.primary.opacity(0.018))
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.06))
+                                .frame(width: 1)
+                        }
+                )
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .popover(isPresented: $showBlockLibrary, arrowEdge: .top) {
             VStack(spacing: 0) {
                 RulePaneHeader(
-                    title: "Block Library",
-                    subtitle: "Reusable building blocks for this rule flow.",
+                    title: "Blocks",
+                    subtitle: "Add compatible stages and outputs to this workflow.",
                     systemImage: "square.stack.3d.up.fill"
                 )
 
                 RuleBuilderLibraryView(
-                        serverIds: serverIds,
-                        onAddCondition: addCondition(_:),
-                        onAddAction: addAction(_:),
-                        onSetTrigger: { type in
-                            rule.trigger = type
-                            rule.isEditingTrigger = false
-                            hasSeenRuleOnboarding = true
-                            applyTriggerDefaults(for: type)
-                            if guidedStep == .trigger { guidedStep = .action }
-                        },
-                        focusTrigger: {
-                            if let trigger = rule.trigger {
-                                applyTriggerDefaults(for: trigger)
-                            }
-                        },
-                        scrollToTriggersSignal: $scrollToTriggersSignal,
-                        currentTrigger: rule.trigger,
-                        isEditingTrigger: rule.isEditingTrigger
-                    )
-            }
-            .frame(minWidth: 250, idealWidth: 270, maxWidth: 300)
-            .background(rulePaneBackground)
-
-            Rectangle()
-                .fill(.white.opacity(0.10))
-                .frame(width: 1)
-
-            VStack(spacing: 0) {
-                RulePaneHeader(
-                    title: rule.name.isEmpty ? "Action Rule" : rule.name,
-                    subtitle: rule.triggerSummary,
-                    systemImage: "bolt.circle"
+                    serverIds: serverIds,
+                    onAddCondition: addCondition(_:),
+                    onAddAction: addAction(_:),
+                    onSetTrigger: { type in
+                        rule.trigger = type
+                        rule.isEditingTrigger = false
+                        hasSeenRuleOnboarding = true
+                        inspectorSelection = .trigger
+                        applyTriggerDefaults(for: type)
+                        if guidedStep == .trigger { guidedStep = .action }
+                    },
+                    focusTrigger: {
+                        if let trigger = rule.trigger {
+                            applyTriggerDefaults(for: trigger)
+                        }
+                    },
+                    scrollToTriggersSignal: $scrollToTriggersSignal,
+                    currentTrigger: rule.trigger,
+                    isEditingTrigger: rule.isEditingTrigger
                 )
-
-                TextField("Rule Name", text: $rule.name)
-                    .textFieldStyle(.plain)
-                    .font(.title2.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(.white.opacity(0.12))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.white.opacity(0.20), lineWidth: 1)
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 16)
-                .background(rulePaneBackground)
-
-                if !rule.isEmptyRule && !rule.isEditingTrigger && !rule.validationIssues.isEmpty {
-                    ValidationBannerView(issues: rule.validationIssues)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
-                }
-
-                ScrollView {
-                    ruleCanvasContent
-                    .animation(.easeInOut(duration: 0.22), value: rule.isEmptyRule)
-                    .frame(maxWidth: 880, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                }
             }
-            .background(rulePaneBackground)
+            .frame(width: 340, height: 620)
+            .background(.thinMaterial)
         }
         .navigationTitle("")
         .onAppear {
@@ -383,8 +826,227 @@ struct RuleEditorView: View {
         }
     }
 
+    @ViewBuilder
+    private func inspectorActionView(
+        id: UUID,
+        keyPath: WritableKeyPath<Rule, [Action]>,
+        category: BlockCategory,
+        title: String
+    ) -> some View {
+        if let binding = actionBinding(for: id, in: keyPath) {
+            ActionSectionView(
+                action: binding,
+                category: category,
+                allModifiers: rule.modifiers,
+                currentTrigger: rule.trigger,
+                isIncompatible: rule.incompatibleBlocks.contains(id),
+                missingContext: missingContextText(forActionID: id, in: keyPath),
+                serverIds: serverIds,
+                serverName: serverName(for:),
+                textChannelsByServer: app.availableTextChannelsByServer,
+                voiceChannelsByServer: app.availableVoiceChannelsByServer,
+                rolesByServer: app.availableRolesByServer,
+                knownUsers: app.knownUsersById,
+                onDelete: {
+                    deleteAction(id, from: keyPath)
+                }
+            )
+        } else {
+            RuleInspectorOverview(
+                issues: rule.validationIssues,
+                availableVariables: availableVariables,
+                hasTrigger: rule.trigger != nil,
+                previewMessage: previewMessage,
+                onShowBlocks: {
+                    openBlockLibrary(focusTrigger: rule.trigger == nil)
+                }
+            )
+        }
+    }
+
+    private func openBlockLibrary(focusTrigger: Bool = false) {
+        showBlockLibrary = true
+        if focusTrigger {
+            scrollToTriggersSignal = true
+            guidedStep = .trigger
+        }
+    }
+
+    private func isInspectorFocused(in ids: [UUID], matching stage: WorkflowStageKind) -> Bool {
+        switch (stage, inspectorSelection) {
+        case (.condition, .condition(let selected)):
+            return ids.contains(selected)
+        case (.ai, .ai(let selected)):
+            return ids.contains(selected)
+        case (.modifier, .modifier(let selected)):
+            return ids.contains(selected)
+        case (.action, .action(let selected)):
+            return ids.contains(selected)
+        default:
+            return false
+        }
+    }
+
+    private func conditionBinding(for id: UUID) -> Binding<Condition>? {
+        guard rule.conditions.contains(where: { $0.id == id }) else { return nil }
+        return Binding(
+            get: {
+                rule.conditions.first(where: { $0.id == id }) ?? Condition(type: .server)
+            },
+            set: { updatedCondition in
+                guard let index = rule.conditions.firstIndex(where: { $0.id == id }) else { return }
+                rule.conditions[index] = updatedCondition
+            }
+        )
+    }
+
+    private func actionBinding(for id: UUID, in keyPath: WritableKeyPath<Rule, [Action]>) -> Binding<Action>? {
+        guard rule[keyPath: keyPath].contains(where: { $0.id == id }) else { return nil }
+        return Binding(
+            get: {
+                rule[keyPath: keyPath].first(where: { $0.id == id }) ?? Action()
+            },
+            set: { updatedAction in
+                guard let index = rule[keyPath: keyPath].firstIndex(where: { $0.id == id }) else { return }
+                rule[keyPath: keyPath][index] = updatedAction
+            }
+        )
+    }
+
+    private func deleteCondition(_ id: UUID) {
+        rule.conditions.removeAll { $0.id == id }
+        inspectorSelection = .overview
+        app.ruleStore.scheduleAutoSave()
+    }
+
+    private func deleteAction(_ id: UUID, from keyPath: WritableKeyPath<Rule, [Action]>) {
+        rule[keyPath: keyPath].removeAll { $0.id == id }
+        inspectorSelection = .overview
+        app.ruleStore.scheduleAutoSave()
+    }
+
+    private func missingContextText(forConditionID id: UUID) -> String? {
+        guard
+            let condition = rule.conditions.first(where: { $0.id == id }),
+            let trigger = rule.trigger
+        else { return nil }
+        let missing = condition.type.requiredVariables.subtracting(trigger.providedVariables)
+        return missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)"
+    }
+
+    private func missingContextText(forActionID id: UUID, in keyPath: KeyPath<Rule, [Action]>) -> String? {
+        guard
+            let action = rule[keyPath: keyPath].first(where: { $0.id == id }),
+            let trigger = rule.trigger
+        else { return nil }
+        let missing = action.type.requiredVariables.subtracting(trigger.providedVariables)
+        return missing.isEmpty ? nil : "Requires \(missing.friendlyRequirement)"
+    }
+
+    private func summary(for condition: Condition) -> String {
+        switch condition.type {
+        case .server:
+            return condition.value.isEmpty ? "Runs in any server." : "Limited to \(serverName(for: condition.value))."
+        case .voiceChannel:
+            return condition.value.isEmpty ? "Applies to any voice channel." : "Matches a specific voice channel."
+        case .usernameContains:
+            return condition.value.isEmpty ? "Checks for a username fragment." : "Matches users containing “\(condition.value)”."
+        case .minimumDuration:
+            return condition.value.isEmpty ? "Minimum time not configured." : "Requires at least \(condition.value) minute(s) in channel."
+        case .channelIs:
+            return condition.value.isEmpty ? "Matches a specific text channel." : "Limited to one text channel."
+        case .channelCategory:
+            return condition.value.isEmpty ? "Matches a channel category." : "Category filter: \(condition.value)."
+        case .userHasRole:
+            return condition.value.isEmpty ? "Checks for a required role." : "Requires a selected role."
+        case .userJoinedRecently:
+            return condition.value.isEmpty ? "Checks how recently the user joined." : "User must have joined within \(condition.value) minute(s)."
+        case .messageContains:
+            return condition.value.isEmpty ? "Matches message text." : "Requires text matching “\(condition.value)”."
+        case .messageStartsWith:
+            return condition.value.isEmpty ? "Matches a message prefix." : "Requires prefix “\(condition.value)”."
+        case .messageRegex:
+            return condition.value.isEmpty ? "Matches a regex pattern." : "Uses regex pattern “\(condition.value)”."
+        case .isDirectMessage:
+            return "Only runs for messages sent in DMs."
+        case .isFromBot:
+            return "Only runs for bot-authored events."
+        case .isFromUser:
+            return "Only runs for human-authored events."
+        case .channelType:
+            return condition.value.isEmpty ? "Matches a channel type." : "Channel type filter is configured."
+        }
+    }
+
+    private func summary(for action: Action, category: BlockCategory) -> String {
+        switch action.type {
+        case .sendMessage:
+            switch action.contentSource {
+            case .custom:
+                let snippet = action.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                return snippet.isEmpty ? "Sends a custom message." : String(snippet.prefix(70))
+            default:
+                return "Uses \(action.contentSource.displayName) as the message content."
+            }
+        case .replyToTrigger:
+            return "Replies directly to the event that triggered the rule."
+        case .mentionUser:
+            return "Mentions the triggering user before the message body."
+        case .mentionRole:
+            return "Mentions a selected role in the output."
+        case .disableMention:
+            return "Prevents user mentions in the final message."
+        case .sendToChannel:
+            return "Routes output to a specific text channel."
+        case .sendToDM:
+            return "Sends the output to the user via direct message."
+        case .generateAIResponse:
+            return "Generates text with AI before later stages run."
+        case .summariseMessage:
+            return "Summarises the triggering message into AI summary output."
+        case .classifyMessage:
+            return "Classifies the message into predefined categories."
+        case .extractEntities:
+            return "Extracts named entities for later steps."
+        case .rewriteMessage:
+            return "Rewrites incoming text in a configured style."
+        case .addRole:
+            return "Adds a server role to the member."
+        case .removeRole:
+            return "Removes a server role from the member."
+        case .timeoutMember:
+            return "Temporarily restricts the member."
+        case .kickMember:
+            return "Removes the member from the server."
+        case .moveMember:
+            return "Moves the member into a voice channel."
+        case .deleteMessage:
+            return "Deletes the triggering message."
+        case .addReaction:
+            return action.emoji.isEmpty ? "Adds a reaction." : "Adds the \(action.emoji) reaction."
+        case .sendDM:
+            return "Sends a direct message to the user."
+        case .createChannel:
+            return action.newChannelName.isEmpty ? "Creates a channel." : "Creates the channel “\(action.newChannelName)”."
+        case .webhook:
+            return "Posts the payload to a webhook endpoint."
+        case .setStatus:
+            return "Updates the bot status text."
+        case .addLogEntry:
+            return "Writes a log entry for this automation."
+        case .delay:
+            return "Waits before later actions execute."
+        case .setVariable:
+            return action.variableName.isEmpty ? "Sets a workflow variable." : "Sets the variable \(action.variableName)."
+        case .randomChoice:
+            return "Chooses one option at random."
+        }
+    }
+
     private func addCondition(_ type: ConditionType) {
-        rule.conditions.append(Condition(type: type))
+        let condition = Condition(type: type)
+        rule.conditions.append(condition)
+        inspectorSelection = .condition(condition.id)
         app.ruleStore.scheduleAutoSave()
     }
 
@@ -432,12 +1094,16 @@ struct RuleEditorView: View {
         switch type.category {
         case .ai:
             rule.aiBlocks.append(action)
+            inspectorSelection = .ai(action.id)
         case .messaging:
             rule.modifiers.append(action)
+            inspectorSelection = .modifier(action.id)
         case .actions, .moderation:
             rule.actions.append(action)
+            inspectorSelection = .action(action.id)
         default:
             rule.actions.append(action)
+            inspectorSelection = .action(action.id)
         }
         app.ruleStore.scheduleAutoSave()
     }
@@ -519,8 +1185,7 @@ struct RuleEditorView: View {
     }
 
     private var rulePaneBackground: some View {
-        Rectangle()
-            .fill(.white.opacity(0.04))
+        Color.clear
     }
 }
 
@@ -698,10 +1363,10 @@ struct RulePaneHeader: View {
         .padding(.horizontal, 20)
         .padding(.top, 0)
         .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
+        .background(.clear)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(.white.opacity(0.10))
+                .fill(.primary.opacity(0.055))
                 .frame(height: 1)
         }
     }
@@ -714,21 +1379,24 @@ struct RuleLibrarySection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(highlighted ? .yellow : .secondary)
+            HStack(spacing: 8) {
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(highlighted ? .yellow : .secondary)
+                    .tracking(0.4)
+                Capsule()
+                    .fill(.primary.opacity(0.08))
+                    .frame(height: 1)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 content
             }
         }
-        .padding(highlighted ? 8 : 0)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(highlighted ? Color.yellow.opacity(0.12) : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(highlighted ? Color.yellow.opacity(0.35) : Color.clear, lineWidth: 1)
+        .padding(10)
+        .glassCard(
+            cornerRadius: 18,
+            tint: highlighted ? Color.yellow.opacity(0.12) : .white.opacity(0.045),
+            stroke: highlighted ? Color.yellow.opacity(0.35) : .white.opacity(0.08)
         )
         .animation(.easeInOut(duration: 0.25), value: highlighted)
     }
@@ -743,14 +1411,16 @@ struct RuleLibraryButton: View {
     var disabledReason: String?
     var dragItem: String?
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: systemImage)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isDisabled ? .secondary : accent)
-                    .frame(width: 24)
+                    .frame(width: 26, height: 26)
+                    .background(accent.opacity(isHovering ? 0.16 : 0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
@@ -763,13 +1433,26 @@ struct RuleLibraryButton: View {
                 Image(systemName: isDisabled ? "nosign" : "plus.circle.fill")
                     .foregroundStyle(isDisabled ? .secondary : accent)
             }
-            .padding(12)
-            .glassCard(cornerRadius: 18, tint: .white.opacity(0.05), stroke: .white.opacity(0.14))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isHovering ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(accent.opacity(isHovering ? 0.18 : 0.00), lineWidth: 1)
+            )
             .opacity(isDisabled ? 0.6 : 1.0)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .help(isDisabled ? (disabledReason ?? "Incompatible") : "")
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
     }
 }
 
@@ -777,24 +1460,58 @@ struct RuleCanvasSection<Content: View>: View {
     let title: String
     let systemImage: String
     let accent: Color
+    var subtitle: String? = nil
+    var trailingMeta: String? = nil
     var guidedHighlight: Bool = false
     @ViewBuilder let content: Content
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(accent)
-                Text(title)
-                    .font(.headline)
-                Spacer()
+                    .frame(width: 28, height: 28)
+                    .background(accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.headline.weight(.semibold))
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let trailingMeta, !trailingMeta.isEmpty {
+                    Text(trailingMeta)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.08), in: Capsule())
+                }
             }
+            Rectangle()
+                .fill(.primary.opacity(0.07))
+                .frame(height: 1)
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: guidedHighlight ? accent.opacity(0.6) : .white.opacity(0.18))
+        .padding(15)
+        .glassCard(
+            cornerRadius: 22,
+            tint: accent.opacity(isHovering || guidedHighlight ? 0.085 : 0.045),
+            stroke: guidedHighlight ? accent.opacity(0.50) : .white.opacity(isHovering ? 0.16 : 0.10)
+        )
+        .shadow(color: accent.opacity(guidedHighlight ? 0.12 : 0.04), radius: guidedHighlight ? 18 : 8, y: guidedHighlight ? 8 : 3)
         .animation(.easeInOut(duration: 0.3), value: guidedHighlight)
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
     }
 }
 
@@ -863,7 +1580,7 @@ struct ConditionsSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if conditions.isEmpty {
-                Text("No filters yet. Use the Block Library to add one.")
+                Text("No filters yet. Open Blocks to add one.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
@@ -904,13 +1621,23 @@ struct ConditionRowView: View {
     let textChannels: [GuildTextChannel]
     let roles: [GuildRole]
     let onDelete: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(condition.type.rawValue, systemImage: condition.type.symbol)
+                Image(systemName: condition.type.symbol)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.cyan)
+                    .frame(width: 28, height: 28)
+                    .background(.cyan.opacity(0.13), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(condition.type.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                    Text("Filter condition")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
 
                 if isIncompatible {
                     Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
@@ -929,9 +1656,19 @@ struct ConditionRowView: View {
 
             conditionEditor
         }
-        .padding(10)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
+        .padding(12)
+        .glassCard(
+            cornerRadius: 17,
+            tint: Color.cyan.opacity(isHovering ? 0.075 : 0.035),
+            stroke: isIncompatible ? Color.orange.opacity(0.35) : .white.opacity(isHovering ? 0.15 : 0.08)
+        )
+        .shadow(color: Color.cyan.opacity(isHovering ? 0.10 : 0.025), radius: isHovering ? 12 : 5, y: isHovering ? 5 : 1)
         .opacity(isIncompatible ? 0.6 : 1.0)
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
     }
 
     @ViewBuilder
@@ -1084,11 +1821,11 @@ struct ActionsSectionView: View {
     private func textForEmptyState(category: BlockCategory, isGuided: Bool) -> String {
         switch category {
         case .ai:
-            return "No AI processing blocks yet. Add one from the Block Library.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
+            return "No AI processing blocks yet. Open Blocks to add one.\n\nExamples:\nGenerate AI Response\nSummarise Message\nClassify Message"
         default:
             return isGuided
-                 ? "Select a block from the Block Library to the left."
-                 : "Use the Block Library to add your first block."
+                 ? "Open Blocks and choose the next block for this rule."
+                 : "Open Blocks to add your first block."
         }
     }
 }
@@ -1108,6 +1845,7 @@ struct ActionSectionView: View {
     let rolesByServer: [String: [GuildRole]]
     let knownUsers: [String: String]
     let onDelete: () -> Void
+    @State private var isHovering = false
 
     private var resolvedDestinationMode: MessageDestination {
         action.destinationMode ?? MessageDestination.defaultMode(for: currentTrigger)
@@ -1130,6 +1868,27 @@ struct ActionSectionView: View {
 
     private var roles: [GuildRole] {
         rolesByServer[resolvedServerId] ?? []
+    }
+
+    private var blockAccent: Color {
+        if isIncompatible { return .orange }
+        switch category {
+        case .ai: return .purple
+        case .messaging: return .orange
+        case .moderation: return .red
+        case .actions: return .mint
+        default: return .accentColor
+        }
+    }
+
+    private var blockMetadata: String {
+        switch category {
+        case .ai: return "AI block"
+        case .messaging: return "Modifier"
+        case .moderation: return "Moderation"
+        case .actions: return "Action"
+        default: return "Block"
+        }
     }
 
     private var destinationBinding: Binding<MessageDestination> {
@@ -1155,12 +1914,21 @@ struct ActionSectionView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             // Block header — immutable once created; type is fixed at drop time
             HStack {
-                Label(action.type.rawValue, systemImage: action.type.symbol)
+                Image(systemName: action.type.symbol)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(category == .messaging ? .orange : .mint)
+                    .foregroundStyle(blockAccent)
+                    .frame(width: 28, height: 28)
+                    .background(blockAccent.opacity(0.13), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(action.type.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                    Text(blockMetadata)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
 
                 if isIncompatible {
                     Label(missingContext ?? "Incompatible with trigger", systemImage: "exclamationmark.triangle.fill")
@@ -1176,6 +1944,9 @@ struct ActionSectionView: View {
                 }
                 .buttonStyle(.borderless)
             }
+            Rectangle()
+                .fill(.primary.opacity(0.06))
+                .frame(height: 1)
 
             switch action.type {
             case .sendMessage:
@@ -1400,9 +2171,19 @@ struct ActionSectionView: View {
                 }
             }
         }
-        .padding(10)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.08), stroke: isIncompatible ? Color.orange.opacity(0.4) : .white.opacity(0.16))
+        .padding(12)
+        .glassCard(
+            cornerRadius: 17,
+            tint: blockAccent.opacity(isHovering ? 0.075 : 0.035),
+            stroke: isIncompatible ? Color.orange.opacity(0.34) : .white.opacity(isHovering ? 0.15 : 0.08)
+        )
+        .shadow(color: blockAccent.opacity(isHovering ? 0.10 : 0.025), radius: isHovering ? 12 : 5, y: isHovering ? 5 : 1)
         .opacity(isIncompatible ? 0.6 : 1.0)
+        .onHover { hovering in
+            withAnimation(.smooth(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
         .onAppear {
             if action.type == .sendMessage, resolvedDestinationMode == .specificChannel {
                 ensureSpecificChannelSelection()
@@ -1413,6 +2194,468 @@ struct ActionSectionView: View {
                 ensureSpecificChannelSelection()
             }
         }
+    }
+}
+
+private struct RuleEditorSummaryHeader: View {
+    let ruleSymbol: String
+    @Binding var ruleName: String
+    let ruleSubtitle: String
+    let workflowStatus: String
+    let triggerLabel: String?
+    let serverLabel: String?
+    let lastTriggeredLabel: String
+    let blockCount: Int
+    let permissionCount: Int
+    let validationLabel: String
+    let onShowLibrary: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: ruleSymbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        TextField("Rule Name", text: $ruleName)
+                            .textFieldStyle(.plain)
+                            .font(.headline.weight(.semibold))
+                            .frame(maxWidth: 240)
+
+                        WorkflowContextPill(title: workflowStatus, systemImage: workflowStatus == "Enabled" ? "checkmark.circle.fill" : "pause.circle.fill")
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            Text(ruleSubtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+
+                            if let triggerLabel, !triggerLabel.isEmpty {
+                                WorkflowContextPill(title: "Trigger: \(triggerLabel)", systemImage: "bolt.fill")
+                            }
+                            if let serverLabel, !serverLabel.isEmpty {
+                                WorkflowContextPill(title: serverLabel, systemImage: "server.rack")
+                            }
+                            WorkflowContextPill(title: "Last: \(lastTriggeredLabel)", systemImage: "clock")
+                            WorkflowContextPill(title: "\(blockCount) block\(blockCount == 1 ? "" : "s")", systemImage: "square.stack.3d.up.fill")
+                            WorkflowContextPill(title: validationLabel, systemImage: validationLabel == "Healthy" ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            if permissionCount > 0 {
+                                WorkflowContextPill(title: "\(permissionCount) permission\(permissionCount == 1 ? "" : "s")", systemImage: "lock.shield.fill")
+                            }
+                        }
+                    }
+                    .frame(height: 22)
+                }
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: 12)
+
+            Button(action: onShowLibrary) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.primary.opacity(0.055))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct WorkflowContextPill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(0.045), in: Capsule())
+    }
+}
+
+private struct WorkflowStageView<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let subtitle: String
+    let trailingMeta: String
+    let isFocused: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 0) {
+                    Circle()
+                        .fill(accent.opacity(isFocused ? 0.15 : 0.085))
+                        .frame(width: 32, height: 32)
+                        .overlay {
+                            Image(systemName: systemImage)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(accent)
+                        }
+
+                    Rectangle()
+                        .fill(.primary.opacity(0.055))
+                        .frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                        .padding(.top, 8)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(title)
+                                .font(.headline.weight(.semibold))
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Text(trailingMeta)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(isFocused ? accent : .secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        content
+                    }
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(isFocused ? accent.opacity(0.22) : .primary.opacity(0.055))
+                            .frame(width: 2)
+                            .padding(.vertical, 6)
+                    }
+                    .padding(.leading, 12)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isFocused ? accent.opacity(0.16) : Color.primary.opacity(0.045), lineWidth: 1)
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isFocused ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(Color.primary.opacity(0.012)))
+        )
+    }
+}
+
+private struct WorkflowStepSummaryRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let accent: Color
+    var isSelected: Bool = false
+    var badge: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 22, height: 22)
+                    .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                if let badge, !badge.isEmpty {
+                    Text(badge)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(accent.opacity(0.10), in: Capsule())
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(accent.opacity(0.075)) : AnyShapeStyle(.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isSelected ? accent.opacity(0.14) : .clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct WorkflowStagePlaceholder: View {
+    let title: String
+    let subtitle: String
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "circle.dotted")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(accent.opacity(0.75))
+                .frame(width: 22, height: 22)
+                .background(accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
+private struct WorkflowInsertionLane: View {
+    let title: String
+    let accent: Color
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(.primary.opacity(0.07))
+                .frame(height: 1)
+            Button(action: action) {
+                Label(title, systemImage: "plus")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                .background(accent.opacity(0.065), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(accent.opacity(0.10), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            Rectangle()
+                .fill(.primary.opacity(0.07))
+                .frame(height: 1)
+        }
+        .padding(.leading, 47)
+    }
+}
+
+private struct InspectorSelectionContextView: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let accent: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(accent.opacity(0.88))
+                .frame(width: 24, height: 24)
+                .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("Editing in Inspector")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.026))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(accent.opacity(0.10), lineWidth: 1)
+        )
+    }
+}
+
+private struct RuleInspectorOverview: View {
+    let issues: [ValidationIssue]
+    let availableVariables: [ContextVariable]
+    let hasTrigger: Bool
+    let previewMessage: String?
+    let onShowBlocks: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            InspectorSection(title: "Workflow") {
+                Text("Select a stage in the canvas to edit its configuration here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Button(action: onShowBlocks) {
+                    Label("Open Blocks", systemImage: "square.stack.3d.up.fill")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            InspectorSection(title: "Validation") {
+                if issues.isEmpty {
+                    Label("No validation issues", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.green)
+                } else {
+                    ValidationBannerView(issues: issues)
+                }
+            }
+
+            InspectorSection(title: "Variables") {
+                if hasTrigger && !availableVariables.isEmpty {
+                    ForEach(availableVariables, id: \.self) { variable in
+                        HStack {
+                            Text(variable.rawValue)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(variable.displayName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text("Choose a trigger to unlock context variables for later stages.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let previewMessage, !previewMessage.isEmpty {
+                InspectorSection(title: "Preview") {
+                    Text(previewMessage)
+                        .font(.subheadline)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+}
+
+private struct TriggerInspectorView: View {
+    let trigger: TriggerType?
+    let triggerSummary: String
+    let providedVariables: [ContextVariable]
+    let onChangeTrigger: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            InspectorSection(title: "Trigger") {
+                HStack(spacing: 10) {
+                    Image(systemName: trigger?.symbol ?? "bolt.badge.questionmark")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                        .frame(width: 28, height: 28)
+                        .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(trigger?.rawValue ?? "No trigger selected")
+                            .font(.subheadline.weight(.semibold))
+                        Text(triggerSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Button(action: onChangeTrigger) {
+                    Label(trigger == nil ? "Choose Trigger" : "Change Trigger", systemImage: "square.stack.3d.up.fill")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            InspectorSection(title: "Provided Variables") {
+                if providedVariables.isEmpty {
+                    Text("This trigger has not been chosen yet, so no workflow variables are available.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(providedVariables, id: \.self) { variable in
+                        HStack {
+                            Text(variable.rawValue)
+                                .font(.system(.caption, design: .monospaced))
+                            Spacer()
+                            Text(variable.displayName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct InspectorSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .tracking(0.4)
+
+            content
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.024))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+        )
     }
 }
 

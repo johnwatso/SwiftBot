@@ -15,8 +15,8 @@ struct EmptyRuleOnboardingView: View {
 
             // Ghost placeholder card
             VStack(spacing: 20) {
-                // SF Symbol: bolt.circle
-                Image(systemName: "bolt.circle")
+                // SF Symbol: bolt.badge.automatic.fill
+                Image(systemName: "bolt.badge.automatic.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary.opacity(0.6))
 

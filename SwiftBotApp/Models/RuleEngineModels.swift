@@ -361,7 +361,7 @@ enum PromptComposer {
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case patchy = "Patchy"
-    case voice = "Actions"
+    case voice = "Automations"
     case commands = "Commands"
     case activity = "Activity"
     case wikiBridge = "WikiBridge"
@@ -374,8 +374,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
-        case .patchy: return "hammer.fill"
-        case .voice: return "bolt.circle"
+        case .patchy: return "square.and.arrow.down.badge.checkmark"
+        case .voice: return "bolt.badge.automatic.fill"
         case .commands: return "terminal.fill"
         case .activity: return "list.bullet.clipboard.fill"
         case .wikiBridge: return "book.pages.fill"
