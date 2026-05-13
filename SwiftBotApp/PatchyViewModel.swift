@@ -35,9 +35,19 @@ enum PatchyRuntime {
             return SteamNewsUpdateSource(appID: appID)
         case .github:
             let parsed = try parseGitHubRepo(target.githubRepo)
-            let mode: GitHubWatchMode = target.githubWatchAllCommits
-                ? .commits(branch: target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines))
-                : .releases
+            let mode: GitHubWatchMode
+            if target.githubWatchAllCommits {
+                switch target.githubBranchMode {
+                case .main:
+                    mode = .commits(branch: "")
+                case .specific:
+                    mode = .commits(branch: target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines))
+                case .all:
+                    mode = .allCommits
+                }
+            } else {
+                mode = .releases
+            }
             return GitHubUpdateSource(owner: parsed.owner, repo: parsed.repo, mode: mode)
         }
     }
@@ -85,7 +95,7 @@ enum PatchyRuntime {
             switch gh.info.mode {
             case .releases:
                 preview = gh.info.summary.isEmpty ? gh.info.title : gh.info.summary
-            case .commits:
+            case .commits, .allCommits:
                 preview = "\(gh.info.author): \(gh.info.title)"
             }
             return PatchyFetchResult(

@@ -98,7 +98,7 @@ extension AppModel {
                 let delivery = await sendPatchyNotificationDetailed(
                     channelId: target.channelId,
                     message: fallback,
-                    embedJSON: mapped.embedJSON,
+                    embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
                     roleIDs: target.roleIDs
                 )
 
@@ -171,12 +171,12 @@ extension AppModel {
             guard let self else { return }
             await self.runPatchyMonitoringCycle(trigger: "Startup")
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+                try? await Task.sleep(nanoseconds: 300_000_000_000)
                 if Task.isCancelled { break }
                 await self.runPatchyMonitoringCycle(trigger: "Scheduled")
             }
         }
-        appendPatchyLog("Patchy monitoring started (hourly).")
+        appendPatchyLog("Patchy monitoring started.")
     }
 
     struct PatchySourceGroupKey: Hashable {
@@ -201,13 +201,20 @@ extension AppModel {
             return
         }
 
+        let now = Date()
+        let dueTargets = enabledTargets.filter { isPatchyTargetDue($0, now: now, trigger: trigger) }
+        guard !dueTargets.isEmpty else {
+            setPatchyLastCycleAt(now)
+            return
+        }
+
         patchyIsCycleRunning = true
         defer {
             patchyIsCycleRunning = false
             setPatchyLastCycleAt(Date())
         }
 
-        let grouped = Dictionary(grouping: enabledTargets) { target in
+        let grouped = Dictionary(grouping: dueTargets) { target in
             PatchySourceGroupKey(
                 source: target.source,
                 steamAppID: target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -270,7 +277,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: mapped.embedJSON,
+                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -317,7 +324,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: mapped.embedJSON,
+                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -375,7 +382,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: mapped.embedJSON,
+                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -415,7 +422,7 @@ extension AppModel {
                             let delivery = await sendPatchyNotificationDetailed(
                                 channelId: target.channelId,
                                 message: fallback,
-                                embedJSON: mapped.embedJSON,
+                                embedJSON: patchyEmbedJSON(mapped.embedJSON, for: target),
                                 roleIDs: target.roleIDs
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -437,6 +444,39 @@ extension AppModel {
         }
 
         persistSettingsQuietly()
+    }
+
+    private func isPatchyTargetDue(_ target: PatchySourceTarget, now: Date, trigger: String) -> Bool {
+        guard trigger == "Scheduled" else { return true }
+        guard let lastCheckedAt = target.lastCheckedAt else { return true }
+
+        let defaultInterval = PatchyEmbedAccent.defaultPollingIntervalMinutes(for: target.source)
+        let configuredInterval = target.pollingIntervalMinutes > 0 ? target.pollingIntervalMinutes : defaultInterval
+        let minimumInterval = target.source == .github ? 5 : 15
+        let clampedInterval = max(configuredInterval, minimumInterval)
+        return now.timeIntervalSince(lastCheckedAt) >= Double(clampedInterval * 60)
+    }
+
+    private func patchyEmbedJSON(_ embedJSON: String, for target: PatchySourceTarget) -> String {
+        let trimmed = embedJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let data = trimmed.data(using: .utf8),
+              var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var embeds = payload["embeds"] as? [[String: Any]],
+              !embeds.isEmpty
+        else {
+            return embedJSON
+        }
+
+        embeds[0]["color"] = PatchyEmbedAccent.discordColorInt(hex: target.embedColorHex, source: target.source)
+        payload["embeds"] = embeds
+
+        guard let encoded = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let output = String(data: encoded, encoding: .utf8)
+        else {
+            return embedJSON
+        }
+        return output
     }
 
     func updatePatchyTargetRuntimeState(id: UUID, apply: (inout PatchySourceTarget) -> Void) {

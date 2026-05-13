@@ -12,6 +12,14 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum PatchyGitHubBranchMode: String, Codable, CaseIterable, Identifiable {
+    case main
+    case specific
+    case all
+
+    var id: String { rawValue }
+}
+
 struct PatchyDeliveryTarget: Codable, Hashable, Identifiable {
     var id = UUID()
     var isEnabled: Bool = true
@@ -29,6 +37,9 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var githubRepo: String = ""
     var githubBranch: String = ""
     var githubWatchAllCommits: Bool = false
+    var githubBranchMode: PatchyGitHubBranchMode = .main
+    var pollingIntervalMinutes: Int = 60
+    var embedColorHex: String = ""
     var serverId: String = ""
     var channelId: String = ""
     var roleIDs: [String] = []
@@ -38,7 +49,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, isEnabled, source, steamAppID
-        case githubRepo, githubBranch, githubWatchAllCommits
+        case githubRepo, githubBranch, githubWatchAllCommits, githubBranchMode
+        case pollingIntervalMinutes, embedColorHex
         case serverId, channelId, roleIDs
         case lastCheckedAt, lastRunAt, lastStatus
     }
@@ -51,6 +63,9 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubRepo: String = "",
         githubBranch: String = "",
         githubWatchAllCommits: Bool = false,
+        githubBranchMode: PatchyGitHubBranchMode = .main,
+        pollingIntervalMinutes: Int = 60,
+        embedColorHex: String = "",
         serverId: String = "",
         channelId: String = "",
         roleIDs: [String] = [],
@@ -65,6 +80,9 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         self.githubRepo = githubRepo
         self.githubBranch = githubBranch
         self.githubWatchAllCommits = githubWatchAllCommits
+        self.githubBranchMode = githubBranchMode
+        self.pollingIntervalMinutes = pollingIntervalMinutes
+        self.embedColorHex = embedColorHex
         self.serverId = serverId
         self.channelId = channelId
         self.roleIDs = roleIDs
@@ -82,12 +100,54 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubRepo = try c.decodeIfPresent(String.self, forKey: .githubRepo) ?? ""
         githubBranch = try c.decodeIfPresent(String.self, forKey: .githubBranch) ?? ""
         githubWatchAllCommits = try c.decodeIfPresent(Bool.self, forKey: .githubWatchAllCommits) ?? false
+        let legacyHasSpecificBranch = !githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        githubBranchMode = try c.decodeIfPresent(PatchyGitHubBranchMode.self, forKey: .githubBranchMode) ?? (legacyHasSpecificBranch ? .specific : .main)
+        pollingIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .pollingIntervalMinutes) ?? PatchyEmbedAccent.defaultPollingIntervalMinutes(for: source)
+        embedColorHex = try c.decodeIfPresent(String.self, forKey: .embedColorHex) ?? ""
         serverId = try c.decodeIfPresent(String.self, forKey: .serverId) ?? ""
         channelId = try c.decodeIfPresent(String.self, forKey: .channelId) ?? ""
         roleIDs = try c.decodeIfPresent([String].self, forKey: .roleIDs) ?? []
         lastCheckedAt = try c.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
         lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)
         lastStatus = try c.decodeIfPresent(String.self, forKey: .lastStatus) ?? "Never checked"
+    }
+}
+
+enum PatchyEmbedAccent {
+    static func defaultHex(for source: PatchySourceKind) -> String {
+        switch source {
+        case .nvidia:
+            return "#5FAD64"
+        case .amd:
+            return "#C95757"
+        case .intel:
+            return "#5B9BC8"
+        case .steam:
+            return "#6372B8"
+        case .github:
+            return "#746FAE"
+        }
+    }
+
+    static func defaultPollingIntervalMinutes(for source: PatchySourceKind) -> Int {
+        source == .github ? 5 : 60
+    }
+
+    static func resolvedHex(_ hex: String, for source: PatchySourceKind) -> String {
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedHex(trimmed) ?? defaultHex(for: source)
+    }
+
+    static func discordColorInt(hex: String, source: PatchySourceKind) -> Int {
+        let resolved = resolvedHex(hex, for: source)
+        let raw = resolved.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        return Int(raw, radix: 16) ?? 0x746FAE
+    }
+
+    private static func normalizedHex(_ value: String) -> String? {
+        let raw = value.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard raw.count == 6, raw.allSatisfy({ $0.isHexDigit }) else { return nil }
+        return "#\(raw.uppercased())"
     }
 }
 

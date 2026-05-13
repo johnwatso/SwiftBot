@@ -8,7 +8,7 @@ struct OnboardingAnimatedSymbolBackground: View {
 
     private let symbols = [
         "book.pages.fill",
-        "hammer.fill",
+        "square.and.arrow.down.badge.checkmark",
         "terminal.fill",
         "waveform.path.ecg",
         "sparkles",

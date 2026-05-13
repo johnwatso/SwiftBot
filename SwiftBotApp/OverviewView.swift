@@ -339,7 +339,7 @@ struct OverviewView: View {
                 timestamp: Date(),
                 title: "Patchy Running",
                 detail: "Update monitoring cycle is active",
-                symbol: "hammer.fill",
+                symbol: "square.and.arrow.down.badge.checkmark",
                 color: .purple
             ))
         } else if let lastCycle = provider.patchyLastCycleAt {
@@ -552,7 +552,7 @@ struct OverviewView: View {
                     title: "Patchy",
                     value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
                     subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
-                    symbol: "hammer.fill",
+                    symbol: "square.and.arrow.down.badge.checkmark",
                     detail: "Jobs \(workerJobCount)",
                     color: .red
                 ),
@@ -567,10 +567,10 @@ struct OverviewView: View {
                 ),
                 MetricWidget(
                     id: "actions",
-                    title: "Actions",
+                    title: "Automations",
                     value: "\(enabledActionRuleCount) active",
                     subtitle: "\(rules.count) total rules",
-                    symbol: "bolt.circle",
+                    symbol: "bolt.badge.automatic.fill",
                     detail: helpSummary,
                     color: .red
                 )
@@ -637,16 +637,16 @@ struct OverviewView: View {
                 title: "Patchy",
                 value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
                 subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
-                symbol: "hammer.fill",
+                symbol: "square.and.arrow.down.badge.checkmark",
                 detail: "Help \(helpSummary)",
                 color: .purple
             ),
             MetricWidget(
                 id: "actions",
-                title: "Actions",
+                title: "Automations",
                 value: "\(enabledActionRuleCount) active",
                 subtitle: "\(rules.count) total rules",
-                symbol: "bolt.circle",
+                symbol: "bolt.badge.automatic.fill",
                 detail: "Errors \(stats.errors)",
                 color: .indigo
             ),

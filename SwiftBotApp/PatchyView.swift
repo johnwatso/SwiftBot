@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct PatchyView: View {
     @EnvironmentObject var app: AppModel
@@ -14,8 +15,7 @@ struct PatchyView: View {
             }
             statusRail
             monitoringControlsSection
-            sourceTargetList
-            activityFeed
+            operationsConsole
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -46,7 +46,7 @@ struct PatchyView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            ViewSectionHeader(title: "Patchy", symbol: "hammer.fill")
+            ViewSectionHeader(title: "Patchy", symbol: "square.and.arrow.down.badge.checkmark")
             Spacer()
             Button {
                 editorMode = .create
@@ -67,83 +67,110 @@ struct PatchyView: View {
         ) {
             DashboardMetricCard(
                 title: "Sources",
-                value: "\(Set(app.settings.patchy.sourceTargets.map(\.source)).count)",
+                value: "\(monitoredSourceCount)",
                 subtitle: sourceBreakdownSubtitle,
                 symbol: "square.stack.3d.up.fill",
-                color: .orange
+                color: patchyMetricAmber
+            )
+            DashboardMetricCard(
+                title: "Categories",
+                value: "\(categoryModules.count)",
+                subtitle: categoryBreakdownSubtitle,
+                symbol: "rectangle.3.group.fill",
+                color: patchyMetricBlue
             )
             DashboardMetricCard(
                 title: "Active",
-                value: "\(app.settings.patchy.sourceTargets.filter(\.isEnabled).count)",
-                subtitle: "Monitoring",
-                symbol: "checkmark.circle.fill",
-                color: .green
+                value: "\(activeMonitoredSourceCount)",
+                subtitle: "Monitored sources",
+                symbol: "waveform.path.ecg",
+                color: patchyMetricMint
             )
             DashboardMetricCard(
-                title: "Targets",
-                value: "\(app.settings.patchy.sourceTargets.count)",
-                subtitle: "Configured",
-                symbol: "hammer.fill",
-                color: .secondary
-            )
-            DashboardMetricCard(
-                title: "Last Cycle",
-                value: lastCycleValue,
+                title: "Failed",
+                value: "\(failedMonitoredSourceCount)",
                 subtitle: lastCycleSubtitle,
-                symbol: "clock.arrow.circlepath",
-                color: .gray
+                symbol: "exclamationmark.triangle.fill",
+                color: failedMonitoredSourceCount == 0 ? .gray : Color.red.opacity(0.68)
             )
         }
     }
 
+    private var monitoredSourceCount: Int {
+        Set(app.settings.patchy.sourceTargets.map(sourceIdentityKey)).count
+    }
+
+    private var activeMonitoredSourceCount: Int {
+        Set(app.settings.patchy.sourceTargets.filter(\.isEnabled).map(sourceIdentityKey)).count
+    }
+
+    private var failedMonitoredSourceCount: Int {
+        Set(app.settings.patchy.sourceTargets.filter { isFailureStatus($0.lastStatus) }.map(sourceIdentityKey)).count
+    }
+
     private var sourceBreakdownSubtitle: String {
-        let counts = Dictionary(grouping: app.settings.patchy.sourceTargets) { $0.source }
-            .mapValues { $0.count }
-        let parts = PatchySourceKind.allCases.compactMap { kind -> String? in
-            guard let count = counts[kind], count > 0 else { return nil }
-            return "\(sourceLabel(kind)) \(count)"
+        let counts = Dictionary(grouping: app.settings.patchy.sourceTargets) { category(for: $0.source) }
+            .mapValues { Set($0.map(sourceIdentityKey)).count }
+        let parts = PatchyMonitoringCategory.allCases.compactMap { category -> String? in
+            guard let count = counts[category], count > 0 else { return nil }
+            return "\(category.shortTitle) \(count)"
         }
         return parts.isEmpty ? "No sources" : parts.joined(separator: "  ")
     }
 
-    private var lastCycleValue: String {
-        guard let last = app.patchyLastCycleAt else { return "—" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: last, relativeTo: Date())
+    private var categoryBreakdownSubtitle: String {
+        let enabledCategories = categoryModules.filter { module in
+            module.targets.contains(where: \.isEnabled)
+        }.count
+        guard !categoryModules.isEmpty else { return "No groups" }
+        return "\(enabledCategories) active · \(categoryModules.count) configured"
+    }
+
+    private var patchyMetricAmber: Color {
+        Color.orange.opacity(0.72)
+    }
+
+    private var patchyMetricMint: Color {
+        Color.mint.opacity(0.70)
+    }
+
+    private var patchyMetricBlue: Color {
+        Color.blue.opacity(0.66)
     }
 
     private var lastCycleSubtitle: String {
         if app.patchyIsCycleRunning {
             return "Running now…"
         }
-        guard app.patchyLastCycleAt != nil else { return "Never" }
-        return "Idle"
+        guard let last = app.patchyLastCycleAt else { return "No failed sources" }
+        return "Last cycle \(relativeTimestamp(last))"
     }
 
     // MARK: - Monitoring Controls Section
 
     private var monitoringControlsSection: some View {
-        HStack(spacing: 12) {
-            Toggle("Monitoring", isOn: Binding(
-                get: { app.settings.patchy.monitoringEnabled },
-                set: { newValue in
-                    app.settings.patchy.monitoringEnabled = newValue
-                    app.saveSettings()
-                }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
+        HStack(spacing: 8) {
+            PatchyControlPill(
+                title: "Monitoring",
+                detail: app.settings.patchy.monitoringEnabled ? "Active" : "Paused",
+                symbol: app.settings.patchy.monitoringEnabled ? "record.circle.fill" : "circle",
+                color: app.settings.patchy.monitoringEnabled ? .green : .secondary,
+                isActive: app.settings.patchy.monitoringEnabled
+            ) {
+                app.settings.patchy.monitoringEnabled.toggle()
+                app.saveSettings()
+            }
 
-            Toggle("Debug", isOn: Binding(
-                get: { app.settings.patchy.showDebug },
-                set: { newValue in
-                    app.settings.patchy.showDebug = newValue
-                    app.saveSettings()
-                }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            PatchyControlPill(
+                title: "Debug",
+                detail: app.settings.patchy.showDebug ? "Enabled" : "Disabled",
+                symbol: app.settings.patchy.showDebug ? "ladybug.fill" : "ladybug",
+                color: app.settings.patchy.showDebug ? .indigo : .secondary,
+                isActive: app.settings.patchy.showDebug
+            ) {
+                app.settings.patchy.showDebug.toggle()
+                app.saveSettings()
+            }
 
             Spacer()
 
@@ -168,11 +195,11 @@ struct PatchyView: View {
                     .font(.caption.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .controlSize(.mini)
             .disabled(app.patchyIsCycleRunning)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
@@ -181,6 +208,17 @@ struct PatchyView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    private var operationsConsole: some View {
+        HStack(alignment: .top, spacing: 12) {
+            sourceTargetList
+                .frame(minWidth: 440)
+
+            activityFeed
+                .frame(width: 330)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Source Target List
@@ -192,13 +230,13 @@ struct PatchyView: View {
                     emptyTargetsState
                 }
 
-                ForEach(groupedTargets(), id: \.source) { group in
-                    SwiftMeshSection(
-                        title: sourceLabel(group.source),
-                        symbol: sourceIcon(group.source)
+                ForEach(categoryModules) { module in
+                    PatchyCategorySection(
+                        module: module,
+                        categoryStatus: categoryStatus(for: module.targets)
                     ) {
                         LazyVStack(spacing: 8) {
-                            ForEach(group.targets) { target in
+                            ForEach(module.targets) { target in
                                 PatchTargetCard(
                                     target: target,
                                     sourceDisplayName: sourceDisplayName(for: target),
@@ -266,11 +304,14 @@ struct PatchyView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.green)
                 Text("Activity")
                     .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 0)
+                Text("\(min(app.patchyDebugLogs.count, 60)) events")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
 
             if app.patchyDebugLogs.isEmpty {
@@ -288,18 +329,19 @@ struct PatchyView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(app.patchyDebugLogs.prefix(60).enumerated()), id: \.offset) { index, line in
-                        patchyActivityRow(line)
+                        patchyActivityRow(line, index: index)
                         if index < min(app.patchyDebugLogs.count, 60) - 1 {
-                            Divider()
-                                .opacity(0.18)
-                                .padding(.leading, 28)
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.055))
+                                .frame(height: 1)
+                                .padding(.leading, 58)
                         }
                     }
                 }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 280, alignment: .topLeading)
+        .padding(9)
+        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .topLeading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -307,14 +349,19 @@ struct PatchyView: View {
         )
     }
 
-    private func patchyActivityRow(_ line: String) -> some View {
+    private func patchyActivityRow(_ line: String, index: Int) -> some View {
         let parsed = PatchyLogParser.parse(line)
         return HStack(alignment: .center, spacing: 8) {
+            Text(parsed.time)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(index == 0 ? Color.primary.opacity(0.72) : Color.secondary)
+                .frame(width: 42, alignment: .trailing)
+
             Image(systemName: parsed.symbol)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(parsed.color)
-                .frame(width: 18, height: 18)
-                .background(parsed.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .frame(width: 16, height: 16)
+                .background(parsed.color.opacity(0.10), in: Circle())
             VStack(alignment: .leading, spacing: 0) {
                 Text(parsed.title)
                     .font(.caption2.weight(.medium))
@@ -328,16 +375,23 @@ struct PatchyView: View {
             }
             Spacer(minLength: 4)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
     }
 
     // MARK: - Helpers
 
-    private func groupedTargets() -> [PatchySourceGroup] {
-        let grouped = Dictionary(grouping: app.settings.patchy.sourceTargets) { $0.source }
+    private var categoryModules: [PatchyCategoryModule] {
+        let grouped = Dictionary(grouping: app.settings.patchy.sourceTargets) { category(for: $0.source) }
         return grouped
-            .map { PatchySourceGroup(source: $0.key, targets: $0.value.sorted { $0.channelId < $1.channelId }) }
-            .sorted { sourceLabel($0.source) < sourceLabel($1.source) }
+            .map { category, targets in
+                PatchyCategoryModule(
+                    category: category,
+                    targets: targets.sorted {
+                        providerDisplayName(for: $0).localizedCaseInsensitiveCompare(providerDisplayName(for: $1)) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { $0.category.sortOrder < $1.category.sortOrder }
     }
 
     private func sortedServerIDs() -> [String] {
@@ -350,13 +404,24 @@ struct PatchyView: View {
         source.rawValue
     }
 
+    private func category(for source: PatchySourceKind) -> PatchyMonitoringCategory {
+        switch source {
+        case .nvidia, .amd, .intel:
+            return .drivers
+        case .github:
+            return .github
+        case .steam:
+            return .gamingPlatforms
+        }
+    }
+
     private func sourceColor(_ source: PatchySourceKind) -> Color {
         switch source {
         case .nvidia: return .green
         case .amd: return .red
         case .intel: return .blue
         case .steam: return .indigo
-        case .github: return .orange
+        case .github: return .indigo
         }
     }
 
@@ -372,9 +437,39 @@ struct PatchyView: View {
         case .github:
             let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
             let suffix = target.githubWatchAllCommits
-                ? "commits\(target.githubBranch.isEmpty ? "" : " · \(target.githubBranch)")"
+                ? "commits · \(githubBranchLabel(for: target))"
                 : "releases"
             return repo.isEmpty ? "GitHub" : "GitHub • \(repo) (\(suffix))"
+        default:
+            return target.source.rawValue
+        }
+    }
+
+    private func providerDisplayName(for target: PatchySourceTarget) -> String {
+        switch target.source {
+        case .steam:
+            let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let name = app.settings.patchy.steamAppNames[appID], !name.isEmpty {
+                return name
+            }
+            return appID.isEmpty ? "Steam" : "Steam \(appID)"
+        case .github:
+            let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !repo.isEmpty else { return "Repository" }
+            return repo.split(separator: "/").last.map(String.init) ?? repo
+        default:
+            return target.source.rawValue.replacingOccurrences(of: " Arc", with: "")
+        }
+    }
+
+    private func sourceIdentityKey(for target: PatchySourceTarget) -> String {
+        switch target.source {
+        case .github:
+            let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let branch = target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return "github:\(repo):\(target.githubWatchAllCommits):\(target.githubBranchMode.rawValue):\(branch)"
+        case .steam:
+            return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
         default:
             return target.source.rawValue
         }
@@ -387,6 +482,18 @@ struct PatchyView: View {
         case .intel: return "i.circle.fill"
         case .steam: return "gamecontroller.fill"
         case .github: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    private func githubBranchLabel(for target: PatchySourceTarget) -> String {
+        switch target.githubBranchMode {
+        case .main:
+            return "Main"
+        case .specific:
+            let branch = target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+            return branch.isEmpty ? "Main" : branch
+        case .all:
+            return "All branches"
         }
     }
 
@@ -421,12 +528,58 @@ struct PatchyView: View {
         }
         return names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " +\(names.count - 2)" : "")
     }
+
+    private func notificationSummary(for targets: [PatchySourceTarget]) -> String {
+        let channels = targets.map(channelName(for:))
+        let uniqueChannels = Array(NSOrderedSet(array: channels)).compactMap { $0 as? String }
+        if uniqueChannels.isEmpty { return "Not set" }
+        if uniqueChannels.count == 1 { return uniqueChannels[0] }
+        return "\(uniqueChannels[0]) +\(uniqueChannels.count - 1)"
+    }
+
+    private func lastCheckSummary(for targets: [PatchySourceTarget]) -> String {
+        let dates = targets.compactMap(\.lastCheckedAt)
+        guard let latest = dates.max() else { return "Never" }
+        return relativeTimestamp(latest)
+    }
+
+    private func categoryStatus(for targets: [PatchySourceTarget]) -> PatchyCategoryStatus {
+        if targets.contains(where: { isFailureStatus($0.lastStatus) }) {
+            return .failed
+        }
+        if targets.contains(where: \.isEnabled) {
+            return .enabled
+        }
+        return .disabled
+    }
+
+    private func preferredEditableTarget(in targets: [PatchySourceTarget]) -> PatchySourceTarget? {
+        targets.first(where: \.isEnabled) ?? targets.first
+    }
+
+    private func isFailureStatus(_ status: String) -> Bool {
+        if status == "Ready" || status == "Never checked" { return false }
+        if status.contains("succeeded") || status.contains("successfully") || status.contains("sent") || status.contains("Sent") { return false }
+        if status.contains("Unchanged") || status.contains("unchanged") { return false }
+        return status.contains("failed")
+            || status.contains("error")
+            || status.contains("not found")
+            || status.contains("cannot")
+            || status.contains("permissions")
+    }
+
+    private func relativeTimestamp(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
 }
 
 // MARK: - Patchy Log Parser
 
 private enum PatchyLogParser {
     struct ParsedLine {
+        let time: String
         let title: String
         let detail: String
         let symbol: String
@@ -448,8 +601,11 @@ private enum PatchyLogParser {
             return ("info.circle.fill", .secondary)
         }()
 
+        let extractedTime = extractTime(from: line)
+
         // Strip common prefixes
         var cleaned = line
+            .replacingOccurrences(of: #"^\[[^\]]+\]\s*"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\[(OK|WARN|ERR|INFO)\]\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: "\\p{Extended_Pictographic}", with: "", options: .regularExpression)
         cleaned.removeAll { $0 == "\u{FE0F}" || $0 == "\u{200D}" }
@@ -470,18 +626,183 @@ private enum PatchyLogParser {
             detail = ""
         }
 
-        return ParsedLine(title: title, detail: detail, symbol: symbol, color: color)
+        return ParsedLine(time: extractedTime, title: title, detail: detail, symbol: symbol, color: color)
+    }
+
+    private static func extractTime(from line: String) -> String {
+        guard let closing = line.firstIndex(of: "]"), line.first == "[" else { return "--:--" }
+        let raw = String(line[line.index(after: line.startIndex)..<closing])
+        let formatter = ISO8601DateFormatter()
+        guard let date = formatter.date(from: raw) else { return "--:--" }
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        return timeFormatter.string(from: date)
     }
 }
 
-// MARK: - Source Group
+// MARK: - Compact Controls
 
-private struct PatchySourceGroup {
-    let source: PatchySourceKind
+private struct PatchyControlPill: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let color: Color
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(color)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(color.opacity(isActive ? 0.12 : 0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(color.opacity(isActive ? 0.28 : 0.12), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Monitoring Categories
+
+private enum PatchyMonitoringCategory: CaseIterable {
+    case drivers
+    case github
+    case gamingPlatforms
+    case softwareReleases
+
+    var title: String {
+        switch self {
+        case .drivers: return "Drivers Monitoring"
+        case .github: return "GitHub Monitoring"
+        case .gamingPlatforms: return "Gaming Platforms"
+        case .softwareReleases: return "Software Releases"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .drivers: return "Drivers"
+        case .github: return "GitHub"
+        case .gamingPlatforms: return "Gaming"
+        case .softwareReleases: return "Software"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .drivers: return "cpu.fill"
+        case .github: return "chevron.left.forwardslash.chevron.right"
+        case .gamingPlatforms: return "gamecontroller.fill"
+        case .softwareReleases: return "shippingbox.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .drivers: return Color.blue.opacity(0.70)
+        case .github: return Color.indigo.opacity(0.70)
+        case .gamingPlatforms: return Color.purple.opacity(0.64)
+        case .softwareReleases: return Color.mint.opacity(0.64)
+        }
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .drivers: return 0
+        case .github: return 1
+        case .gamingPlatforms: return 2
+        case .softwareReleases: return 3
+        }
+    }
+}
+
+private struct PatchyCategoryModule: Identifiable {
+    var id: PatchyMonitoringCategory { category }
+    let category: PatchyMonitoringCategory
     let targets: [PatchySourceTarget]
 }
 
-// MARK: - Target Card
+private enum PatchyCategoryStatus {
+    case enabled
+    case disabled
+    case failed
+
+    var title: String {
+        switch self {
+        case .enabled: return "Enabled"
+        case .disabled: return "Disabled"
+        case .failed: return "Attention"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .enabled: return .green
+        case .disabled: return .secondary
+        case .failed: return .red
+        }
+    }
+}
+
+private struct PatchyCategorySection<Content: View>: View {
+    let module: PatchyCategoryModule
+    let categoryStatus: PatchyCategoryStatus
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: module.category.symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(module.category.color)
+                    .frame(width: 22, height: 22)
+                    .background(module.category.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(module.category.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text("\(module.targets.count)")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(module.category.color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(module.category.color.opacity(0.10), in: Capsule())
+
+                Spacer(minLength: 8)
+
+                PatchyCategoryStatusPill(status: categoryStatus)
+            }
+
+            content
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.026))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(module.category.color.opacity(0.14), lineWidth: 1)
+        )
+    }
+}
 
 private struct PatchTargetCard: View {
     let target: PatchySourceTarget
@@ -500,87 +821,63 @@ private struct PatchTargetCard: View {
     @State private var showDeleteConfirm = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Title row
-            HStack(spacing: 8) {
-                Image(systemName: sourceIcon(target.source))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(sourceColor)
-                    .frame(width: 22, height: 22)
-                    .background(sourceColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 10) {
+                sourceBadge
 
-                Text(sourceDisplayName)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 7) {
+                        Text(sourceDisplayName)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        PatchyStatusPill(isEnabled: target.isEnabled)
+                    }
+                    Text(sourceSubtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
                 Spacer(minLength: 8)
 
-                PatchyStatusPill(isEnabled: target.isEnabled)
+                statusTelemetry
             }
 
-            // Detail rows
-            VStack(alignment: .leading, spacing: 4) {
-                DiagnosticsLine(label: "Server", value: serverName, tone: .primary)
-                DiagnosticsLine(label: "Channel", value: channelName, tone: .primary)
-                DiagnosticsLine(label: "Mentions", value: roleSummary, tone: .primary)
-                DiagnosticsLine(
-                    label: "Last Run",
-                    value: timestamp(target.lastRunAt),
-                    tone: target.lastRunAt == nil ? .secondary : .primary
-                )
+            HStack(alignment: .top, spacing: 10) {
+                metadataBlock
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                lastCheckBlock
+                    .frame(width: 116, alignment: .leading)
             }
 
-            // Status line
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if target.lastStatus != "Ready"
-                    && target.lastStatus != "Never checked"
-                    && !target.lastStatus.contains("succeeded")
-                    && !target.lastStatus.contains("successfully")
-                    && !target.lastStatus.contains("Unchanged")
-                    && !target.lastStatus.contains("unchanged")
-                {
-                    Image(systemName: isWarning(target.lastStatus) ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(isWarning(target.lastStatus) ? .yellow : .red)
-                        .font(.caption)
-                }
-                Text(target.lastStatus)
-                    .font(.caption)
-                    .foregroundStyle(statusColor(target.lastStatus))
-                    .lineLimit(2)
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(statusColor(target.lastStatus).opacity(0.06))
-            )
-
-            // Action buttons
             HStack(spacing: 6) {
-                PatchyIconButton(symbol: "paperplane.fill", color: .primary, help: "Test send") { onTestSend() }
-                PatchyIconButton(symbol: "arrow.down.circle.fill", color: .primary, help: "Pull update") { onPull() }
-                PatchyIconButton(symbol: "pencil", color: .primary, help: "Edit target") { onEdit() }
-                PatchyIconButton(
-                    symbol: target.isEnabled ? "pause.circle.fill" : "play.circle.fill",
-                    color: target.isEnabled ? .orange : .green,
-                    help: target.isEnabled ? "Disable" : "Enable"
-                ) { onToggleEnabled() }
-                PatchyIconButton(symbol: "trash", color: .red, help: "Delete target") { showDeleteConfirm = true }
-                    .alert("Delete Target?", isPresented: $showDeleteConfirm) {
-                        Button("Delete", role: .destructive) { onDelete() }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("\"\(sourceDisplayName)\" will be permanently deleted.")
-                    }
-                Spacer()
+                PatchyActionButton(title: "Test", symbol: "flask", color: .primary, action: onTestSend)
+                PatchyActionButton(title: "Run", symbol: "icloud.and.arrow.down", color: .primary, action: onPull)
+                PatchyActionButton(title: "Edit", symbol: "pencil", color: .primary, action: onEdit)
+                PatchyActionButton(
+                    title: target.isEnabled ? "Disable" : "Enable",
+                    symbol: target.isEnabled ? "power" : "play.fill",
+                    color: target.isEnabled ? .red : .green,
+                    action: onToggleEnabled
+                )
+                PatchyActionButton(title: "Delete", symbol: "trash", color: .red) {
+                    showDeleteConfirm = true
+                }
+                .alert("Delete Target?", isPresented: $showDeleteConfirm) {
+                    Button("Delete", role: .destructive) { onDelete() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("\"\(sourceDisplayName)\" will be permanently deleted.")
+                }
+                Spacer(minLength: 0)
             }
         }
-        .padding(10)
+        .padding(11)
         .glassCard(
             cornerRadius: 14,
-            tint: sourceColor.opacity(isHovering ? 0.12 : 0.06),
-            stroke: sourceColor.opacity(isHovering ? 0.30 : 0.18)
+            tint: sourceColor.opacity(isHovering ? 0.11 : 0.045),
+            stroke: sourceColor.opacity(isHovering ? 0.34 : 0.18)
         )
         .scaleEffect(isHovering ? 1.006 : 1)
         .shadow(color: sourceColor.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
@@ -591,9 +888,83 @@ private struct PatchTargetCard: View {
         }
     }
 
-    private func timestamp(_ date: Date?) -> String {
+    private var sourceBadge: some View {
+        Image(systemName: sourceIcon(target.source))
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(sourceColor)
+            .frame(width: 34, height: 34)
+            .background(
+                LinearGradient(
+                    colors: [sourceColor.opacity(0.22), sourceColor.opacity(0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(sourceColor.opacity(0.22), lineWidth: 1)
+            )
+    }
+
+    private var metadataBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            PatchyMetadataLine(label: "Server", value: serverName)
+            PatchyMetadataLine(label: "Channel", value: channelName)
+            PatchyMetadataLine(label: "Mentions", value: roleSummary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var lastCheckBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            PatchyMetadataLine(label: "Last Check", value: relativeTimestamp(target.lastCheckedAt))
+            PatchyMetadataLine(label: "Last Run", value: relativeTimestamp(target.lastRunAt))
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var statusTelemetry: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: statusSymbol(target.lastStatus))
+                    .font(.caption.weight(.semibold))
+                Text(statusTitle(target.lastStatus))
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(statusColor(target.lastStatus))
+
+            Text(statusDetail(target.lastStatus))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(statusColor(target.lastStatus).opacity(0.075), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var sourceSubtitle: String {
+        switch target.source {
+        case .github:
+            return target.githubWatchAllCommits ? "Commit activity" : "Release monitoring"
+        case .steam:
+            return "Platform updates"
+        default:
+            return "Driver monitoring"
+        }
+    }
+
+    private func relativeTimestamp(_ date: Date?) -> String {
         guard let date else { return "Never" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func isWarning(_ status: String) -> Bool {
@@ -607,6 +978,35 @@ private struct PatchTargetCard: View {
         return .red
     }
 
+    private func statusSymbol(_ status: String) -> String {
+        if status == "Ready" || status.contains("succeeded") || status.contains("sent") || status.contains("Sent") {
+            return "checkmark.circle.fill"
+        }
+        if status == "Never checked" || status.contains("Unchanged") || status.contains("unchanged") {
+            return "checkmark.circle"
+        }
+        return isWarning(status) ? "exclamationmark.triangle.fill" : "xmark.circle.fill"
+    }
+
+    private func statusTitle(_ status: String) -> String {
+        if status.contains("GitHub") && status.contains("changed") { return "New Release" }
+        if status == "Ready" { return "Ready" }
+        if status.contains("succeeded") || status.contains("sent") || status.contains("Sent") { return "Delivered" }
+        if status.contains("Unchanged") || status.contains("unchanged") { return "No updates" }
+        if status == "Never checked" { return "Pending" }
+        if isWarning(status) { return "Attention" }
+        return "Failed"
+    }
+
+    private func statusDetail(_ status: String) -> String {
+        if status == "Never checked" { return "Awaiting first sync" }
+        if status.contains("GitHub") && status.contains("commits") { return "Commit activity" }
+        if status.contains("GitHub") { return "Release notes available" }
+        if status.contains("Unchanged") || status.contains("unchanged") { return "Last sync clean" }
+        if status.count > 34 { return String(status.prefix(34)) + "…" }
+        return status
+    }
+
     private func sourceIcon(_ source: PatchySourceKind) -> String {
         switch source {
         case .amd: return "a.circle.fill"
@@ -617,33 +1017,6 @@ private struct PatchTargetCard: View {
         }
     }
 }
-
-// MARK: - Patchy Icon Button
-
-private struct PatchyIconButton: View {
-    let symbol: String
-    let color: Color
-    let help: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 24, height: 24)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-}
-
-// MARK: - Patchy Status Pill
 
 private struct PatchyStatusPill: View {
     let isEnabled: Bool
@@ -659,14 +1032,73 @@ private struct PatchyStatusPill: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(
-            (isEnabled ? Color.green : Color.secondary).opacity(0.12),
-            in: Capsule()
-        )
+        .background((isEnabled ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
         .overlay(
             Capsule()
                 .strokeBorder((isEnabled ? Color.green : Color.secondary).opacity(0.30), lineWidth: 1)
         )
+    }
+}
+
+private struct PatchyCategoryStatusPill: View {
+    let status: PatchyCategoryStatus
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(status.color)
+                .frame(width: 6, height: 6)
+            Text(status.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(status.color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(status.color.opacity(0.10), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(status.color.opacity(0.24), lineWidth: 1)
+        )
+    }
+}
+
+private struct PatchyMetadataLine: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 50, alignment: .leading)
+            Text(value)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct PatchyActionButton: View {
+    let title: String
+    let symbol: String
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(color)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.085), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -685,6 +1117,9 @@ private struct PatchyTargetDraft: Identifiable {
     var githubRepo: String
     var githubBranch: String
     var githubWatchAllCommits: Bool
+    var githubBranchMode: PatchyGitHubBranchMode
+    var pollingIntervalMinutes: Int
+    var embedColorHex: String
     var serverId: String
     var channelId: String
     var roleIDs: [String]
@@ -697,6 +1132,9 @@ private struct PatchyTargetDraft: Identifiable {
         githubRepo = target.githubRepo
         githubBranch = target.githubBranch
         githubWatchAllCommits = target.githubWatchAllCommits
+        githubBranchMode = target.githubBranchMode
+        pollingIntervalMinutes = target.pollingIntervalMinutes
+        embedColorHex = target.embedColorHex
         serverId = target.serverId
         channelId = target.channelId
         roleIDs = target.roleIDs
@@ -721,6 +1159,9 @@ private struct PatchyTargetDraft: Identifiable {
             githubRepo: githubRepo,
             githubBranch: githubBranch,
             githubWatchAllCommits: githubWatchAllCommits,
+            githubBranchMode: githubBranchMode,
+            pollingIntervalMinutes: pollingIntervalMinutes,
+            embedColorHex: PatchyEmbedAccent.resolvedHex(embedColorHex, for: source),
             serverId: serverId,
             channelId: channelId,
             roleIDs: roleIDs
@@ -740,62 +1181,92 @@ private struct PatchyTargetEditorSheet: View {
     let onSave: (PatchyTargetDraft) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(mode == .create ? "Add SourceTarget" : "Edit SourceTarget")
-                .font(.title3.weight(.semibold))
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: mode == .create ? "plus.circle.fill" : "slider.horizontal.3")
+                    .font(.title2.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color(nsColor: accentNSColor))
+                    .frame(width: 32, height: 32)
+                    .background(Color(nsColor: accentNSColor).opacity(0.12), in: Circle())
 
-            Form {
-                Picker("Source", selection: $draft.source) {
-                    ForEach(PatchySourceKind.allCases) { source in
-                        Text(source.rawValue).tag(source)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mode == .create ? "Add Target" : "Edit Target")
+                        .font(.title3.weight(.semibold))
+                    Text(editorSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                if draft.source == .steam {
-                    TextField("Steam App ID", text: $draft.steamAppID)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                if draft.source == .github {
-                    TextField("Repo (owner/repo)", text: $draft.githubRepo)
-                        .textFieldStyle(.roundedBorder)
-                    Toggle("Watch all commits", isOn: $draft.githubWatchAllCommits)
-                        .toggleStyle(.switch)
-                    if draft.githubWatchAllCommits {
-                        TextField("Branch (blank = default)", text: $draft.githubBranch)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Posts every new commit on this branch. Can be chatty on active repos.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Posts when a new release/tag is published.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Picker("Server", selection: $draft.serverId) {
-                    Text("Select server").tag("")
-                    ForEach(sortedServerIDs(), id: \.self) { serverId in
-                        Text(connectedServers[serverId] ?? serverId).tag(serverId)
-                    }
-                }
-
-                Picker("Channel", selection: $draft.channelId) {
-                    Text("Select channel").tag("")
-                    ForEach(channelsByServer[draft.serverId] ?? [], id: \.id) { channel in
-                        Text("#\(channel.name)").tag(channel.id)
-                    }
-                }
-
-                PatchyRoleMultiSelect(selectedRoleIDs: $draft.roleIDs, roles: rolesByServer[draft.serverId] ?? [])
-
-                Toggle("Enabled", isOn: $draft.isEnabled)
-                    .toggleStyle(.switch)
+                Spacer()
             }
-            .formStyle(.grouped)
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
 
-            HStack {
+            Divider().opacity(0.45)
+
+            ScrollView {
+                VStack(spacing: 18) {
+                    PatchyEditorSection(title: "General", systemImage: "scope") {
+                        PatchyEditorRow(title: "Source") {
+                            Picker("Source", selection: $draft.source) {
+                                ForEach(PatchySourceKind.allCases) { source in
+                                    Text(source.rawValue).tag(source)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        PatchyEditorRow(title: "Enabled", detail: "Start monitoring this target as soon as it is saved.") {
+                            Toggle("", isOn: $draft.isEnabled)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
+                        }
+                    }
+
+                    sourceSettingsSection
+
+                    PatchyEditorSection(title: "Discord Delivery", systemImage: "paperplane") {
+                        PatchyEditorRow(title: "Server") {
+                            Picker("Server", selection: $draft.serverId) {
+                                Text("Select server").tag("")
+                                ForEach(sortedServerIDs(), id: \.self) { serverId in
+                                    Text(connectedServers[serverId] ?? serverId).tag(serverId)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        PatchyEditorRow(title: "Channel") {
+                            Picker("Channel", selection: $draft.channelId) {
+                                Text("Select channel").tag("")
+                                ForEach(channelsByServer[draft.serverId] ?? [], id: \.id) { channel in
+                                    Text("#\(channel.name)").tag(channel.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        PatchyRoleMultiSelect(selectedRoleIDs: $draft.roleIDs, roles: rolesByServer[draft.serverId] ?? [])
+                    }
+
+                    PatchyEditorSection(title: "Notification Appearance", systemImage: "paintpalette") {
+                        PatchyEditorRow(title: "Embed Accent", detail: "Used as the Discord embed color for this target.") {
+                            PatchyAccentChipPicker(selectedHex: $draft.embedColorHex)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
+            }
+
+            Divider().opacity(0.45)
+
+            HStack(spacing: 10) {
                 Spacer()
                 Button("Cancel") {
                     onCancel()
@@ -803,16 +1274,43 @@ private struct PatchyTargetEditorSheet: View {
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Save") {
+                Button {
                     onSave(draft)
                     dismiss()
+                } label: {
+                    Text("Save Target")
+                        .frame(minWidth: 82)
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(!isValid)
                 .keyboardShortcut(.defaultAction)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .padding(18)
-        .frame(minWidth: 480, minHeight: 460)
+        .frame(minWidth: 560, minHeight: 610)
+        .background(.ultraThinMaterial)
+        .onAppear {
+            if draft.embedColorHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.embedColorHex = PatchyEmbedAccent.defaultHex(for: draft.source)
+            }
+        }
+        .onChange(of: draft.source) { oldValue, newValue in
+            let oldDefault = PatchyEmbedAccent.defaultHex(for: oldValue)
+            if draft.embedColorHex.isEmpty || draft.embedColorHex == oldDefault {
+                draft.embedColorHex = PatchyEmbedAccent.defaultHex(for: newValue)
+            }
+            if newValue == .github {
+                if mode == .create {
+                    draft.githubWatchAllCommits = true
+                }
+                if draft.pollingIntervalMinutes == PatchyEmbedAccent.defaultPollingIntervalMinutes(for: oldValue) {
+                    draft.pollingIntervalMinutes = PatchyEmbedAccent.defaultPollingIntervalMinutes(for: .github)
+                }
+            } else if draft.pollingIntervalMinutes == PatchyEmbedAccent.defaultPollingIntervalMinutes(for: .github) {
+                draft.pollingIntervalMinutes = PatchyEmbedAccent.defaultPollingIntervalMinutes(for: newValue)
+            }
+        }
         .onChange(of: draft.serverId) { _, newValue in
             let channels = channelsByServer[newValue] ?? []
             if !channels.contains(where: { $0.id == draft.channelId }) {
@@ -821,6 +1319,88 @@ private struct PatchyTargetEditorSheet: View {
             let roleIDs = Set((rolesByServer[newValue] ?? []).map(\.id))
             draft.roleIDs = draft.roleIDs.filter { roleIDs.contains($0) }
         }
+    }
+
+    @ViewBuilder
+    private var sourceSettingsSection: some View {
+        switch draft.source {
+        case .steam:
+            PatchyEditorSection(title: "Steam Settings", systemImage: "gamecontroller") {
+                PatchyEditorRow(title: "App ID", detail: "Steam app identifier used for platform update checks.") {
+                    TextField("570", text: $draft.steamAppID)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+        case .github:
+            PatchyEditorSection(title: "GitHub Settings", systemImage: "chevron.left.forwardslash.chevron.right") {
+                PatchyEditorRow(title: "Repository", detail: "Use owner/repo, for example apple/swift.") {
+                    TextField("owner/repo", text: $draft.githubRepo)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                PatchyEditorRow(title: "Watch Commits", detail: "Primary Patchy mode. Posts when new commits appear.") {
+                    Toggle("", isOn: $draft.githubWatchAllCommits)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+
+                if draft.githubWatchAllCommits {
+                    PatchyEditorRow(title: "Branch Monitoring", detail: "Choose the branch scope Patchy should watch.") {
+                        Picker("Branch Monitoring", selection: $draft.githubBranchMode) {
+                            Text("Main").tag(PatchyGitHubBranchMode.main)
+                            Text("Specific Branch").tag(PatchyGitHubBranchMode.specific)
+                            Text("All Branches").tag(PatchyGitHubBranchMode.all)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.radioGroup)
+                    }
+
+                    if draft.githubBranchMode == .specific {
+                        PatchyEditorRow(title: "Branch", detail: "Enter the exact branch name to monitor.") {
+                            TextField("main", text: $draft.githubBranch)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    } else if draft.githubBranchMode == .all {
+                        Text("All Branches checks recent branch heads and reports the branch that actually received the commit.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    Text("Release mode posts when GitHub publishes a new release or tag for this repository.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                PatchyEditorRow(title: "Polling", detail: "GitHub-safe cadence; 5 minutes is the default.") {
+                    Stepper("\(draft.pollingIntervalMinutes) min", value: $draft.pollingIntervalMinutes, in: 5...1440, step: 5)
+                        .font(.callout.monospacedDigit())
+                }
+            }
+        default:
+            PatchyEditorSection(title: "\(draft.source.rawValue) Settings", systemImage: "cpu") {
+                Text("Patchy will monitor this provider using the built-in update source.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var editorSubtitle: String {
+        switch draft.source {
+        case .github:
+            return "Configure repository monitoring and Discord delivery."
+        case .steam:
+            return "Configure Steam update monitoring and Discord delivery."
+        default:
+            return "Configure provider monitoring and Discord delivery."
+        }
+    }
+
+    private var accentNSColor: NSColor {
+        nsColor(from: PatchyEmbedAccent.resolvedHex(draft.embedColorHex, for: draft.source))
     }
 
     private var isValid: Bool {
@@ -835,6 +1415,11 @@ private struct PatchyTargetEditorSheet: View {
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 .split(separator: "/", omittingEmptySubsequences: true)
             if parts.count < 2 { return false }
+            if draft.githubWatchAllCommits,
+               draft.githubBranchMode == .specific,
+               draft.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return false
+            }
         }
         return !draft.serverId.isEmpty && !draft.channelId.isEmpty
     }
@@ -844,6 +1429,167 @@ private struct PatchyTargetEditorSheet: View {
             (connectedServers[$0] ?? "").localizedCaseInsensitiveCompare(connectedServers[$1] ?? "") == .orderedAscending
         }
     }
+
+    private func nsColor(from hex: String) -> NSColor {
+        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard raw.count == 6,
+              let value = Int(raw, radix: 16)
+        else {
+            return NSColor.systemIndigo
+        }
+
+        return NSColor(
+            calibratedRed: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+}
+
+private struct PatchyEditorSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    let content: Content
+
+    init(title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 2)
+
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Color.primary.opacity(0.018), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.045), lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct PatchyEditorRow<Content: View>: View {
+    let title: String
+    var detail: String?
+    let content: Content
+
+    init(title: String, detail: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.detail = detail
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.medium))
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 150, alignment: .leading)
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct PatchyAccentChipPicker: View {
+    @Binding var selectedHex: String
+
+    private let choices: [PatchyAccentChoice] = [
+        PatchyAccentChoice(name: "Green", hex: "#5FAD64"),
+        PatchyAccentChoice(name: "Blue", hex: "#5B9BC8"),
+        PatchyAccentChoice(name: "Purple", hex: "#746FAE"),
+        PatchyAccentChoice(name: "Orange", hex: "#D58A2A"),
+        PatchyAccentChoice(name: "Cyan", hex: "#36AEBF"),
+        PatchyAccentChoice(name: "Red", hex: "#C95757"),
+        PatchyAccentChoice(name: "Gray", hex: "#8E96A3")
+    ]
+
+    var body: some View {
+        HStack(spacing: 13) {
+            ForEach(choices) { choice in
+                Button {
+                    selectedHex = choice.hex
+                } label: {
+                    Circle()
+                        .fill(choice.color)
+                        .frame(width: 22, height: 22)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.white.opacity(isSelected(choice) ? 0.75 : 0), lineWidth: 2)
+                                .padding(3)
+                        }
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    isSelected(choice) ? choice.color.opacity(0.55) : Color.primary.opacity(0.08),
+                                    lineWidth: isSelected(choice) ? 4 : 1
+                                )
+                                .frame(width: 30, height: 30)
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(choice.name)
+            }
+        }
+        .padding(.vertical, 4)
+        .onAppear(perform: normalizeSelection)
+        .onChange(of: selectedHex) { _, _ in
+            normalizeSelection()
+        }
+    }
+
+    private func isSelected(_ choice: PatchyAccentChoice) -> Bool {
+        selectedHex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == choice.hex
+    }
+
+    private func normalizeSelection() {
+        let current = selectedHex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if !choices.contains(where: { $0.hex == current }) {
+            selectedHex = choices[2].hex
+        }
+    }
+}
+
+private struct PatchyAccentChoice: Identifiable {
+    let name: String
+    let hex: String
+
+    var id: String { hex }
+
+    var color: Color {
+        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard raw.count == 6, let value = Int(raw, radix: 16) else {
+            return .secondary
+        }
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
 }
 
 private struct PatchyRoleMultiSelect: View {
@@ -851,37 +1597,71 @@ private struct PatchyRoleMultiSelect: View {
     let roles: [GuildRole]
 
     var body: some View {
-        Menu {
-            if roles.isEmpty {
-                Text("No roles available")
-            } else {
-                ForEach(roles, id: \.id) { role in
-                    Button {
-                        toggle(role.id)
-                    } label: {
-                        if selectedRoleIDs.contains(role.id) {
-                            Label(role.name, systemImage: "checkmark")
-                        } else {
-                            Text(role.name)
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mention Role")
+                    .font(.callout.weight(.medium))
+                Text("Users with selected roles will be mentioned in notifications.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 150, alignment: .leading)
+
+            Menu {
+                if roles.isEmpty {
+                    Text("No roles available")
+                } else {
+                    ForEach(roles, id: \.id) { role in
+                        Button {
+                            toggle(role.id)
+                        } label: {
+                            if selectedRoleIDs.contains(role.id) {
+                                Label(role.name, systemImage: "checkmark")
+                            } else {
+                                Text(role.name)
+                            }
                         }
                     }
                 }
+            } label: {
+                HStack(spacing: 6) {
+                    if selectedRoles.isEmpty {
+                        Text("No mentions")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(selectedRoles.prefix(3), id: \.id) { role in
+                            PatchyRoleToken(name: role.name) {
+                                remove(role.id)
+                            }
+                        }
+                        if selectedRoles.count > 3 {
+                            Text("+\(selectedRoles.count - 3)")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(minHeight: 30)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-        } label: {
-            HStack {
-                Text("Mentions")
-                Spacer()
-                Text(summary)
-                    .foregroundStyle(.secondary)
-            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 2)
     }
 
-    private var summary: String {
-        if selectedRoleIDs.isEmpty {
-            return "None"
-        }
-        return "\(selectedRoleIDs.count) selected"
+    private var selectedRoles: [GuildRole] {
+        let selected = Set(selectedRoleIDs)
+        return roles.filter { selected.contains($0.id) }
     }
 
     private func toggle(_ roleID: String) {
@@ -890,5 +1670,33 @@ private struct PatchyRoleMultiSelect: View {
         } else {
             selectedRoleIDs.append(roleID)
         }
+    }
+
+    private func remove(_ roleID: String) {
+        selectedRoleIDs.removeAll { $0 == roleID }
+    }
+}
+
+private struct PatchyRoleToken: View {
+    let name: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button(action: onRemove) {
+            HStack(spacing: 4) {
+                Text("@\(name)")
+                    .lineLimit(1)
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.primary.opacity(0.82))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(0.075), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Remove @\(name)")
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 public enum GitHubWatchMode: Sendable, Hashable {
     case releases
     case commits(branch: String)
+    case allCommits
 }
 
 public struct GitHubUpdateInfo: Sendable {
@@ -11,6 +12,7 @@ public struct GitHubUpdateInfo: Sendable {
     public let title: String
     public let author: String
     public let date: String
+    public let dateRaw: String
     public let url: String
     public let summary: String
     public let embedJSON: String
@@ -23,6 +25,7 @@ public struct GitHubUpdateInfo: Sendable {
         title: String,
         author: String,
         date: String,
+        dateRaw: String = "",
         url: String,
         summary: String,
         embedJSON: String,
@@ -34,11 +37,28 @@ public struct GitHubUpdateInfo: Sendable {
         self.title = title
         self.author = author
         self.date = date
+        self.dateRaw = dateRaw
         self.url = url
         self.summary = summary
         self.embedJSON = embedJSON
         self.rawDebug = rawDebug
         self.mode = mode
+    }
+
+    func withMode(_ mode: GitHubWatchMode) -> GitHubUpdateInfo {
+        GitHubUpdateInfo(
+            releaseIdentifier: releaseIdentifier,
+            displayVersion: displayVersion,
+            title: title,
+            author: author,
+            date: date,
+            dateRaw: dateRaw,
+            url: url,
+            summary: summary,
+            embedJSON: embedJSON,
+            rawDebug: rawDebug,
+            mode: mode
+        )
     }
 }
 
@@ -63,6 +83,8 @@ public struct GitHubService: Sendable {
             return try await fetchLatestRelease(owner: trimmedOwner, repo: trimmedRepo)
         case .commits(let branch):
             return try await fetchLatestCommit(owner: trimmedOwner, repo: trimmedRepo, branch: branch)
+        case .allCommits:
+            return try await fetchLatestCommitAcrossBranches(owner: trimmedOwner, repo: trimmedRepo)
         }
     }
 
@@ -101,6 +123,7 @@ public struct GitHubService: Sendable {
             title: title,
             author: author,
             date: date,
+            dateRaw: decoded.publishedAt ?? decoded.createdAt ?? "",
             url: notes.url,
             summary: body,
             embedJSON: embed,
@@ -135,20 +158,19 @@ public struct GitHubService: Sendable {
         let rest = message.dropFirst(firstLine.count).trimmingCharacters(in: .whitespacesAndNewlines)
         let author = commit.commit.author?.name ?? commit.author?.login ?? "Unknown"
         let date = formatISODate(commit.commit.author?.date ?? "")
-        let branchLabel = trimmedBranch.isEmpty ? "default" : trimmedBranch
+        let branchLabel = displayBranchName(trimmedBranch)
 
-        let notes = ReleaseNotes(
+        let embed = formatCommitEmbed(
+            owner: owner,
+            repo: repo,
+            branch: branchLabel,
+            shortSha: shortSha,
             title: firstLine,
-            author: "\(owner)/\(repo) (\(branchLabel))",
-            url: commit.htmlURL,
-            version: shortSha,
-            date: date,
-            sections: makeCommitSections(body: rest, author: author),
-            thumbnailURL: "https://github.com/\(owner).png",
-            color: 0x24292E
+            summary: rest,
+            author: author,
+            date: commit.commit.author?.date ?? "",
+            url: commit.htmlURL
         )
-
-        let embed = formatter.format(releaseNotes: notes)
 
         return GitHubUpdateInfo(
             releaseIdentifier: "commit:\(sha)",
@@ -156,12 +178,37 @@ public struct GitHubService: Sendable {
             title: firstLine,
             author: author,
             date: date,
+            dateRaw: commit.commit.author?.date ?? "",
             url: commit.htmlURL,
             summary: rest,
             embedJSON: embed,
             rawDebug: "GitHub commits[0]:\n\(rawJSON)",
             mode: .commits(branch: trimmedBranch)
         )
+    }
+
+    private func fetchLatestCommitAcrossBranches(owner: String, repo: String) async throws -> GitHubUpdateInfo {
+        var components = URLComponents(string: "https://api.github.com/repos/\(owner)/\(repo)/branches")
+        components?.queryItems = [URLQueryItem(name: "per_page", value: "20")]
+        guard let url = components?.url else { throw GitHubServiceError.invalidURL }
+
+        let (data, response) = try await session.data(for: makeRequest(url: url))
+        try validateHTTP(response)
+
+        let branches = try JSONDecoder().decode([GitHubBranchResponse].self, from: data)
+        guard !branches.isEmpty else { throw GitHubServiceError.noCommits }
+
+        var newest: (branch: String, info: GitHubUpdateInfo, date: Date?)?
+        for branch in branches {
+            let info = try await fetchLatestCommit(owner: owner, repo: repo, branch: branch.name)
+            let parsedDate = parseISODate(info.dateRaw)
+            if newest == nil || compareCommitDate(parsedDate, newest?.date) == .orderedDescending {
+                newest = (branch.name, info, parsedDate)
+            }
+        }
+
+        guard let newest else { throw GitHubServiceError.noCommits }
+        return newest.info.withMode(.allCommits)
     }
 
     private func makeRequest(url: URL) -> URLRequest {
@@ -188,14 +235,35 @@ public struct GitHubService: Sendable {
         return [ReleaseSection(title: "Release Notes", bullets: bullets)]
     }
 
-    private func makeCommitSections(body: String, author: String) -> [ReleaseSection] {
-        var sections: [ReleaseSection] = [
-            ReleaseSection(title: "Author", bullets: [Bullet(text: author)])
-        ]
-        if !body.isEmpty {
-            sections.append(ReleaseSection(title: "Details", bullets: bulletize(body: body)))
+    private func displayBranchName(_ branch: String) -> String {
+        let trimmed = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Main" }
+        switch trimmed.lowercased() {
+        case "default", "main", "master":
+            return "Main"
+        default:
+            return trimmed
         }
-        return sections
+    }
+
+    private func parseISODate(_ iso: String) -> Date? {
+        guard !iso.isEmpty else { return nil }
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        return isoFormatter.date(from: iso)
+    }
+
+    private func compareCommitDate(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?):
+            return lhs.compare(rhs)
+        case (.some, .none):
+            return .orderedDescending
+        case (.none, .some):
+            return .orderedAscending
+        case (.none, .none):
+            return .orderedSame
+        }
     }
 
     private func bulletize(body: String) -> [Bullet] {
@@ -211,6 +279,47 @@ public struct GitHubService: Sendable {
             let truncated = stripped.count > 200 ? String(stripped.prefix(197)) + "..." : stripped
             return Bullet(text: truncated)
         }
+    }
+
+    private func formatCommitEmbed(
+        owner: String,
+        repo: String,
+        branch: String,
+        shortSha: String,
+        title: String,
+        summary: String,
+        author: String,
+        date: String,
+        url: String
+    ) -> String {
+        let repoURL = "https://github.com/\(owner)/\(repo)"
+        let details = summary.isEmpty ? "No additional commit details." : truncate(summary, limit: 1_000)
+        let dateLabel = formatISODate(date)
+        let embed: [String: Any] = [
+            "author": ["name": "\(owner)/\(repo) (\(branch))", "url": repoURL],
+            "title": truncate(title, limit: 256),
+            "url": url,
+            "description": "**Author**\n• \(author)\n\n**Details**\n• \(details)\n",
+            "color": 0x746FAE,
+            "thumbnail": ["url": "https://github.com/\(owner).png"],
+            "fields": [
+                ["name": "Commit", "value": "[\(shortSha)](\(url))", "inline": true],
+                ["name": "Release Date", "value": dateLabel, "inline": true]
+            ]
+        ]
+
+        let payload: [String: Any] = ["embeds": [embed]]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return json
+    }
+
+    private func truncate(_ value: String, limit: Int) -> String {
+        guard value.count > limit else { return value }
+        return String(value.prefix(limit - 3)) + "..."
     }
 
     private func formatISODate(_ iso: String) -> String {
@@ -305,4 +414,8 @@ private struct GitHubCommitResponse: Codable {
         case commit
         case author
     }
+}
+
+private struct GitHubBranchResponse: Codable {
+    let name: String
 }

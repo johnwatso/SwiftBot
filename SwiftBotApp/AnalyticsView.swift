@@ -452,7 +452,7 @@ struct AnalyticsView: View {
                             title: "Most Triggered Rule",
                             value: firstCommand.title,
                             detail: firstCommand.detail,
-                            symbol: "bolt.circle",
+                            symbol: "bolt.badge.automatic.fill",
                             color: .cyan
                         )
                     }
