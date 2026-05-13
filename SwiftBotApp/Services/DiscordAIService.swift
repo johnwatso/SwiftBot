@@ -520,6 +520,33 @@ actor DiscordAIService {
         return await generateReply(messages: messages, systemPrompt: systemPrompt, stripSpeakerPrefixFor: event.username)
     }
 
+    func summarizePatchyUpdateWithAppleIntelligence(updateText: String, source: String) async -> String? {
+        let trimmed = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, appleAvailability() else { return nil }
+
+        let systemPrompt = """
+        You summarise Patchy update checks for a Discord embed.
+        Produce an overall user-facing summary, not just fixes.
+        Include important highlights, fixes, known issues, regressions, UI or GUI changes, compatibility notes, and upgrade impact when present.
+        For GitHub commits or releases, call out visible product/UI changes and practical developer-facing changes.
+        Output 1 to 4 concise bullet points. Do not include a heading. Do not mention that you are an AI.
+        """
+        let prompt = """
+        Summarise this \(source) update:
+
+        \(trimmed)
+        """
+        let engine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
+        let messages = [
+            Message(channelID: "patchy", userID: "swiftbot", username: "Patchy", content: systemPrompt, role: .system),
+            Message(channelID: "patchy", userID: "swiftbot", username: "Patchy", content: prompt, role: .user)
+        ]
+
+        guard let reply = await engine.generate(messages: messages) else { return nil }
+        let cleaned = cleanOutput(reply)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
     func generateOpenAIImage(prompt: String, apiKey: String, model: String) async -> Data? {
         await openAIImageGenerator(prompt, apiKey, model)
     }

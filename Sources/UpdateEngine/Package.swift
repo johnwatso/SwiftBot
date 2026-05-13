@@ -21,9 +21,15 @@ let package = Package(
             targets: ["UpdateEngineUITester"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.9.6")
+    ],
     targets: [
         .target(
             name: "UpdateEngine",
+            dependencies: [
+                .product(name: "SwiftSoup", package: "SwiftSoup")
+            ],
             path: "Sources/UpdateEngineCore"
         ),
         .executableTarget(

@@ -40,6 +40,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var githubBranchMode: PatchyGitHubBranchMode = .main
     var pollingIntervalMinutes: Int = 60
     var embedColorHex: String = ""
+    var summarizeWithAppleIntelligence: Bool = false
     var serverId: String = ""
     var channelId: String = ""
     var roleIDs: [String] = []
@@ -50,7 +51,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, isEnabled, source, steamAppID
         case githubRepo, githubBranch, githubWatchAllCommits, githubBranchMode
-        case pollingIntervalMinutes, embedColorHex
+        case pollingIntervalMinutes, embedColorHex, summarizeWithAppleIntelligence
+        case summarizeFixesWithAppleIntelligence
         case serverId, channelId, roleIDs
         case lastCheckedAt, lastRunAt, lastStatus
     }
@@ -66,6 +68,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubBranchMode: PatchyGitHubBranchMode = .main,
         pollingIntervalMinutes: Int = 60,
         embedColorHex: String = "",
+        summarizeWithAppleIntelligence: Bool = false,
         serverId: String = "",
         channelId: String = "",
         roleIDs: [String] = [],
@@ -83,6 +86,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         self.githubBranchMode = githubBranchMode
         self.pollingIntervalMinutes = pollingIntervalMinutes
         self.embedColorHex = embedColorHex
+        self.summarizeWithAppleIntelligence = summarizeWithAppleIntelligence
         self.serverId = serverId
         self.channelId = channelId
         self.roleIDs = roleIDs
@@ -104,12 +108,36 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubBranchMode = try c.decodeIfPresent(PatchyGitHubBranchMode.self, forKey: .githubBranchMode) ?? (legacyHasSpecificBranch ? .specific : .main)
         pollingIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .pollingIntervalMinutes) ?? PatchyEmbedAccent.defaultPollingIntervalMinutes(for: source)
         embedColorHex = try c.decodeIfPresent(String.self, forKey: .embedColorHex) ?? ""
+        summarizeWithAppleIntelligence = try c.decodeIfPresent(Bool.self, forKey: .summarizeWithAppleIntelligence)
+            ?? c.decodeIfPresent(Bool.self, forKey: .summarizeFixesWithAppleIntelligence)
+            ?? false
         serverId = try c.decodeIfPresent(String.self, forKey: .serverId) ?? ""
         channelId = try c.decodeIfPresent(String.self, forKey: .channelId) ?? ""
         roleIDs = try c.decodeIfPresent([String].self, forKey: .roleIDs) ?? []
         lastCheckedAt = try c.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
         lastRunAt = try c.decodeIfPresent(Date.self, forKey: .lastRunAt)
         lastStatus = try c.decodeIfPresent(String.self, forKey: .lastStatus) ?? "Never checked"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(isEnabled, forKey: .isEnabled)
+        try c.encode(source, forKey: .source)
+        try c.encode(steamAppID, forKey: .steamAppID)
+        try c.encode(githubRepo, forKey: .githubRepo)
+        try c.encode(githubBranch, forKey: .githubBranch)
+        try c.encode(githubWatchAllCommits, forKey: .githubWatchAllCommits)
+        try c.encode(githubBranchMode, forKey: .githubBranchMode)
+        try c.encode(pollingIntervalMinutes, forKey: .pollingIntervalMinutes)
+        try c.encode(embedColorHex, forKey: .embedColorHex)
+        try c.encode(summarizeWithAppleIntelligence, forKey: .summarizeWithAppleIntelligence)
+        try c.encode(serverId, forKey: .serverId)
+        try c.encode(channelId, forKey: .channelId)
+        try c.encode(roleIDs, forKey: .roleIDs)
+        try c.encodeIfPresent(lastCheckedAt, forKey: .lastCheckedAt)
+        try c.encodeIfPresent(lastRunAt, forKey: .lastRunAt)
+        try c.encode(lastStatus, forKey: .lastStatus)
     }
 }
 
