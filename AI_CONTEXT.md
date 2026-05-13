@@ -159,6 +159,8 @@ Phase 1: failover + term safety · Phase 2: conversation sync + pagination + cur
 
 ## 5. UI Design Rules
 
+Read `DESIGN.md` before making UI changes. It captures the SwiftMesh visual baseline that should guide SwiftBot styling going forward.
+
 All UI in SwiftBot **must** follow:
 
 1. **Apple Human Interface Guidelines** — always, without exception

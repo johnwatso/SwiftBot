@@ -17,8 +17,9 @@ struct AIBotsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ViewSectionHeader(title: "AI Bots", symbol: "sparkles.rectangle.stack.fill")
+            VStack(alignment: .leading, spacing: 16) {
+                header
+
                 if app.isFailoverManagedNode {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill")
@@ -30,6 +31,7 @@ struct AIBotsView: View {
                     .padding(.horizontal, 2)
                 }
 
+                metricTileRow
                 overviewCard
                 MemoryOverviewView(viewModel: app.memoryViewModel)
                 configurationCard
@@ -37,7 +39,7 @@ struct AIBotsView: View {
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             .padding(.horizontal, 16)
-            .padding(.top, 16)
+            .padding(.top, 12)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
         }
@@ -89,154 +91,238 @@ struct AIBotsView: View {
         }
     }
 
-    private var overviewCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            diagnosticsStyleSectionHeader(title: "AI Engines", symbol: "sparkles")
-
-            EngineSectionView(
-                title: "Apple Intelligence",
-                subtitle: "System-native engine",
-                disclosureTitle: "Apple Intelligence Settings",
-                status: app.appleIntelligenceOnline ? .online : .offline,
-                isPrimary: app.settings.preferredAIProvider == .apple,
-                isExpanded: $showAppleSettings,
-                showsHeaderDivider: true,
-                showsLiquidGlow: true,
-                glowEnabled: true
-            ) {
-                providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
-            } settings: {
-                VStack(alignment: .leading, spacing: 10) {
-                    settingsToggleRow(
-                        "Enable Apple Intelligence",
-                        isOn: Binding(
-                            get: { true },
-                            set: { _ in }
-                        )
-                    )
-                    .disabled(true)
-
-                    Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
-                        .font(.caption)
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("AI Bots")
+                    .font(.title2.weight(.semibold))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(headerStatusColor)
+                        .frame(width: 7, height: 7)
+                    Text(headerSubtitle)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 6)
-                .padding(.leading, 12)
             }
+            Spacer()
+            AIProviderBadge(provider: app.settings.preferredAIProvider)
+        }
+    }
 
-            Divider()
+    private var headerSubtitle: String {
+        let enabledCount = enabledPrimaryProviders.count
+        let onlineCount = [
+            app.appleIntelligenceOnline,
+            app.settings.ollamaEnabled && app.ollamaOnline,
+            app.settings.openAIEnabled && app.openAIOnline
+        ].filter { $0 }.count
+        let providerName = providerDisplayName(preferredAIProviderBinding.wrappedValue)
+        return "\(onlineCount)/\(enabledCount) engines online · Primary \(providerName)"
+    }
 
-            EngineSectionView(
-                title: "Ollama",
-                subtitle: "Local AI engine",
-                disclosureTitle: "Ollama Settings",
-                status: ollamaStatus,
-                isPrimary: app.settings.preferredAIProvider == .ollama,
-                isExpanded: $showOllamaSettings
-            ) {
-                providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
-            } settings: {
-                VStack(alignment: .leading, spacing: 10) {
-                    settingsToggleRow("Enable Ollama", isOn: ollamaEnabledBinding)
+    private var headerStatusColor: Color {
+        switch statusForEngine(
+            isEnabled: enabledPrimaryProviders.contains(app.settings.preferredAIProvider),
+            isOnline: isPreferredProviderOnline
+        ) {
+        case .online:
+            return .green
+        case .offline:
+            return .red
+        case .inactive:
+            return .secondary
+        }
+    }
 
+    private var metricTileRow: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+            DashboardMetricCard(
+                title: "Primary",
+                value: providerShortName(preferredAIProviderBinding.wrappedValue),
+                subtitle: preferredProviderSubtitle,
+                symbol: "sparkles",
+                color: .accentColor,
+                appleIntelligenceGlowEnabled: false
+            )
+            DashboardMetricCard(
+                title: "Engines",
+                value: "\(enabledPrimaryProviders.count)",
+                subtitle: "\(enabledOnlineEngineCount) online",
+                symbol: "cpu",
+                color: .blue
+            )
+            DashboardMetricCard(
+                title: "Replies",
+                value: app.settings.localAIDMReplyEnabled ? "On" : "Off",
+                subtitle: app.settings.behavior.useAIInGuildChannels ? "DMs and guild channels" : "Direct messages only",
+                symbol: "bubble.left.and.text.bubble.right.fill",
+                color: app.settings.localAIDMReplyEnabled ? .green : .gray
+            )
+            DashboardMetricCard(
+                title: "Memory",
+                value: "\(app.memoryViewModel.totalMessages)",
+                subtitle: "\(app.memoryViewModel.summaries.count) conversations",
+                symbol: "brain.head.profile",
+                color: .indigo
+            )
+        }
+    }
+
+    private var overviewCard: some View {
+        SwiftMeshSection(title: "AI Engines", symbol: "sparkles") {
+            VStack(alignment: .leading, spacing: 10) {
+                EngineSectionView(
+                    title: "Apple Intelligence",
+                    subtitle: "System-native engine",
+                    disclosureTitle: "Apple Intelligence Settings",
+                    status: app.appleIntelligenceOnline ? .online : .offline,
+                    isPrimary: app.settings.preferredAIProvider == .apple,
+                    isExpanded: $showAppleSettings,
+                    showsHeaderDivider: true,
+                    showsLiquidGlow: false,
+                    glowEnabled: false
+                ) {
+                    providerIcon(imageName: "AIAppleLogo", fallbackSystemImage: "apple.intelligence")
+                } settings: {
                     VStack(alignment: .leading, spacing: 10) {
-                        TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
-                        TextField("Model", text: $app.settings.localAIModel)
-
-                        HStack {
-                            Spacer()
-                            Button {
-                                app.detectOllamaModel()
-                            } label: {
-                                Label("Auto Detect Model", systemImage: "wand.and.stars")
-                                    .font(.subheadline.weight(.semibold))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .overlay(
-                                        Capsule()
-                                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.leading, 12)
-                    .opacity(app.settings.ollamaEnabled ? 1.0 : 0.5)
-                    .disabled(!app.settings.ollamaEnabled)
-                }
-                .padding(.top, 6)
-            }
-
-            Divider()
-
-            EngineSectionView(
-                title: "OpenAI (ChatGPT)",
-                subtitle: "Cloud AI engine",
-                disclosureTitle: "OpenAI Settings",
-                status: openAIStatus,
-                isPrimary: app.settings.preferredAIProvider == .openAI,
-                isExpanded: $showOpenAISettings
-            ) {
-                providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
-            } settings: {
-                VStack(alignment: .leading, spacing: 10) {
-                    settingsToggleRow("Enable OpenAI", isOn: openAIEnabledBinding)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
-                        TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
-                        settingsToggleRow("Enable OpenAI Image Generation", isOn: openAIImageGenerationBinding)
-                        TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
-                            .disabled(!app.settings.openAIImageGenerationEnabled)
-                        TextField(
-                            "Monthly Image Limit Per User",
-                            text: Binding(
-                                get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
-                                set: { raw in
-                                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    if let parsed = Int(trimmed) {
-                                        app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
-                                    }
-                                }
+                        settingsToggleRow(
+                            "Enable Apple Intelligence",
+                            isOn: Binding(
+                                get: { true },
+                                set: { _ in }
                             )
                         )
-                        .disabled(!app.settings.openAIImageGenerationEnabled)
+                        .disabled(true)
+
+                        Text("Apple Intelligence uses on-device system capabilities and does not require API keys.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.top, 6)
                     .padding(.leading, 12)
-                    .opacity(app.settings.openAIEnabled ? 1.0 : 0.5)
-                    .disabled(!app.settings.openAIEnabled)
                 }
-                .padding(.top, 6)
+
+                EngineSectionView(
+                    title: "Ollama",
+                    subtitle: "Local AI engine",
+                    disclosureTitle: "Ollama Settings",
+                    status: ollamaStatus,
+                    isPrimary: app.settings.preferredAIProvider == .ollama,
+                    isExpanded: $showOllamaSettings
+                ) {
+                    providerIcon(imageName: "AIOllamaLogo", fallbackSystemImage: "server.rack")
+                } settings: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        settingsToggleRow("Enable Ollama", isOn: ollamaEnabledBinding)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            TextField("Ollama Host (localhost)", text: $app.settings.ollamaBaseURL)
+                            TextField("Model", text: $app.settings.localAIModel)
+
+                            HStack {
+                                Spacer()
+                                Button {
+                                    app.detectOllamaModel()
+                                } label: {
+                                    Label("Auto Detect Model", systemImage: "wand.and.stars")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                        .background(Color.primary.opacity(0.035), in: Capsule())
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.leading, 12)
+                        .opacity(app.settings.ollamaEnabled ? 1.0 : 0.5)
+                        .disabled(!app.settings.ollamaEnabled)
+                    }
+                    .padding(.top, 6)
+                }
+
+                EngineSectionView(
+                    title: "OpenAI (ChatGPT)",
+                    subtitle: "Cloud AI engine",
+                    disclosureTitle: "OpenAI Settings",
+                    status: openAIStatus,
+                    isPrimary: app.settings.preferredAIProvider == .openAI,
+                    isExpanded: $showOpenAISettings
+                ) {
+                    providerIcon(imageName: "AIOpenAILogo", fallbackSystemImage: "brain.head.profile")
+                } settings: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        settingsToggleRow("Enable OpenAI", isOn: openAIEnabledBinding)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            SecureField("OpenAI API Key", text: $app.settings.openAIAPIKey)
+                            TextField("OpenAI Chat Model", text: $app.settings.openAIModel)
+                            settingsToggleRow("Enable OpenAI Image Generation", isOn: openAIImageGenerationBinding)
+                            TextField("OpenAI Image Model", text: $app.settings.openAIImageModel)
+                                .disabled(!app.settings.openAIImageGenerationEnabled)
+                            TextField(
+                                "Monthly Image Limit Per User",
+                                text: Binding(
+                                    get: { String(app.settings.openAIImageMonthlyLimitPerUser) },
+                                    set: { raw in
+                                        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if let parsed = Int(trimmed) {
+                                            app.settings.openAIImageMonthlyLimitPerUser = max(0, parsed)
+                                        }
+                                    }
+                                )
+                            )
+                            .disabled(!app.settings.openAIImageGenerationEnabled)
+                        }
+                        .padding(.leading, 12)
+                        .opacity(app.settings.openAIEnabled ? 1.0 : 0.5)
+                        .disabled(!app.settings.openAIEnabled)
+                    }
+                    .padding(.top, 6)
+                }
             }
         }
-        .padding(12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var configurationCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            diagnosticsStyleSectionHeader(title: "Configuration", symbol: "slider.horizontal.3")
-
+        SwiftMeshSection(title: "Configuration", symbol: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 14) {
-                diagnosticsStyleSectionHeader(title: "General", symbol: "switch.2")
+                aiSubsectionHeader(title: "General", symbol: "switch.2")
                 settingsToggleRow("Enable AI Replies", isOn: $app.settings.localAIDMReplyEnabled)
                 settingsToggleRow("Use AI in Guild Text Channels", isOn: $app.settings.behavior.useAIInGuildChannels)
                 settingsToggleRow("Allow Direct Messages", isOn: $app.settings.behavior.allowDMs)
                 settingsPickerRow("Primary AI Engine", selection: preferredAIProviderBinding)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.02))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            )
 
             VStack(alignment: .leading, spacing: 8) {
-                diagnosticsStyleSectionHeader(title: "System Prompt", symbol: "text.bubble")
+                aiSubsectionHeader(title: "System Prompt", symbol: "text.bubble")
                 TextField("System Prompt", text: $app.settings.localAISystemPrompt)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.02))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            )
         }
-        .padding(12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
     }
 
     @ViewBuilder
@@ -263,6 +349,33 @@ struct AIBotsView: View {
 
     private var openAIStatus: AIEngineStatus {
         statusForEngine(isEnabled: app.settings.openAIEnabled, isOnline: app.openAIOnline)
+    }
+
+    private var enabledOnlineEngineCount: Int {
+        [
+            app.appleIntelligenceOnline,
+            app.settings.ollamaEnabled && app.ollamaOnline,
+            app.settings.openAIEnabled && app.openAIOnline
+        ].filter { $0 }.count
+    }
+
+    private var isPreferredProviderOnline: Bool {
+        switch preferredAIProviderBinding.wrappedValue {
+        case .apple:
+            return app.appleIntelligenceOnline
+        case .ollama:
+            return app.ollamaOnline
+        case .openAI:
+            return app.openAIOnline
+        }
+    }
+
+    private var preferredProviderSubtitle: String {
+        let status = statusForEngine(
+            isEnabled: enabledPrimaryProviders.contains(preferredAIProviderBinding.wrappedValue),
+            isOnline: isPreferredProviderOnline
+        )
+        return status.label
     }
 
     private var enabledPrimaryProviders: [AIProviderPreference] {
@@ -348,18 +461,37 @@ struct AIBotsView: View {
         }
     }
 
+    private func providerShortName(_ provider: AIProviderPreference) -> String {
+        switch provider {
+        case .apple:
+            return "Apple"
+        case .ollama:
+            return "Ollama"
+        case .openAI:
+            return "OpenAI"
+        }
+    }
+
     private func settingsToggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack(alignment: .center) {
             Text(title)
+                .font(.caption)
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
     }
 
     private func settingsPickerRow(_ title: String, selection: Binding<AIProviderPreference>) -> some View {
         HStack(alignment: .center) {
             Text(title)
+                .font(.caption)
             Spacer()
             Picker("", selection: selection) {
                 ForEach(enabledPrimaryProviders) { provider in
@@ -369,6 +501,12 @@ struct AIBotsView: View {
             .labelsHidden()
             .pickerStyle(.menu)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
     }
 
     private func syncProviderSelectionFromPreference() {
@@ -387,13 +525,64 @@ struct AIBotsView: View {
     }
 
     @ViewBuilder
-    private func diagnosticsStyleSectionHeader(title: String, symbol: String) -> some View {
+    private func aiSubsectionHeader(title: String, symbol: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(title)
-                .font(.headline.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+}
+
+private struct AIProviderBadge: View {
+    let provider: AIProviderPreference
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+            Text(label.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(0.4)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color))
+    }
+
+    private var label: String {
+        switch provider {
+        case .apple:
+            return "Apple"
+        case .ollama:
+            return "Ollama"
+        case .openAI:
+            return "OpenAI"
+        }
+    }
+
+    private var symbol: String {
+        switch provider {
+        case .apple:
+            return "apple.intelligence"
+        case .ollama:
+            return "server.rack"
+        case .openAI:
+            return "brain.head.profile"
+        }
+    }
+
+    private var color: Color {
+        switch provider {
+        case .apple:
+            return .accentColor
+        case .ollama:
+            return .blue
+        case .openAI:
+            return .green
         }
     }
 }
@@ -466,6 +655,16 @@ private struct EngineSectionView<Icon: View, Content: View>: View {
             }
             .padding(.leading, 52)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(status == .inactive ? 0.015 : 0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
         .overlay {
             if showsLiquidGlow {
                 ZStack {
@@ -550,7 +749,7 @@ private struct EngineStatusStackView: View {
                 .foregroundStyle(isPrimary ? Color.accentColor : Color.secondary)
         }
     }
-    }
+}
 
 private enum AIEngineStatus {
     case online
@@ -586,50 +785,51 @@ struct MemoryOverviewView: View {
     @State private var scopeToClear: MemoryScope?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center) {
-                Text("Conversation Memory")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Text("\(viewModel.totalMessages) messages")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Button("Clear All") { showClearAllConfirm = true }
-                    .buttonStyle(.bordered)
-                    .disabled(viewModel.summaries.isEmpty)
-                    .alert("Clear All Memory?", isPresented: $showClearAllConfirm) {
-                        Button("Clear All", role: .destructive) { viewModel.clearAll() }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("All conversation memory will be permanently deleted.")
-                    }
-            }
+        SwiftMeshSection(title: "Conversation Memory", symbol: "brain.head.profile") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center) {
+                    Text("\(viewModel.totalMessages) messages")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Clear All") { showClearAllConfirm = true }
+                        .buttonStyle(.bordered)
+                        .disabled(viewModel.summaries.isEmpty)
+                        .alert("Clear All Memory?", isPresented: $showClearAllConfirm) {
+                            Button("Clear All", role: .destructive) { viewModel.clearAll() }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("All conversation memory will be permanently deleted.")
+                        }
+                }
 
-            if viewModel.summaries.isEmpty {
-                Text("No channel memory yet. Messages will appear here as conversations are processed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(viewModel.summaries.prefix(10)) { summary in
-                    HStack(spacing: 12) {
-                        Text(viewModel.displayName(for: summary))
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Text("\(summary.messageCount)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Button("Clear") { scopeToClear = summary.scope }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                if viewModel.summaries.isEmpty {
+                    PlaceholderPanelLine(text: "No channel memory yet. Messages will appear here as conversations are processed.")
+                } else {
+                    ForEach(viewModel.summaries.prefix(10)) { summary in
+                        HStack(spacing: 12) {
+                            Text(viewModel.displayName(for: summary))
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Text("\(summary.messageCount)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Button("Clear") { scopeToClear = summary.scope }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.primary.opacity(0.03))
+                        )
                     }
-                    .padding(.vertical, 2)
                 }
             }
         }
-        .padding(12)
-        .glassCard(cornerRadius: 20, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
         .alert("Clear Memory?", isPresented: Binding(
             get: { scopeToClear != nil },
             set: { if !$0 { scopeToClear = nil } }
@@ -651,13 +851,13 @@ struct AIIconContainer<Content: View>: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(Color.primary.opacity(0.035))
             content
         }
         .frame(width: 44, height: 44)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }

@@ -990,6 +990,7 @@ final class AppModel: ObservableObject {
         events = snapshot.events
         commandLog = snapshot.commandLog
         voiceLog = snapshot.voiceLog
+        patchyDebugLogs = Array(snapshot.patchyDebugLogs.prefix(200))
         patchyLastCycleAt = snapshot.patchyLastCycleAt
     }
 
@@ -998,6 +999,7 @@ final class AppModel: ObservableObject {
             events: events,
             commandLog: commandLog,
             voiceLog: voiceLog,
+            patchyDebugLogs: patchyDebugLogs,
             patchyLastCycleAt: patchyLastCycleAt
         )
         Task {
