@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 
 actor WikiLookupService {
     private let session: URLSession
@@ -337,6 +338,9 @@ actor WikiLookupService {
             title: result.title,
             extract: result.extract,
             url: result.url,
+            imageURL: result.imageURL,
+            pageType: result.pageType,
+            fields: result.fields,
             weaponStats: stats
         )
     }
@@ -413,6 +417,8 @@ actor WikiLookupService {
         let magazineSize = value(for: ["magazine", "magsize", "magazinesize", "ammo"])
         let shortReload = value(for: ["tacticalreload", "shortreload", "reloadpartial", "reloadtime"])
         let longReload = value(for: ["emptyreload", "longreload", "reloadempty"])
+        let version = value(for: ["version", "patch", "gameversion", "updated"])
+        let notes = value(for: ["notes", "note"])
 
         let stats = FinalsWeaponStats(
             type: cleanedStatValue(type),
@@ -424,7 +430,9 @@ actor WikiLookupService {
             minimumDamage: cleanedStatValue(minimumDamage),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
-            longReload: cleanedStatValue(longReload)
+            longReload: cleanedStatValue(longReload),
+            version: cleanedStatValue(version),
+            notes: cleanedStatValue(notes)
         )
 
         let hasUsefulData = [
@@ -549,9 +557,11 @@ actor WikiLookupService {
         var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "action", value: "query"),
-            URLQueryItem(name: "prop", value: "extracts|info"),
+            URLQueryItem(name: "prop", value: "extracts|info|pageimages"),
             URLQueryItem(name: "titles", value: title),
             URLQueryItem(name: "inprop", value: "url"),
+            URLQueryItem(name: "piprop", value: "original|thumbnail"),
+            URLQueryItem(name: "pithumbsize", value: "600"),
             URLQueryItem(name: "exintro", value: "1"),
             URLQueryItem(name: "explaintext", value: "1"),
             URLQueryItem(name: "format", value: "json"),
@@ -573,6 +583,9 @@ actor WikiLookupService {
                 title: page.title,
                 extract: extract,
                 url: finalURL,
+                imageURL: page.original?.source ?? page.thumbnail?.source,
+                pageType: nil,
+                fields: [],
                 weaponStats: nil
             )
         } catch {
@@ -596,10 +609,7 @@ actor WikiLookupService {
                   (200..<300).contains(http.statusCode),
                   let html = String(data: data, encoding: .utf8) else { return nil }
 
-            let title = extractHTMLTitle(from: html) ?? query
-            let extract = extractSummaryParagraph(from: html)
-            let resolvedURL = extractCanonicalWikiPageURL(from: html)?.absoluteString ?? pageURL.absoluteString
-            return FinalsWikiLookupResult(title: title, extract: extract, url: resolvedURL, weaponStats: nil)
+            return parseWikiHTMLPage(html: html, pageURL: pageURL, fallbackTitle: query)
         } catch {
             return nil
         }
@@ -632,9 +642,11 @@ actor WikiLookupService {
         var components = URLComponents(url: finalsWikiAPI, resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "action", value: "query"),
-            URLQueryItem(name: "prop", value: "extracts|info"),
+            URLQueryItem(name: "prop", value: "extracts|info|pageimages"),
             URLQueryItem(name: "titles", value: title),
             URLQueryItem(name: "inprop", value: "url"),
+            URLQueryItem(name: "piprop", value: "original|thumbnail"),
+            URLQueryItem(name: "pithumbsize", value: "600"),
             URLQueryItem(name: "exintro", value: "1"),
             URLQueryItem(name: "explaintext", value: "1"),
             URLQueryItem(name: "format", value: "json"),
@@ -654,6 +666,9 @@ actor WikiLookupService {
                     .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
                 url: page.fullurl ?? "https://www.thefinals.wiki/wiki/\(page.title.replacingOccurrences(of: " ", with: "_"))",
+                imageURL: page.original?.source ?? page.thumbnail?.source,
+                pageType: nil,
+                fields: [],
                 weaponStats: nil
             )
         } catch {
@@ -716,18 +731,19 @@ actor WikiLookupService {
                   (200..<300).contains(http.statusCode),
                   let html = String(data: data, encoding: .utf8) else { return nil }
 
-            let title = extractHTMLTitle(from: html)
-            if let title, !isMeaningfulFinalsWikiTitle(title) {
+            let parsed = parseWikiHTMLPage(html: html, pageURL: pageURL, fallbackTitle: nil)
+            if !isMeaningfulFinalsWikiTitle(parsed.title) {
                 return nil
             }
 
-            let extract = extractSummaryParagraph(from: html)
-            let resolvedURL = extractCanonicalWikiPageURL(from: html) ?? pageURL
             let weaponStats = extractWeaponStats(from: html)
             return FinalsWikiLookupResult(
-                title: title ?? resolvedURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " "),
-                extract: extract,
-                url: resolvedURL.absoluteString,
+                title: parsed.title,
+                extract: parsed.extract,
+                url: parsed.url,
+                imageURL: parsed.imageURL,
+                pageType: weaponStats == nil ? parsed.pageType : "weapon",
+                fields: parsed.fields,
                 weaponStats: weaponStats
             )
         } catch {
@@ -818,6 +834,164 @@ actor WikiLookupService {
         return true
     }
 
+    private func parseWikiHTMLPage(html: String, pageURL: URL, fallbackTitle: String?) -> FinalsWikiLookupResult {
+        guard let document = try? SwiftSoup.parse(html, pageURL.absoluteString) else {
+            let title = extractHTMLTitle(from: html)
+                ?? fallbackTitle
+                ?? pageURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " ")
+            let extract = extractSummaryParagraph(from: html)
+            let resolvedURL = extractCanonicalWikiPageURL(from: html) ?? pageURL
+            return FinalsWikiLookupResult(title: title, extract: extract, url: resolvedURL.absoluteString)
+        }
+
+        let title = cleanedSoupText((try? document.select("h1#firstHeading, h1.page-header__title, h1").first()?.text()) ?? "")
+            .nonEmpty
+            ?? cleanedSoupText((try? document.title()) ?? "")
+                .replacingOccurrences(of: " - THE FINALS Wiki", with: "")
+                .replacingOccurrences(of: " | Fandom", with: "")
+                .nonEmpty
+            ?? fallbackTitle
+            ?? pageURL.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " ")
+
+        let canonical = firstSoupAttribute(
+            in: document,
+            selector: "link[rel=canonical]",
+            attributes: ["href"],
+            baseURL: pageURL
+        ) ?? pageURL.absoluteString
+
+        let summary = firstMeaningfulSoupText(
+            in: document,
+            selectors: [
+                ".mw-parser-output > p",
+                "#mw-content-text p",
+                ".page-content p",
+                "main p",
+                "article p"
+            ],
+            minimumLength: 40
+        )
+
+        let imageURL = firstSoupAttribute(
+            in: document,
+            selector: "meta[property=og:image], meta[name=twitter:image]",
+            attributes: ["content"],
+            baseURL: pageURL
+        ) ?? firstSoupAttribute(
+            in: document,
+            selector: ".portable-infobox img, .infobox img, figure img, a.image img, .mw-parser-output img",
+            attributes: ["src", "data-src"],
+            baseURL: pageURL
+        )
+
+        let fields = extractSoupFields(from: document)
+        let pageType = inferredPageType(from: fields, title: title)
+
+        return FinalsWikiLookupResult(
+            title: title,
+            extract: summary,
+            url: canonical,
+            imageURL: imageURL,
+            pageType: pageType,
+            fields: fields,
+            weaponStats: nil
+        )
+    }
+
+    private func firstMeaningfulSoupText(in document: Document, selectors: [String], minimumLength: Int) -> String {
+        for selector in selectors {
+            guard let elements = try? document.select(selector) else { continue }
+            for element in elements.array() {
+                let text = cleanedSoupText((try? element.text()) ?? "")
+                if text.count >= minimumLength,
+                   !text.lowercased().contains("retrieved from"),
+                   !text.lowercased().hasPrefix("main page:") {
+                    return text
+                }
+            }
+        }
+        return ""
+    }
+
+    private func firstSoupAttribute(
+        in document: Document,
+        selector: String,
+        attributes: [String],
+        baseURL: URL
+    ) -> String? {
+        guard let elements = try? document.select(selector) else { return nil }
+        for element in elements.array() {
+            for attribute in attributes {
+                let raw = ((try? element.attr(attribute)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !raw.isEmpty else { continue }
+                if let absolute = absoluteWikiURL(from: raw, baseURL: baseURL) {
+                    return absolute
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractSoupFields(from document: Document) -> [WikiResultField] {
+        var fields: [WikiResultField] = []
+        var seen: Set<String> = []
+
+        func append(name rawName: String, value rawValue: String) {
+            let name = cleanedSoupText(rawName)
+            let value = cleanedSoupText(rawValue)
+            guard !name.isEmpty, !value.isEmpty, name.count <= 40, value.count <= 180 else { return }
+            let key = normalizedLabel(name)
+            guard !key.isEmpty, seen.insert(key).inserted else { return }
+            fields.append(WikiResultField(name: name, value: value, inline: true))
+        }
+
+        if let items = try? document.select(".portable-infobox .pi-item.pi-data") {
+            for item in items.array() {
+                let label = (try? item.select(".pi-data-label").first()?.text()) ?? ""
+                let value = (try? item.select(".pi-data-value").first()?.text()) ?? ""
+                append(name: label, value: value)
+            }
+        }
+
+        if let rows = try? document.select(".infobox tr, table.infobox tr, .mw-parser-output table.wikitable tr") {
+            for row in rows.array() {
+                let cells = (try? row.select("th, td").array()) ?? []
+                guard cells.count >= 2 else { continue }
+                let label = (try? cells[0].text()) ?? ""
+                let value = (try? cells[1].text()) ?? ""
+                append(name: label, value: value)
+            }
+        }
+
+        return Array(fields.prefix(18))
+    }
+
+    private func inferredPageType(from fields: [WikiResultField], title: String) -> String? {
+        let labels = Set(fields.map { normalizedLabel($0.name) })
+        if labels.contains("damage") || labels.contains("body") || labels.contains("rpm") || labels.contains("magazine") {
+            return "weapon"
+        }
+        let lowered = title.lowercased()
+        if lowered.contains("weapon") { return "weapon" }
+        return nil
+    }
+
+    private func absoluteWikiURL(from raw: String, baseURL: URL) -> String? {
+        var value = decodeHTMLEntities(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("//") {
+            value = "\(baseURL.scheme ?? "https"):\(value)"
+        }
+        return URL(string: value, relativeTo: baseURL)?.absoluteURL.absoluteString
+    }
+
+    private func cleanedSoupText(_ text: String) -> String {
+        decodeHTMLEntities(text)
+            .replacingOccurrences(of: "\\[[^\\]]+\\]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func extractHTMLTitle(from html: String) -> String? {
         guard let rawTitle = html.firstMatch(for: #"<title>(.*?)</title>"#) else { return nil }
         let cleaned = decodeHTMLEntities(rawTitle)
@@ -875,8 +1049,13 @@ actor WikiLookupService {
         let damageSection = extractSectionHTML(named: "Damage", from: html)
         let falloffSection = extractSectionHTML(named: "Damage Falloff", from: html)
         let technicalSection = extractSectionHTML(named: "Technical", from: html)
+        let notesSection = extractSectionHTML(named: "Notes", from: html)
 
         let type = profileSection.flatMap { extractTableValue(label: "Type", from: $0) }
+        let version = extractTableValue(label: "Version", from: html)
+            ?? extractTableValue(label: "Patch", from: html)
+            ?? profileSection.flatMap { extractTableValue(label: "Version", from: $0) }
+            ?? profileSection.flatMap { extractTableValue(label: "Patch", from: $0) }
         let bodyDamage = damageSection.flatMap { extractTableValue(label: "Body", from: $0) }
         let headshotDamage = damageSection.flatMap { extractTableValue(label: "Head", from: $0) }
         let fireRate = technicalSection.flatMap {
@@ -903,6 +1082,9 @@ actor WikiLookupService {
         let longReload = technicalSection.flatMap {
             extractTableValue(label: "Empty Reload", from: $0) ?? extractTableValue(label: "Long Reload", from: $0)
         }
+        let notes = extractTableValue(label: "Notes", from: html)
+            ?? extractTableValue(label: "Note", from: html)
+            ?? notesSection.map(stripHTML)
 
         let stats = FinalsWeaponStats(
             type: cleanedStatValue(type),
@@ -914,7 +1096,9 @@ actor WikiLookupService {
             minimumDamage: cleanedStatValue(minimumDamage),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
-            longReload: cleanedStatValue(longReload)
+            longReload: cleanedStatValue(longReload),
+            version: cleanedStatValue(version),
+            notes: cleanedStatValue(notes)
         )
 
         let hasUsefulData = [
@@ -972,6 +1156,8 @@ actor WikiLookupService {
         let magazineSize = value(for: ["Magazine", "Mag Size", "Magazine Size", "Ammo"])
         let shortReload = value(for: ["Tactical Reload", "Short Reload", "Reload (Partial)", "Reload Time"])
         let longReload = value(for: ["Empty Reload", "Long Reload", "Reload (Empty)"])
+        let version = value(for: ["Version", "Patch", "Game Version", "Updated"])
+        let notes = value(for: ["Notes", "Note"])
 
         let computedMinimum = minimumDamage ?? computeMinimumDamage(
             bodyDamage: bodyDamage,
@@ -988,7 +1174,9 @@ actor WikiLookupService {
             minimumDamage: cleanedStatValue(computedMinimum),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
-            longReload: cleanedStatValue(longReload)
+            longReload: cleanedStatValue(longReload),
+            version: cleanedStatValue(version),
+            notes: cleanedStatValue(notes)
         )
 
         let hasUsefulData = [
@@ -1026,6 +1214,8 @@ actor WikiLookupService {
         let magazineSize = value(in: slice, labels: ["Magazine", "Mag Size"])
         let longReload = value(in: slice, labels: ["Empty Reload", "Long Reload"])
         let shortReload = value(in: slice, labels: ["Tactical Reload", "Short Reload"])
+        let version = value(in: slice, labels: ["Version", "Patch", "Game Version", "Updated"])
+        let notes = value(in: slice, labels: ["Notes", "Note"])
 
         let headshotDamage: String?
         if let explicitHead = value(in: slice, labels: ["Head", "Critical Hit", "Headshot"]) {
@@ -1047,7 +1237,9 @@ actor WikiLookupService {
             minimumDamage: cleanedStatValue(computeMinimumDamage(bodyDamage: bodyDamage, multiplier: multiplier)),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
-            longReload: cleanedStatValue(longReload)
+            longReload: cleanedStatValue(longReload),
+            version: cleanedStatValue(version),
+            notes: cleanedStatValue(notes)
         )
 
         let hasUsefulData = [
@@ -1075,11 +1267,20 @@ actor WikiLookupService {
         let falloffText = sectionText(in: normalized, heading: "Damage Falloff", nextHeadings: ["Technical", "Stats", "Usage"])
         let technicalText = sectionText(in: normalized, heading: "Technical", nextHeadings: ["Usage", "Stats", "Controls", "Properties"])
         let propertiesText = sectionText(in: normalized, heading: "Properties", nextHeadings: ["Item Mastery", "Weapon Skins", "Trivia", "History"])
+        let notesText = sectionText(in: normalized, heading: "Notes", nextHeadings: ["Trivia", "History", "Weapon Skins", "Item Mastery"])
 
         let type = firstCapturedValue(
             in: profileText,
             patterns: [
                 #"Type\s*:?\s*(.+?)(?=\s+Unlock\b|\s+Damage\b|\s+Build\b|$)"#
+            ]
+        )
+
+        let version = firstCapturedValue(
+            in: normalized,
+            patterns: [
+                #"Version\s*:?\s*([0-9]+(?:\.[0-9]+){1,3})(?=\s+Type\b|\s+Damage\b|\s+Patch\b|$)"#,
+                #"Patch\s*:?\s*([0-9]+(?:\.[0-9]+){1,3})(?=\s+Type\b|\s+Damage\b|\s+Version\b|$)"#
             ]
         )
 
@@ -1145,6 +1346,7 @@ actor WikiLookupService {
                 #"Long Reload\s*:?\s*([0-9]+(?:\.[0-9]+)?s)(?=\s+Short Reload\b|\s+Controls\b|$)"#
             ]
         )
+        let notes = notesText.isEmpty ? nil : notesText
 
         let headshotDamage: String?
         if propertiesText.localizedCaseInsensitiveContains("No Critical Hit") ||
@@ -1170,7 +1372,9 @@ actor WikiLookupService {
             minimumDamage: cleanedStatValue(computeMinimumDamage(bodyDamage: bodyDamage, multiplier: multiplier)),
             magazineSize: cleanedStatValue(magazineSize),
             shortReload: cleanedStatValue(shortReload),
-            longReload: cleanedStatValue(longReload)
+            longReload: cleanedStatValue(longReload),
+            version: cleanedStatValue(version),
+            notes: cleanedStatValue(notes)
         )
 
         let hasUsefulData = [
@@ -1348,6 +1552,10 @@ actor WikiLookupService {
 }
 
 private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+
     func matches(for pattern: String) -> [String] {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
             return []
@@ -1387,6 +1595,12 @@ private struct MediaWikiPageResponse: Decodable {
         let title: String
         let extract: String?
         let fullurl: String?
+        let original: ImageInfo?
+        let thumbnail: ImageInfo?
         let missing: String?
+    }
+
+    struct ImageInfo: Decodable {
+        let source: String?
     }
 }

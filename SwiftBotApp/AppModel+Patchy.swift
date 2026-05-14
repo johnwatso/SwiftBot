@@ -479,6 +479,7 @@ extension AppModel {
                 source: summaryInput.source
             ) {
                 embeds[0] = patchyEmbedWithAISummary(embeds[0], summary: summary)
+                appendPatchyLog("Summarised with AI [\(target.source.rawValue)].")
             } else {
                 appendPatchyLog("AI summary skipped [\(target.source.rawValue)]: Apple Intelligence unavailable or returned no summary.")
             }
@@ -576,20 +577,26 @@ extension AppModel {
     }
 
     private func patchyNormalizedAISummary(_ summary: String) -> String {
-        let lines = summary
-            .components(separatedBy: .newlines)
+        let paragraphs = summary
+            .components(separatedBy: "\n\n")
+            .map { paragraph in
+                paragraph
+                    .components(separatedBy: .newlines)
+                    .map { line -> String in
+                        var text = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        while text.hasPrefix("-") || text.hasPrefix("•") || text.hasPrefix("*") {
+                            text.removeFirst()
+                            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        return text
+                    }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        let normalized = lines.prefix(3).map { line -> String in
-            var text = line
-            while text.hasPrefix("-") || text.hasPrefix("•") || text.hasPrefix("*") {
-                text.removeFirst()
-                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            return "• \(text)"
-        }
-        return normalized.joined(separator: "\n")
+        return paragraphs.prefix(2).joined(separator: "\n\n")
     }
 
     private func patchyTruncateDiscordDescription(_ description: String) -> String {
@@ -610,8 +617,8 @@ extension AppModel {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let final = "[\(stamp)] \(line)"
         patchyDebugLogs.insert(final, at: 0)
-        if patchyDebugLogs.count > 200 {
-            patchyDebugLogs.removeLast(patchyDebugLogs.count - 200)
+        if patchyDebugLogs.count > 60 {
+            patchyDebugLogs.removeLast(patchyDebugLogs.count - 60)
         }
         logs.append("Patchy: \(line)")
         persistAnalyticsRuntime()

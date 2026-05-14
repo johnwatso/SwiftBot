@@ -526,10 +526,10 @@ actor DiscordAIService {
 
         let systemPrompt = """
         You summarise Patchy update checks for a Discord embed.
-        Produce an overall user-facing summary, not just fixes.
+        Produce an overall user-facing blurb, not just fixes.
         Include important highlights, fixes, known issues, regressions, UI or GUI changes, compatibility notes, and upgrade impact when present.
         For GitHub commits or releases, call out visible product/UI changes and practical developer-facing changes.
-        Output 1 to 4 concise bullet points. Do not include a heading. Do not mention that you are an AI.
+        Output one or two short paragraphs, maximum. Do not use bullet points. Do not include a heading. Do not mention that you are an AI.
         """
         let prompt = """
         Summarise this \(source) update:

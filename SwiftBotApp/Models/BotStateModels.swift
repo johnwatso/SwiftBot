@@ -157,7 +157,61 @@ struct FinalsWikiLookupResult: Codable, Hashable {
     let title: String
     let extract: String
     let url: String
+    let imageURL: String?
+    let pageType: String?
+    let fields: [WikiResultField]
     let weaponStats: FinalsWeaponStats?
+
+    init(
+        title: String,
+        extract: String,
+        url: String,
+        imageURL: String? = nil,
+        pageType: String? = nil,
+        fields: [WikiResultField] = [],
+        weaponStats: FinalsWeaponStats? = nil
+    ) {
+        self.title = title
+        self.extract = extract
+        self.url = url
+        self.imageURL = imageURL
+        self.pageType = pageType
+        self.fields = fields
+        self.weaponStats = weaponStats
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case extract
+        case url
+        case imageURL
+        case pageType
+        case fields
+        case weaponStats
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        extract = try container.decodeIfPresent(String.self, forKey: .extract) ?? ""
+        url = try container.decode(String.self, forKey: .url)
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        pageType = try container.decodeIfPresent(String.self, forKey: .pageType)
+        fields = try container.decodeIfPresent([WikiResultField].self, forKey: .fields) ?? []
+        weaponStats = try container.decodeIfPresent(FinalsWeaponStats.self, forKey: .weaponStats)
+    }
+}
+
+struct WikiResultField: Codable, Hashable {
+    let name: String
+    let value: String
+    let inline: Bool
+
+    init(name: String, value: String, inline: Bool = true) {
+        self.name = name
+        self.value = value
+        self.inline = inline
+    }
 }
 
 struct FinalsWeaponStats: Codable, Hashable {
@@ -171,6 +225,36 @@ struct FinalsWeaponStats: Codable, Hashable {
     let magazineSize: String?
     let shortReload: String?
     let longReload: String?
+    let version: String?
+    let notes: String?
+
+    init(
+        type: String?,
+        bodyDamage: String?,
+        headshotDamage: String?,
+        fireRate: String?,
+        dropoffStart: String?,
+        dropoffEnd: String?,
+        minimumDamage: String?,
+        magazineSize: String?,
+        shortReload: String?,
+        longReload: String?,
+        version: String? = nil,
+        notes: String? = nil
+    ) {
+        self.type = type
+        self.bodyDamage = bodyDamage
+        self.headshotDamage = headshotDamage
+        self.fireRate = fireRate
+        self.dropoffStart = dropoffStart
+        self.dropoffEnd = dropoffEnd
+        self.minimumDamage = minimumDamage
+        self.magazineSize = magazineSize
+        self.shortReload = shortReload
+        self.longReload = longReload
+        self.version = version
+        self.notes = notes
+    }
 }
 
 struct GuildVoiceChannel: Identifiable, Hashable, Codable {

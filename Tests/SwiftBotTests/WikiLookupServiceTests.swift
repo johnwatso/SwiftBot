@@ -63,6 +63,46 @@ final class WikiLookupServiceTests: XCTestCase {
         XCTAssertEqual(result?.url, "https://example.fandom.com/wiki/AKM")
     }
 
+    func testLookupWikiExtractsImageAndInfoboxFieldsWithSwiftSoup() async {
+        MockURLProtocol.setHandler { request in
+            let html = """
+            <html>
+              <head>
+                <title>AKM - Example Wiki</title>
+                <link rel="canonical" href="https://example.fandom.com/wiki/AKM">
+                <meta property="og:image" content="/images/akm.png">
+              </head>
+              <body>
+                <h1 id="firstHeading">AKM</h1>
+                <div class="mw-parser-output">
+                  <p>The AKM is a reliable automatic rifle built for medium range fights.</p>
+                  <table class="infobox">
+                    <tr><th>Type</th><td>Assault Rifle</td></tr>
+                    <tr><th>Damage</th><td>20</td></tr>
+                    <tr><th>Magazine</th><td>36</td></tr>
+                  </table>
+                </div>
+              </body>
+            </html>
+            """
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data(html.utf8)
+            )
+        }
+
+        let service = WikiLookupService(session: makeSession())
+        let source = WikiSource(name: "Example Wiki", baseURL: "https://example.fandom.com", apiPath: "/api.php")
+
+        let result = await service.lookupWiki(query: "AKM", source: source)
+
+        XCTAssertEqual(result?.title, "AKM")
+        XCTAssertEqual(result?.imageURL, "https://example.fandom.com/images/akm.png")
+        XCTAssertEqual(result?.pageType, "weapon")
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Type", value: "Assault Rifle")) == true)
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Magazine", value: "36")) == true)
+    }
+
     func testFetchFinalsMetaFromSkycoachParsesSections() async {
         MockURLProtocol.setHandler { request in
             let html = """

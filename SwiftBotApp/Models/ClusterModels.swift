@@ -10,6 +10,30 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     case github = "GitHub"
 
     var id: String { rawValue }
+
+    var brandAccentColor: PatchyAccentColor {
+        switch self {
+        case .nvidia:
+            return PatchyAccentColor(name: "NVIDIA", hex: "#76B900")
+        case .amd:
+            return PatchyAccentColor(name: "AMD Radeon", hex: "#ED1C24")
+        case .intel:
+            return PatchyAccentColor(name: "Intel Arc", hex: "#0071C5")
+        case .steam:
+            return PatchyAccentColor(name: "Cobalt", hex: "#2563EB")
+        case .github:
+            return PatchyAccentColor(name: "Violet", hex: "#7C3AED")
+        }
+    }
+
+    var supportsCustomAccentColor: Bool {
+        switch self {
+        case .github, .steam:
+            return true
+        case .nvidia, .amd, .intel:
+            return false
+        }
+    }
 }
 
 enum PatchyGitHubBranchMode: String, Codable, CaseIterable, Identifiable {
@@ -141,20 +165,32 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     }
 }
 
+struct PatchyAccentColor: Hashable, Identifiable {
+    let name: String
+    let hex: String
+
+    var id: String { hex }
+
+    var discordValue: Int {
+        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        return Int(raw, radix: 16) ?? 0x7C3AED
+    }
+}
+
 enum PatchyEmbedAccent {
+    static let customChoices: [PatchyAccentColor] = [
+        PatchyAccentColor(name: "Emerald", hex: "#00A86B"),
+        PatchyAccentColor(name: "Cobalt", hex: "#2563EB"),
+        PatchyAccentColor(name: "Violet", hex: "#7C3AED"),
+        PatchyAccentColor(name: "Hot Pink", hex: "#FF2D8D"),
+        PatchyAccentColor(name: "Orange", hex: "#FF8A00"),
+        PatchyAccentColor(name: "Cyan", hex: "#00A7D8"),
+        PatchyAccentColor(name: "Ruby", hex: "#E11D48"),
+        PatchyAccentColor(name: "Graphite", hex: "#3A3A3C")
+    ]
+
     static func defaultHex(for source: PatchySourceKind) -> String {
-        switch source {
-        case .nvidia:
-            return "#5FAD64"
-        case .amd:
-            return "#C95757"
-        case .intel:
-            return "#5B9BC8"
-        case .steam:
-            return "#6372B8"
-        case .github:
-            return "#746FAE"
-        }
+        source.brandAccentColor.hex
     }
 
     static func defaultPollingIntervalMinutes(for source: PatchySourceKind) -> Int {
@@ -162,6 +198,9 @@ enum PatchyEmbedAccent {
     }
 
     static func resolvedHex(_ hex: String, for source: PatchySourceKind) -> String {
+        guard source.supportsCustomAccentColor else {
+            return source.brandAccentColor.hex
+        }
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalizedHex(trimmed) ?? defaultHex(for: source)
     }
@@ -169,7 +208,12 @@ enum PatchyEmbedAccent {
     static func discordColorInt(hex: String, source: PatchySourceKind) -> Int {
         let resolved = resolvedHex(hex, for: source)
         let raw = resolved.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        return Int(raw, radix: 16) ?? 0x746FAE
+        return Int(raw, radix: 16) ?? source.brandAccentColor.discordValue
+    }
+
+    static func isCustomChoice(_ hex: String) -> Bool {
+        let normalized = normalizedHex(hex.trimmingCharacters(in: .whitespacesAndNewlines))
+        return customChoices.contains { $0.hex == normalized }
     }
 
     private static func normalizedHex(_ value: String) -> String? {

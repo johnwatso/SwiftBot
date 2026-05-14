@@ -762,7 +762,7 @@ struct BotBehaviorSettings: Codable, Hashable {
 
 struct WikiCommand: Codable, Hashable, Identifiable {
     var id = UUID()
-    var trigger: String = "!wiki"
+    var trigger: String = "/wiki"
     var endpoint: String = "search"
     var description: String = ""
     var enabled: Bool = true
@@ -777,7 +777,7 @@ struct WikiCommand: Codable, Hashable, Identifiable {
 
     init(
         id: UUID = UUID(),
-        trigger: String = "!wiki",
+        trigger: String = "/wiki",
         endpoint: String = "search",
         description: String = "",
         enabled: Bool = true
@@ -792,7 +792,7 @@ struct WikiCommand: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? "!wiki"
+        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? "/wiki"
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? "search"
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
@@ -859,13 +859,14 @@ struct WikiSource: Codable, Hashable, Identifiable {
             enabled: true,
             isPrimary: true,
             commands: [
-                WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true),
-                WikiCommand(trigger: "!weapon", endpoint: "weaponPage", description: "Lookup weapon stats", enabled: true),
-                WikiCommand(trigger: "!finals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true)
+                WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true),
+                WikiCommand(trigger: "/weapon", endpoint: "weaponPage", description: "Lookup weapon stats", enabled: true),
+                WikiCommand(trigger: "/thefinals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true),
+                WikiCommand(trigger: "/finals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true)
             ],
             formatting: WikiFormatting(
                 includeStatBlocks: true,
-                useEmbeds: false,
+                useEmbeds: true,
                 compactMode: false
             ),
             parsingRules: [
@@ -885,7 +886,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
             enabled: true,
             isPrimary: false,
             commands: [
-                WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true)
+                WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true)
             ],
             formatting: WikiFormatting(
                 includeStatBlocks: false,
@@ -1039,7 +1040,7 @@ struct WikiBotSettings: Codable, Hashable {
             updated.apiPath = source.apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
             updated.commands = source.commands.map { command in
                 var normalized = command
-                normalized.trigger = command.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+                normalized.trigger = Self.slashCommandTrigger(command.trigger)
                 normalized.endpoint = command.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
                 normalized.description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
                 return normalized
@@ -1060,7 +1061,22 @@ struct WikiBotSettings: Codable, Hashable {
                 updated.apiPath = "/api.php"
             }
             if updated.commands.isEmpty {
-                updated.commands = [WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: true)]
+                updated.commands = [WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true)]
+            }
+            if updated.baseURL.lowercased().contains("thefinals.wiki"),
+               !updated.commands.contains(where: { Self.normalizedCommandTrigger($0.trigger) == "thefinals" }) {
+                updated.commands.append(
+                    WikiCommand(
+                        trigger: "/thefinals",
+                        endpoint: "search",
+                        description: "Search THE FINALS wiki",
+                        enabled: true
+                    )
+                )
+            }
+            if updated.baseURL.lowercased().contains("thefinals.wiki") {
+                updated.formatting.includeStatBlocks = true
+                updated.formatting.useEmbeds = true
             }
             return updated
         }
@@ -1107,6 +1123,24 @@ struct WikiBotSettings: Codable, Hashable {
         return sources.first(where: { $0.isPrimary }) ?? sources.first
     }
 
+    private static func normalizedCommandTrigger(_ trigger: String) -> String {
+        var trimmed = trigger
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if let first = trimmed.split(separator: " ").first {
+            trimmed = String(first)
+        }
+        while let first = trimmed.first, first == "!" || first == "/" {
+            trimmed.removeFirst()
+        }
+        return trimmed
+    }
+
+    private static func slashCommandTrigger(_ trigger: String) -> String {
+        let normalized = normalizedCommandTrigger(trigger)
+        return normalized.isEmpty ? "" : "/\(normalized)"
+    }
+
     private static func sourcesFromLegacyTargets(
         _ legacyTargets: [LegacyWikiBridgeSourceTarget],
         allowFinalsCommand: Bool,
@@ -1151,7 +1185,7 @@ struct WikiBotSettings: Codable, Hashable {
                 enabled: legacy.isEnabled ?? true,
                 isPrimary: false,
                 commands: [
-                    WikiCommand(trigger: "!wiki", endpoint: "search", description: "Search wiki pages", enabled: allowWikiAlias)
+                    WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: allowWikiAlias)
                 ],
                 formatting: WikiFormatting(
                     includeStatBlocks: false,
@@ -1175,17 +1209,18 @@ struct WikiBotSettings: Codable, Hashable {
         source.isPrimary = false
         source.commands = source.commands.map { command in
             var updated = command
-            let key = command.trigger.lowercased()
-            if key == "!finals" {
+            let key = normalizedCommandTrigger(command.trigger)
+            if key == "finals" || key == "thefinals" {
                 updated.enabled = allowFinalsCommand
-            } else if key == "!wiki" {
+            } else if key == "wiki" {
                 updated.enabled = allowWikiAlias
-            } else if key == "!weapon" {
+            } else if key == "weapon" {
                 updated.enabled = allowWeaponCommand
             }
             return updated
         }
         source.formatting.includeStatBlocks = includeWeaponStats
+        source.formatting.useEmbeds = true
         return source
     }
 }

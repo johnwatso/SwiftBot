@@ -109,6 +109,39 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(lookups.first?.channelId, "channel-1")
     }
 
+    func testDynamicWikiSlashCommandRoutesConfiguredCommand() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            resolveWikiCommand: { name in
+                guard name == "thefinals" else { return nil }
+                let command = WikiCommand(trigger: "/thefinals", description: "Search THE FINALS")
+                let source = WikiSource(name: "THE FINALS Wiki", commands: [command])
+                return (source: source, command: command)
+            }
+        )
+
+        let response = await processor.executeSlashCommand(
+            command: "thefinals",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("query"),
+                        "value": .string("AKM")
+                    ])
+                ])
+            ],
+            context: .init(channelId: "channel-1", username: "Taylor", rawLikeMessage: [:])
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "WikiBridge Lookup")
+        let lookups = await recorder.wikiLookups()
+        XCTAssertEqual(lookups.count, 1)
+        XCTAssertEqual(lookups.first?.command, "/thefinals")
+        XCTAssertEqual(lookups.first?.source, "THE FINALS Wiki")
+        XCTAssertEqual(lookups.first?.query, "AKM")
+    }
+
     func testPrefixMusicRoutesQueryLookup() async {
         let recorder = CommandRecorder()
         let processor = makeProcessor(recorder: recorder)

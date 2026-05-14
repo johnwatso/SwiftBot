@@ -41,6 +41,7 @@
 		3427FDD6B8F160DBA04F79E1 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */; };
 		35162D9A1C01D79B31F13401 /* SwiftMinerDMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE0A8502C15AC0C9BD2E795 /* SwiftMinerDMTypes.swift */; };
 		35714FE14D2FFB4A4A8B34B6 /* AppModel+CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C510CF282F7E3B9D9A55415A /* AppModel+CommandProcessor.swift */; };
+		35C6FE4776C0FA18C956101B /* RecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9717E4E20E4286F1A1BECE1E /* RecordingsView.swift */; };
 		37247A9D640138A5CBF8F161 /* OnboardingStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72DBCA95A64DF3580BEB869 /* OnboardingStyles.swift */; };
 		382736874A4ABFC372B65199 /* GatewayModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7DC12FFA9EC621A265D2A0C /* GatewayModels.swift */; };
 		3A84CA8872264B04238C0992 /* AppModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */; };
@@ -272,6 +273,7 @@
 		91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBotProvider.swift; sourceTree = "<group>"; };
 		95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSetupView.swift; sourceTree = "<group>"; };
 		966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshDiscoveryTests.swift; sourceTree = "<group>"; };
+		9717E4E20E4286F1A1BECE1E /* RecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsView.swift; sourceTree = "<group>"; };
 		985814A00309DEBC6C7FD35F /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		98AA7F8CD81396418AA0127D /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
 		99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryIndexer.swift; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 				3A523236CFC7EE60B9E5F3AC /* PreferencesView.swift */,
 				0F5331FBF4E9DAFA33A61899 /* RecipeTemplates.swift */,
 				33597777127CE408F4F031D9 /* RecipeWizardView.swift */,
+				9717E4E20E4286F1A1BECE1E /* RecordingsView.swift */,
 				C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */,
 				95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */,
 				FB38D25572DE04143F91B8B2 /* RootView.swift */,
@@ -820,6 +823,7 @@
 				0F8391EF95A66EB768F81BA8 /* PreferencesView.swift in Sources */,
 				A55707C7906D4F0CFE10FBC8 /* RecipeTemplates.swift in Sources */,
 				EAAF4F07A1DBF575486A37D5 /* RecipeWizardView.swift in Sources */,
+				35C6FE4776C0FA18C956101B /* RecordingsView.swift in Sources */,
 				C73223597C2FE00574A04193 /* ReleaseNotes.swift in Sources */,
 				6923C1DFC02F72C9F6A307AC /* RemoteAPI.swift in Sources */,
 				D78CB841C27860D437A41E36 /* RemoteBotProvider.swift in Sources */,

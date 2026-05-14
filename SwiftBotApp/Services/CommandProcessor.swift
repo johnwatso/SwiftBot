@@ -440,6 +440,17 @@ final class CommandProcessor {
                 color: 15_790_767
             )
         default:
+            if let resolved = dependencies.resolveWikiCommand(command) {
+                let query = Self.slashOptionString(named: "query", in: data) ?? ""
+                guard config.wikiEnabled else {
+                    return embed(title: "WikiBridge", description: "WikiBridge is disabled.", color: 15_790_767)
+                }
+                guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return embed(title: "WikiBridge", description: "Usage: `/\(command) query:<text>`", color: 15_790_767)
+                }
+                let ok = await dependencies.performWikiLookup(resolved.command, resolved.source, query, context.channelId)
+                return statusEmbed(title: "WikiBridge Lookup", ok: ok)
+            }
             return embed(title: "Slash Command", description: "Unknown slash command.", color: 15_790_767)
         }
     }

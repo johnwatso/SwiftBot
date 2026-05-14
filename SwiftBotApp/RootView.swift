@@ -68,6 +68,7 @@ struct UnifiedRootView: View {
                 case .activity: ActivityLogView()
                 case .wikiBridge: WikiBridgeView()
                 case .aiBots: AIBotsView()
+                case .recordings: RecordingsView()
                 case .analytics: AnalyticsView()
                 case .swiftMesh: SwiftMeshView()
                 }
@@ -144,7 +145,7 @@ struct DashboardSidebar: View {
                             )
                         }
 
-                        SidebarSection(title: "Automation") {
+                        SidebarSection(title: "Workflows") {
                             SidebarRow(
                                 item: .commands,
                                 selection: $selection,
@@ -156,6 +157,9 @@ struct DashboardSidebar: View {
                                 selectionHighlightNamespace: selectionHighlightNamespace,
                                 count: app.activeVoice.count
                             )
+                        }
+
+                        SidebarSection(title: "Services") {
                             SidebarRow(
                                 item: .patchy,
                                 selection: $selection,
@@ -175,6 +179,12 @@ struct DashboardSidebar: View {
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
                             SidebarRow(
+                                item: .recordings,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace,
+                                count: app.recentMediaCount24h
+                            )
+                            SidebarRow(
                                 item: .analytics,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
@@ -184,9 +194,6 @@ struct DashboardSidebar: View {
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
-                        }
-
-                        SidebarSection(title: "Infrastructure") {
                             SidebarRow(
                                 item: .swiftMesh,
                                 selection: $selection,

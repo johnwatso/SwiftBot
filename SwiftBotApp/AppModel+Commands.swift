@@ -2672,6 +2672,10 @@ extension AppModel {
         if summary.isEmpty {
             return "📘 **\(result.title)**\nSource: \(source.name)\n\(result.url)"
         }
+        let fieldLines = result.fields.prefix(8).map { "**\($0.name):** \($0.value)" }
+        if !fieldLines.isEmpty {
+            return "📘 **\(result.title)**\nSource: \(source.name)\n\(summary)\n\(fieldLines.joined(separator: "\n"))\n\(result.url)"
+        }
         if formatting.compactMode {
             return "📘 **\(result.title)** • \(source.name)\n\(summary)\n\(result.url)"
         }
@@ -2679,6 +2683,10 @@ extension AppModel {
     }
 
     func sendWikiEmbed(channelId: String, source: WikiSource, result: FinalsWikiLookupResult) async -> Bool {
+        if source.formatting.includeStatBlocks, let stats = result.weaponStats {
+            return await sendWeaponStatsEmbed(channelId: channelId, source: source, result: result, stats: stats)
+        }
+
         let summary = summarizedWikiExtract(
             result.extract,
             limit: source.formatting.compactMode ? 220 : 420
@@ -2692,9 +2700,18 @@ extension AppModel {
         if !summary.isEmpty {
             embed["description"] = summary
         }
+        if let imageURL = result.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !imageURL.isEmpty {
+            embed["thumbnail"] = ["url": imageURL]
+        }
 
+        var fields = result.fields.prefix(18).map { field -> [String: Any] in
+            [
+                "name": field.name,
+                "value": field.value,
+                "inline": field.inline
+            ]
+        }
         if source.formatting.includeStatBlocks, let stats = result.weaponStats {
-            var fields: [[String: Any]] = []
             func appendField(_ name: String, _ value: String?) {
                 guard let value, !value.isEmpty else { return }
                 fields.append([
@@ -2713,15 +2730,69 @@ extension AppModel {
             appendField("Magazine", stats.magazineSize)
             appendField("Short Reload", stats.shortReload)
             appendField("Long Reload", stats.longReload)
-            if !fields.isEmpty {
-                embed["fields"] = Array(fields.prefix(25))
-            }
+        }
+        if !fields.isEmpty {
+            embed["fields"] = Array(fields.prefix(25))
         }
 
         let payload: [String: Any] = [
             "embeds": [embed]
         ]
         return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(embed)")
+    }
+
+    func sendWeaponStatsEmbed(
+        channelId: String,
+        source: WikiSource,
+        result: FinalsWikiLookupResult,
+        stats: FinalsWeaponStats
+    ) async -> Bool {
+        var embed: [String: Any] = [
+            "title": wikiWeaponTitle(result: result, stats: stats),
+            "url": result.url,
+            "color": 5_793_266,
+            "footer": ["text": source.name]
+        ]
+
+        if let imageURL = result.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !imageURL.isEmpty {
+            embed["thumbnail"] = ["url": imageURL]
+        }
+
+        var fields: [[String: Any]] = []
+
+        func appendInline(_ name: String, _ value: String?) {
+            guard let value = wikiDisplayValue(value) else { return }
+            fields.append([
+                "name": name,
+                "value": value,
+                "inline": true
+            ])
+        }
+
+        appendInline("Damage", stats.bodyDamage)
+        appendInline("Headshot", stats.headshotDamage)
+        appendInline("Firerate", stats.fireRate)
+        appendInline("Dropoff Start", stats.dropoffStart)
+        appendInline("Dropoff End", stats.dropoffEnd)
+        appendInline("Minimum Damage", stats.minimumDamage)
+        appendInline("Magazine Size", stats.magazineSize)
+        appendInline("Short Reload", stats.shortReload)
+        appendInline("Long Reload", stats.longReload)
+
+        fields.append([
+            "name": "Notes",
+            "value": wikiDisplayValue(stats.notes) ?? wikiFieldValue(result.fields, labels: ["Notes", "Note"]) ?? "-",
+            "inline": false
+        ])
+
+        if !fields.isEmpty {
+            embed["fields"] = Array(fields.prefix(25))
+        }
+
+        let payload: [String: Any] = [
+            "embeds": [embed]
+        ]
+        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(weaponEmbed)")
     }
 
     func formattedWeaponStats(
@@ -2731,11 +2802,12 @@ extension AppModel {
         compact: Bool
     ) -> String {
         var lines: [String] = []
+        let title = wikiWeaponTitle(result: result, stats: stats)
 
         if let type = stats.type, !type.isEmpty {
-            lines.append("📘 **\(result.title)** • \(type)")
+            lines.append("📘 **\(title)** • \(type)")
         } else {
-            lines.append("📘 **\(result.title)**")
+            lines.append("📘 **\(title)**")
         }
         if compact {
             lines[0] += " • \(sourceName)"
@@ -2752,7 +2824,7 @@ extension AppModel {
         }
 
         if let fireRate = stats.fireRate, !fireRate.isEmpty {
-            lines.append(compact ? "RPM \(fireRate)" : "Fire Rate: \(fireRate)")
+            lines.append(compact ? "Firerate \(fireRate)" : "Firerate: \(fireRate)")
         }
 
         let falloffLine = [
@@ -2765,7 +2837,7 @@ extension AppModel {
         }
 
         if let magazineSize = stats.magazineSize, !magazineSize.isEmpty {
-            lines.append(compact ? "Mag \(magazineSize)" : "Magazine: \(magazineSize)")
+            lines.append(compact ? "Mag \(magazineSize)" : "Magazine Size: \(magazineSize)")
         }
 
         let reloadLine = [
@@ -2776,8 +2848,37 @@ extension AppModel {
             lines.append(compact ? "Reload \(reloadLine)" : "Reload: \(reloadLine)")
         }
 
+        if let notes = wikiDisplayValue(stats.notes), notes != "-" {
+            lines.append("Notes: \(notes)")
+        }
+
         lines.append(result.url)
         return lines.joined(separator: "\n")
+    }
+
+    func wikiWeaponTitle(result: FinalsWikiLookupResult, stats: FinalsWeaponStats) -> String {
+        let version = wikiDisplayValue(stats.version)
+            ?? wikiFieldValue(result.fields, labels: ["Version", "Patch", "Game Version", "Updated"])
+        guard let version, !result.title.contains(version) else {
+            return result.title
+        }
+        return "\(result.title) - \(version)"
+    }
+
+    func wikiFieldValue(_ fields: [WikiResultField], labels: [String]) -> String? {
+        let normalizedLabels = Set(labels.map(normalizedWikiSourceKey))
+        return fields.first { field in
+            normalizedLabels.contains(normalizedWikiSourceKey(field.name))
+        }.flatMap { wikiDisplayValue($0.value) }
+    }
+
+    func wikiDisplayValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
     }
 
     func summarizedWikiExtract(_ extract: String, limit: Int = 420) -> String {
