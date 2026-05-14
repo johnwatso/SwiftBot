@@ -677,6 +677,10 @@ struct OverviewView: View {
         return availableMetricWidgets.filter { !visibleIDs.contains($0.id) }
     }
 
+    private var shouldShowSwiftMeshOverviewMap: Bool {
+        settings.clusterMode == .leader || settings.clusterMode == .standby
+    }
+
     private var canResetDashboard: Bool {
         let defaultOrder = availableMetricWidgets.map(\.id)
         return metricOrder != defaultOrder || !hiddenMetricIDs.isEmpty
@@ -688,8 +692,8 @@ struct OverviewView: View {
                 overviewHeader
                 metricStrip
 
-                if settings.clusterMode != .standalone {
-                    OverviewClusterSummaryCard(
+                if shouldShowSwiftMeshOverviewMap {
+                    OverviewClusterMapCard(
                         nodes: clusterNodes,
                         onOpenSwiftMesh: onOpenSwiftMesh
                     )
@@ -1419,50 +1423,36 @@ private struct OverviewMetricDropDelegate: DropDelegate {
     }
 }
 
-struct OverviewClusterSummaryCard: View {
+struct OverviewClusterMapCard: View {
     @EnvironmentObject var provider: AnyBotDataProvider
     @EnvironmentObject var app: AppModel
     let nodes: [ClusterNodeStatus]
     var onOpenSwiftMesh: (() -> Void)?
 
-    private var leaderNode: ClusterNodeStatus? {
-        nodes.first(where: { $0.role == .leader }) ?? nodes.first
-    }
-
-    private var connectedNodeCount: Int {
-        nodes.filter { $0.status != .disconnected }.count
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Cluster")
-                .font(.headline)
-
-            Text("\(connectedNodeCount) nodes connected")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let leaderNode {
-                HStack {
-                    Text("Primary")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(leaderNode.hostname) (\(leaderNode.role.displayName))")
-                        .fontWeight(.semibold)
-                }
-                .font(.subheadline)
+        ZStack(alignment: .topTrailing) {
+            if nodes.isEmpty {
+                PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
+                    .frame(height: 118, alignment: .center)
             } else {
-                PlaceholderPanelLine(text: "No cluster nodes available")
+                ClusterMapView(nodes: nodes, presentation: .overview)
             }
 
-            Button("View in SwiftMesh") {
+            Button {
                 onOpenSwiftMesh?()
+            } label: {
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .padding(6)
+                    .background(.regularMaterial, in: Circle())
             }
-            .buttonStyle(GlassActionButtonStyle())
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .help("Open SwiftMesh")
+            .padding(7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
+        .accessibilityLabel("Cluster Map")
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -1470,7 +1460,7 @@ struct OverviewClusterSummaryCard: View {
         )
         .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
         .task(id: provider.settings.clusterMode) {
-            guard provider.settings.clusterMode != .standalone else { return }
+            guard provider.settings.clusterMode == .leader || provider.settings.clusterMode == .standby else { return }
             await app.pollClusterStatus()
         }
     }
