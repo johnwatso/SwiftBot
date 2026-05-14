@@ -484,11 +484,29 @@ struct SwiftMeshSection<Content: View>: View {
 }
 
 struct ClusterMapView: View {
+    enum Presentation {
+        case dashboard
+        case overview
+    }
+
     let nodes: [ClusterNodeStatus]
-    private let leaderCardWidth: CGFloat = 182
-    private let workerCardWidth: CGFloat = 170
-    private let compactCardHeight: CGFloat = 68
-    private let mapPadding: CGFloat = 14
+    var presentation: Presentation = .dashboard
+
+    private var leaderCardWidth: CGFloat {
+        presentation == .overview ? 150 : 182
+    }
+
+    private var workerCardWidth: CGFloat {
+        presentation == .overview ? 142 : 170
+    }
+
+    private var compactCardHeight: CGFloat {
+        presentation == .overview ? 48 : 68
+    }
+
+    private var mapPadding: CGFloat {
+        presentation == .overview ? 10 : 14
+    }
 
     private var connectedNodes: [ClusterNodeStatus] {
         nodes
@@ -530,13 +548,13 @@ struct ClusterMapView: View {
                         latencyMs: worker.latencyMs
                     )
 
-                    ClusterMapNodeChip(node: worker)
+                    ClusterMapNodeChip(node: worker, presentation: presentation)
                         .frame(width: workerCardWidth)
                         .position(workerPosition)
                 }
 
                 if let leader {
-                    ClusterMapNodeChip(node: leader, showLeaderSymbol: true)
+                    ClusterMapNodeChip(node: leader, showLeaderSymbol: true, presentation: presentation)
                         .frame(width: leaderCardWidth)
                         .position(layout.leaderPosition)
                 }
@@ -606,6 +624,13 @@ struct ClusterMapView: View {
     }
 
     private var mapHeight: CGFloat {
+        if presentation == .overview {
+            let workerCount = workers.count
+            if workerCount <= 2 { return 118 }
+            if workerCount <= 4 { return 148 }
+            return 178
+        }
+
         let workerCount = workers.count
         if workerCount <= 2 { return 280 }
         if workerCount <= 4 { return 340 }
@@ -623,6 +648,7 @@ private struct ClusterMapNodeChip: View {
     @EnvironmentObject var app: AppModel
     let node: ClusterNodeStatus
     var showLeaderSymbol: Bool = false
+    var presentation: ClusterMapView.Presentation = .dashboard
 
     var body: some View {
         HStack(spacing: 8) {
@@ -630,14 +656,14 @@ private struct ClusterMapNodeChip: View {
                 for: node.hardwareModel,
                 override: app.settings.clusterNodeIconOverrides[node.displayName]
             ))
-                .font(.headline)
+                .font(presentation == .overview ? .subheadline : .headline)
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: presentation == .overview ? 15 : 18)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(node.displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font((presentation == .overview ? Font.caption : Font.subheadline).weight(.semibold))
                         .lineLimit(1)
                     if showLeaderSymbol {
                         Image(systemName: "crown.fill")
@@ -657,8 +683,8 @@ private struct ClusterMapNodeChip: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.horizontal, presentation == .overview ? 7 : 9)
+        .padding(.vertical, presentation == .overview ? 5 : 7)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(node.status == .disconnected ? 0.07 : 0.12))
