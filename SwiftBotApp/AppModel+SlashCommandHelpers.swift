@@ -2,7 +2,7 @@ import Foundation
 
 extension AppModel {
     func allSlashCommandDefinitions() -> [[String: Any]] {
-        return [
+        var definitions: [[String: Any]] = [
             ["name": "help", "description": "Show help for SwiftBot", "type": 1, "options": [["type": 3, "name": "command", "description": "Optional command name", "required": false]]],
             ["name": "ping", "description": "Check if bot is alive", "type": 1],
             ["name": "roll", "description": "Roll dice, example: 2d6", "type": 1, "options": [["type": 3, "name": "notation", "description": "Dice notation NdS", "required": true]]],
@@ -51,6 +51,30 @@ extension AppModel {
             ]],
             ["name": "meta", "description": "Fetch current THE FINALS meta from Skycoach", "type": 1]
         ]
+
+        var existingNames = Set(definitions.compactMap { $0["name"] as? String })
+        for source in orderedEnabledWikiSources() {
+            for command in source.commands where command.enabled {
+                let name = discordSlashSafeWikiCommandName(command.trigger)
+                guard !name.isEmpty, !existingNames.contains(name) else { continue }
+                existingNames.insert(name)
+
+                let description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                definitions.append([
+                    "name": name,
+                    "description": description.isEmpty ? "Query \(source.name)" : String(description.prefix(100)),
+                    "type": 1,
+                    "options": [[
+                        "type": 3,
+                        "name": "query",
+                        "description": "Wiki query",
+                        "required": true
+                    ]]
+                ])
+            }
+        }
+
+        return definitions
     }
 
     func buildSlashCommandDefinitions() -> [[String: Any]] {
@@ -59,5 +83,20 @@ extension AppModel {
             guard let name = raw["name"] as? String else { return true }
             return isCommandEnabled(name: name, surface: "slash")
         }
+    }
+
+    func discordSlashSafeWikiCommandName(_ trigger: String) -> String {
+        let normalized = normalizedWikiCommandTrigger(trigger)
+        let characters = normalized.lowercased().map { character -> Character in
+            if character.isLetter || character.isNumber || character == "-" || character == "_" {
+                return character
+            }
+            return "-"
+        }
+        let collapsed = String(characters)
+            .replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        guard !collapsed.isEmpty else { return "" }
+        return String(collapsed.prefix(32))
     }
 }

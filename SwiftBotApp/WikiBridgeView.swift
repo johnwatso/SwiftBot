@@ -495,7 +495,7 @@ private struct WikiSourceDraft: Identifiable {
 
     func toSource() -> WikiSource {
         let sanitizedCommands = commands.compactMap { command -> WikiCommand? in
-            let trigger = command.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trigger = Self.slashCommandTrigger(command.trigger)
             guard !trigger.isEmpty else { return nil }
             var updated = command
             updated.trigger = trigger
@@ -533,6 +533,31 @@ private struct WikiSourceDraft: Identifiable {
             lastLookupAt: lastLookupAt,
             lastStatus: lastStatus
         )
+    }
+
+    private static func slashCommandTrigger(_ raw: String) -> String {
+        var normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if let first = normalized.split(separator: " ").first {
+            normalized = String(first)
+        }
+        while let first = normalized.first, first == "!" || first == "/" {
+            normalized.removeFirst()
+        }
+        normalized = normalized
+            .map { character -> Character in
+                if character.isLetter || character.isNumber || character == "-" || character == "_" {
+                    return character
+                }
+                return "-"
+            }
+            .reduce(into: "") { partial, character in
+                if character == "-", partial.last == "-" { return }
+                partial.append(character)
+            }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        return normalized.isEmpty ? "" : "/\(normalized)"
     }
 }
 
@@ -608,7 +633,7 @@ private struct WikiSourceEditorSheet: View {
                     draft.commands.append(
                         WikiCommand(
                             id: UUID(),
-                            trigger: "!wiki",
+                            trigger: "/wiki",
                             endpoint: "search",
                             description: "Search wiki pages",
                             enabled: true
@@ -640,7 +665,7 @@ private struct WikiSourceEditorSheet: View {
                 ForEach($draft.commands) { $command in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
-                            TextField("!wiki", text: $command.trigger)
+                            TextField("/wiki", text: $command.trigger)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 140)
 

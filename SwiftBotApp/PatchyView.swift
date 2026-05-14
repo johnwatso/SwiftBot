@@ -327,17 +327,21 @@ struct PatchyView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(app.patchyDebugLogs.prefix(60).enumerated()), id: \.offset) { index, line in
-                        patchyActivityRow(line, index: index)
-                        if index < min(app.patchyDebugLogs.count, 60) - 1 {
-                            Rectangle()
-                                .fill(Color.primary.opacity(0.055))
-                                .frame(height: 1)
-                                .padding(.leading, 58)
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(app.patchyDebugLogs.prefix(60).enumerated()), id: \.offset) { index, line in
+                            patchyActivityRow(line, index: index)
+                            if index < min(app.patchyDebugLogs.count, 60) - 1 {
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.055))
+                                    .frame(height: 1)
+                                    .padding(.leading, 58)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .padding(9)
@@ -416,13 +420,19 @@ struct PatchyView: View {
     }
 
     private func sourceColor(_ source: PatchySourceKind) -> Color {
-        switch source {
-        case .nvidia: return .green
-        case .amd: return .red
-        case .intel: return .blue
-        case .steam: return .indigo
-        case .github: return .indigo
+        color(from: source.brandAccentColor.hex)
+    }
+
+    private func color(from hex: String) -> Color {
+        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard raw.count == 6, let value = Int(raw, radix: 16) else {
+            return .indigo
         }
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
     }
 
     private func sourceDisplayName(for target: PatchySourceTarget) -> String {
@@ -1305,8 +1315,11 @@ private struct PatchyTargetEditorSheet: View {
                     }
 
                     PatchyEditorSection(title: "Notification Appearance", systemImage: "paintpalette") {
-                        PatchyEditorRow(title: "Embed Accent", detail: "Used as the Discord embed color for this target.") {
-                            PatchyAccentChipPicker(selectedHex: $draft.embedColorHex)
+                        if draft.source.supportsCustomAccentColor {
+                            PatchyEditorRow(title: "Embed Accent", detail: "Used as the Discord embed color for this target.") {
+                                PatchyAccentChipPicker(selectedHex: $draft.embedColorHex)
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
                         PatchyEditorRow(
@@ -1315,9 +1328,10 @@ private struct PatchyTargetEditorSheet: View {
                         ) {
                             Toggle("", isOn: $draft.summarizeWithAppleIntelligence)
                                 .toggleStyle(.switch)
-                                .labelsHidden()
+                            .labelsHidden()
                         }
                     }
+                    .animation(.smooth(duration: 0.22), value: draft.source)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 22)
@@ -1350,15 +1364,10 @@ private struct PatchyTargetEditorSheet: View {
         .frame(minWidth: 560, minHeight: 610)
         .background(.ultraThinMaterial)
         .onAppear {
-            if draft.embedColorHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                draft.embedColorHex = PatchyEmbedAccent.defaultHex(for: draft.source)
-            }
+            syncAccentForSource()
         }
         .onChange(of: draft.source) { oldValue, newValue in
-            let oldDefault = PatchyEmbedAccent.defaultHex(for: oldValue)
-            if draft.embedColorHex.isEmpty || draft.embedColorHex == oldDefault {
-                draft.embedColorHex = PatchyEmbedAccent.defaultHex(for: newValue)
-            }
+            syncAccentForSource(previousSource: oldValue)
             if newValue == .github {
                 if mode == .create {
                     draft.githubWatchAllCommits = true
@@ -1460,6 +1469,20 @@ private struct PatchyTargetEditorSheet: View {
 
     private var accentNSColor: NSColor {
         nsColor(from: PatchyEmbedAccent.resolvedHex(draft.embedColorHex, for: draft.source))
+    }
+
+    private func syncAccentForSource(previousSource: PatchySourceKind? = nil) {
+        if !draft.source.supportsCustomAccentColor {
+            draft.embedColorHex = draft.source.brandAccentColor.hex
+            return
+        }
+
+        let trimmed = draft.embedColorHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty
+            || previousSource?.supportsCustomAccentColor == false
+            || !PatchyEmbedAccent.isCustomChoice(trimmed) {
+            draft.embedColorHex = PatchyEmbedAccent.defaultHex(for: draft.source)
+        }
     }
 
     private var isValid: Bool {
@@ -1575,42 +1598,16 @@ private struct PatchyEditorRow<Content: View>: View {
 private struct PatchyAccentChipPicker: View {
     @Binding var selectedHex: String
 
-    private let choices: [PatchyAccentChoice] = [
-        PatchyAccentChoice(name: "Green", hex: "#5FAD64"),
-        PatchyAccentChoice(name: "Blue", hex: "#5B9BC8"),
-        PatchyAccentChoice(name: "Purple", hex: "#746FAE"),
-        PatchyAccentChoice(name: "Orange", hex: "#D58A2A"),
-        PatchyAccentChoice(name: "Cyan", hex: "#36AEBF"),
-        PatchyAccentChoice(name: "Red", hex: "#C95757"),
-        PatchyAccentChoice(name: "Gray", hex: "#8E96A3")
-    ]
+    private let choices = PatchyEmbedAccent.customChoices
 
     var body: some View {
         HStack(spacing: 13) {
             ForEach(choices) { choice in
-                Button {
-                    selectedHex = choice.hex
-                } label: {
-                    Circle()
-                        .fill(choice.color)
-                        .frame(width: 22, height: 22)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(Color.white.opacity(isSelected(choice) ? 0.75 : 0), lineWidth: 2)
-                                .padding(3)
-                        }
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    isSelected(choice) ? choice.color.opacity(0.55) : Color.primary.opacity(0.08),
-                                    lineWidth: isSelected(choice) ? 4 : 1
-                                )
-                                .frame(width: 30, height: 30)
-                        }
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help(choice.name)
+                PatchyAccentChip(
+                    choice: choice,
+                    isSelected: isSelected(choice),
+                    action: { selectedHex = choice.hex }
+                )
             }
         }
         .padding(.vertical, 4)
@@ -1620,7 +1617,7 @@ private struct PatchyAccentChipPicker: View {
         }
     }
 
-    private func isSelected(_ choice: PatchyAccentChoice) -> Bool {
+    private func isSelected(_ choice: PatchyAccentColor) -> Bool {
         selectedHex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == choice.hex
     }
 
@@ -1632,14 +1629,48 @@ private struct PatchyAccentChipPicker: View {
     }
 }
 
-private struct PatchyAccentChoice: Identifiable {
-    let name: String
-    let hex: String
+private struct PatchyAccentChip: View {
+    let choice: PatchyAccentColor
+    let isSelected: Bool
+    let action: () -> Void
 
-    var id: String { hex }
+    @State private var isHovering = false
 
-    var color: Color {
-        let raw = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+    var body: some View {
+        Button(action: action) {
+            Circle()
+                .fill(color)
+                .frame(width: 22, height: 22)
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(isSelected ? 0.86 : 0), lineWidth: 2)
+                        .padding(3)
+                }
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            isSelected ? color.opacity(0.72) : Color.primary.opacity(isHovering ? 0.18 : 0.08),
+                            lineWidth: isSelected ? 4 : 1
+                        )
+                        .frame(width: isSelected ? 32 : 30, height: isSelected ? 32 : 30)
+                }
+                .shadow(
+                    color: color.opacity(isSelected ? 0.26 : (isHovering ? 0.16 : 0)),
+                    radius: isSelected ? 5 : 3,
+                    y: isSelected ? 2 : 1
+                )
+                .scaleEffect(isSelected ? 1.08 : (isHovering ? 1.04 : 1))
+                .contentShape(Circle())
+                .animation(.smooth(duration: 0.18), value: isSelected)
+                .animation(.smooth(duration: 0.14), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .help(choice.name)
+        .onHover { isHovering = $0 }
+    }
+
+    private var color: Color {
+        let raw = choice.hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard raw.count == 6, let value = Int(raw, radix: 16) else {
             return .secondary
         }

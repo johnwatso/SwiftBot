@@ -1348,7 +1348,7 @@ actor ClusterCoordinator {
             await recordJobLog(
                 user: body.source.name,
                 server: "Remote Wiki",
-                command: "!wiki \(body.query)",
+                command: "/wiki \(body.query)",
                 channel: "worker",
                 executionRoute: "Worker",
                 ok: true

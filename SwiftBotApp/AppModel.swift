@@ -990,7 +990,7 @@ final class AppModel: ObservableObject {
         events = snapshot.events
         commandLog = snapshot.commandLog
         voiceLog = snapshot.voiceLog
-        patchyDebugLogs = Array(snapshot.patchyDebugLogs.prefix(200))
+        patchyDebugLogs = Array(snapshot.patchyDebugLogs.prefix(60))
         patchyLastCycleAt = snapshot.patchyLastCycleAt
     }
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 private enum RemoteSection: String, CaseIterable, Identifiable {
     case status = "Status"
-    case rules = "Rules"
+    case rules = "Automations"
     case events = "Events"
     case settings = "Settings"
 
@@ -267,7 +267,7 @@ struct RemoteModeRootView: View {
         HSplitView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Rules")
+                    Text("Automations")
                         .font(.title2.weight(.semibold))
                     Spacer()
                     Button {
@@ -298,7 +298,7 @@ struct RemoteModeRootView: View {
                     .listStyle(.inset)
                     .scrollContentBackground(.hidden)
                 } else {
-                    ContentUnavailableView("No Rules Loaded", systemImage: "slider.horizontal.3")
+                    ContentUnavailableView("No Automations Loaded", systemImage: "slider.horizontal.3")
                 }
             }
             .frame(minWidth: 260, idealWidth: 300)
