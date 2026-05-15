@@ -69,28 +69,45 @@ extension AppModel {
         }
     }
 
+    func handleClusterRoleChange() async {
+        // 1. Reconfigure mesh sync (to switch between pushing and pulling)
+        configureMeshSync()
+
+        // 2. Reconfigure Patchy (to ensure it starts/pauses correctly)
+        configurePatchyMonitoring()
+
+        // 3. Ensure Media Monitor is running or paused correctly
+        startMediaMonitor()
+
+        // 4. Update UI state (triggers refresh of banners and status indicators)
+        await MainActor.run {
+            self.objectWillChange.send()
+        }
+    }
+
     func configureMeshSync() {
         meshSyncTask?.cancel()
         meshSyncTask = nil
 
-        guard settings.clusterMode == .leader || settings.clusterMode == .standby else { return }
+        let mode = runtimeClusterMode
+        guard mode == .leader || mode == .standby else { return }
 
         meshSyncTask = Task { [weak self] in
             while !Task.isCancelled {
                 // Leader pushes, Standby pulls
-                // Sync every 60 seconds. The old 10s interval caused excessive
-                // standby-to-primary load and overlapping URLSession requests.
+                // Sync every 60 seconds.
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
                 if Task.isCancelled { break }
 
                 guard let self else { break }
 
-                if self.settings.clusterMode == .leader {
+                let currentMode = self.runtimeClusterMode
+                if currentMode == .leader {
                     // 1. Push worker registry to all nodes
                     await self.cluster.pushWorkerRegistryToStandbys()
                     // 2. Push incremental conversation batches per node
                     await self.pushIncrementalConversationsToAllNodes()
-                } else if self.settings.clusterMode == .standby {
+                } else if currentMode == .standby {
                     // 3. Standby: Pull config files and wiki cache from Primary
                     await self.pullConfigFilesFromLeader()
                     await self.pullWikiCacheFromLeader()

@@ -4,6 +4,7 @@ import SwiftUI
 struct PatchyMonitoringSnapshot: Equatable {
     let patchySettings: PatchySettings
     let clusterMode: ClusterMode
+    let botStatus: BotStatus
 }
 
 extension AppModel {
@@ -74,7 +75,7 @@ extension AppModel {
         Task {
             guard let target = settings.patchy.sourceTargets.first(where: { $0.id == targetID }) else { return }
             guard !target.channelId.isEmpty else {
-                appendPatchyLog("Test send skipped: target channel is empty.")
+                logs.append("Patchy: " + "Test send skipped: target channel is empty.")
                 return
             }
 
@@ -85,7 +86,7 @@ extension AppModel {
                     entry.lastStatus = validation.detail
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Patchy test skipped: \(validation.detail)")
+                logs.append("Patchy: " + "Patchy test skipped: \(validation.detail)")
                 return
             }
 
@@ -112,7 +113,7 @@ extension AppModel {
                     entry.lastStatus = delivery.detail
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Test send [\(target.source.rawValue)] -> \(delivery.detail)")
+                logs.append("Patchy: " + "Test send [\(target.source.rawValue)] -> \(delivery.detail)")
             } catch {
                 let diagnostic = patchyErrorDiagnostic(from: error)
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -120,7 +121,7 @@ extension AppModel {
                     entry.lastStatus = "Patchy test failed: \(diagnostic)"
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Patchy test failed: \(diagnostic)")
+                logs.append("Patchy: " + "Patchy test failed: \(diagnostic)")
             }
         }
     }
@@ -140,7 +141,7 @@ extension AppModel {
                     entry.lastStatus = mapped.statusSummary
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Pull [\(target.source.rawValue)] -> \(mapped.statusSummary)")
+                logs.append("Patchy: " + "Pull [\(target.source.rawValue)] -> \(mapped.statusSummary)")
             } catch {
                 let diagnostic = patchyErrorDiagnostic(from: error)
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -148,7 +149,7 @@ extension AppModel {
                     entry.lastStatus = "Pull failed: \(diagnostic)"
                 }
                 persistSettingsQuietly()
-                appendPatchyLog("Pull [\(target.source.rawValue)] failed: \(diagnostic)")
+                logs.append("Patchy: " + "Pull [\(target.source.rawValue)] failed: \(diagnostic)")
                 appendPatchyErrorTraceIfPresent(error, context: "Pull [\(target.source.rawValue)]")
             }
         }
@@ -157,7 +158,8 @@ extension AppModel {
     func configurePatchyMonitoring() {
         let snapshot = PatchyMonitoringSnapshot(
             patchySettings: settings.patchy,
-            clusterMode: settings.clusterMode
+            clusterMode: runtimeClusterMode,
+            botStatus: status
         )
 
         guard snapshot != lastPatchyMonitoringSnapshot else { return }
@@ -166,8 +168,11 @@ extension AppModel {
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
 
-        guard usesLocalRuntime, settings.patchy.monitoringEnabled else {
-            appendPatchyLog("Patchy monitoring paused.")
+        let currentMode = runtimeClusterMode
+        let isAuthorized = currentMode == .leader || currentMode == .standalone
+
+        guard usesLocalRuntime, settings.patchy.monitoringEnabled, status == .running, isAuthorized else {
+            logs.append("Patchy: " + "Patchy monitoring paused.")
             return
         }
 
@@ -180,7 +185,7 @@ extension AppModel {
                 await self.runPatchyMonitoringCycle(trigger: "Scheduled")
             }
         }
-        appendPatchyLog("Patchy monitoring started.")
+        logs.append("Patchy: " + "Patchy monitoring started.")
     }
 
     struct PatchySourceGroupKey: Hashable {
@@ -192,15 +197,18 @@ extension AppModel {
     }
 
     func runPatchyMonitoringCycle(trigger: String) async {
+        guard status == .running || trigger == "Manual" || trigger == "Startup" else {
+            return
+        }
         guard !patchyIsCycleRunning else { return }
         guard let patchyChecker else {
-            appendPatchyLog("Patchy checker unavailable. Cycle skipped.")
+            logs.append("Patchy: " + "Patchy checker unavailable. Cycle skipped.")
             return
         }
 
         let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty }
         guard !enabledTargets.isEmpty else {
-            appendPatchyLog("Patchy cycle (\(trigger)) skipped: no enabled targets.")
+            logs.append("Patchy: " + "Patchy cycle (\(trigger)) skipped: no enabled targets.")
             setPatchyLastCycleAt(Date())
             return
         }
@@ -251,18 +259,18 @@ extension AppModel {
                     switch versionCheck {
                     case .firstSeen:
                         try await patchyChecker.save(identifier: newestVersion, for: versionKey)
-                        appendPatchyLog("Patchy driver baseline initialized [\(referenceTarget.source.rawValue)] version=\(newestVersion)")
+                        logs.append("Patchy: " + "Patchy driver baseline initialized [\(referenceTarget.source.rawValue)] version=\(newestVersion)")
                     case .unchanged:
                         break
                     case .changed(let oldVersion, _):
                         guard let comparison = PatchyRuntime.compareDriverVersions(newestVersion, oldVersion) else {
                             try await patchyChecker.save(identifier: newestVersion, for: versionKey)
-                            appendPatchyLog("Patchy migrated legacy driver baseline [\(referenceTarget.source.rawValue)] old=\(oldVersion) new=\(newestVersion)")
+                            logs.append("Patchy: " + "Patchy migrated legacy driver baseline [\(referenceTarget.source.rawValue)] old=\(oldVersion) new=\(newestVersion)")
                             break
                         }
 
                         guard comparison > 0 else {
-                            appendPatchyLog("Patchy ignored non-newer driver [\(referenceTarget.source.rawValue)] latest=\(newestVersion) lastPosted=\(oldVersion)")
+                            logs.append("Patchy: " + "Patchy ignored non-newer driver [\(referenceTarget.source.rawValue)] latest=\(newestVersion) lastPosted=\(oldVersion)")
                             break
                         }
 
@@ -274,7 +282,7 @@ extension AppModel {
                                     entry.lastCheckedAt = Date()
                                     entry.lastStatus = validation.detail
                                 }
-                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                logs.append("Patchy: " + "Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
                                 continue
                             }
 
@@ -309,7 +317,7 @@ extension AppModel {
                     switch check {
                     case .firstSeen:
                         try await patchyChecker.save(identifier: identifier, for: key)
-                        appendPatchyLog("Patchy GitHub baseline initialized [\(referenceTarget.githubRepo)] id=\(identifier)")
+                        logs.append("Patchy: " + "Patchy GitHub baseline initialized [\(referenceTarget.githubRepo)] id=\(identifier)")
                     case .unchanged:
                         break
                     case .changed:
@@ -321,7 +329,7 @@ extension AppModel {
                                     entry.lastCheckedAt = Date()
                                     entry.lastStatus = validation.detail
                                 }
-                                appendPatchyLog("Patchy cycle [GitHub] skipped target \(target.channelId): \(validation.detail)")
+                                logs.append("Patchy: " + "Patchy cycle [GitHub] skipped target \(target.channelId): \(validation.detail)")
                                 continue
                             }
 
@@ -356,18 +364,18 @@ extension AppModel {
                     switch steamCheck {
                     case .firstSeen:
                         try await patchyChecker.save(identifier: newestStamp, for: steamKey)
-                        appendPatchyLog("Patchy Steam baseline initialized [\(referenceTarget.steamAppID)] stamp=\(newestStamp)")
+                        logs.append("Patchy: " + "Patchy Steam baseline initialized [\(referenceTarget.steamAppID)] stamp=\(newestStamp)")
                     case .unchanged:
                         break
                     case .changed(let oldStamp, _):
                         guard let comparison = PatchyRuntime.compareSteamOrderingStamp(newestStamp, oldStamp) else {
                             try await patchyChecker.save(identifier: newestStamp, for: steamKey)
-                            appendPatchyLog("Patchy migrated legacy Steam baseline [\(referenceTarget.steamAppID)] old=\(oldStamp) new=\(newestStamp)")
+                            logs.append("Patchy: " + "Patchy migrated legacy Steam baseline [\(referenceTarget.steamAppID)] old=\(oldStamp) new=\(newestStamp)")
                             break
                         }
 
                         guard comparison > 0 else {
-                            appendPatchyLog("Patchy ignored non-newer Steam item [\(referenceTarget.steamAppID)] latest=\(newestStamp) lastPosted=\(oldStamp)")
+                            logs.append("Patchy: " + "Patchy ignored non-newer Steam item [\(referenceTarget.steamAppID)] latest=\(newestStamp) lastPosted=\(oldStamp)")
                             break
                         }
 
@@ -379,7 +387,7 @@ extension AppModel {
                                     entry.lastCheckedAt = Date()
                                     entry.lastStatus = validation.detail
                                 }
-                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                logs.append("Patchy: " + "Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
                                 continue
                             }
 
@@ -419,7 +427,7 @@ extension AppModel {
                                     entry.lastCheckedAt = Date()
                                     entry.lastStatus = validation.detail
                                 }
-                                appendPatchyLog("Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
+                                logs.append("Patchy: " + "Patchy cycle [\(target.source.rawValue)] skipped target \(target.channelId): \(validation.detail)")
                                 continue
                             }
 
@@ -443,7 +451,7 @@ extension AppModel {
                         entry.lastStatus = "Patchy check failed: \(error.localizedDescription)"
                     }
                 }
-                appendPatchyLog("Patchy cycle \(referenceTarget.source.rawValue) failed: \(error.localizedDescription)")
+                logs.append("Patchy: " + "Patchy cycle \(referenceTarget.source.rawValue) failed: \(error.localizedDescription)")
             }
         }
 
@@ -479,9 +487,9 @@ extension AppModel {
                 source: summaryInput.source
             ) {
                 embeds[0] = patchyEmbedWithAISummary(embeds[0], summary: summary)
-                appendPatchyLog("Summarised with AI [\(target.source.rawValue)].")
+                logs.append("Patchy: " + "Summarised with AI [\(target.source.rawValue)].")
             } else {
-                appendPatchyLog("AI summary skipped [\(target.source.rawValue)]: Apple Intelligence unavailable or returned no summary.")
+                logs.append("Patchy: " + "AI summary skipped [\(target.source.rawValue)]: Apple Intelligence unavailable or returned no summary.")
             }
         }
         payload["embeds"] = embeds
@@ -613,17 +621,6 @@ extension AppModel {
         persistSettingsQuietly()
     }
 
-    func appendPatchyLog(_ line: String) {
-        let stamp = ISO8601DateFormatter().string(from: Date())
-        let final = "[\(stamp)] \(line)"
-        patchyDebugLogs.insert(final, at: 0)
-        if patchyDebugLogs.count > 60 {
-            patchyDebugLogs.removeLast(patchyDebugLogs.count - 60)
-        }
-        logs.append("Patchy: \(line)")
-        persistAnalyticsRuntime()
-    }
-
     func persistSettingsQuietly() {
         let snapshot = settings
         Task {
@@ -734,7 +731,7 @@ extension AppModel {
         }
 
         for line in trace.components(separatedBy: .newlines) where !line.isEmpty {
-            appendPatchyLog("\(context) debug: \(line)")
+            logs.append("Patchy: " + "\(context) debug: \(line)")
         }
     }
 

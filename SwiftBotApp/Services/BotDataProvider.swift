@@ -42,7 +42,6 @@ protocol BotDataProvider: ObservableObject {
 
     var patchyLastCycleAt: Date? { get }
     var patchyIsCycleRunning: Bool { get }
-    var patchyDebugLogs: [String] { get }
     func addPatchyTarget(_ target: PatchySourceTarget) async throws
     func updatePatchyTarget(_ target: PatchySourceTarget) async throws
     func deletePatchyTarget(_ id: UUID) async throws
@@ -90,7 +89,6 @@ final class AnyBotDataProvider: ObservableObject, BotDataProvider {
     var rules: [Rule] { _base.rules }
     var patchyLastCycleAt: Date? { _base.patchyLastCycleAt }
     var patchyIsCycleRunning: Bool { _base.patchyIsCycleRunning }
-    var patchyDebugLogs: [String] { _base.patchyDebugLogs }
     var changePublisher: AnyPublisher<Void, Never> { objectWillChange.eraseToAnyPublisher() }
 
     // MARK: - Initialization

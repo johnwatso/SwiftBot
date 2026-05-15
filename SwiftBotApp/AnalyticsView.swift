@@ -1114,7 +1114,6 @@ struct AnalyticsView: View {
                 patchyTotalTargetCount: app.settings.patchy.sourceTargets.count,
                 patchyCycleRunning: app.patchyIsCycleRunning,
                 patchyLastCycleAt: app.patchyLastCycleAt,
-                patchyDebugLogs: app.patchyDebugLogs,
                 clusterMode: app.settings.clusterMode,
                 clusterNodes: app.clusterNodes,
                 lastClusterStatusSuccessAt: app.lastClusterStatusSuccessAt,
@@ -1900,7 +1899,6 @@ private struct OperationalInsightContext {
     let patchyTotalTargetCount: Int
     let patchyCycleRunning: Bool
     let patchyLastCycleAt: Date?
-    let patchyDebugLogs: [String]
     let clusterMode: ClusterMode
     let clusterNodes: [ClusterNodeStatus]
     let lastClusterStatusSuccessAt: Date?
@@ -2088,14 +2086,8 @@ private enum OperationalInsightsEngine {
     private static func patchyInsight(_ context: OperationalInsightContext) -> OperationalInsight? {
         guard context.patchyMonitoringEnabled || context.patchyTotalTargetCount > 0 else { return nil }
 
-        let recentFailureCount = context.patchyDebugLogs.prefix(40).filter {
-            $0.localizedCaseInsensitiveContains("failed") || $0.localizedCaseInsensitiveContains("skipped")
-        }.count
-
         let tone: OperationalInsightTone = if context.patchyCycleRunning {
             .info
-        } else if recentFailureCount > 0 {
-            .warning
         } else {
             .healthy
         }
@@ -2109,9 +2101,7 @@ private enum OperationalInsightsEngine {
             body = "Patchy monitoring is configured and waiting for its next cycle."
         }
 
-        let note = recentFailureCount > 0
-            ? "\(recentFailureCount) recent Patchy warning\(recentFailureCount == 1 ? "" : "s") are in the debug log."
-            : "\(context.patchyEnabledTargetCount) of \(context.patchyTotalTargetCount) targets enabled."
+        let note = "\(context.patchyEnabledTargetCount) of \(context.patchyTotalTargetCount) targets enabled."
 
         return OperationalInsight(
             id: "patchy-monitoring",
@@ -2119,7 +2109,7 @@ private enum OperationalInsightsEngine {
             body: body,
             symbol: "shippingbox.and.arrow.backward",
             tone: tone,
-            weight: context.patchyEnabledTargetCount + recentFailureCount,
+            weight: context.patchyEnabledTargetCount,
             note: note
         )
     }

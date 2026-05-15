@@ -15,21 +15,22 @@ struct SwiftMeshView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
 
-                // Phase 4: manual promote + auto-reclaim countdown.
-                if app.clusterSnapshot.mode == .standby {
-                    PromoteToPrimaryPanel(
-                        countdownSeconds: app.autoReclaimRemainingSeconds,
-                        onPromote: { showPromoteConfirm = true }
-                    )
-                }
-
-                // Handover Test panel — Primary side only, requires at least
-                // one registered worker.
-                if app.clusterSnapshot.mode == .leader && app.registeredWorkersDebugCount > 0 {
+                // Handover Test panel — Configured Primary only, requires at least
+                // one registered worker or an active test.
+                if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive) {
                     HandoverTestPanel(
                         lastRunAt: app.settings.clusterLastHandoverTestAt,
                         lastRunOK: app.settings.clusterLastHandoverTestOK,
                         onRun: { showHandoverTestConfirm = true }
+                    )
+                }
+
+                // Phase 4: manual promote + auto-reclaim countdown.
+                if app.settings.clusterMode == .standby {
+                    PromoteToPrimaryPanel(
+                        snapshot: app.clusterSnapshot,
+                        countdownSeconds: app.autoReclaimRemainingSeconds,
+                        onPromote: { showPromoteConfirm = true }
                     )
                 }
 
@@ -1060,40 +1061,104 @@ private struct MetricTile: View {
 // Phase 4: header panel for runtime-standby nodes — shows the auto-reclaim
 // countdown (if eligible) and exposes a manual Promote button.
 struct PromoteToPrimaryPanel: View {
+    let snapshot: ClusterSnapshot
     let countdownSeconds: TimeInterval?
     let onPromote: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Currently running as Failover (Standby)")
-                    .font(.subheadline.weight(.semibold))
-                if let secs = countdownSeconds, secs > 0 {
-                    Text("Auto-reclaim Primary in \(formatCountdown(secs))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if snapshot.isHandoverTestActive {
+                    handoverStatusRow
+                    handoverDetailText
                 } else {
-                    Text("Auto-reclaim disabled. Promote manually any time.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    normalStandbyContent
                 }
             }
             Spacer()
+            
+            promoteButton
+        }
+        .padding(12)
+        .background(panelBackground)
+        .overlay(panelStroke)
+    }
+
+    @ViewBuilder
+    private var handoverStatusRow: some View {
+        let title = snapshot.mode == .leader ? "ACTING AS PRIMARY" : "Handover Test in Progress"
+        let color: Color = snapshot.mode == .leader ? .green : .orange
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.mini)
+            Text(title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(color)
+        }
+    }
+
+    @ViewBuilder
+    private var handoverDetailText: some View {
+        if let endsAt = snapshot.handoverTestEndsAt {
+            HStack(spacing: 0) {
+                Text(snapshot.mode == .leader 
+                     ? "Test active. Demoting in "
+                     : "Primary has demoted. Reclaiming in ")
+                Text(endsAt, style: .timer)
+                Text(".")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            Text("This node is acting as Primary for the duration of the test.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var normalStandbyContent: some View {
+        Text("Currently running as Failover (Standby)")
+            .font(.subheadline.weight(.semibold))
+        if let secs = countdownSeconds, secs > 0 {
+            Text("Auto-reclaim Primary in \(formatCountdown(secs))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Auto-reclaim disabled. Promote manually any time.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var promoteButton: some View {
+        if !snapshot.isHandoverTestActive {
             Button(action: onPromote) {
                 Label("Promote to Primary", systemImage: "arrow.up.circle.fill")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.accentColor.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
-        )
+    }
+
+    private var panelBackground: some View {
+        let color: Color = if snapshot.isHandoverTestActive {
+            snapshot.mode == .leader ? .green : .orange
+        } else {
+            .accentColor
+        }
+        return RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(color.opacity(0.08))
+    }
+
+    private var panelStroke: some View {
+        let color: Color = if snapshot.isHandoverTestActive {
+            snapshot.mode == .leader ? .green : .orange
+        } else {
+            .accentColor
+        }
+        return RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(color.opacity(0.2), lineWidth: 1)
     }
 
     private func formatCountdown(_ seconds: TimeInterval) -> String {
@@ -1111,6 +1176,7 @@ struct PromoteToPrimaryPanel: View {
 /// recent pass timestamp so an operator can see at a glance whether the
 /// failover path has been exercised lately.
 struct HandoverTestPanel: View {
+    @EnvironmentObject var app: AppModel
     let lastRunAt: Date?
     let lastRunOK: Bool
     let onRun: () -> Void
@@ -1118,42 +1184,99 @@ struct HandoverTestPanel: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: statusSymbol)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(statusColor)
-                    Text("Test Failover handover")
-                        .font(.subheadline.weight(.semibold))
-                    Text(statusLabel)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(statusColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule().fill(statusColor.opacity(0.12))
-                        )
-                }
-                Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Useful for validating the swap path without a real outage.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                testHeaderRow
+                testDetailText
             }
             Spacer()
+            
+            testActionButton
+        }
+        .padding(12)
+        .background(panelBackground)
+        .overlay(panelStroke)
+    }
+
+    @ViewBuilder
+    private var testHeaderRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: statusSymbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusColor)
+            Text("Test Failover handover")
+                .font(.subheadline.weight(.semibold))
+            
+            if app.clusterSnapshot.isHandoverTestActive {
+                activeBadge
+            } else {
+                Text(statusLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(statusColor.opacity(0.12)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var activeBadge: some View {
+        HStack(spacing: 5) {
+            ProgressView().controlSize(.mini)
+            Text("TEST ACTIVE")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(Capsule().fill(Color.orange.opacity(0.12)))
+    }
+
+    @ViewBuilder
+    private var testDetailText: some View {
+        if let endsAt = app.clusterSnapshot.handoverTestEndsAt, app.clusterSnapshot.isHandoverTestActive {
+            HStack(spacing: 0) {
+                Text("Failover has control. Reclaiming automatically in ")
+                Text(endsAt, style: .timer)
+                Text(".")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Useful for validating the swap path without a real outage.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var testActionButton: some View {
+        if app.clusterSnapshot.isHandoverTestActive {
+            Button(role: .destructive) {
+                Task { await app.manuallyPromoteToPrimary() }
+            } label: {
+                Label("End Test", systemImage: "stop.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        } else {
             Button(action: onRun) {
                 Label("Run Handover Test", systemImage: "arrow.left.arrow.right.circle.fill")
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.orange.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
-        )
+    }
+
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(app.clusterSnapshot.isHandoverTestActive ? Color.orange.opacity(0.08) : Color.primary.opacity(0.03))
+    }
+
+    private var panelStroke: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(app.clusterSnapshot.isHandoverTestActive ? Color.orange.opacity(0.2) : Color.primary.opacity(0.06), lineWidth: 1)
     }
 
     private var statusLabel: String {

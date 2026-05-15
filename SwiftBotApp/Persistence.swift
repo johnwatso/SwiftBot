@@ -25,7 +25,6 @@ struct AnalyticsRuntimeSnapshot: Codable {
     var events: [ActivityEvent] = []
     var commandLog: [CommandLogEntry] = []
     var voiceLog: [VoiceEventLogEntry] = []
-    var patchyDebugLogs: [String] = []
     var patchyLastCycleAt: Date?
 }
 

@@ -436,21 +436,11 @@ struct OverviewView: View {
             ))
         }
 
-        let patchyWarnings = provider.patchyDebugLogs.prefix(30).filter {
-            $0.localizedCaseInsensitiveContains("failed") || $0.localizedCaseInsensitiveContains("skipped")
-        }.count
         if settings.patchy.monitoringEnabled && patchyEnabledTargetCount == 0 {
             items.append(AttentionItem(
                 id: "patchy-targets",
                 title: "Patchy has no enabled targets",
                 detail: "Monitoring is on, but there are no delivery targets to check.",
-                severity: .warning
-            ))
-        } else if patchyWarnings > 0 {
-            items.append(AttentionItem(
-                id: "patchy-warnings",
-                title: "Patchy warnings detected",
-                detail: "\(patchyWarnings) recent update-monitoring warning\(patchyWarnings == 1 ? "" : "s") appeared in the debug log.",
                 severity: .warning
             ))
         }
@@ -833,11 +823,11 @@ struct OverviewView: View {
     private var operationalStatusCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
                         liveStatusPulse(color: operationalHealth.color)
                         Text("Operational Status")
-                            .font(.title3.weight(.semibold))
+                            .font(.title3.weight(.bold))
                     }
                     Text(operationalHealthDetail)
                         .font(.subheadline)
@@ -847,7 +837,7 @@ struct OverviewView: View {
                 Spacer(minLength: 18)
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(operationalHealthTitle)
-                        .font(.title2.weight(.semibold))
+                        .font(.title2.weight(.bold))
                         .foregroundStyle(operationalHealth.color)
                     Text(uptime?.text ?? currentNodeModeLabel)
                         .font(.caption.monospacedDigit())
@@ -856,64 +846,53 @@ struct OverviewView: View {
             }
 
             LazyVGrid(columns: [
-                GridItem(.adaptive(minimum: 180), spacing: 10)
-            ], spacing: 10) {
+                GridItem(.adaptive(minimum: 180), spacing: 12)
+            ], spacing: 12) {
                 ForEach(operationalStatusMetrics) { metric in
                     operationalStatusTile(metric)
                 }
             }
         }
-        .padding(18)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [operationalHealth.color.opacity(0.10), Color.white.opacity(0.025)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
         )
     }
 
     private func operationalStatusTile(_ metric: OperationalStatusMetric) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: metric.symbol)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(metric.state.color)
                     .frame(width: 22, height: 22)
-                    .background(metric.state.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(metric.state.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 Text(metric.title)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Circle()
                     .fill(metric.state.color)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 5, height: 5)
             }
             Text(metric.value)
-                .font(.headline.weight(.semibold).monospacedDigit())
+                .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(metric.detail)
-                .font(.caption2)
+                .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(11)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(metric.state.color.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.primary.opacity(0.04), lineWidth: 1)
         )
     }
 
@@ -1478,7 +1457,7 @@ struct DashboardMetricCard: View {
     @State private var glowOpacity = 0.0
     @State private var playPulse = false
 
-    private let cornerRadius: CGFloat = 22
+    private let cornerRadius: CGFloat = 20
 
     private var isGlowActive: Bool {
         appleIntelligenceGlowEnabled && isHovering
@@ -1489,43 +1468,50 @@ struct DashboardMetricCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: symbol)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(color)
-                    .frame(width: 22, height: 22)
-                    .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .frame(width: 20, height: 20)
+                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+
+            Spacer(minLength: 4)
+
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if !detail.isEmpty {
-                Text(detail)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(14)
         .glassCard(
             cornerRadius: cornerRadius,
-            tint: color.opacity(isHovering ? 0.15 : 0.10),
-            stroke: color.opacity(isHovering ? 0.38 : 0.24)
+            tint: .primary.opacity(isHovering ? 0.03 : 0.01),
+            stroke: .primary.opacity(isHovering ? 0.12 : 0.06)
         )
-        .scaleEffect(isHovering ? 1.012 : 1)
-        .shadow(color: color.opacity(isHovering ? 0.14 : 0.06), radius: isHovering ? 14 : 8, y: isHovering ? 8 : 4)
+        .scaleEffect(isHovering ? 1.01 : 1)
+        .shadow(color: .black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 10 : 5, y: isHovering ? 5 : 2)
         .overlay {
             if shouldRenderGlow || playPulse {
                 ZStack {
@@ -1544,7 +1530,7 @@ struct DashboardMetricCard: View {
         }
         .onHover { hovering in
             let wasHovering = isHovering
-            withAnimation(.smooth(duration: 0.18)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 isHovering = hovering
             }
 

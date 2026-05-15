@@ -744,14 +744,14 @@ extension AppModel {
     }
 
     private func scanMediaForNewItems() async {
-        guard settings.clusterMode != .standby else { return }
+        guard runtimeClusterMode != .standby else { return }
         let shouldScan = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .mediaAdded }
         guard shouldScan else {
             lastSeenMediaItemIDs.removeAll()
             return
         }
         let hasLocalSources = mediaLibrarySettings.sources.contains { $0.isEnabled && !$0.normalizedRootPath.isEmpty }
-        if !hasLocalSources && settings.clusterMode != .leader {
+        if !hasLocalSources && runtimeClusterMode != .leader {
             return
         }
         let payloads = await mediaPayloadsForTriggers()

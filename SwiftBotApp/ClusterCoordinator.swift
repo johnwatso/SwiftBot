@@ -279,7 +279,8 @@ actor ClusterCoordinator {
         let payload = MeshHandoverTestPayload(
             originPrimaryNodeName: nodeName,
             originPrimaryBaseURL: ownBaseURL,
-            durationSeconds: durationSeconds
+            durationSeconds: durationSeconds,
+            currentLeaderTerm: leaderTerm
         )
 
         // STEP 1: Demote self to standby FIRST so the Failover can promote
@@ -289,15 +290,23 @@ actor ClusterCoordinator {
 
         // STEP 2: Start a watchdog that reclaims if the Failover never signals back.
         let graceSeconds = 15
+        snapshot.isHandoverTestActive = true
+        snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        await publishSnapshot()
+        
         handoverTestTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(durationSeconds + graceSeconds) * 1_000_000_000)
             guard !Task.isCancelled else { return }
             guard mode == .standby else {
+                snapshot.isHandoverTestActive = false
+                snapshot.handoverTestEndsAt = nil
                 handoverTestTask = nil
                 return
             }
             meshLogger.warning("Handover test watchdog fired — Failover never signalled back; reclaiming Primary")
             snapshot.diagnostics = "Handover test watchdog — reclaiming Primary after timeout"
+            snapshot.isHandoverTestActive = false
+            snapshot.handoverTestEndsAt = nil
             await publishSnapshot()
             await promoteToLeader()
             await onHandoverTestPassed?()
@@ -336,17 +345,25 @@ actor ClusterCoordinator {
         guard let payload = try? decoder.decode(MeshHandoverTestPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
         }
+
+        // Adopt newer term if provided
+        if let term = payload.currentLeaderTerm {
+            await updateLeaderTerm(term)
+        }
+
         guard mode == .standby else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"standby_mode_required"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "standby_mode_required"))
         }
         guard handoverTestTask == nil else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"already_running"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "already_running"))
         }
         let duration = max(5, min(600, payload.durationSeconds))
         let origin = payload.originPrimaryNodeName
         let originBaseURL = payload.originPrimaryBaseURL
         meshLogger.notice("Handover test: signal received from \(origin, privacy: .public); promoting in 1s for \(duration, privacy: .public)s")
         snapshot.diagnostics = "Handover test starting — promoting in 1s, will reclaim \(origin) after \(duration)s"
+        snapshot.isHandoverTestActive = true
+        snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(duration + 1))
         await publishSnapshot()
 
         handoverTestTask = Task {
@@ -354,6 +371,8 @@ actor ClusterCoordinator {
                 try await Task.sleep(nanoseconds: 1_000_000_000)
             } catch {
                 meshLogger.debug("Handover test start sleep cancelled")
+                snapshot.isHandoverTestActive = false
+                snapshot.handoverTestEndsAt = nil
                 return
             }
             await promoteToLeader()
@@ -361,9 +380,19 @@ actor ClusterCoordinator {
                 try await Task.sleep(nanoseconds: UInt64(duration) * 1_000_000_000)
             } catch {
                 meshLogger.debug("Handover test duration sleep cancelled")
+                snapshot.isHandoverTestActive = false
+                snapshot.handoverTestEndsAt = nil
                 return
             }
             await broadcastHandoverTestEnd(originPrimaryNodeName: origin, originPrimaryBaseURL: originBaseURL, duration: duration)
+            
+            // Fix split-brain: temporary primary must demote self back to standby
+            // now that its window has elapsed.
+            meshLogger.notice("Handover test window elapsed; demoting back to Standby")
+            snapshot.isHandoverTestActive = false
+            snapshot.handoverTestEndsAt = nil
+            await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: originBaseURL)
+            
             handoverTestTask = nil
         }
 
@@ -377,7 +406,8 @@ actor ClusterCoordinator {
         let payload = MeshHandoverTestPayload(
             originPrimaryNodeName: originPrimaryNodeName,
             originPrimaryBaseURL: originPrimaryBaseURL,
-            durationSeconds: duration
+            durationSeconds: duration,
+            currentLeaderTerm: leaderTerm
         )
         guard let body = try? encoder.encode(payload) else { return }
         meshLogger.notice("Handover test: \(duration, privacy: .public)s elapsed; signalling \(originPrimaryNodeName, privacy: .public) to reclaim")
@@ -405,9 +435,15 @@ actor ClusterCoordinator {
     /// to reclaim. Stale-term backstop demotes the temporary Primary on its
     /// next sync push.
     private func handleHandoverTestEnd(_ body: Data) async -> Data {
-        guard (try? decoder.decode(MeshHandoverTestPayload.self, from: body)) != nil else {
+        guard let payload = try? decoder.decode(MeshHandoverTestPayload.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
         }
+
+        // Adopt newer term if provided
+        if let term = payload.currentLeaderTerm {
+            await updateLeaderTerm(term)
+        }
+
         guard mode == .standby else {
             // We may have already reclaimed via auto-reclaim, or never were
             // the origin Primary. Either way, no work to do.
@@ -415,6 +451,8 @@ actor ClusterCoordinator {
         }
         meshLogger.notice("Handover test: end signal received; reclaiming Primary")
         snapshot.diagnostics = "Handover test complete; reclaiming Primary"
+        snapshot.isHandoverTestActive = false
+        snapshot.handoverTestEndsAt = nil
         await publishSnapshot()
         await promoteToLeader()
         handoverTestTask?.cancel()
@@ -533,7 +571,12 @@ actor ClusterCoordinator {
         self.leaderPort = resolvedLeaderPort
         self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: resolvedLeaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.mode = await startupReconciledMode(requestedMode: mode)
+        
+        if handoverTestTask == nil {
+            self.mode = await startupReconciledMode(requestedMode: mode)
+        } else {
+            meshLogger.debug("Handover test in progress; ignoring mode-change in applySettings (requested: \(mode.rawValue, privacy: .public), current: \(self.mode.rawValue, privacy: .public))")
+        }
 
         snapshot.mode = self.mode
         snapshot.nodeName = self.nodeName
@@ -1751,21 +1794,30 @@ actor ClusterCoordinator {
         }
     }
 
-    /// Split-brain backstop: if a peer rejects our leader-mode request with a
-    /// StaleTermResponse carrying a term higher than ours, we are no longer the
-    /// authoritative leader — most likely the network partition that caused a
-    /// standby to promote has now healed. Demote ourselves to standby so the
-    /// real leader can resume control. This is the inverse of the
-    /// promotion-confirm path: that one prevents *false* promotion; this one
-    /// recovers from a *genuine* concurrent promotion.
+    func updateLeaderTerm(_ newTerm: Int) async {
+        guard newTerm > leaderTerm else { return }
+        meshLogger.notice("Adopting higher leader term \(newTerm, privacy: .public) from peer (was \(self.leaderTerm, privacy: .public))")
+        leaderTerm = newTerm
+        snapshot.leaderTerm = leaderTerm
+        await publishSnapshot()
+        await onTermChanged?(leaderTerm)
+    }
+
+    /// Split-brain backstop: if a peer rejects our request with a
+    /// StaleTermResponse carrying a term higher than ours, we adopt it.
+    /// If we were leader, we must also demote.
     private func detectStaleSelfFromResponse(data: Data, response: URLResponse) async {
-        guard mode == .leader,
-              let http = response as? HTTPURLResponse,
+        guard let http = response as? HTTPURLResponse,
               http.statusCode == 409,
               let stale = try? decoder.decode(StaleTermResponse.self, from: data),
               stale.currentTerm > leaderTerm else { return }
-        meshLogger.critical("Detected higher term \(stale.currentTerm, privacy: .public) from peer (was \(self.leaderTerm, privacy: .public)) — demoting self to standby")
-        await demoteToStandby(observedTerm: stale.currentTerm, newLeaderAddress: stale.currentLeaderAddress)
+
+        if mode == .leader {
+            meshLogger.critical("Detected higher term \(stale.currentTerm, privacy: .public) from peer (was \(self.leaderTerm, privacy: .public)) — demoting self to standby")
+            await demoteToStandby(observedTerm: stale.currentTerm, newLeaderAddress: stale.currentLeaderAddress)
+        } else {
+            await updateLeaderTerm(stale.currentTerm)
+        }
     }
 
     /// Step the leader down to standby after detecting a higher-term peer.
@@ -1907,7 +1959,7 @@ actor ClusterCoordinator {
 
     private func handleWorkerRegistration(_ body: Data, remoteHost: String?) async -> Data {
         guard mode == .leader else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"leader_mode_required"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
         }
 
         guard let registration = try? decoder.decode(WorkerRegistrationRequest.self, from: body) else {
@@ -2744,7 +2796,7 @@ actor ClusterCoordinator {
     /// Leader handles a standby/worker resync request: return bounded page from the requested cursor.
     private func handleMeshConversationResync(_ body: Data) async -> Data {
         guard mode == .leader else {
-            return httpResponse(status: "409 Conflict", body: Data(#"{"error":"leader_mode_required"}"#.utf8))
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
         }
         guard let req = try? decoder.decode(MeshResyncRequest.self, from: body) else {
             return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))

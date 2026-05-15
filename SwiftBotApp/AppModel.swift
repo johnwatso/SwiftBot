@@ -9,7 +9,13 @@ import Darwin
 @MainActor
 final class AppModel: ObservableObject {
     @Published var settings = BotSettings()
-    @Published var status: BotStatus = .stopped
+    @Published var status: BotStatus = .stopped {
+        didSet {
+            if status != oldValue {
+                configurePatchyMonitoring()
+            }
+        }
+    }
     @Published var stats = StatCounter()
     @Published var events: [ActivityEvent] = []
     @Published var commandLog: [CommandLogEntry] = []
@@ -29,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var lastVoiceStateAt: Date?
     @Published var lastVoiceStateSummary: String = "-"
     @Published var clusterSnapshot = ClusterSnapshot()
+    private var lastPublishedRole: ClusterMode?
     @Published var clusterNodes: [ClusterNodeStatus] = []
     /// Phase 4: seconds remaining until this node auto-reclaims Primary, or
     /// `nil` if auto-reclaim is disabled / not eligible. Refreshed by
@@ -44,7 +51,6 @@ final class AppModel: ObservableObject {
     @Published var openAIOnline = false
     @Published var recentMediaCount24h = 0
     @Published var ollamaDetectedModel: String?
-    @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
@@ -472,6 +478,7 @@ final class AppModel: ObservableObject {
                     let model = self
                     await MainActor.run {
                         model?.clusterSnapshot = snapshot
+                        model?.lastPublishedRole = snapshot.mode
                         model?.scheduleClusterNodesRefresh()
                     }
                 },
@@ -519,12 +526,15 @@ final class AppModel: ObservableObject {
                 },
                 onPromotion: { [weak self] in
                     guard let self else { return }
-                    // Promoted to Primary — enable Discord output. If already connected
-                    // in passive standby mode, no reconnect is needed; output gate flips instantly.
+                    // Promoted to Primary — enable Discord output.
                     await MainActor.run { [weak self] in
                         guard let self else { return }
+                        self.lastPublishedRole = .leader
                         logs.append("[OK] SwiftMesh promoted to Primary.")
-                        Task { await self.connectDiscordAfterPromotion() }
+                        Task {
+                            await self.handleClusterRoleChange()
+                            await self.connectDiscordAfterPromotion()
+                        }
                     }
                 }
             )
@@ -603,7 +613,12 @@ final class AppModel: ObservableObject {
                 // Higher-term peer detected — mute Discord and revert to passive standby.
                 await self.service.setOutputAllowed(false)
                 await MainActor.run { [weak self] in
-                    self?.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Output muted.")
+                    guard let self else { return }
+                    self.lastPublishedRole = .standby
+                    self.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Output muted.")
+                    Task {
+                        await self.handleClusterRoleChange()
+                    }
                 }
             }
             // Phase 3: provide this node's follower-state summary on demand.
@@ -865,6 +880,8 @@ final class AppModel: ObservableObject {
         meshSyncTask = nil
         clusterNodesRefreshTask?.cancel()
         clusterNodesRefreshTask = nil
+        patchyMonitorTask?.cancel()
+        patchyMonitorTask = nil
         uptimeTask?.cancel()
         uptime = nil
         await clearVoicePresence()
@@ -892,6 +909,10 @@ final class AppModel: ObservableObject {
 
     /// Leader: push incremental conversation batches to each registered node using per-node cursors.
 
+    var runtimeClusterMode: ClusterMode {
+        lastPublishedRole ?? clusterSnapshot.mode
+    }
+
     var isWorkerServiceRunning: Bool {
         guard settings.clusterMode == .worker else { return false }
         switch clusterSnapshot.serverState {
@@ -903,21 +924,21 @@ final class AppModel: ObservableObject {
     }
 
     var primaryServiceStatusText: String {
-        settings.clusterMode == .worker
+        runtimeClusterMode == .worker
             ? (isWorkerServiceRunning ? "Worker Online" : "Worker Offline")
             : (status == .running ? "Online" : "Offline")
     }
 
     var primaryServiceIsOnline: Bool {
-        settings.clusterMode == .worker ? isWorkerServiceRunning : status == .running
+        runtimeClusterMode == .worker ? isWorkerServiceRunning : status == .running
     }
 
     var isFailoverManagedNode: Bool {
-        settings.clusterMode == .worker || settings.clusterMode == .standby
+        runtimeClusterMode == .worker || runtimeClusterMode == .standby
     }
 
     var shouldProcessPrimaryGatewayActions: Bool {
-        settings.clusterMode == .standalone || settings.clusterMode == .leader
+        runtimeClusterMode == .standalone || runtimeClusterMode == .leader
     }
 
     func configureServiceCallbacks() async {
@@ -990,7 +1011,6 @@ final class AppModel: ObservableObject {
         events = snapshot.events
         commandLog = snapshot.commandLog
         voiceLog = snapshot.voiceLog
-        patchyDebugLogs = Array(snapshot.patchyDebugLogs.prefix(60))
         patchyLastCycleAt = snapshot.patchyLastCycleAt
     }
 
@@ -999,7 +1019,6 @@ final class AppModel: ObservableObject {
             events: events,
             commandLog: commandLog,
             voiceLog: voiceLog,
-            patchyDebugLogs: patchyDebugLogs,
             patchyLastCycleAt: patchyLastCycleAt
         )
         Task {

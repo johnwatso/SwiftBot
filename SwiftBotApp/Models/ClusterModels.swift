@@ -225,7 +225,6 @@ enum PatchyEmbedAccent {
 
 struct PatchySettings: Codable, Hashable {
     var monitoringEnabled: Bool = false
-    var showDebug: Bool = false
     var sourceTargets: [PatchySourceTarget] = []
     var steamAppNames: [String: String] = [:]
 
@@ -513,6 +512,7 @@ struct MeshHandoverTestPayload: Codable, Sendable {
     let originPrimaryNodeName: String
     let originPrimaryBaseURL: String
     let durationSeconds: Int
+    let currentLeaderTerm: Int?
 }
 
 /// Body returned with a 409 Conflict when a sender's leader term is stale.
@@ -783,6 +783,8 @@ struct ClusterSnapshot: Hashable {
     var lastJobSummary: String = "No remote jobs yet"
     var lastJobNode: String = Host.current().localizedName ?? "SwiftBot Node"
     var diagnostics: String = "No diagnostics yet"
+    var isHandoverTestActive: Bool = false
+    var handoverTestEndsAt: Date? = nil
     /// Phase 3: per-follower state polled by the primary. Keyed by node baseURL.
     /// Empty on followers and on standalone nodes.
     var followerStates: [String: FollowerStateSummary] = [:]
