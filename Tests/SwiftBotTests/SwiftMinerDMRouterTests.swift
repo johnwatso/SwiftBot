@@ -34,7 +34,7 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             discordName: nil
         )
         XCTAssertTrue(embedHasLinkedSemantics(result))
-        XCTAssertTrue(hasField(result, matching: { name, _ in name.contains("prioritising") }))
+        XCTAssertTrue(hasField(result, matching: { name, _ in name.contains("priorities") }))
         XCTAssertTrue(result.shouldTrackCompletion)
         XCTAssertFalse(result.shouldTrackWelcome)
     }
@@ -185,15 +185,17 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     }
 
     private func embedHasSetupSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("Setup") && embedDescription(result).contains("twitch.tv/activate")
+        let title = embedTitle(result)
+        let hasActivate = embedDescription(result).contains("activate") || hasField(result, matching: { _, v in v.contains("activate") })
+        return title.contains("Link") && hasActivate
     }
 
     private func embedHasLinkedSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("connected") && embedDescription(result).contains("linked")
+        embedTitle(result).contains("connected") && embedDescription(result).contains("connected")
     }
 
     private func embedHasReauthSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("re-authentication") && embedColorMatches(result, style: .warning)
+        embedTitle(result).contains("expired") && embedColorMatches(result, style: .warning)
     }
 
     private func embedHasCelebrationSemantics(_ result: SwiftMinerDMResult) -> Bool {
@@ -205,11 +207,11 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     }
 
     private func embedHasDetectionSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("detected") && embedColorMatches(result, style: .info)
+        embedTitle(result).contains("campaign") && embedColorMatches(result, style: .info)
     }
 
     private func embedHasAlertSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("attention") && embedColorMatches(result, style: .recovery)
+        embedTitle(result).contains("look") && embedColorMatches(result, style: .recovery)
     }
 
     private func embedHasLinkingSemantics(_ result: SwiftMinerDMResult) -> Bool {

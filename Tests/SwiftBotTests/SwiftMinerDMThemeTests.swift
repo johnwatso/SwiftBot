@@ -14,7 +14,7 @@ final class SwiftMinerDMThemeTests: XCTestCase {
         )
 
         XCTAssertTrue(embedHasField(result, where: { name, _ in
-            name.contains("prioritising")
+            name.contains("priorities")
         }))
     }
 

@@ -1329,6 +1329,63 @@
       max-width: 280px;
     }
 
+    .patchy-category-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 24px;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+    .patchy-category-header .ms {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-size: 18px;
+    }
+    .patchy-category-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .patchy-category-count {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: var(--glass-top);
+      opacity: 0.8;
+    }
+    .patchy-status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .patchy-accent-grid {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .patchy-accent-chip {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .patchy-accent-chip.selected {
+      border-color: #fff;
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
     .settings-shell,
     .diagnostics-shell {
       display: grid;
@@ -1992,6 +2049,63 @@
         text-align: left;
       }
     }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      width: min(520px, 95vw);
+      max-height: 90vh;
+      overflow: auto;
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      transform: translateY(12px) scale(0.98);
+      transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .modal-overlay.active .modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .modal-body {
+      display: grid;
+      gap: 16px;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
   </style>
 </head>
 <body>
@@ -2600,6 +2714,17 @@
       if (bg) bg.style.display = userPrefs.backgroundAnimation ? '' : 'none';
       root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
       if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
+    }
+
+    function showModal(title, content, footer) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalBody').innerHTML = content;
+      document.getElementById('modalFooter').innerHTML = footer || '';
+      document.getElementById('modalOverlay').classList.add('active');
+    }
+
+    function hideModal() {
+      document.getElementById('modalOverlay').classList.remove('active');
     }
 
     function setMessage(text, kind) {
@@ -4245,14 +4370,21 @@
       });
     }
 
+    const PATCHY_CATEGORIES = [
+      { id: 'drivers', title: 'Drivers Monitoring', shortTitle: 'Drivers', icon: 'cpu', color: '#2563EB' },
+      { id: 'github', title: 'GitHub Monitoring', shortTitle: 'GitHub', icon: 'code', color: '#4F46E5' },
+      { id: 'gaming', title: 'Gaming Platforms', shortTitle: 'Gaming', icon: 'sports_esports', color: '#9333EA' },
+      { id: 'software', title: 'Software Releases', shortTitle: 'Software', icon: 'shippingbox', color: '#0D9488' }
+    ];
+
     function patchySourceMeta(kind) {
-      switch ((kind || '').toLowerCase()) {
-        case 'nvidia': return { icon: 'memory', label: 'NVIDIA' };
-        case 'amd': return { icon: 'developer_board', label: 'AMD' };
-        case 'intel arc': return { icon: 'developer_mode', label: 'Intel Arc' };
-        case 'steam': return { icon: 'sports_esports', label: 'Steam' };
-        default: return { icon: 'update', label: kind || 'Source' };
-      }
+      const k = (kind || '').toLowerCase();
+      if (k === 'nvidia') return { icon: 'memory', label: 'NVIDIA', category: 'drivers', color: '#76B900' };
+      if (k === 'amd') return { icon: 'developer_board', label: 'AMD', category: 'drivers', color: '#ED1C24' };
+      if (k === 'intel arc') return { icon: 'developer_mode', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
+      if (k === 'steam') return { icon: 'sports_esports', label: 'Steam', category: 'gaming', color: '#2563EB' };
+      if (k === 'github') return { icon: 'code', label: 'GitHub', category: 'github', color: '#7C3AED' };
+      return { icon: 'update', label: kind || 'Source', category: 'software', color: '#6366F1' };
     }
 
     function formatTime(value) {
@@ -4509,21 +4641,58 @@
       const runButton = document.getElementById('patchyRunCheck');
       if (!top || !targetsNode || !addButton || !runButton) return;
 
+      // Dashboard Stats
+      const totalTargets = patchyData.targets.length;
+      const activeTargets = patchyData.targets.filter(t => t.isEnabled).length;
+      const failedTargets = patchyData.targets.filter(t => (t.lastStatus || '').toLowerCase().includes('fail')).length;
+      const categoryCount = new Set(patchyData.targets.map(t => patchySourceMeta(t.source).category)).size;
+
       top.innerHTML = `
         <div class="commands-toggle-card">
           <span class="label">Monitoring</span>
-          <span class="value">${patchyData.monitoringEnabled ? 'Enabled' : 'Disabled'}</span>
-          <label class="switch"><input id="patchyMonitoring" type="checkbox" ${patchyData.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+            <span class="value">${patchyData.monitoringEnabled ? 'Enabled' : 'Disabled'}</span>
+            <label class="switch"><input id="patchyMonitoring" type="checkbox" ${patchyData.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:8px;padding-top:8px;border-top:1px solid var(--glass-stroke);">
+            <span class="label" style="font-size:10px;">Debug Logs</span>
+            <label class="switch" style="transform:scale(0.85);"><input id="patchyShowDebug" type="checkbox" ${patchyData.showDebug ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+          </div>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Cycle</span>
-          <span class="value">${patchyData.isCycleRunning ? 'Running' : 'Idle'}</span>
+          <span class="label">Sources</span>
+          <span class="value">${totalTargets}</span>
+          <div class="command-desc">${categoryCount} Categories · ${activeTargets} Active</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Health</span>
+          <span class="value" style="color: ${failedTargets > 0 ? '#ff3b30' : 'inherit'}">${failedTargets > 0 ? `${failedTargets} Failed` : 'Healthy'}</span>
           <div class="command-desc">Last cycle: ${formatTime(patchyData.lastCycleAt)}</div>
         </div>
       `;
+
+      if (patchyData.isFailoverManagedNode) {
+        top.innerHTML = `
+          <div class="commands-toggle-card" style="grid-column: span 3; border-color: #ffcc00; background: rgba(255, 204, 0, 0.05);">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span class="ms" style="color:#ffcc00;font-size:24px;">lock</span>
+              <div>
+                <div style="font-weight:600;">Managed by SwiftMesh Leader</div>
+                <div style="font-size:11px;opacity:0.8;">This node is in a failover cluster. Settings are read-only and managed by the leader.</div>
+              </div>
+            </div>
+          </div>
+        ` + top.innerHTML;
+      }
+
       top.querySelector('#patchyMonitoring')?.addEventListener('change', async (e) => {
         await postJSON('/api/patchy/state', { monitoringEnabled: e.target.checked });
         await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+        renderPatchyView();
+      });
+      top.querySelector('#patchyShowDebug')?.addEventListener('change', async (e) => {
+        await postJSON('/api/patchy/state', { showDebug: e.target.checked });
+        await loadPatchy();
         renderPatchyView();
       });
 
@@ -4538,62 +4707,176 @@
         renderPatchyView();
       };
 
-      const rows = (patchyData.targets || []).map(target => {
-        const source = patchySourceMeta(target.source);
-        const channels = textChannelsForServer(target.serverId || (patchyData.servers[0]?.id || ''));
-        const roleSummary = asRoleNames(target.serverId, target.roleIDs);
-        return `
-          <article class="patchy-target-card" data-patchy-id="${target.id}">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-              <div class="command-name"><span class="ms">${source.icon}</span> ${source.label}</div>
-              <label class="switch"><input class="patchy-enabled" type="checkbox" ${target.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-            </div>
-            <div class="patchy-row">
-              <label class="patchy-kv">Source
-                <select class="field-select patchy-source">${(patchyData.sourceKinds || []).map(kind => `<option value="${kind}" ${kind === target.source ? 'selected' : ''}>${kind}</option>`).join('')}</select>
-              </label>
-              <label class="patchy-kv">Steam App ID
-                <input class="field-input patchy-steam" value="${(target.steamAppID || '').replaceAll('"', '&quot;')}">
-              </label>
-              <label class="patchy-kv">Server
-                <select class="field-select patchy-server">${asOptions(patchyData.servers || [], target.serverId)}</select>
-              </label>
-              <label class="patchy-kv">Channel
-                <select class="field-select patchy-channel">${asOptions(channels, target.channelId)}</select>
-              </label>
-              <div class="patchy-kv" style="position:relative;">
-                Role Mentions
-                <button class="field-input patchy-roles-trigger" style="text-align:left;height:auto;min-height:34px;display:flex;align-items:center;justify-content:space-between;">
-                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleSummary}</span>
-                  <span class="ms" style="font-size:16px;">expand_more</span>
-                </button>
-                <div class="patchy-roles-dropdown hidden glass" style="position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px;padding:8px;max-height:200px;overflow:auto;">
-                  <select class="field-select patchy-roles" multiple style="width:100%;border:0;background:transparent;height:160px;padding:0;">${roleOptionsForServer(target.serverId, target.roleIDs)}</select>
-                  <div style="margin-top:8px;text-align:right;">
-                    <button class="mini-btn patchy-roles-close" type="button">Done</button>
-                  </div>
+      // Grouping
+      const groups = {};
+      PATCHY_CATEGORIES.forEach(cat => groups[cat.id] = []);
+      (patchyData.targets || []).forEach(t => {
+        const meta = patchySourceMeta(t.source);
+        groups[meta.category].push(t);
+      });
+
+      let html = '';
+      PATCHY_CATEGORIES.forEach(cat => {
+        const targets = groups[cat.id];
+        if (targets.length === 0) return;
+
+        html += `
+          <div class="patchy-category-header">
+            <span class="ms" style="background: ${cat.color}20; color: ${cat.color};">${cat.icon === 'cpu' ? 'memory' : (cat.icon === 'shippingbox' ? 'package' : cat.icon)}</span>
+            <h3>${cat.title}</h3>
+            <span class="patchy-category-count">${targets.length}</span>
+          </div>
+        `;
+
+        targets.forEach(target => {
+          const meta = patchySourceMeta(target.source);
+          const channels = textChannelsForServer(target.serverId || (patchyData.servers[0]?.id || ''));
+          const roleSummary = asRoleNames(target.serverId, target.roleIDs);
+
+          // Status logic
+          let statusColor = 'var(--muted)';
+          let statusIcon = 'schedule';
+          const s = (target.lastStatus || '').toLowerCase();
+          if (s.includes('fail') || s.includes('error')) { statusColor = '#ff3b30'; statusIcon = 'error'; }
+          else if (s.includes('deliver') || s.includes('notified')) { statusColor = '#34c759'; statusIcon = 'check_circle'; }
+          else if (s.includes('no update') || s.includes('ready')) { statusColor = '#007aff'; statusIcon = 'info'; }
+          else if (s.includes('pending') || s.includes('awaiting')) { statusColor = '#ff9500'; statusIcon = 'pending'; }
+
+          const accentColors = ['#76B900', '#ED1C24', '#0071C5', '#2563EB', '#7C3AED', '#0D9488', '#F59E0B'];
+          const currentAccent = target.embedColorHex || '#5865F2';
+
+          html += `
+            <article class="patchy-target-card" data-patchy-id="${target.id}">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <div class="command-name" style="color: ${meta.color};"><span class="ms">${meta.icon}</span> ${meta.label}</div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <span class="patchy-status-pill" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">
+                    <span class="ms" style="font-size:14px;">${statusIcon}</span>
+                    ${target.lastStatus || 'Ready'}
+                  </span>
+                  <label class="switch"><input class="patchy-enabled" type="checkbox" ${target.isEnabled ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
                 </div>
               </div>
-            </div>
-            <div class="patchy-row">
-              <div class="patchy-kv">Last Check<br><strong>${formatTime(target.lastCheckedAt)}</strong></div>
-              <div class="patchy-kv">Last Run<br><strong>${formatTime(target.lastRunAt)}</strong></div>
-              <div class="patchy-kv">Status<br><strong>${target.lastStatus || 'Never checked'}</strong></div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:10px;">
-              <button class="mini-btn patchy-test" type="button"><span class="ms">science</span> Test</button>
-              <button class="mini-btn patchy-delete" type="button"><span class="ms">delete</span> Delete</button>
-            </div>
-          </article>
-        `;
-      }).join('');
-      targetsNode.innerHTML = rows || `<div class="placeholder">No Patchy targets configured.</div>`;
 
+              <div class="patchy-row">
+                <label class="patchy-kv">Source
+                  <select class="field-select patchy-source" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${(patchyData.sourceKinds || []).map(kind => `<option value="${kind}" ${kind === target.source ? 'selected' : ''}>${kind}</option>`).join('')}</select>
+                </label>
+                
+                ${target.source === 'Steam' ? `
+                  <label class="patchy-kv">Steam App ID
+                    <input class="field-input patchy-steam" value="${(target.steamAppID || '').replaceAll('"', '&quot;')}" placeholder="e.g. 570" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                  </label>
+                ` : ''}
+
+                ${target.source === 'GitHub' ? `
+                  <label class="patchy-kv">Repository
+                    <input class="field-input patchy-github-repo" value="${(target.githubRepo || '').replaceAll('"', '&quot;')}" placeholder="owner/repo" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                  </label>
+                  <label class="patchy-kv">Branch
+                    <input class="field-input patchy-github-branch" value="${(target.githubBranch || '').replaceAll('"', '&quot;')}" placeholder="main" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                  </label>
+                ` : ''}
+
+                <label class="patchy-kv">Server
+                  <select class="field-select patchy-server" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${asOptions(patchyData.servers || [], target.serverId)}</select>
+                </label>
+                <label class="patchy-kv">Channel
+                  <select class="field-select patchy-channel" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${asOptions(channels, target.channelId)}</select>
+                </label>
+              </div>
+
+              <div class="patchy-row">
+                <div class="patchy-kv" style="position:relative;">
+                  Role Mentions
+                  <button class="field-input patchy-roles-trigger" style="text-align:left;height:auto;min-height:34px;display:flex;align-items:center;justify-content:space-between;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleSummary}</span>
+                    <span class="ms" style="font-size:16px;">expand_more</span>
+                  </button>
+                  <div class="patchy-roles-dropdown hidden glass" style="position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px;padding:8px;max-height:200px;overflow:auto;">
+                    <select class="field-select patchy-roles" multiple style="width:100%;border:0;background:transparent;height:160px;padding:0;">${roleOptionsForServer(target.serverId, target.roleIDs)}</select>
+                    <div style="margin-top:8px;text-align:right;">
+                      <button class="mini-btn patchy-roles-close" type="button">Done</button>
+                    </div>
+                  </div>
+                </div>
+
+                <label class="patchy-kv">Polling Interval (min)
+                  <input type="number" class="field-input patchy-interval" value="${target.pollingIntervalMinutes || 15}" min="5" max="1440" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                </label>
+
+                <div class="patchy-kv">
+                  Accent Color
+                  <div class="patchy-accent-grid">
+                    ${accentColors.map(c => `
+                      <div class="patchy-accent-chip ${currentAccent.toLowerCase() === c.toLowerCase() ? 'selected' : ''}" style="background: ${c};" data-color="${c}"></div>
+                    `).join('')}
+                    <input type="color" class="patchy-accent-custom" value="${currentAccent}" style="width:24px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;">
+                  </div>
+                </div>
+
+                <div class="patchy-kv">
+                  AI Summary
+                  <label class="switch" style="margin-top:4px;"><input class="patchy-ai" type="checkbox" ${target.summarizeWithAppleIntelligence ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                </div>
+              </div>
+
+              ${target.source === 'GitHub' ? `
+                <div class="patchy-row" style="grid-template-columns: 1fr;">
+                  <div style="display:flex;gap:20px;align-items:center;">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer;">
+                      <input type="checkbox" class="patchy-github-all" ${target.githubWatchAllCommits ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}> Watch all commits (not just tags/releases)
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                      Branch Mode:
+                      <select class="field-select patchy-github-mode" style="min-width:120px;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
+                        <option value="auto" ${target.githubBranchMode === 'auto' ? 'selected' : ''}>Auto</option>
+                        <option value="fixed" ${target.githubBranchMode === 'fixed' ? 'selected' : ''}>Fixed</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              ` : ''}
+
+              <div class="patchy-row" style="background: rgba(0,0,0,0.1); padding: 8px; border-radius: 8px; margin-top: 15px;">
+                <div class="patchy-kv">Last Check<br><strong style="color:var(--text);">${formatTime(target.lastCheckedAt)}</strong></div>
+                <div class="patchy-kv">Last Run<br><strong style="color:var(--text);">${formatTime(target.lastRunAt)}</strong></div>
+                <div class="patchy-kv" style="grid-column: span 2;">Diagnostic<br><strong style="color:var(--text);">${target.lastStatus || 'Awaiting first sync...'}</strong></div>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+                <div style="display:flex;gap:8px;">
+                  <button class="mini-btn patchy-pull" type="button" title="Manually pull latest update" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">download</span> Pull</button>
+                  <button class="mini-btn patchy-test" type="button" title="Send a test notification" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">science</span> Test</button>
+                </div>
+                <button class="mini-btn patchy-delete" type="button" style="color:#ff3b30;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">delete</span> Delete</button>
+              </div>
+            </article>
+          `;
+        });
+      });
+
+      if (patchyData.showDebug) {
+        html += `
+          <div class="patchy-category-header" style="margin-top:40px;">
+            <span class="ms" style="background: rgba(255,255,255,0.05); color: var(--muted);">terminal</span>
+            <h3>Activity Log</h3>
+          </div>
+          <div class="glass" style="padding:12px; border-radius:12px; font-family:var(--font-mono); font-size:11px; max-height:300px; overflow:auto; margin: 0 12px 24px 12px;">
+            ${(patchyData.debugLogs || []).map(log => `<div style="margin-bottom:2px; padding-bottom:2px; border-bottom:1px solid rgba(255,255,255,0.03);">${log}</div>`).join('') || '<div class="muted">No recent activity.</div>'}
+          </div>
+        `;
+      }
+
+      targetsNode.innerHTML = html || `<div class="placeholder">No Patchy targets configured.</div>`;
+
+      // Event Listeners
       targetsNode.querySelectorAll('[data-patchy-id]').forEach(card => {
         const targetID = card.dataset.patchyId;
         const target = (patchyData.targets || []).find(item => item.id === targetID);
         if (!target) return;
         const commit = (mutator) => {
+          if (patchyData.isFailoverManagedNode) return;
           const next = structuredClone(target);
           mutator(next);
           schedulePatchyTargetSave(next);
@@ -4601,11 +4884,29 @@
 
         card.querySelector('.patchy-enabled')?.addEventListener('change', async (e) => {
           await postJSON('/api/patchy/target/toggle', { targetID, enabled: e.target.checked });
-          await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+          await loadPatchy();
           renderPatchyView();
         });
         card.querySelector('.patchy-source')?.addEventListener('change', (e) => commit(t => { t.source = e.target.value; }));
         card.querySelector('.patchy-steam')?.addEventListener('input', (e) => commit(t => { t.steamAppID = e.target.value; }));
+        card.querySelector('.patchy-github-repo')?.addEventListener('input', (e) => commit(t => { t.githubRepo = e.target.value; }));
+        card.querySelector('.patchy-github-branch')?.addEventListener('input', (e) => commit(t => { t.githubBranch = e.target.value; }));
+        card.querySelector('.patchy-github-all')?.addEventListener('change', (e) => commit(t => { t.githubWatchAllCommits = e.target.checked; }));
+        card.querySelector('.patchy-github-mode')?.addEventListener('change', (e) => commit(t => { t.githubBranchMode = e.target.value; }));
+        card.querySelector('.patchy-interval')?.addEventListener('input', (e) => commit(t => { t.pollingIntervalMinutes = parseInt(e.target.value) || 15; }));
+        card.querySelector('.patchy-ai')?.addEventListener('change', (e) => commit(t => { t.summarizeWithAppleIntelligence = e.target.checked; }));
+
+        card.querySelectorAll('.patchy-accent-chip').forEach(chip => {
+          chip.addEventListener('click', () => commit(t => {
+            t.embedColorHex = chip.dataset.color;
+            renderPatchyView();
+          }));
+        });
+        card.querySelector('.patchy-accent-custom')?.addEventListener('change', (e) => commit(t => {
+          t.embedColorHex = e.target.value;
+          renderPatchyView();
+        }));
+
         card.querySelector('.patchy-server')?.addEventListener('change', (e) => commit(t => {
           t.serverId = e.target.value;
           const firstChannel = (patchyData.textChannelsByServer?.[t.serverId] || [])[0];
@@ -4624,14 +4925,29 @@
         card.querySelector('.patchy-roles')?.addEventListener('change', (e) => commit(t => {
           t.roleIDs = Array.from(e.target.selectedOptions).map(opt => opt.value);
         }));
-        card.querySelector('.patchy-test')?.addEventListener('click', async () => {
+        
+        card.querySelector('.patchy-pull')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          const original = btn.innerHTML;
+          btn.innerHTML = '<span class="ms spin">sync</span> Pulling...';
+          await postJSON('/api/patchy/target/pull', { targetID });
+          await loadPatchy();
+          renderPatchyView();
+        });
+        card.querySelector('.patchy-test')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          const original = btn.innerHTML;
+          btn.innerHTML = '<span class="ms">hourglass_empty</span> Testing...';
           await postJSON('/api/patchy/target/test', { targetID });
           await loadPatchy();
           renderPatchyView();
         });
         card.querySelector('.patchy-delete')?.addEventListener('click', async () => {
+          if (!confirm('Delete this Patchy target?')) return;
           await postJSON('/api/patchy/target/delete', { targetID });
-          await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
+          await loadPatchy();
           renderPatchyView();
         });
       });
@@ -6647,7 +6963,7 @@
 
     function buildAnimatedBackground() {
       const stream = document.getElementById('bgStream');
-      if (!stream) return;
+      if (!stream || stream.style.display === 'none') return;
       const icons = [
         'menu_book', 'construction', 'terminal', 'monitoring', 'auto_awesome', 'hub',
         'dns', 'groups', 'settings_suggest', 'memory', 'handyman', 'bolt',
@@ -6688,5 +7004,15 @@
       buildAnimatedBackground();
     });
   </script>
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal glass">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Modal Title</div>
+        <button class="mini-btn" onclick="hideModal()"><span class="ms">close</span></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
 </body>
 </html>

@@ -225,6 +225,7 @@ enum PatchyEmbedAccent {
 
 struct PatchySettings: Codable, Hashable {
     var monitoringEnabled: Bool = false
+    var showDebug: Bool = false
     var sourceTargets: [PatchySourceTarget] = []
     var steamAppNames: [String: String] = [:]
 

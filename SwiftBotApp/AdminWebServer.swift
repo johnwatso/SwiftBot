@@ -306,6 +306,7 @@ struct AdminWebRuleIDPatch: Codable {
 
 struct AdminWebPatchyPayload: Codable {
     let monitoringEnabled: Bool
+    let showDebug: Bool
     let isCycleRunning: Bool
     let lastCycleAt: Date?
     let sourceKinds: [String]
@@ -314,10 +315,14 @@ struct AdminWebPatchyPayload: Codable {
     let textChannelsByServer: [String: [AdminWebSimpleOption]]
     let rolesByServer: [String: [AdminWebSimpleOption]]
     let steamAppNames: [String: String]
+    let isFailoverManagedNode: Bool
+    let botStatus: String
+    let debugLogs: [String]
 }
 
 struct AdminWebPatchyStatePatch: Codable {
     let monitoringEnabled: Bool?
+    let showDebug: Bool?
 }
 
 struct AdminWebPatchyTargetPatch: Codable {
@@ -536,6 +541,7 @@ actor AdminWebServer {
     private var setPatchyTargetEnabled: (@Sendable (UUID, Bool) async -> Bool)?
     private var deletePatchyTarget: (@Sendable (UUID) async -> Bool)?
     private var sendPatchyTestTarget: (@Sendable (UUID) async -> Bool)?
+    private var pullPatchyTarget: (@Sendable (UUID) async -> Bool)?
     private var runPatchyCheckNow: (@Sendable () async -> Bool)?
     private var wikiBridgeProvider: (@Sendable () async -> AdminWebWikiBridgePayload)?
     private var updateWikiBridgeState: (@Sendable (AdminWebWikiBridgeStatePatch) async -> Bool)?
@@ -598,6 +604,7 @@ actor AdminWebServer {
         setPatchyTargetEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
         deletePatchyTarget: @escaping @Sendable (UUID) async -> Bool,
         sendPatchyTestTarget: @escaping @Sendable (UUID) async -> Bool,
+        pullPatchyTarget: @escaping @Sendable (UUID) async -> Bool,
         runPatchyCheckNow: @escaping @Sendable () async -> Bool,
         wikiBridgeProvider: @escaping @Sendable () async -> AdminWebWikiBridgePayload,
         updateWikiBridgeState: @escaping @Sendable (AdminWebWikiBridgeStatePatch) async -> Bool,
@@ -652,6 +659,7 @@ actor AdminWebServer {
         self.setPatchyTargetEnabled = setPatchyTargetEnabled
         self.deletePatchyTarget = deletePatchyTarget
         self.sendPatchyTestTarget = sendPatchyTestTarget
+        self.pullPatchyTarget = pullPatchyTarget
         self.runPatchyCheckNow = runPatchyCheckNow
         self.wikiBridgeProvider = wikiBridgeProvider
         self.updateWikiBridgeState = updateWikiBridgeState
@@ -1329,6 +1337,20 @@ actor AdminWebServer {
             }
             guard await sendPatchyTestTarget?(patch.targetID) == true else {
                 return jsonResponse(["error": "test_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/patchy/target/pull"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebPatchyTargetIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await pullPatchyTarget?(patch.targetID) == true else {
+                return jsonResponse(["error": "pull_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
         case ("GET", "/api/wikibridge"):

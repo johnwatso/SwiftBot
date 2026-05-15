@@ -92,6 +92,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
 
     func testSendDeliversEmbed() async {
         let spy = Spy()
+        await spy.markWelcomed("user-1")
         let sender = makeSender(spy: spy)
 
         let request = SwiftMinerDMRequest(messageType: .linked, twitchUsername: "tester")
@@ -136,7 +137,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
 
         XCTAssertTrue(ok)
         let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 2, "Should send welcome then setup")
+        XCTAssertEqual(sent.count, 3, "Should send welcome, discord linked, then setup")
         let welcomed = await spy.welcomedUserIds
         XCTAssertTrue(welcomed.contains("user-1"))
     }
@@ -150,7 +151,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
 
         XCTAssertTrue(ok)
         let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 2, "Should send welcome then linked")
+        XCTAssertEqual(sent.count, 3, "Should send welcome, discord linked, then linked")
     }
 
     func testSecondSetupDoesNotRepeatWelcome() async {

@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
     @Published var openAIOnline = false
     @Published var recentMediaCount24h = 0
     @Published var ollamaDetectedModel: String?
+    @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
