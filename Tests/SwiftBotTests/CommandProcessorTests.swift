@@ -290,6 +290,9 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 swiftMinerCommand: { _, _, _ in
                     (true, "SwiftMiner result")
+                },
+                fetchSteamAppInfo: { _ in
+                    (ok: true, embed: ["title": "Steam Game"])
                 }
             )
         )

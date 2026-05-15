@@ -988,6 +988,7 @@ extension AppModel {
 
         return AdminWebPatchyPayload(
             monitoringEnabled: settings.patchy.monitoringEnabled,
+            showDebug: settings.patchy.showDebug,
             isCycleRunning: patchyIsCycleRunning,
             lastCycleAt: patchyLastCycleAt,
             sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
@@ -995,7 +996,10 @@ extension AppModel {
             servers: servers,
             textChannelsByServer: textChannelsByServer,
             rolesByServer: rolesByServer,
-            steamAppNames: settings.patchy.steamAppNames
+            steamAppNames: settings.patchy.steamAppNames,
+            isFailoverManagedNode: isFailoverManagedNode,
+            botStatus: status.rawValue,
+            debugLogs: Array(patchyDebugLogs.prefix(80))
         )
     }
 
@@ -1061,6 +1065,9 @@ extension AppModel {
         if let value = patch.monitoringEnabled {
             settings.patchy.monitoringEnabled = value
         }
+        if let showDebug = patch.showDebug {
+            settings.patchy.showDebug = showDebug
+        }
         saveSettings()
         return true
     }
@@ -1108,6 +1115,11 @@ extension AppModel {
 
     func sendAdminWebPatchyTest(_ targetID: UUID) -> Bool {
         sendPatchyTest(targetID: targetID)
+        return true
+    }
+
+    func pullAdminWebPatchyTarget(_ targetID: UUID) -> Bool {
+        pullPatchyUpdate(targetID: targetID)
         return true
     }
 
@@ -1373,6 +1385,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebPatchyPayload(
                         monitoringEnabled: false,
+                        showDebug: false,
                         isCycleRunning: false,
                         lastCycleAt: nil,
                         sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
@@ -1380,7 +1393,10 @@ extension AppModel {
                         servers: [],
                         textChannelsByServer: [:],
                         rolesByServer: [:],
-                        steamAppNames: [:]
+                        steamAppNames: [:],
+                        isFailoverManagedNode: false,
+                        botStatus: "stopped",
+                        debugLogs: []
                     )
                 }
                 return await MainActor.run { model.adminWebPatchySnapshot() }
@@ -1408,6 +1424,10 @@ extension AppModel {
             sendPatchyTestTarget: { [weak self] targetID in
                 guard let model = self else { return false }
                 return await MainActor.run { model.sendAdminWebPatchyTest(targetID) }
+            },
+            pullPatchyTarget: { [weak self] targetID in
+                guard let model = self else { return false }
+                return await MainActor.run { model.pullAdminWebPatchyTarget(targetID) }
             },
             runPatchyCheckNow: { [weak self] in
                 guard let model = self else { return false }

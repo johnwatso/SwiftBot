@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 
+private let maxPatchyLogEntries = 100
+
 struct PatchyMonitoringSnapshot: Equatable {
     let patchySettings: PatchySettings
     let clusterMode: ClusterMode
@@ -8,6 +10,17 @@ struct PatchyMonitoringSnapshot: Equatable {
 }
 
 extension AppModel {
+
+    func appendPatchyLog(_ message: String) {
+        Task { @MainActor in
+            let timestamp = Date().formatted(date: .omitted, time: .standard)
+            let entry = "[\(timestamp)] \(message)"
+            patchyDebugLogs.insert(entry, at: 0)
+            if patchyDebugLogs.count > maxPatchyLogEntries {
+                patchyDebugLogs.removeLast()
+            }
+        }
+    }
 
     // MARK: - Patchy Update Monitoring
 
@@ -172,7 +185,7 @@ extension AppModel {
         let isAuthorized = currentMode == .leader || currentMode == .standalone
 
         guard usesLocalRuntime, settings.patchy.monitoringEnabled, status == .running, isAuthorized else {
-            logs.append("Patchy: " + "Patchy monitoring paused.")
+            appendPatchyLog("Patchy monitoring paused.")
             return
         }
 
@@ -185,7 +198,7 @@ extension AppModel {
                 await self.runPatchyMonitoringCycle(trigger: "Scheduled")
             }
         }
-        logs.append("Patchy: " + "Patchy monitoring started.")
+        appendPatchyLog("Patchy monitoring paused.")
     }
 
     struct PatchySourceGroupKey: Hashable {

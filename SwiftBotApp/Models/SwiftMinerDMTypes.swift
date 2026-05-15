@@ -82,6 +82,22 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.eventId = eventId
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.messageType = try container.decode(SwiftMinerDMMessageType.self, forKey: .messageType)
+        self.debug = try container.decodeIfPresent(Bool.self, forKey: .debug) ?? false
+        self.twitchUsername = try container.decodeIfPresent(String.self, forKey: .twitchUsername)
+        self.priorityGames = try container.decodeIfPresent([String].self, forKey: .priorityGames) ?? []
+        self.activationCode = try container.decodeIfPresent(String.self, forKey: .activationCode)
+        self.activationExpiresInMinutes = try container.decodeIfPresent(Int.self, forKey: .activationExpiresInMinutes)
+        self.activationURL = try container.decodeIfPresent(String.self, forKey: .activationURL)
+        self.affectedGame = try container.decodeIfPresent(String.self, forKey: .affectedGame)
+        self.campaignName = try container.decodeIfPresent(String.self, forKey: .campaignName)
+        self.milestoneTitle = try container.decodeIfPresent(String.self, forKey: .milestoneTitle)
+        self.recoveryReason = try container.decodeIfPresent(String.self, forKey: .recoveryReason)
+        self.eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
+    }
+
     enum CodingKeys: String, CodingKey {
         case messageType = "message_type"
         case debug

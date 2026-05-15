@@ -33,9 +33,9 @@ struct SwiftMinerDMSender: Sendable {
         /// Records an event signature as delivered.
         let markEventSent: @Sendable (String) async -> Void
         /// Logs an analytics/info message.
-        let logInfo: @Sendable (String) -> Void
+        let logInfo: @Sendable (String) async -> Void
         /// Logs an analytics/error message.
-        let logError: @Sendable (String) -> Void
+        let logError: @Sendable (String) async -> Void
         /// Records an activity event for the admin UI.
         let recordEvent: @Sendable (String) async -> Void
     }
@@ -70,7 +70,7 @@ struct SwiftMinerDMSender: Sendable {
             let signature = "\(discordUserId)|\(eventId)"
             let alreadySent = await dependencies.hasEventBeenSent(signature)
             if alreadySent {
-                dependencies.logInfo(
+                await dependencies.logInfo(
                     "SwiftMiner \(request.messageType.rawValue) DM deduped for \(discordUserId) — already sent"
                 )
                 return true
@@ -93,10 +93,10 @@ struct SwiftMinerDMSender: Sendable {
             }
             let debugTag = request.debug ? " [DEBUG]" : ""
             await dependencies.recordEvent("SwiftMiner \(result.analyticsDescription) DM sent to \(discordUserId)\(debugTag)")
-            dependencies.logInfo("SwiftMiner \(result.analyticsDescription) DM sent successfully to \(discordUserId)\(debugTag)")
+            await dependencies.logInfo("SwiftMiner \(result.analyticsDescription) DM sent successfully to \(discordUserId)\(debugTag)")
             return true
         } catch {
-            dependencies.logError("SwiftMiner \(result.analyticsDescription) DM failed for \(discordUserId): \(error.localizedDescription)")
+            await dependencies.logError("SwiftMiner \(result.analyticsDescription) DM failed for \(discordUserId): \(error.localizedDescription)")
             return false
         }
     }
@@ -128,9 +128,9 @@ struct SwiftMinerDMSender: Sendable {
         do {
             try await dependencies.sendDMEmbed(discordUserId, welcomeResult.embed)
             await dependencies.markUserWelcomed(discordUserId)
-            dependencies.logInfo("SwiftMiner welcome DM sent to \(discordUserId)")
+            await dependencies.logInfo("SwiftMiner welcome DM sent to \(discordUserId)")
         } catch {
-            dependencies.logError("SwiftMiner welcome DM failed for \(discordUserId): \(error.localizedDescription)")
+            await dependencies.logError("SwiftMiner welcome DM failed for \(discordUserId): \(error.localizedDescription)")
             // Continue to send the rest even if welcome fails.
         }
 
@@ -140,9 +140,9 @@ struct SwiftMinerDMSender: Sendable {
 
         do {
             try await dependencies.sendDMEmbed(discordUserId, discordLinkedResult.embed)
-            dependencies.logInfo("SwiftMiner discordLinked DM sent to \(discordUserId)")
+            await dependencies.logInfo("SwiftMiner discordLinked DM sent to \(discordUserId)")
         } catch {
-            dependencies.logError("SwiftMiner discordLinked DM failed for \(discordUserId): \(error.localizedDescription)")
+            await dependencies.logError("SwiftMiner discordLinked DM failed for \(discordUserId): \(error.localizedDescription)")
         }
     }
 

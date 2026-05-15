@@ -191,15 +191,14 @@ final class MeshSyncTests: XCTestCase {
             sharedSecret: "s",
             leaderTerm: 1
         )
-        // Pre-load a cursor so we can verify it gets wiped.
+        // Pre-load a cursor so we can verify its term gets advanced.
         await standby.applyRestoredCursors([
             "Worker-1": ReplicationCursor(leaderTerm: 1, lastSentRecordID: "old-rec", updatedAt: Date())
         ])
 
-        
         let cursorExpectation = expectation(description: "Cursors changed handler called")
         await standby.setCursorsChangedHandler { cursors in
-            if cursors.isEmpty {
+            if let c = cursors["Worker-1"], c.leaderTerm == 2 {
                 cursorExpectation.fulfill()
             }
         }
@@ -211,8 +210,9 @@ final class MeshSyncTests: XCTestCase {
         XCTAssertEqual(mode, .leader, "Standby must promote")
 
         let cursors = await standby.testReplicationCursors()
-        XCTAssertTrue(cursors.isEmpty, "All cursors must be cleared on promotion (new term = new epoch)")
-        
+        XCTAssertEqual(cursors.count, 1, "Cursor should be preserved, not wiped")
+        XCTAssertEqual(cursors["Worker-1"]?.leaderTerm, 2, "Cursor must be advanced to the new leader term")
+
         await fulfillment(of: [cursorExpectation], timeout: 2.0)
     }
 }
