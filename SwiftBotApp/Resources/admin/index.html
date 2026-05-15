@@ -450,11 +450,15 @@
     }
 
     .sidebar-brand .app-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 14px;
-      background: transparent;
-      border: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06)),
+        linear-gradient(135deg, #45b4ff 0%, #237cff 60%, #1764de 100%);
+      border: 1px solid rgba(255,255,255,0.18);
       box-shadow: none;
     }
 
@@ -2607,15 +2611,14 @@
     function showDashboard() {
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('appShell').classList.add('active');
-      const bg = document.getElementById('bgStream');
-      if (bg) bg.style.display = userPrefs.backgroundAnimation ? '' : 'none';
+      applyUserPrefs(); // This will respect the backgroundAnimation toggle
     }
 
     function showAuthScreen() {
       document.getElementById('appShell').classList.remove('active');
       document.getElementById('authScreen').classList.remove('hidden');
       const bg = document.getElementById('bgStream');
-      if (bg) bg.style.display = ''; // Always show on login
+      if (bg) bg.style.display = ''; // Force show on auth screen
       applyAuthOptions();
       loadAuthOptions();
     }
@@ -4558,10 +4561,19 @@
               <label class="patchy-kv">Channel
                 <select class="field-select patchy-channel">${asOptions(channels, target.channelId)}</select>
               </label>
-              <label class="patchy-kv">Role Mentions (Cmd+Click)
-                <select class="field-select patchy-roles" multiple style="height: 64px;">${roleOptionsForServer(target.serverId, target.roleIDs)}</select>
-              </label>
-              <div class="patchy-kv">Summary<br><strong>${roleSummary}</strong></div>
+              <div class="patchy-kv" style="position:relative;">
+                Role Mentions
+                <button class="field-input patchy-roles-trigger" style="text-align:left;height:auto;min-height:34px;display:flex;align-items:center;justify-content:space-between;">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleSummary}</span>
+                  <span class="ms" style="font-size:16px;">expand_more</span>
+                </button>
+                <div class="patchy-roles-dropdown hidden glass" style="position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px;padding:8px;max-height:200px;overflow:auto;">
+                  <select class="field-select patchy-roles" multiple style="width:100%;border:0;background:transparent;height:160px;padding:0;">${roleOptionsForServer(target.serverId, target.roleIDs)}</select>
+                  <div style="margin-top:8px;text-align:right;">
+                    <button class="mini-btn patchy-roles-close" type="button">Done</button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="patchy-row">
               <div class="patchy-kv">Last Check<br><strong>${formatTime(target.lastCheckedAt)}</strong></div>
@@ -4602,6 +4614,13 @@
           }
         }));
         card.querySelector('.patchy-channel')?.addEventListener('change', (e) => commit(t => { t.channelId = e.target.value; }));
+        card.querySelector('.patchy-roles-trigger')?.addEventListener('click', () => {
+          card.querySelector('.patchy-roles-dropdown')?.classList.toggle('hidden');
+        });
+        card.querySelector('.patchy-roles-close')?.addEventListener('click', () => {
+          card.querySelector('.patchy-roles-dropdown')?.classList.add('hidden');
+          renderPatchyView();
+        });
         card.querySelector('.patchy-roles')?.addEventListener('change', (e) => commit(t => {
           t.roleIDs = Array.from(e.target.selectedOptions).map(opt => opt.value);
         }));
