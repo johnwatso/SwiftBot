@@ -227,7 +227,7 @@ extension AppModel {
 
         let bodyText = renderSwiftMinerWebhookMessage(event: event, projection: projection)
         do {
-            guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "swiftMinerWebhookDM", log: { logs.append($0) }) else {
+            guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "swiftMinerWebhookDM", log: { logs.append($0) }) else {
                 return swiftMinerWebhookResponse(status: "202 Accepted", payload: ["ok": true, "delivered": false])
             }
             try await service.sendDM(userId: event.subject.discordUserId, content: bodyText)

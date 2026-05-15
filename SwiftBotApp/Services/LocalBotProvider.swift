@@ -52,10 +52,6 @@ final class LocalBotProvider: ObservableObject, BotDataProvider {
         app.patchyIsCycleRunning
     }
 
-    var patchyDebugLogs: [String] {
-        app.patchyDebugLogs
-    }
-
     // MARK: - Initialization
 
     init(app: AppModel) {

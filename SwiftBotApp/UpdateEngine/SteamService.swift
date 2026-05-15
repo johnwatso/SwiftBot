@@ -150,10 +150,10 @@ public struct SteamService: Sendable {
         return SteamAppInfo(
             appID: appID,
             name: details.name,
-            shortDescription: details.short_description,
-            headerImageURL: details.header_image,
+            shortDescription: details.shortDescription,
+            headerImageURL: details.headerImage,
             playerCount: playerCount,
-            price: details.price_overview?.final_formatted,
+            price: details.priceOverview?.finalFormatted,
             storeURL: "https://store.steampowered.com/app/\(appID)"
         )
     }
@@ -204,7 +204,7 @@ public struct SteamService: Sendable {
         try validateHTTP(response)
 
         let playerCountResponse = try JSONDecoder().decode(SteamPlayerCountResponse.self, from: data)
-        return playerCountResponse.response.player_count
+        return playerCountResponse.response.playerCount
     }
 
     private func compareNewsItems(_ lhs: SteamAPIResponse.NewsItem, _ rhs: SteamAPIResponse.NewsItem) -> Int {
@@ -335,14 +335,26 @@ private struct SteamAppDetailsResponse: Codable {
 
     struct Data: Codable {
         let name: String
-        let short_description: String
-        let header_image: String
+        let shortDescription: String
+        let headerImage: String
         let website: String?
-        let price_overview: PriceOverview?
+        let priceOverview: PriceOverview?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case shortDescription = "short_description"
+            case headerImage = "header_image"
+            case website
+            case priceOverview = "price_overview"
+        }
     }
 
     struct PriceOverview: Codable {
-        let final_formatted: String
+        let finalFormatted: String
+
+        enum CodingKeys: String, CodingKey {
+            case finalFormatted = "final_formatted"
+        }
     }
 }
 
@@ -350,8 +362,13 @@ private struct SteamPlayerCountResponse: Codable {
     let response: Response
 
     struct Response: Codable {
-        let player_count: Int
+        let playerCount: Int
         let result: Int
+
+        enum CodingKeys: String, CodingKey {
+            case playerCount = "player_count"
+            case result
+        }
     }
 }
 

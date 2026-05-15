@@ -142,7 +142,7 @@ enum LogExporter {
         out += "workerState=\(cs.workerState.rawValue) · \(cs.workerStatusText)\n"
         out += "diagnostics=\(SwiftBotLogRedactor.redact(cs.diagnostics))\n"
         out += "lastJobRoute=\(cs.lastJobRoute.rawValue)\n"
-        out += "lastJobNode=\(cs.lastJobNode)\n"
+        out.append("lastJobNode=\(cs.lastJobNode)\n")
         out += "lastJobSummary=\(SwiftBotLogRedactor.redact(cs.lastJobSummary))\n"
         out += "registeredWorkers=\(app.registeredWorkersDebugCount) (\(SwiftBotLogRedactor.redact(app.registeredWorkersDebugSummary)))\n"
         out += "autoReclaimAfterHours=\(app.settings.clusterAutoReclaimAfterHours)\n"

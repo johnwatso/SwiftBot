@@ -4546,11 +4546,6 @@
           <label class="switch"><input id="patchyMonitoring" type="checkbox" ${patchyData.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Debug</span>
-          <span class="value">${patchyData.showDebug ? 'Visible' : 'Hidden'}</span>
-          <label class="switch"><input id="patchyDebug" type="checkbox" ${patchyData.showDebug ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-        </div>
-        <div class="commands-toggle-card">
           <span class="label">Cycle</span>
           <span class="value">${patchyData.isCycleRunning ? 'Running' : 'Idle'}</span>
           <div class="command-desc">Last cycle: ${formatTime(patchyData.lastCycleAt)}</div>
@@ -4559,11 +4554,6 @@
       top.querySelector('#patchyMonitoring')?.addEventListener('change', async (e) => {
         await postJSON('/api/patchy/state', { monitoringEnabled: e.target.checked });
         await Promise.all([loadPatchy(), loadConfig(), loadOverview()]);
-        renderPatchyView();
-      });
-      top.querySelector('#patchyDebug')?.addEventListener('change', async (e) => {
-        await postJSON('/api/patchy/state', { showDebug: e.target.checked });
-        await loadPatchy();
         renderPatchyView();
       });
 

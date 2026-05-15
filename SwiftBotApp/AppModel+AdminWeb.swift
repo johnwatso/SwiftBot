@@ -988,10 +988,8 @@ extension AppModel {
 
         return AdminWebPatchyPayload(
             monitoringEnabled: settings.patchy.monitoringEnabled,
-            showDebug: settings.patchy.showDebug,
             isCycleRunning: patchyIsCycleRunning,
             lastCycleAt: patchyLastCycleAt,
-            debugLogs: Array(patchyDebugLogs.prefix(80)),
             sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
             targets: settings.patchy.sourceTargets,
             servers: servers,
@@ -1062,9 +1060,6 @@ extension AppModel {
     func updateAdminWebPatchyState(_ patch: AdminWebPatchyStatePatch) -> Bool {
         if let value = patch.monitoringEnabled {
             settings.patchy.monitoringEnabled = value
-        }
-        if let value = patch.showDebug {
-            settings.patchy.showDebug = value
         }
         saveSettings()
         return true
@@ -1378,10 +1373,8 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebPatchyPayload(
                         monitoringEnabled: false,
-                        showDebug: false,
                         isCycleRunning: false,
                         lastCycleAt: nil,
-                        debugLogs: [],
                         sourceKinds: PatchySourceKind.allCases.map(\.rawValue),
                         targets: [],
                         servers: [],

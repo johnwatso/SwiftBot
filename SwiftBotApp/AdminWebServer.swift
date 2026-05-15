@@ -306,10 +306,8 @@ struct AdminWebRuleIDPatch: Codable {
 
 struct AdminWebPatchyPayload: Codable {
     let monitoringEnabled: Bool
-    let showDebug: Bool
     let isCycleRunning: Bool
     let lastCycleAt: Date?
-    let debugLogs: [String]
     let sourceKinds: [String]
     let targets: [PatchySourceTarget]
     let servers: [AdminWebSimpleOption]
@@ -320,7 +318,6 @@ struct AdminWebPatchyPayload: Codable {
 
 struct AdminWebPatchyStatePatch: Codable {
     let monitoringEnabled: Bool?
-    let showDebug: Bool?
 }
 
 struct AdminWebPatchyTargetPatch: Codable {

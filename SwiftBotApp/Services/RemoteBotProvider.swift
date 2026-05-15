@@ -26,7 +26,6 @@ final class RemoteBotProvider: BotDataProvider {
 
     @Published private(set) var patchyLastCycleAt: Date?
     @Published private(set) var patchyIsCycleRunning: Bool = false
-    @Published private(set) var patchyDebugLogs: [String] = []
 
     private let api: RemoteAPI
     private var refreshTask: Task<Void, Never>?

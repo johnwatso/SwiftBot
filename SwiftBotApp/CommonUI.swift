@@ -28,19 +28,19 @@ struct SwiftBotGlassBackground: View {
 struct GlassActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(configuration.isPressed ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(.thickMaterial))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(configuration.isPressed ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.white.opacity(configuration.isPressed ? 0.26 : 0.14), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.primary.opacity(configuration.isPressed ? 0.18 : 0.08), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.04 : 0.1), radius: 10, y: 6)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.02 : 0.05), radius: 6, y: 3)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 
@@ -56,38 +56,38 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
             .background(.thinMaterial, in: shape)
             .overlay(
                 shape
-                    .fill(tint.opacity(colorScheme == .dark ? 1.0 : 0.50))
+                    .fill(tint.opacity(colorScheme == .dark ? 0.45 : 0.25))
                     .allowsHitTesting(false)
             )
             .overlay(
                 shape
-                    .strokeBorder(stroke.opacity(colorScheme == .dark ? 1.0 : 0.90), lineWidth: 1)
+                    .strokeBorder(stroke.opacity(colorScheme == .dark ? 0.35 : 0.25), lineWidth: 1)
                     .allowsHitTesting(false)
             )
     }
 }
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .white.opacity(0.18)) -> some View {
+    func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .primary.opacity(0.12)) -> some View {
         modifier(SwiftBotGlassCardModifier(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
     }
 
     func commandCatalogSurface(cornerRadius: CGFloat = 16) -> some View {
         self
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                    .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
             )
     }
 
     func sidebarProfileCard() -> some View {
-        glassCard(cornerRadius: 24, tint: .white.opacity(0.10), stroke: .white.opacity(0.24))
+        glassCard(cornerRadius: 24, tint: .white.opacity(0.05), stroke: .white.opacity(0.15))
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [.white.opacity(0.08), .clear],
+                            colors: [.white.opacity(0.06), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )

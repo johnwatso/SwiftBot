@@ -16,7 +16,7 @@ extension AppModel {
         payload: [String: Any],
         action: String
     ) async throws -> (statusCode: Int, responseBody: String) {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: action, log: { logs.append($0) }) else {
             throw NSError(domain: "AppModel", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked by ActionDispatcher"])
         }
         return try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
@@ -26,7 +26,7 @@ extension AppModel {
         action: String,
         operation: () async throws -> T
     ) async -> T? {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: action, log: { logs.append($0) }) else {
             return nil
         }
         do {
@@ -50,7 +50,7 @@ extension AppModel {
         action: String,
         operation: () async -> Void
     ) async {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: action, log: { logs.append($0) }) else {
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: action, log: { logs.append($0) }) else {
             return
         }
         await operation()
@@ -295,7 +295,7 @@ extension AppModel {
         embedJSON: String?,
         roleIDs: [String]
     ) async -> (ok: Bool, detail: String) {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "sendPatchyNotification", log: { logs.append($0) }) else {
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "sendPatchyNotification", log: { logs.append($0) }) else {
             return (false, "Patchy send blocked — node is not Primary.")
         }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)

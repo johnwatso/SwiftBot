@@ -318,21 +318,21 @@ private struct SidebarSelectionHighlight: View {
     @Environment(\.controlActiveState) private var controlActiveState
 
     private var highlightMaterial: Material {
-        controlActiveState == .active ? .ultraThinMaterial : .bar
+        controlActiveState == .active ? .thinMaterial : .ultraThinMaterial
     }
 
     private var strokeOpacity: Double {
-        controlActiveState == .active ? 0.16 : 0.10
+        controlActiveState == .active ? 0.08 : 0.04
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
             .fill(highlightMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(.white.opacity(strokeOpacity), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.primary.opacity(strokeOpacity), lineWidth: 1)
             )
+            .shadow(color: .black.opacity(controlActiveState == .active ? 0.06 : 0), radius: 4, y: 2)
     }
 }
 
@@ -341,14 +341,15 @@ struct SidebarSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.tertiary)
                 .padding(.horizontal, 12)
+                .padding(.top, 8)
                 .textCase(.uppercase)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 content
             }
         }
@@ -515,22 +516,19 @@ private struct SwiftBotSidebarMaterialBackground: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
-                .opacity(colorScheme == .dark ? 0.38 : 0.44)
-
             SwiftBotVisualEffectMaterialView(material: .sidebar)
+
+            Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
+                .opacity(colorScheme == .dark ? 0.25 : 0.35)
 
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.08),
+                    Color.white.opacity(colorScheme == .dark ? 0.05 : 0.12),
                     Color.clear
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            Color(nsColor: colorScheme == .dark ? .controlBackgroundColor : .windowBackgroundColor)
-                .opacity(colorScheme == .dark ? 0.18 : 0.24)
         }
     }
 }

@@ -8,18 +8,23 @@ struct PatchyView: View {
     @State private var editorMode: PatchyEditorMode = .create
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 20) {
             header
+
             if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Patchy settings sync from Primary.")
             }
+
             statusRail
+
             monitoringControlsSection
-            operationsConsole
+
+            sourceTargetList
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .sheet(item: $editorDraft) { draft in
@@ -45,53 +50,79 @@ struct PatchyView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
-            ViewSectionHeader(title: "Patchy", symbol: "square.and.arrow.down.badge.checkmark")
-            Spacer()
-            Button {
-                editorMode = .create
-                editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
-            } label: {
-                Label("Add Target", systemImage: "plus")
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Patchy")
+                    .font(.title2.weight(.semibold))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(app.settings.patchy.monitoringEnabled ? Color.green : Color.gray)
+                        .frame(width: 7, height: 7)
+                    Text("Automated patch and release monitoring for hardware drivers.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .buttonStyle(GlassActionButtonStyle())
+            Spacer()
+            
+            HStack(spacing: 12) {
+                HStack(spacing: 5) {
+                    Image(systemName: app.settings.patchy.monitoringEnabled ? "square.and.arrow.down.badge.checkmark.fill" : "square.and.arrow.down.badge.xmark.fill")
+                        .font(.caption.weight(.semibold))
+                    Text(app.settings.patchy.monitoringEnabled ? "MONITORING ACTIVE" : "MONITORING INACTIVE")
+                        .font(.caption.weight(.bold))
+                        .tracking(0.4)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule().fill(app.settings.patchy.monitoringEnabled ? Color.green : Color.gray)
+                )
+
+                Button {
+                    editorMode = .create
+                    editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
+                } label: {
+                    Label("Add Target", systemImage: "plus")
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .controlSize(.regular)
+            }
         }
     }
 
     // MARK: - Status Rail
 
     private var statusRail: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
-            spacing: 8
-        ) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
             DashboardMetricCard(
                 title: "Sources",
                 value: "\(monitoredSourceCount)",
                 subtitle: sourceBreakdownSubtitle,
                 symbol: "square.stack.3d.up.fill",
-                color: patchyMetricAmber
+                color: .orange
             )
             DashboardMetricCard(
                 title: "Categories",
                 value: "\(categoryModules.count)",
                 subtitle: categoryBreakdownSubtitle,
                 symbol: "rectangle.3.group.fill",
-                color: patchyMetricBlue
+                color: .blue
             )
             DashboardMetricCard(
                 title: "Active",
                 value: "\(activeMonitoredSourceCount)",
                 subtitle: "Monitored sources",
                 symbol: "waveform.path.ecg",
-                color: patchyMetricMint
+                color: .mint
             )
             DashboardMetricCard(
                 title: "Failed",
                 value: "\(failedMonitoredSourceCount)",
                 subtitle: lastCycleSubtitle,
                 symbol: "exclamationmark.triangle.fill",
-                color: failedMonitoredSourceCount == 0 ? .gray : Color.red.opacity(0.68)
+                color: failedMonitoredSourceCount == 0 ? .gray : .red
             )
         }
     }
@@ -161,17 +192,6 @@ struct PatchyView: View {
                 app.saveSettings()
             }
 
-            PatchyControlPill(
-                title: "Debug",
-                detail: app.settings.patchy.showDebug ? "Enabled" : "Disabled",
-                symbol: app.settings.patchy.showDebug ? "ladybug.fill" : "ladybug",
-                color: app.settings.patchy.showDebug ? .indigo : .secondary,
-                isActive: app.settings.patchy.showDebug
-            ) {
-                app.settings.patchy.showDebug.toggle()
-                app.saveSettings()
-            }
-
             Spacer()
 
             HStack(spacing: 6) {
@@ -208,17 +228,6 @@ struct PatchyView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
-    }
-
-    private var operationsConsole: some View {
-        HStack(alignment: .top, spacing: 12) {
-            sourceTargetList
-                .frame(minWidth: 440)
-
-            activityFeed
-                .frame(width: 330)
-        }
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Source Target List
@@ -296,90 +305,6 @@ struct PatchyView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
-    }
-
-    // MARK: - Activity Feed
-
-    private var activityFeed: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.green)
-                Text("Activity")
-                    .font(.subheadline.weight(.semibold))
-                Spacer(minLength: 0)
-                Text("\(min(app.patchyDebugLogs.count, 60)) events")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            if app.patchyDebugLogs.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc.text")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("No activity")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-            } else {
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(app.patchyDebugLogs.prefix(60).enumerated()), id: \.offset) { index, line in
-                            patchyActivityRow(line, index: index)
-                            if index < min(app.patchyDebugLogs.count, 60) - 1 {
-                                Rectangle()
-                                    .fill(Color.primary.opacity(0.055))
-                                    .frame(height: 1)
-                                    .padding(.leading, 58)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-        }
-        .padding(9)
-        .frame(maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .topLeading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-
-    private func patchyActivityRow(_ line: String, index: Int) -> some View {
-        let parsed = PatchyLogParser.parse(line)
-        return HStack(alignment: .center, spacing: 8) {
-            Text(parsed.time)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(index == 0 ? Color.primary.opacity(0.72) : Color.secondary)
-                .frame(width: 42, alignment: .trailing)
-
-            Image(systemName: parsed.symbol)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(parsed.color)
-                .frame(width: 16, height: 16)
-                .background(parsed.color.opacity(0.10), in: Circle())
-            VStack(alignment: .leading, spacing: 0) {
-                Text(parsed.title)
-                    .font(.caption2.weight(.medium))
-                    .lineLimit(1)
-                if !parsed.detail.isEmpty {
-                    Text(parsed.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 4)
-        }
-        .padding(.vertical, 3)
     }
 
     // MARK: - Helpers
@@ -585,71 +510,6 @@ struct PatchyView: View {
     }
 }
 
-// MARK: - Patchy Log Parser
-
-private enum PatchyLogParser {
-    struct ParsedLine {
-        let time: String
-        let title: String
-        let detail: String
-        let symbol: String
-        let color: Color
-    }
-
-    static func parse(_ line: String) -> ParsedLine {
-        let lower = line.lowercased()
-        let (symbol, color): (String, Color) = {
-            if lower.contains("error") || lower.contains("failed") || lower.contains("❌") || lower.contains("[err]") {
-                return ("xmark.circle.fill", .red)
-            }
-            if lower.contains("warning") || lower.contains("cannot") || lower.contains("not found") || lower.contains("permissions") || lower.contains("[warn]") {
-                return ("exclamationmark.triangle.fill", .yellow)
-            }
-            if lower.contains("success") || lower.contains("sent") || lower.contains("ready") || lower.contains("succeeded") || lower.contains("✅") || lower.contains("[ok]") {
-                return ("checkmark.circle.fill", .green)
-            }
-            return ("info.circle.fill", .secondary)
-        }()
-
-        let extractedTime = extractTime(from: line)
-
-        // Strip common prefixes
-        var cleaned = line
-            .replacingOccurrences(of: #"^\[[^\]]+\]\s*"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\[(OK|WARN|ERR|INFO)\]\s*"#, with: "", options: .regularExpression)
-        cleaned = cleaned.replacingOccurrences(of: "\\p{Extended_Pictographic}", with: "", options: .regularExpression)
-        cleaned.removeAll { $0 == "\u{FE0F}" || $0 == "\u{200D}" }
-        cleaned = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
-
-        // Split title / detail at first sentence boundary or colon
-        let title: String
-        let detail: String
-        if let colonRange = cleaned.range(of: ": "), cleaned.distance(from: cleaned.startIndex, to: colonRange.lowerBound) < 60 {
-            title = String(cleaned[..<colonRange.lowerBound])
-            detail = String(cleaned[colonRange.upperBound...])
-        } else if cleaned.count > 80 {
-            let idx = cleaned.index(cleaned.startIndex, offsetBy: 60)
-            title = String(cleaned[..<idx]) + "…"
-            detail = cleaned
-        } else {
-            title = cleaned
-            detail = ""
-        }
-
-        return ParsedLine(time: extractedTime, title: title, detail: detail, symbol: symbol, color: color)
-    }
-
-    private static func extractTime(from line: String) -> String {
-        guard let closing = line.firstIndex(of: "]"), line.first == "[" else { return "--:--" }
-        let raw = String(line[line.index(after: line.startIndex)..<closing])
-        let formatter = ISO8601DateFormatter()
-        guard let date = formatter.date(from: raw) else { return "--:--" }
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-        return timeFormatter.string(from: date)
-    }
-}
-
 // MARK: - Compact Controls
 
 private struct PatchyControlPill: View {
@@ -776,20 +636,20 @@ private struct PatchyCategorySection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: module.category.symbol)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(module.category.color)
                     .frame(width: 22, height: 22)
-                    .background(module.category.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(module.category.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
 
                 Text(module.category.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                     .lineLimit(1)
 
                 Text("\(module.targets.count)")
-                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(module.category.color)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -802,14 +662,11 @@ private struct PatchyCategorySection<Content: View>: View {
 
             content
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.primary.opacity(0.026))
-        )
+        .padding(16)
+        .background(.ultraThinMaterial.opacity(0.5), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(module.category.color.opacity(0.14), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
         )
     }
 }
@@ -829,19 +686,19 @@ private struct PatchTargetCard: View {
 
     @State private var isHovering = false
     @State private var showDeleteConfirm = false
-    private let statusSidebarWidth: CGFloat = 232
+    private let statusSidebarWidth: CGFloat = 240
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 9) {
-                    HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         sourceBadge
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 7) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
                                 Text(sourceDisplayName)
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.system(size: 15, weight: .bold))
                                     .lineLimit(1)
                                 PatchyStatusPill(isEnabled: target.isEnabled)
                             }
@@ -857,113 +714,116 @@ private struct PatchTargetCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 statusSidebar
-                    .frame(minWidth: 200, idealWidth: statusSidebarWidth, maxWidth: 260, alignment: .leading)
+                    .frame(minWidth: 200, idealWidth: statusSidebarWidth, maxWidth: 280, alignment: .leading)
                     .layoutPriority(1)
             }
 
-            HStack(spacing: 6) {
-                PatchyActionButton(title: "Test", symbol: "flask", color: .primary, action: onTestSend)
-                PatchyActionButton(title: "Run", symbol: "icloud.and.arrow.down", color: .primary, action: onPull)
-                PatchyActionButton(title: "Edit", symbol: "pencil", color: .primary, action: onEdit)
-                PatchyActionButton(
-                    title: target.isEnabled ? "Disable" : "Enable",
-                    symbol: target.isEnabled ? "power" : "play.fill",
-                    color: target.isEnabled ? .red : .green,
-                    action: onToggleEnabled
-                )
-                PatchyActionButton(title: "Delete", symbol: "trash", color: .red) {
-                    showDeleteConfirm = true
+            Divider()
+                .opacity(0.1)
+
+            HStack(spacing: 8) {
+                PatchyActionButton(title: "Run", symbol: "icloud.and.arrow.down.fill", isPrimary: true, action: onPull)
+                PatchyActionButton(title: "Test", symbol: "flask", action: onTestSend)
+                PatchyActionButton(title: "Edit", symbol: "pencil", action: onEdit)
+                
+                Spacer()
+
+                Menu {
+                    Button(target.isEnabled ? "Disable" : "Enable") {
+                        onToggleEnabled()
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .alert("Delete Target?", isPresented: $showDeleteConfirm) {
-                    Button("Delete", role: .destructive) { onDelete() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("\"\(sourceDisplayName)\" will be permanently deleted.")
-                }
-                Spacer(minLength: 0)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
         }
-        .padding(11)
-        .glassCard(
-            cornerRadius: 14,
-            tint: sourceColor.opacity(isHovering ? 0.11 : 0.045),
-            stroke: sourceColor.opacity(isHovering ? 0.34 : 0.18)
+        .padding(16)
+        .background(.primary.opacity(isHovering ? 0.04 : 0.02), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.primary.opacity(isHovering ? 0.08 : 0.04), lineWidth: 1)
         )
-        .scaleEffect(isHovering ? 1.006 : 1)
-        .shadow(color: sourceColor.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
         .onHover { hovering in
             withAnimation(.smooth(duration: 0.18)) {
                 isHovering = hovering
             }
         }
+        .confirmationDialog("Delete \(sourceDisplayName)?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove this monitoring target and all associated history.")
+        }
     }
 
     private var sourceBadge: some View {
         Image(systemName: sourceIcon(target.source))
-            .font(.system(size: 17, weight: .bold))
+            .font(.system(size: 16, weight: .bold))
             .foregroundStyle(sourceColor)
-            .frame(width: 34, height: 34)
-            .background(
-                LinearGradient(
-                    colors: [sourceColor.opacity(0.22), sourceColor.opacity(0.08)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-            )
+            .frame(width: 32, height: 32)
+            .background(sourceColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(sourceColor.opacity(0.22), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(sourceColor.opacity(0.20), lineWidth: 1)
             )
     }
 
     private var metadataBlock: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             PatchyMetadataLine(label: "Server", value: serverName)
             PatchyMetadataLine(label: "Channel", value: channelName)
             PatchyMetadataLine(label: "Mentions", value: roleSummary)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(10)
+        .background(.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var statusSidebar: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: statusSymbol(target.lastStatus))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 12, weight: .bold))
                     Text(statusTitle(target.lastStatus))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 13, weight: .bold))
                         .lineLimit(1)
                 }
                 .foregroundStyle(statusColor(target.lastStatus))
 
                 Text(statusDetail(target.lastStatus))
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(nil)
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Rectangle()
-                .fill(Color.primary.opacity(0.07))
-                .frame(height: 1)
+            Divider()
+                .opacity(0.1)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 PatchyStatusMetadataRow(label: "Last Check", value: relativeTimestamp(target.lastCheckedAt))
                 PatchyStatusMetadataRow(label: "Last Run", value: relativeTimestamp(target.lastRunAt))
                 PatchyStatusMetadataRow(label: "Next Run", value: nextRunTimestamp())
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(statusColor(target.lastStatus).opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(statusColor(target.lastStatus).opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(statusColor(target.lastStatus).opacity(0.12), lineWidth: 1)
         )
     }
 
@@ -1130,23 +990,19 @@ private struct PatchyStatusMetadataRow: View {
 private struct PatchyActionButton: View {
     let title: String
     let symbol: String
-    let color: Color
+    var isPrimary = false
+    var isDestructive = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: symbol)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.085), lineWidth: 1)
-                )
+                .font(.system(size: 11, weight: .semibold))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(isPrimary ? .accentColor : (isDestructive ? .red : .secondary))
+        .buttonBorderShape(.capsule)
     }
 }
 

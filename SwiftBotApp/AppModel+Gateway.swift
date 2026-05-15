@@ -79,6 +79,15 @@ extension AppModel {
     }
 
     func handleMeshSync(_ payload: MeshSyncPayload) async {
+        // Adopt newer leader term to ensure clean failover.
+        if payload.leaderTerm > settings.clusterLeaderTerm {
+            await MainActor.run {
+                settings.clusterLeaderTerm = payload.leaderTerm
+                saveSettings()
+            }
+            await cluster.updateLeaderTerm(payload.leaderTerm)
+        }
+
         // Gap detection: if leader assumed we held cursor X but we actually hold Y, resync from Y.
         if let expectedFrom = payload.fromCursorRecordID,
            expectedFrom != localLastMergedRecordID {
@@ -408,7 +417,7 @@ extension AppModel {
     }
 
     func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "respondToInteraction", log: { logs.append($0) }) else { return }
         let context = interactionContext(from: event.rawMap)
 
         // Safeguard: only allow interactions from users who share at least one connected guild
@@ -491,7 +500,7 @@ extension AppModel {
             ))
 
             guard let applicationID = botUserId, !applicationID.isEmpty else { return }
-            guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
+            guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
             do {
                 var payload: [String: Any] = [:]
                 if let content = response.content {
@@ -628,7 +637,7 @@ extension AppModel {
         ))
 
         guard let applicationID = botUserId, !applicationID.isEmpty else { return }
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
 
         do {
             if results.isEmpty {
@@ -1372,7 +1381,7 @@ extension AppModel {
         guard let appID = botUserId, !appID.isEmpty else { return }
         let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { return }
-        guard ActionDispatcher.canSend(clusterMode: settings.clusterMode, action: "registerSlashCommands", log: { logs.append($0) }) else { return }
+        guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "registerSlashCommands", log: { logs.append($0) }) else { return }
 
         let slashEnabled = settings.commandsEnabled && settings.slashCommandsEnabled
         if lastSlashCommandsEnabledState != slashEnabled {
