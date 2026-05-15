@@ -2750,7 +2750,7 @@ extension AppModel {
         var embed: [String: Any] = [
             "title": wikiWeaponTitle(result: result, stats: stats),
             "url": result.url,
-            "color": 5_793_266,
+            "color": 0x1B2838,
             "footer": ["text": source.name]
         ]
 
@@ -2792,7 +2792,7 @@ extension AppModel {
         let payload: [String: Any] = [
             "embeds": [embed]
         ]
-        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(weaponEmbed)")
+        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(weapon-stats)")
     }
 
     func formattedWeaponStats(
@@ -3220,6 +3220,58 @@ extension AppModel {
         var rolls: [Int] = []
         for _ in 0..<n { rolls.append(Int.random(in: 1...sides)) }
         return "🎲 Rolled \(descriptor): [\(rolls.map(String.init).joined(separator: ", "))] total=\(rolls.reduce(0, +))"
+    }
+
+    func fetchSteamAppInfo(query: String) async -> (ok: Bool, embed: [String: Any]?) {
+        let service = SteamService()
+        do {
+            let info = try await service.fetchAppInfo(query: query)
+            
+            var description = info.shortDescription
+            if let playerCount = info.playerCount {
+                let formattedCount = formatPlayerCount(playerCount)
+                description = "👥 **\(formattedCount) players online**\n\n" + description
+            }
+            
+            var fields: [[String: Any]] = []
+            if let price = info.price {
+                fields.append([
+                    "name": "Price",
+                    "value": price,
+                    "inline": true
+                ])
+            }
+            
+            fields.append([
+                "name": "Links",
+                "value": "[Store Page](\(info.storeURL)) · [SteamDB](https://steamdb.info/app/\(info.appID)/)",
+                "inline": true
+            ])
+
+            let embed: [String: Any] = [
+                "title": info.name,
+                "description": description,
+                "url": info.storeURL,
+                "color": 0x1B2838,
+                "image": ["url": info.headerImageURL],
+                "fields": fields,
+                "footer": ["text": "Data from Steam Web API"]
+            ]
+            
+            return (true, embed)
+        } catch {
+            return (false, nil)
+        }
+    }
+
+    private func formatPlayerCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            return String(format: "%.1fM", Double(count) / 1_000_000.0)
+        } else if count >= 1_000 {
+            return String(format: "%.1fK", Double(count) / 1_000.0)
+        } else {
+            return "\(count)"
+        }
     }
 
 }

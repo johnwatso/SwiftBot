@@ -58,6 +58,7 @@ final class CommandProcessor {
         var runMusicLookup: (String?, String?, String?, String, String) async -> (ok: Bool, message: String)
         var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
         var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
+        var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
     }
 
     private let dependencies: Dependencies
@@ -361,6 +362,16 @@ final class CommandProcessor {
             let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
             let result = await dependencies.swiftMinerCommand(action, userId, context.channelId)
             return embed(title: "SwiftMiner", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+        case "steam":
+            let query = Self.slashOptionString(named: "action", in: data) ?? ""
+            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return embed(title: "Steam", description: "Usage: `/steam action:<game name>`", color: 15_790_767)
+            }
+            let result = await dependencies.fetchSteamAppInfo(query)
+            if let embed = result.embed {
+                return (content: nil, embeds: [embed])
+            }
+            return embed(title: "Steam", description: "Could not find info for \"\(query)\".", color: 15_790_767)
         case "wiki":
             let query = Self.slashOptionString(named: "query", in: data) ?? ""
             guard config.wikiEnabled else {

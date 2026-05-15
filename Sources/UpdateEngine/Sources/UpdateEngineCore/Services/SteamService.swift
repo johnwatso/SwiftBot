@@ -35,6 +35,34 @@ public struct SteamNewsItem: Sendable, Codable, Hashable {
     }
 }
 
+public struct SteamAppInfo: Sendable, Codable {
+    public let appID: Int
+    public let name: String
+    public let shortDescription: String
+    public let headerImageURL: String
+    public let playerCount: Int?
+    public let price: String?
+    public let storeURL: String
+
+    public init(
+        appID: Int,
+        name: String,
+        shortDescription: String,
+        headerImageURL: String,
+        playerCount: Int?,
+        price: String?,
+        storeURL: String
+    ) {
+        self.appID = appID
+        self.name = name
+        self.shortDescription = shortDescription
+        self.headerImageURL = headerImageURL
+        self.playerCount = playerCount
+        self.price = price
+        self.storeURL = storeURL
+    }
+}
+
 public struct SteamService: Sendable {
     public struct NewsInfo: Sendable {
         public let newsItem: SteamNewsItem
@@ -112,6 +140,71 @@ public struct SteamService: Sendable {
             rawDebug: "Steam API Response:\n\(rawJSON)",
             releaseIdentifier: item.gid
         )
+    }
+
+    public func fetchAppInfo(query: String) async throws -> SteamAppInfo {
+        let appID = try await searchForAppID(term: query)
+        let details = try await fetchAppDetails(appID: appID)
+        let playerCount = try? await fetchPlayerCount(appID: appID)
+
+        return SteamAppInfo(
+            appID: appID,
+            name: details.name,
+            shortDescription: details.short_description,
+            headerImageURL: details.header_image,
+            playerCount: playerCount,
+            price: details.price_overview?.final_formatted,
+            storeURL: "https://store.steampowered.com/app/\(appID)"
+        )
+    }
+
+    private func searchForAppID(term: String) async throws -> Int {
+        var components = URLComponents(string: "https://store.steampowered.com/api/storesearch/")
+        components?.queryItems = [
+            URLQueryItem(name: "term", value: term),
+            URLQueryItem(name: "l", value: "english"),
+            URLQueryItem(name: "cc", value: "US")
+        ]
+
+        guard let url = components?.url else { throw SteamServiceError.invalidURL }
+
+        let (data, response) = try await session.data(from: url)
+        try validateHTTP(response)
+
+        let searchResponse = try JSONDecoder().decode(SteamStoreSearchResponse.self, from: data)
+        guard let firstItem = searchResponse.items.first else {
+            throw SteamServiceError.appNotFound(term)
+        }
+
+        return firstItem.id
+    }
+
+    private func fetchAppDetails(appID: Int) async throws -> SteamAppDetailsResponse.Data {
+        let urlString = "https://store.steampowered.com/api/appdetails?appids=\(appID)&l=english"
+        guard let url = URL(string: urlString) else { throw SteamServiceError.invalidURL }
+
+        let (data, response) = try await session.data(from: url)
+        try validateHTTP(response)
+
+        let decoder = JSONDecoder()
+        let detailsResponse = try decoder.decode([String: SteamAppDetailsResponse].self, from: data)
+
+        guard let appDetails = detailsResponse["\(appID)"], appDetails.success else {
+            throw SteamServiceError.noAppDetails(appID)
+        }
+
+        return appDetails.data
+    }
+
+    private func fetchPlayerCount(appID: Int) async throws -> Int {
+        let urlString = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=\(appID)"
+        guard let url = URL(string: urlString) else { throw SteamServiceError.invalidURL }
+
+        let (data, response) = try await session.data(from: url)
+        try validateHTTP(response)
+
+        let playerCountResponse = try JSONDecoder().decode(SteamPlayerCountResponse.self, from: data)
+        return playerCountResponse.response.player_count
     }
 
     private func compareNewsItems(_ lhs: SteamAPIResponse.NewsItem, _ rhs: SteamAPIResponse.NewsItem) -> Int {
@@ -227,12 +320,49 @@ private struct SteamAPIResponse: Codable {
     }
 }
 
+private struct SteamStoreSearchResponse: Codable {
+    let items: [Item]
+
+    struct Item: Codable {
+        let id: Int
+        let name: String
+    }
+}
+
+private struct SteamAppDetailsResponse: Codable {
+    let success: Bool
+    let data: Data
+
+    struct Data: Codable {
+        let name: String
+        let short_description: String
+        let header_image: String
+        let website: String?
+        let price_overview: PriceOverview?
+    }
+
+    struct PriceOverview: Codable {
+        let final_formatted: String
+    }
+}
+
+private struct SteamPlayerCountResponse: Codable {
+    let response: Response
+
+    struct Response: Codable {
+        let player_count: Int
+        let result: Int
+    }
+}
+
 public enum SteamServiceError: LocalizedError, Sendable {
     case invalidAppID(String)
     case invalidURL
     case invalidResponse
     case httpError(statusCode: Int)
     case noNewsItems
+    case appNotFound(String)
+    case noAppDetails(Int)
 
     public var errorDescription: String? {
         switch self {
@@ -246,6 +376,10 @@ public enum SteamServiceError: LocalizedError, Sendable {
             return "Steam API request failed with HTTP \(statusCode)."
         case .noNewsItems:
             return "No Steam update/news items matched the filter criteria."
+        case .appNotFound(let term):
+            return "Could not find a Steam game matching \"\(term)\"."
+        case .noAppDetails(let appID):
+            return "Failed to retrieve details for Steam App ID \(appID)."
         }
     }
 }
