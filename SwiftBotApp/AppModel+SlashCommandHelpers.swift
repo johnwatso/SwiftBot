@@ -49,7 +49,10 @@ extension AppModel {
                 ["type": 3, "name": "weapon_a", "description": "First weapon", "required": true],
                 ["type": 3, "name": "weapon_b", "description": "Second weapon", "required": true]
             ]],
-            ["name": "meta", "description": "Fetch current THE FINALS meta from Skycoach", "type": 1]
+            ["name": "meta", "description": "Fetch current THE FINALS meta from Skycoach", "type": 1],
+            ["name": "steam", "description": "Search Steam for game info and player counts", "type": 1, "options": [
+                ["type": 3, "name": "action", "description": "Game name to search for", "required": true]
+            ]]
         ]
 
         var existingNames = Set(definitions.compactMap { $0["name"] as? String })
