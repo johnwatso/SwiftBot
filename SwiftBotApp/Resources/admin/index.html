@@ -4,9 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SwiftBot Admin</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,500,0,0');
-
     :root {
       color-scheme: light dark;
       --bg-a: #0a0a0a;
@@ -523,14 +522,52 @@
       color: var(--icon-color);
     }
 
-    .ms {
-      font-family: "Material Symbols Rounded";
-      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
-      font-size: 18px;
-      line-height: 1;
+    .lucide {
       display: inline-block;
+      width: 18px;
+      height: 18px;
+      stroke-width: 2.2px;
       vertical-align: middle;
       color: var(--icon-color);
+      flex-shrink: 0;
+    }
+
+    .nav-icon .lucide {
+      width: 18px;
+      height: 18px;
+    }
+
+    .section-mini-title .lucide {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+    }
+
+    .panel-title .lucide {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+    }
+
+    .mini-btn .lucide {
+      width: 14px;
+      height: 14px;
+      margin-right: 4px;
+      color: currentColor;
+    }
+
+    .command-name .lucide {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+    }
+
+    .spin {
+      animation: lucide-spin 2s linear infinite;
+    }
+    @keyframes lucide-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
 
     .nav-text {
@@ -2138,10 +2175,10 @@
     <section id="appShell" class="app-shell">
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-brand">
-          <div class="app-icon" aria-hidden="true"><img class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
+          <div class="app-icon" aria-hidden="true"><img id="sidebarAppIconImg" class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
           <div>
-            <div class="brand-title">SwiftBot</div>
-            <div class="brand-subtitle">Web Admin</div>
+            <div id="sidebarBrandTitle" class="brand-title">SwiftBot</div>
+            <div id="sidebarBrandSubtitle" class="brand-subtitle">Web Admin</div>
           </div>
         </div>
         <div class="sidebar-inner">
@@ -2149,35 +2186,61 @@
             <div class="nav-section">
               <div class="nav-heading">Dashboard</div>
               <button class="nav-link active" data-view="overview" type="button">
-                <span class="nav-icon"><span class="ms">dashboard</span></span>
+                <span class="nav-icon"><i class="lucide" data-lucide="layout-dashboard"></i></span>
                 <span class="nav-text">Overview</span>
-              </button>
-              <button class="nav-link" data-view="analytics" type="button">
-                <span class="nav-icon"><span class="ms">monitoring</span></span>
-                <span class="nav-text">Analytics</span>
               </button>
             </div>
 
             <div class="nav-section">
-              <div class="nav-heading">Automation</div>
-              <button class="nav-link" data-view="commands" type="button"><span class="nav-icon"><span class="ms">terminal</span></span><span class="nav-text">Commands</span></button>
-              <button class="nav-link" data-view="actions" type="button"><span class="nav-icon"><span class="ms">rule</span></span><span class="nav-text">Actions</span></button>
-              <button class="nav-link" data-view="patchy" type="button"><span class="nav-icon"><span class="ms">construction</span></span><span class="nav-text">Patchy</span></button>
-              <button class="nav-link" data-view="wikibridge" type="button"><span class="nav-icon"><span class="ms">menu_book</span></span><span class="nav-text">WikiBridge</span></button>
+              <div class="nav-heading">Workflows</div>
+              <button class="nav-link" data-view="commands" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="terminal"></i></span>
+                <span class="nav-text">Commands</span>
+              </button>
+              <button class="nav-link" data-view="voice" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="zap"></i></span>
+                <span class="nav-text">Automations</span>
+              </button>
+            </div>
+
+            <div class="nav-section">
+              <div class="nav-heading">Services</div>
+              <button class="nav-link" data-view="patchy" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="download"></i></span>
+                <span class="nav-text">Patchy</span>
+              </button>
+              <button class="nav-link" data-view="wikibridge" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="book-open"></i></span>
+                <span class="nav-text">WikiBridge</span>
+              </button>
             </div>
 
             <div class="nav-section">
               <div class="nav-heading">System</div>
-              <button class="nav-link" data-view="aibots" type="button"><span class="nav-icon"><span class="ms">smart_toy</span></span><span class="nav-text">AI Bots</span></button>
-              <button class="nav-link" data-view="media" type="button"><span class="nav-icon"><span class="ms">video_library</span></span><span class="nav-text">Recordings</span></button>
-              <button class="nav-link" data-view="settings" type="button"><span class="nav-icon"><span class="ms">settings</span></span><span class="nav-text">Settings</span></button>
-              <button class="nav-link" data-view="diagnostics" type="button"><span class="nav-icon"><span class="ms">monitoring</span></span><span class="nav-text">Diagnostics</span></button>
-              <button class="nav-link" data-view="logs" type="button"><span class="nav-icon"><span class="ms">history</span></span><span class="nav-text">Logs</span></button>
-            </div>
-
-            <div class="nav-section">
-              <div class="nav-heading">Infrastructure</div>
-              <button class="nav-link" data-view="swiftmesh" type="button"><span class="nav-icon"><span class="ms">hub</span></span><span class="nav-text">SwiftMesh</span></button>
+              <button class="nav-link" data-view="aibots" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="bot"></i></span>
+                <span class="nav-text">AI Bots</span>
+              </button>
+              <button class="nav-link" data-view="recordings" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="film"></i></span>
+                <span class="nav-text">Recordings</span>
+              </button>
+              <button class="nav-link" data-view="analytics" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="activity"></i></span>
+                <span class="nav-text">Analytics</span>
+              </button>
+              <button class="nav-link" data-view="activity" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="clipboard-list"></i></span>
+                <span class="nav-text">Activity</span>
+              </button>
+              <button class="nav-link" data-view="swiftmesh" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="network"></i></span>
+                <span class="nav-text">SwiftMesh</span>
+              </button>
+              <button class="nav-link" data-view="settings" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="settings"></i></span>
+                <span class="nav-text">Settings</span>
+              </button>
             </div>
           </div>
 
@@ -2189,9 +2252,6 @@
                   <div id="sidebarDisplayName" class="user-display">Discord User</div>
                   <div id="sidebarUsername" class="user-handle">@user</div>
                 </div>
-                <button id="sidebarUserSettings" class="icon-btn" type="button" aria-label="User settings">
-                  <span class="ms">settings</span>
-                </button>
               </div>
             </div>
           </div>
@@ -2211,10 +2271,10 @@
         <section id="overviewView" class="view">
           <div class="section-sticky">
             <div class="section-sticky-row">
-              <div class="section-mini-title"><span class="ms">dashboard</span> Dashboard</div>
+              <div class="section-mini-title"><i class="lucide" data-lucide="layout-dashboard"></i> Dashboard</div>
               <div id="overviewEditControls" class="overview-edit-controls hidden">
                 <select id="overviewAddSelect" class="overview-add-select"></select>
-                <button id="overviewAddApply" class="mini-btn" type="button"><span class="ms">add</span> Add</button>
+                <button id="overviewAddApply" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add</button>
                 <button id="overviewReset" class="secondary-action" type="button">Reset</button>
               </div>
               <button id="overviewEditToggle" class="secondary-action" type="button">Edit</button>
@@ -2225,7 +2285,7 @@
 
           <section id="overviewPanels" class="diagnostics-panels">
             <article id="overviewPanelCluster" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">hub</span> Cluster</div>
+              <div class="panel-title"><i class="lucide" data-lucide="network"></i> Cluster</div>
               <div id="clusterInfo" class="info-list"></div>
               <div class="detail-actions">
                 <button id="swiftMeshButton" class="secondary-action" type="button">View in SwiftMesh</button>
@@ -2233,27 +2293,27 @@
             </article>
 
             <article id="overviewPanelBotInfo" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">smart_toy</span> Bot Info</div>
+              <div class="panel-title"><i class="lucide" data-lucide="bot"></i> Bot Info</div>
               <div id="botInfo" class="info-list"></div>
             </article>
 
             <article id="overviewPanelVoiceEvents" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">record_voice_over</span> Recent Voice</div>
+              <div class="panel-title"><i class="lucide" data-lucide="mic"></i> Recent Voice</div>
               <div id="voiceEvents" class="event-list"></div>
             </article>
 
             <article id="overviewPanelRecentCommands" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">terminal</span> Recent Commands</div>
+              <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Recent Commands</div>
               <div id="recentCommands" class="event-list"></div>
             </article>
 
             <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">groups</span> Currently In Voice</div>
+              <div class="panel-title"><i class="lucide" data-lucide="users"></i> Currently In Voice</div>
               <div id="activeVoiceList" class="event-list"></div>
             </article>
 
             <article id="overviewPanelQuickControls" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><span class="ms">tune</span> Quick Controls</div>
+              <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Quick Controls</div>
               <div class="utility-row">
                 <button id="toggleBot" class="primary-action" type="button">Start Bot</button>
               </div>
@@ -2264,7 +2324,7 @@
 
         <section id="commandsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">terminal</span> Commands</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="terminal"></i> Commands</div>
           </div>
           <div class="commands-shell">
             <section id="commandsTop" class="commands-top glass"></section>
@@ -2275,7 +2335,7 @@
         <section id="analyticsView" class="view hidden">
           <div class="section-sticky">
             <div class="section-sticky-row">
-              <div class="section-mini-title"><span class="ms">monitoring</span> Analytics</div>
+              <div class="section-mini-title"><i class="lucide" data-lucide="activity"></i> Analytics</div>
               <div id="analyticsUpdated" class="command-desc">Live analytics</div>
             </div>
           </div>
@@ -2283,32 +2343,32 @@
             <section id="analyticsPulse" class="analytics-pulse glass"></section>
             <section class="analytics-main">
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">stacked_line_chart</span> Activity Overview</div>
+                <div class="panel-title"><i class="lucide" data-lucide="trending-up"></i> Activity Overview</div>
                 <div id="analyticsPeak" class="command-desc" style="margin-bottom:10px;">Peak activity</div>
                 <div id="analyticsChart" class="analytics-chart"></div>
               </article>
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">dynamic_feed</span> Live Operations</div>
+                <div class="panel-title"><i class="lucide" data-lucide="rss"></i> Live Operations</div>
                 <div id="analyticsFeed" class="analytics-feed"></div>
               </article>
             </section>
             <section class="analytics-diagnostics">
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">bolt</span> System Activity</div>
+                <div class="panel-title"><i class="lucide" data-lucide="zap"></i> System Activity</div>
                 <div id="analyticsSystem" class="analytics-health-grid"></div>
               </article>
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">ecg_heart</span> Bot Health</div>
+                <div class="panel-title"><i class="lucide" data-lucide="heart-pulse"></i> Bot Health</div>
                 <div id="analyticsHealth" class="analytics-health-grid"></div>
               </article>
             </section>
             <section class="analytics-support">
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">auto_awesome</span> Insights</div>
+                <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Insights</div>
                 <div id="analyticsInsights" class="analytics-health-grid"></div>
               </article>
               <article class="analytics-panel glass">
-                <div class="panel-title"><span class="ms">groups</span> Top Users</div>
+                <div class="panel-title"><i class="lucide" data-lucide="users"></i> Top Users</div>
                 <div id="analyticsUsers" class="analytics-health-grid"></div>
               </article>
             </section>
@@ -2317,13 +2377,13 @@
 
         <section id="patchyView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">construction</span> Patchy</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="wrench"></i> Patchy</div>
           </div>
           <div class="patchy-shell">
             <section id="patchyTop" class="patchy-top glass"></section>
             <div class="patchy-controls">
-              <button id="patchyAddTarget" class="mini-btn" type="button"><span class="ms">add</span> Add Target</button>
-              <button id="patchyRunCheck" class="mini-btn" type="button"><span class="ms">play_arrow</span> Run Check Now</button>
+              <button id="patchyAddTarget" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add Target</button>
+              <button id="patchyRunCheck" class="mini-btn" type="button"><i class="lucide" data-lucide="play"></i> Run Check Now</button>
             </div>
             <section id="patchyTargets" class="patchy-targets glass"></section>
           </div>
@@ -2331,12 +2391,12 @@
 
         <section id="wikibridgeView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">menu_book</span> WikiBridge</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="book-open"></i> WikiBridge</div>
           </div>
           <div class="wiki-shell">
             <section id="wikiTop" class="wiki-top glass"></section>
             <div class="wiki-controls">
-              <button id="wikiAddSource" class="mini-btn" type="button"><span class="ms">add</span> Add Source</button>
+              <button id="wikiAddSource" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add Source</button>
               <span class="command-desc">Set one source primary, test quickly, and edit inline.</span>
             </div>
             <section id="wikiSources" class="wiki-sources glass"></section>
@@ -2345,7 +2405,7 @@
 
         <section id="settingsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">settings</span> Settings</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="settings"></i> Settings</div>
           </div>
           <div class="settings-shell">
             <section id="settingsTop" class="settings-top glass"></section>
@@ -2355,7 +2415,7 @@
 
         <section id="diagnosticsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">monitoring</span> Diagnostics</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="activity"></i> Diagnostics</div>
           </div>
           <div class="diagnostics-shell">
             <section id="diagnosticsTop" class="diagnostics-top glass"></section>
@@ -2365,7 +2425,7 @@
 
         <section id="aibotsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">smart_toy</span> AI Bots</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="bot"></i> AI Bots</div>
           </div>
           <div class="settings-shell">
             <section id="aibotsTop" class="settings-top glass"></section>
@@ -2373,7 +2433,7 @@
           </div>
         </section>
 
-        <section id="mediaView" class="view hidden">
+        <section id="recordingsView" class="view hidden">
           <div class="section-sticky">
             <div id="mediaHeader" class="section-sticky-row"></div>
           </div>
@@ -2382,9 +2442,9 @@
           </div>
         </section>
 
-        <section id="logsView" class="view hidden">
+        <section id="activityView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">history</span> Logs</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="history"></i> Logs</div>
           </div>
           <div class="diagnostics-shell">
             <section id="logsTop" class="diagnostics-top glass"></section>
@@ -2394,7 +2454,7 @@
 
         <section id="swiftmeshView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">hub</span> SwiftMesh</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="network"></i> SwiftMesh</div>
           </div>
           <div class="settings-shell">
             <section id="swiftmeshTop" class="settings-top glass"></section>
@@ -2404,7 +2464,7 @@
 
         <section id="userPrefsView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">manage_accounts</span> User Settings</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="user-cog"></i> User Settings</div>
           </div>
           <div class="settings-shell">
             <section id="userPrefsTop" class="settings-top glass"></section>
@@ -2412,21 +2472,21 @@
           </div>
         </section>
 
-        <section id="actionsView" class="view hidden">
+        <section id="voiceView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><span class="ms">rule</span> Actions</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="scale"></i> Actions</div>
           </div>
           <div class="actions-shell">
             <section class="actions-column glass">
-              <div class="panel-title"><span class="ms">list_alt</span> Action Rules</div>
+              <div class="panel-title"><i class="lucide" data-lucide="list"></i> Action Rules</div>
               <div style="margin-bottom:8px;">
-                <button id="actionAddRule" class="mini-btn" type="button"><span class="ms">add</span> New Action</button>
+                <button id="actionAddRule" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> New Action</button>
               </div>
               <div id="actionRuleList"></div>
             </section>
 
             <section class="actions-column glass">
-              <div class="panel-title"><span class="ms">library_books</span> Block Library</div>
+              <div class="panel-title"><i class="lucide" data-lucide="library"></i> Block Library</div>
               <div id="actionLibrary" class="library-list"></div>
             </section>
 
@@ -2524,71 +2584,69 @@
 
     // Legacy metadata fallbacks (deprecated - use builderMetadata instead)
     const actionConditionMeta = {
-      'Server Is': { icon: 'dns', desc: 'Match events from one specific server.' },
-      'Voice Channel Is': { icon: 'headset_mic', desc: 'Run only when users join a selected channel.' },
-      'Username Contains': { icon: 'person_search', desc: 'Filter by usernames containing text.' },
-      'Duration In Channel': { icon: 'timer', desc: 'Require a minimum voice duration.' }
+      'Server Is': { icon: 'server', desc: 'Match events from one specific server.' },
+      'Voice Channel Is': { icon: 'mic', desc: 'Run only when users join a selected channel.' },
+      'Username Contains': { icon: 'user-search', desc: 'Filter by usernames containing text.' },
+      'Duration In Channel': { icon: 'clock', desc: 'Require a minimum voice duration.' }
     };
     const actionTypeMeta = {
       'Send Message': { icon: 'send', desc: 'Post a message to a channel in Discord.' },
-      'Add Log Entry': { icon: 'history', desc: 'Write a custom line to the command log.' },
-      'Set Bot Status': { icon: 'bolt', desc: 'Change the bot presence status text.' }
+      'Add Log Entry': { icon: 'clipboard-list', desc: 'Write a custom line to the command log.' },
+      'Set Bot Status': { icon: 'zap', desc: 'Change the bot presence status text.' }
     };
 
-    // Get Material icon for SF Symbol name (best-effort mapping)
-    function sfSymbolToMaterial(sfName) {
+    // Get Lucide icon for SF Symbol name (best-effort mapping)
+    function sfSymbolToLucide(sfName) {
       const map = {
         'paperplane.fill': 'send',
-        'list.bullet.clipboard': 'list_alt',
-        'dot.radiowaves.left.and.right': 'wifi_tethering',
+        'list.bullet.clipboard': 'clipboard-list',
+        'dot.radiowaves.left.and.right': 'rss',
         'envelope.fill': 'mail',
-        'trash.fill': 'delete',
-        'face.smiling': 'sentiment_satisfied',
-        'person.crop.circle.badge.plus': 'person_add',
-        'person.crop.circle.badge.minus': 'person_remove',
-        'clock.badge.exclamationmark': 'timer',
-        'door.left.hand.open': 'logout',
-        'arrow.right.circle': 'arrow_forward',
-        'plus.rectangle': 'add_box',
+        'trash.fill': 'trash-2',
+        'face.smiling': 'smile',
+        'person.crop.circle.badge.plus': 'user-plus',
+        'person.crop.circle.badge.minus': 'user-minus',
+        'clock.badge.exclamationmark': 'clock',
+        'door.left.hand.open': 'log-out',
+        'arrow.right.circle': 'arrow-right-circle',
+        'plus.rectangle': 'plus-square',
         'link': 'link',
-        'clock.arrow.circlepath': 'schedule',
-        'character.textbox': 'text_fields',
+        'clock.arrow.circlepath': 'history',
+        'character.textbox': 'type',
         'shuffle': 'shuffle',
         'arrowshape.turn.up.left.fill': 'reply',
-        'at': 'alternate_email',
-        'at.badge.plus': 'group_add',
-        'at.badge.minus': 'group_remove',
-        'number.circle.fill': 'pin',
-        'sparkles': 'auto_awesome',
-        'text.alignleft': 'format_align_left',
-        'tag.fill': 'label',
-        'pencil': 'edit',
-        'person.crop.circle.badge.xmark': 'person_off',
-        'arrow.left.arrow.right.circle': 'swap_horiz',
-        'text.bubble': 'chat',
-        'person.badge.plus': 'person_add',
-        'person.badge.minus': 'person_remove',
-        'slash.circle': 'block',
-        'building.2': 'apartment',
-        'waveform': 'graphic_eq',
+        'at': 'at-sign',
+        'at.badge.plus': 'users',
+        'at.badge.minus': 'users',
+        'number.circle.fill': 'hash',
+        'sparkles': 'sparkles',
+        'text.alignleft': 'align-left',
+        'tag.fill': 'tag',
+        'pencil': 'pencil',
+        'person.crop.circle.badge.xmark': 'user-x',
+        'arrow.left.arrow.right.circle': 'repeat',
+        'text.bubble': 'message-square',
+        'person.badge.plus': 'user-plus',
+        'person.badge.minus': 'user-minus',
+        'slash.circle': 'ban',
+        'building.2': 'building',
+        'waveform': 'activity',
         'text.magnifyingglass': 'search',
-        'number': 'numbers',
+        'number': 'hash',
         'folder': 'folder',
-        'person.crop.circle.badge.checkmark': 'verified_user',
-        'clock.arrow.circlepath': 'history',
-        'text.quote': 'format_quote',
-        'text.alignleft': 'format_align_left',
-        'asterisk.circle': 'emergency',
-        'envelope.badge.shield.half.filled': 'security',
-        'bot': 'smart_toy',
-        'person': 'person',
-        'number.square': 'looks_one',
-        'bolt.fill': 'bolt',
-        'line.3.horizontal.decrease.circle': 'filter_alt',
-        'text.bubble.fill': 'chat_bubble',
-        'shield.fill': 'security'
+        'person.crop.circle.badge.checkmark': 'user-check',
+        'text.quote': 'quote',
+        'asterisk.circle': 'asterisk',
+        'envelope.badge.shield.half.filled': 'shield-alert',
+        'bot': 'bot',
+        'person': 'user',
+        'number.square': 'hash',
+        'bolt.fill': 'zap',
+        'line.3.horizontal.decrease.circle': 'filter',
+        'text.bubble.fill': 'message-circle',
+        'shield.fill': 'shield'
       };
-      return map[sfName] || 'widgets';
+      return map[sfName] || 'box';
     }
 
     function defaultDiscordAvatar(userID) {
@@ -2862,6 +2920,7 @@
           if (dashboardOverview) renderStats(dashboardOverview.metrics || []);
         });
       });
+      refreshIcons();
     }
 
     function renderOverviewPanels() {
@@ -2952,6 +3011,8 @@
           renderOverviewPanels();
         });
       });
+
+      refreshIcons();
     }
 
     function renderOverviewAddList() {
@@ -3090,6 +3151,7 @@
           await toggleCommand(node.dataset.commandName, node.dataset.commandSurface, node.checked);
         });
       });
+      refreshIcons();
     }
 
     function analyticsToneClass(tone) {
@@ -3285,6 +3347,20 @@
       const response = await fetch('/api/status');
       const data = await response.json();
       dashboardStatus = data;
+      
+      const brandImg = document.getElementById('sidebarAppIconImg');
+      if (brandImg) {
+        brandImg.src = data.botAvatarURL || '/assets/AppIcon.png';
+      }
+      const brandTitle = document.getElementById('sidebarBrandTitle');
+      if (brandTitle) {
+        brandTitle.textContent = data.botUsername || 'SwiftBot';
+      }
+      const brandSubtitle = document.getElementById('sidebarBrandSubtitle');
+      if (brandSubtitle) {
+        brandSubtitle.textContent = (data.botStatus === 'running') ? 'Online' : 'Stopped';
+      }
+
       refreshBotToggleButton();
       return data;
     }
@@ -3637,12 +3713,12 @@
         renderAIBotsView();
         return;
       }
-      if (currentView === 'media') {
-        renderMediaView();
+      if (currentView === 'recordings') {
+        renderRecordingsView();
         return;
       }
-      if (currentView === 'logs') {
-        renderLogsView();
+      if (currentView === 'activity') {
+        renderActivityView();
         return;
       }
       if (currentView === 'swiftmesh') {
@@ -3653,8 +3729,8 @@
         renderUserPrefsView();
         return;
       }
-      if (currentView === 'actions') {
-        renderActionsView();
+      if (currentView === 'voice') {
+        renderVoiceView();
         return;
       }
       renderSectionView(currentView);
@@ -3690,7 +3766,7 @@
       actionSaveTimer = setTimeout(async () => {
         await postJSON('/api/actions/upsert', { rule });
         await loadActions();
-        if (currentView === 'actions') renderActionsView();
+        if (currentView === 'voice') renderVoiceView();
       }, 220);
     }
 
@@ -3827,22 +3903,22 @@
       const conditionTypes = actionsData.conditionTypes || [];
       const actionTypes = actionsData.actionTypes || [];
       const conditionRows = conditionTypes.map(type => {
-        const meta = actionConditionMeta[type] || { icon: 'filter_alt', desc: 'Condition block from the app configuration.' };
+        const meta = actionConditionMeta[type] || { icon: 'filter', desc: 'Condition block from the app configuration.' };
         return `
           <div class="library-item">
-            <span class="library-icon"><span class="ms">${meta.icon}</span></span>
+            <span class="library-icon"><i class="lucide" data-lucide="${meta.icon}"></i></span>
             <div><div class="library-title">${type}</div><div class="library-desc">${meta.desc}</div></div>
-            <button type="button" class="library-plus" data-add-condition="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} condition"><span class="ms">add</span></button>
+            <button type="button" class="library-plus" data-add-condition="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} condition"><i class="lucide" data-lucide="plus"></i></button>
           </div>
         `;
       }).join('');
       const actionRows = actionTypes.map(type => {
-        const meta = actionTypeMeta[type] || { icon: 'bolt', desc: 'Action block from the app configuration.' };
+        const meta = actionTypeMeta[type] || { icon: 'zap', desc: 'Action block from the app configuration.' };
         return `
           <div class="library-item">
-            <span class="library-icon"><span class="ms">${meta.icon}</span></span>
+            <span class="library-icon"><i class="lucide" data-lucide="${meta.icon}"></i></span>
             <div><div class="library-title">${type}</div><div class="library-desc">${meta.desc}</div></div>
-            <button type="button" class="library-plus" data-add-action="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} action"><span class="ms">add</span></button>
+            <button type="button" class="library-plus" data-add-action="${type.replaceAll('"', '&quot;')}" aria-label="Add ${type.replaceAll('"', '&quot;')} action"><i class="lucide" data-lucide="plus"></i></button>
           </div>
         `;
       }).join('');
@@ -3865,18 +3941,18 @@
       let filtersSection = '';
       if (conditions.length > 0) {
         const conditionRows = conditions.map(cond => {
-          const icon = sfSymbolToMaterial(cond.symbol);
+          const icon = sfSymbolToLucide(cond.symbol);
           const desc = cond.description || `${cond.name} filter`;
           return `
             <div class="library-item">
-              <span class="library-icon"><span class="ms">${icon}</span></span>
+              <span class="library-icon"><i class="lucide" data-lucide="${icon}"></i></span>
               <div><div class="library-title">${cond.name}</div><div class="library-desc">${desc}</div></div>
-              <button type="button" class="library-plus" data-add-block="${cond.id.replaceAll('"', '&quot;')}" data-block-type="condition" data-block-category="filters" aria-label="Add ${cond.name.replaceAll('"', '&quot;')}"><span class="ms">add</span></button>
+              <button type="button" class="library-plus" data-add-block="${cond.id.replaceAll('"', '&quot;')}" data-block-type="condition" data-block-category="filters" aria-label="Add ${cond.name.replaceAll('"', '&quot;')}"><i class="lucide" data-lucide="plus"></i></button>
             </div>
           `;
         }).join('');
         filtersSection = `
-          <div class="library-section-label"><span class="ms">filter_alt</span> Filters</div>
+          <div class="library-section-label"><i class="lucide" data-lucide="filter"></i> Filters</div>
           ${conditionRows}
         `;
       }
@@ -3887,7 +3963,7 @@
         if (catBlocks.length === 0) return '';
         
         const blockRows = catBlocks.map(block => {
-          const icon = sfSymbolToMaterial(block.symbol);
+          const icon = sfSymbolToLucide(block.symbol);
           const desc = block.description || `${block.name} block`;
           // Determine block type based on category
           let blockType = 'action';
@@ -3896,16 +3972,16 @@
           
           return `
             <div class="library-item">
-              <span class="library-icon"><span class="ms">${icon}</span></span>
+              <span class="library-icon"><i class="lucide" data-lucide="${icon}"></i></span>
               <div><div class="library-title">${block.name}</div><div class="library-desc">${desc}</div></div>
-              <button type="button" class="library-plus" data-add-block="${block.id.replaceAll('"', '&quot;')}" data-block-type="${blockType}" data-block-category="${cat.id}" aria-label="Add ${block.name.replaceAll('"', '&quot;')}"><span class="ms">add</span></button>
+              <button type="button" class="library-plus" data-add-block="${block.id.replaceAll('"', '&quot;')}" data-block-type="${blockType}" data-block-category="${cat.id}" aria-label="Add ${block.name.replaceAll('"', '&quot;')}"><i class="lucide" data-lucide="plus"></i></button>
             </div>
           `;
         }).join('');
         
-        const catIcon = sfSymbolToMaterial(cat.symbol);
+        const catIcon = sfSymbolToLucide(cat.symbol);
         return `
-          <div class="library-section-label"><span class="ms">${catIcon}</span> ${cat.name}</div>
+          <div class="library-section-label"><i class="lucide" data-lucide="${catIcon}"></i> ${cat.name}</div>
           ${blockRows}
         `;
       }).filter(Boolean);
@@ -3916,7 +3992,7 @@
       node.innerHTML = allSections || '<div class="placeholder">No blocks available.</div>';
     }
 
-    function renderActionsView() {
+    function renderVoiceView() {
       bindActionsStaticButtons();
       renderActionLibrary();
       const listNode = document.getElementById('actionRuleList');
@@ -3932,7 +4008,7 @@
           </div>
           <div class="rule-sub">${rule.triggerSummary || rule.trigger || ''}</div>
           <div style="margin-top:6px;">
-            <button class="mini-btn" data-delete-rule="${rule.id}" type="button"><span class="ms">delete</span> Delete</button>
+            <button class="mini-btn" data-delete-rule="${rule.id}" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>
           </div>
         </article>
       `).join('') || `<div class="placeholder">No action rules yet.</div>`;
@@ -3941,7 +4017,7 @@
         node.addEventListener('click', (e) => {
           if (e.target.closest('button') || e.target.closest('label.switch')) return;
           selectedActionRuleID = node.dataset.ruleId;
-          renderActionsView();
+          renderVoiceView();
         });
       });
       listNode.querySelectorAll('[data-toggle-rule]').forEach(node => {
@@ -3973,6 +4049,7 @@
 
       // Legacy fallback for old API responses
       renderLegacyEditor(editorNode, selected);
+      refreshIcons();
     }
 
     // Render the new 5-stage pipeline editor
@@ -3988,11 +4065,11 @@
       const availableVars = selectedTrigger?.providedVariables || [];
 
       editorNode.innerHTML = `
-        <div class="panel-title"><span class="ms">tune</span> Rule Builder <span style="font-size:11px;color:var(--muted);font-weight:400;">(5-Stage Pipeline)</span></div>
+        <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Rule Builder <span style="font-size:11px;color:var(--muted);font-weight:400;">(5-Stage Pipeline)</span></div>
         
         <!-- Stage 1: Trigger -->
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">bolt</span> 1. Trigger <span style="font-size:11px;color:var(--muted);font-weight:400;">- When this rule runs</span></div>
+          <div class="panel-title"><i class="lucide" data-lucide="zap"></i> 1. Trigger <span style="font-size:11px;color:var(--muted);font-weight:400;">- When this rule runs</span></div>
           <div class="editor-grid">
             <div class="full">
               <div class="field-label">Rule Name</div>
@@ -4015,28 +4092,28 @@
 
         <!-- Stage 2: Filters (Conditions) -->
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">filter_alt</span> 2. Filters <span style="font-size:11px;color:var(--muted);font-weight:400;">- Additional matching criteria</span></div>
+          <div class="panel-title"><i class="lucide" data-lucide="filter"></i> 2. Filters <span style="font-size:11px;color:var(--muted);font-weight:400;">- Additional matching criteria</span></div>
           ${renderBlocksList(selected.conditions || [], 'condition', selected)}
           ${(selected.conditions || []).length === 0 ? '<div class="placeholder">No filters. Add from Block Library to restrict when this rule runs.</div>' : ''}
         </section>
 
         <!-- Stage 3: AI Processing -->
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">auto_awesome</span> 3. AI Processing <span style="font-size:11px;color:var(--muted);font-weight:400;">- Generate AI content (runs before actions)</span></div>
+          <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> 3. AI Processing <span style="font-size:11px;color:var(--muted);font-weight:400;">- Generate AI content (runs before actions)</span></div>
           ${renderBlocksList(selected.aiBlocks || [], 'aiBlock', selected)}
           ${(selected.aiBlocks || []).length === 0 ? '<div class="placeholder">No AI blocks. Add from Block Library to populate {ai.response}, {ai.summary}, etc.</div>' : ''}
         </section>
 
         <!-- Stage 4: Message Modifiers -->
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">text_fields</span> 4. Message Modifiers <span style="font-size:11px;color:var(--muted);font-weight:400;">- How messages are sent</span></div>
+          <div class="panel-title"><i class="lucide" data-lucide="type"></i> 4. Message Modifiers <span style="font-size:11px;color:var(--muted);font-weight:400;">- How messages are sent</span></div>
           ${renderBlocksList(selected.modifiers || [], 'modifier', selected)}
           ${(selected.modifiers || []).length === 0 ? '<div class="placeholder">No modifiers. Messages will use default settings.</div>' : ''}
         </section>
 
         <!-- Stage 5: Actions -->
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">send</span> 5. Actions <span style="font-size:11px;color:var(--muted);font-weight:400;">- What the rule does</span></div>
+          <div class="panel-title"><i class="lucide" data-lucide="send"></i> 5. Actions <span style="font-size:11px;color:var(--muted);font-weight:400;">- What the rule does</span></div>
           ${renderBlocksList(selected.actions || [], 'action', selected)}
           ${(selected.actions || []).length === 0 ? '<div class="placeholder">No actions. Add from Block Library to produce output.</div>' : ''}
         </section>
@@ -4061,15 +4138,15 @@
           fields: [],
           description: ''
         };
-        const icon = sfSymbolToMaterial(meta.symbol);
+        const icon = sfSymbolToLucide(meta.symbol);
         const fields = renderBlockFields(block, meta, blockType, idx, rule);
         
         return `
           <div class="block-row" data-block-type="${blockType}" data-block-index="${idx}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span class="ms" style="color:var(--muted);">${icon}</span>
+              <i class="lucide" data-lucide="${icon}" style="color:var(--muted);"></i>
               <strong style="font-size:12px;">${meta.name}</strong>
-              <button type="button" class="mini-btn" data-delete-block style="margin-left:auto;"><span class="ms">delete</span></button>
+              <button type="button" class="mini-btn" data-delete-block style="margin-left:auto;"><i class="lucide" data-lucide="trash-2"></i></button>
             </div>
             ${fields}
           </div>
@@ -4289,7 +4366,7 @@
       const actionTypeOptions = (actionsData.actionTypes || []).length ? actionsData.actionTypes : ['Send Message'];
 
       editorNode.innerHTML = `
-        <div class="panel-title"><span class="ms">tune</span> Action Builder (Legacy)</div>
+        <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Action Builder (Legacy)</div>
         <section class="editor-section">
           <div class="editor-grid">
             <div class="full">
@@ -4304,7 +4381,7 @@
         </section>
 
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">filter_alt</span> Conditions</div>
+          <div class="panel-title"><i class="lucide" data-lucide="filter"></i> Conditions</div>
           ${(selected.conditions || []).map((cond, idx) => `
             <div class="block-row" data-condition-index="${idx}">
               <div class="editor-grid">
@@ -4317,7 +4394,7 @@
                   <input class="field-input cond-value" value="${(cond.value || '').replaceAll('"', '&quot;')}">
                 </div>
                 <div>
-                  <button type="button" class="mini-btn cond-delete"><span class="ms">delete</span> Remove</button>
+                  <button type="button" class="mini-btn cond-delete"><i class="lucide" data-lucide="trash-2"></i> Remove</button>
                 </div>
               </div>
             </div>
@@ -4325,7 +4402,7 @@
         </section>
 
         <section class="editor-section">
-          <div class="panel-title"><span class="ms">send</span> Actions</div>
+          <div class="panel-title"><i class="lucide" data-lucide="send"></i> Actions</div>
           ${(selected.actions || []).map((action, idx) => `
             <div class="block-row" data-action-index="${idx}">
               <div class="editor-grid">
@@ -4338,7 +4415,7 @@
                   <textarea class="field-textarea act-message">${(action.message || '')}</textarea>
                 </div>
                 <div>
-                  <button type="button" class="mini-btn act-delete"><span class="ms">delete</span> Remove</button>
+                  <button type="button" class="mini-btn act-delete"><i class="lucide" data-lucide="trash-2"></i> Remove</button>
                 </div>
               </div>
             </div>
@@ -4675,7 +4752,7 @@
         top.innerHTML = `
           <div class="commands-toggle-card" style="grid-column: span 3; border-color: #ffcc00; background: rgba(255, 204, 0, 0.05);">
             <div style="display:flex;align-items:center;gap:12px;">
-              <span class="ms" style="color:#ffcc00;font-size:24px;">lock</span>
+              <i class="lucide" data-lucide="lock" style="color:#ffcc00;width:24px;height:24px;"></i>
               <div>
                 <div style="font-weight:600;">Managed by SwiftMesh Leader</div>
                 <div style="font-size:11px;opacity:0.8;">This node is in a failover cluster. Settings are read-only and managed by the leader.</div>
@@ -4722,7 +4799,7 @@
 
         html += `
           <div class="patchy-category-header">
-            <span class="ms" style="background: ${cat.color}20; color: ${cat.color};">${cat.icon === 'cpu' ? 'memory' : (cat.icon === 'shippingbox' ? 'package' : cat.icon)}</span>
+            <i class="lucide" data-lucide="${cat.icon === 'cpu' ? 'cpu' : (cat.icon === 'shippingbox' ? 'package' : cat.icon)}" style="color: ${cat.color};"></i>
             <h3>${cat.title}</h3>
             <span class="patchy-category-count">${targets.length}</span>
           </div>
@@ -4748,10 +4825,10 @@
           html += `
             <article class="patchy-target-card" data-patchy-id="${target.id}">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                <div class="command-name" style="color: ${meta.color};"><span class="ms">${meta.icon}</span> ${meta.label}</div>
+                <div class="command-name" style="color: ${meta.color};"><i class="lucide" data-lucide="${meta.icon}"></i> ${meta.label}</div>
                 <div style="display:flex;align-items:center;gap:12px;">
                   <span class="patchy-status-pill" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">
-                    <span class="ms" style="font-size:14px;">${statusIcon}</span>
+                    <i class="lucide" data-lucide="${statusIcon === 'check_circle' ? 'check-circle' : (statusIcon === 'error' ? 'alert-circle' : (statusIcon === 'info' ? 'info' : 'clock'))}" style="width:14px;height:14px;"></i>
                     ${target.lastStatus || 'Ready'}
                   </span>
                   <label class="switch"><input class="patchy-enabled" type="checkbox" ${target.isEnabled ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
@@ -4791,7 +4868,7 @@
                   Role Mentions
                   <button class="field-input patchy-roles-trigger" style="text-align:left;height:auto;min-height:34px;display:flex;align-items:center;justify-content:space-between;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleSummary}</span>
-                    <span class="ms" style="font-size:16px;">expand_more</span>
+                    <i class="lucide" data-lucide="chevron-down" style="width:16px;height:16px;"></i>
                   </button>
                   <div class="patchy-roles-dropdown hidden glass" style="position:absolute;top:100%;left:0;right:0;z-index:10;margin-top:4px;padding:8px;max-height:200px;overflow:auto;">
                     <select class="field-select patchy-roles" multiple style="width:100%;border:0;background:transparent;height:160px;padding:0;">${roleOptionsForServer(target.serverId, target.roleIDs)}</select>
@@ -4846,10 +4923,10 @@
 
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                 <div style="display:flex;gap:8px;">
-                  <button class="mini-btn patchy-pull" type="button" title="Manually pull latest update" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">download</span> Pull</button>
-                  <button class="mini-btn patchy-test" type="button" title="Send a test notification" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">science</span> Test</button>
+                  <button class="mini-btn patchy-pull" type="button" title="Manually pull latest update" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><i class="lucide" data-lucide="download"></i> Pull</button>
+                  <button class="mini-btn patchy-test" type="button" title="Send a test notification" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><i class="lucide" data-lucide="flask-conical"></i> Test</button>
                 </div>
-                <button class="mini-btn patchy-delete" type="button" style="color:#ff3b30;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="ms">delete</span> Delete</button>
+                <button class="mini-btn patchy-delete" type="button" style="color:#ff3b30;" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><i class="lucide" data-lucide="trash-2"></i> Delete</button>
               </div>
             </article>
           `;
@@ -4859,7 +4936,7 @@
       if (patchyData.showDebug) {
         html += `
           <div class="patchy-category-header" style="margin-top:40px;">
-            <span class="ms" style="background: rgba(255,255,255,0.05); color: var(--muted);">terminal</span>
+            <i class="lucide" data-lucide="terminal" style="color: var(--muted);"></i>
             <h3>Activity Log</h3>
           </div>
           <div class="glass" style="padding:12px; border-radius:12px; font-family:var(--font-mono); font-size:11px; max-height:300px; overflow:auto; margin: 0 12px 24px 12px;">
@@ -4939,7 +5016,7 @@
           const btn = e.currentTarget;
           btn.disabled = true;
           const original = btn.innerHTML;
-          btn.innerHTML = '<span class="ms">hourglass_empty</span> Testing...';
+          btn.innerHTML = '<i class="lucide" data-lucide="hourglass" style="width:14px;height:14px;"></i> Testing...';
           await postJSON('/api/patchy/target/test', { targetID });
           await loadPatchy();
           renderPatchyView();
@@ -4951,6 +5028,7 @@
           renderPatchyView();
         });
       });
+      refreshIcons();
     }
 
     function scheduleWikiSourceSave(source) {
@@ -5006,7 +5084,7 @@
       sourcesNode.innerHTML = sources.map(source => `
         <article class="wiki-source-card" data-wiki-id="${source.id}">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-            <div class="command-name"><span class="ms">${source.isPrimary ? 'star' : 'book_2'}</span> ${source.name || 'Wiki Source'}</div>
+            <div class="command-name"><i class="lucide" data-lucide="${source.isPrimary ? 'star' : 'book-open'}"></i> ${source.name || 'Wiki Source'}</div>
             <label class="switch"><input class="wiki-enabled" type="checkbox" ${source.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
           </div>
           <div class="wiki-row">
@@ -5026,9 +5104,9 @@
             <div class="wiki-kv">Last Status<br><strong>${source.lastStatus || 'Never used'}</strong></div>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-            ${source.isPrimary ? '' : '<button class="mini-btn wiki-primary" type="button"><span class="ms">star</span> Set Primary</button>'}
-            <button class="mini-btn wiki-test" type="button"><span class="ms">science</span> Test</button>
-            <button class="mini-btn wiki-delete" type="button"><span class="ms">delete</span> Delete</button>
+            ${source.isPrimary ? '' : '<button class="mini-btn wiki-primary" type="button"><i class="lucide" data-lucide="star"></i> Set Primary</button>'}
+            <button class="mini-btn wiki-test" type="button"><i class="lucide" data-lucide="flask-conical"></i> Test</button>
+            <button class="mini-btn wiki-delete" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>
           </div>
         </article>
       `).join('') || `<div class="placeholder">No WikiBridge sources configured.</div>`;
@@ -5067,6 +5145,7 @@
           renderWikiBridgeView();
         });
       });
+      refreshIcons();
     }
 
     function renderSettingsView() {
@@ -5096,14 +5175,14 @@
 
       panels.innerHTML = `
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">terminal</span> Commands</div>
+          <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Commands</div>
           <div class="setting-row"><div class="left"><div class="title">Enable Command System</div><div class="desc">Master switch for all command handling.</div></div><label class="switch"><input id="setCmdEnabled" type="checkbox" ${cfg.commands.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Slash Commands</div><div class="desc">Allow Discord slash command UI.</div></div><label class="switch"><input id="setCmdSlash" type="checkbox" ${cfg.commands.slashEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Bug Tracking</div><div class="desc">Allow mention-based bug capture flow.</div></div><label class="switch"><input id="setCmdBug" type="checkbox" ${cfg.commands.bugTrackingEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
         </section>
 
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">smart_toy</span> AI Bots</div>
+          <div class="panel-title"><i class="lucide" data-lucide="bot"></i> AI Bots</div>
           <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.aiBots.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable OpenAI</div><div class="desc">Allow OpenAI provider for responses.</div></div><label class="switch"><input id="setAiOpenAI" type="checkbox" ${cfg.aiBots.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable OpenAI Images</div><div class="desc">Allow image generation fallback.</div></div><label class="switch"><input id="setAiImages" type="checkbox" ${cfg.aiBots.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
@@ -5113,18 +5192,18 @@
         </section>
 
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">hub</span> SwiftMesh</div>
+          <div class="panel-title"><i class="lucide" data-lucide="network"></i> SwiftMesh</div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="setMeshMode" class="field-select"><option value="Standalone" ${cfg.swiftMesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${cfg.swiftMesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${cfg.swiftMesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${cfg.swiftMesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="setMeshNode" class="field-input" value="${(cfg.swiftMesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="setMeshLeader" class="field-input" value="${(cfg.swiftMesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="setMeshPort" class="field-input" type="number" min="1" value="${cfg.swiftMesh.listenPort || 0}"></div>
           <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI reply jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadAI" type="checkbox" ${cfg.swiftMesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookup jobs to workers from Primary.</div></div><label class="switch"><input id="setMeshOffloadWiki" type="checkbox" ${cfg.swiftMesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <button id="setMeshSave" class="mini-btn" type="button"><span class="ms">save</span> Save SwiftMesh</button>
+          <button id="setMeshSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save SwiftMesh</button>
         </section>
 
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">extension</span> Integrations</div>
+          <div class="panel-title"><i class="lucide" data-lucide="puzzle"></i> Integrations</div>
           <div class="setting-row"><div class="left"><div class="title">Enable WikiBridge</div><div class="desc">Allow wiki lookups and source routing.</div></div><label class="switch"><input id="setWikiEnabled" type="checkbox" ${cfg.wikiBridge.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Patchy Monitoring</div><div class="desc">Run scheduled Patchy update checks.</div></div><label class="switch"><input id="setPatchyEnabled" type="checkbox" ${cfg.patchy.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="info-row"><span class="label">Wiki Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
@@ -5154,6 +5233,7 @@
           clusterOffloadWikiLookups: !!panels.querySelector('#setMeshOffloadWiki')?.checked
         });
       });
+      refreshIcons();
     }
 
     function renderDiagnosticsView() {
@@ -5185,20 +5265,20 @@
 
       panels.innerHTML = `
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">hub</span> Cluster</div>
+          <div class="panel-title"><i class="lucide" data-lucide="network"></i> Cluster</div>
           <div class="info-list" id="diagClusterInfo"></div>
           <div class="detail-actions"><button id="diagMeshRefresh" class="secondary-action" type="button">Refresh SwiftMesh</button></div>
         </section>
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">smart_toy</span> Bot Info</div>
+          <div class="panel-title"><i class="lucide" data-lucide="bot"></i> Bot Info</div>
           <div class="info-list" id="diagBotInfo"></div>
         </section>
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">record_voice_over</span> Recent Voice</div>
+          <div class="panel-title"><i class="lucide" data-lucide="mic"></i> Recent Voice</div>
           <div class="event-list" id="diagVoice"></div>
         </section>
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">terminal</span> Recent Commands</div>
+          <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Recent Commands</div>
           <div class="event-list" id="diagCommands"></div>
         </section>
       `;
@@ -5264,13 +5344,13 @@
 
       panels.innerHTML = `
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">tune</span> Runtime</div>
+          <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Runtime</div>
           <div class="setting-row"><div class="left"><div class="title">DM AI Replies</div><div class="desc">Automatically reply in direct messages.</div></div><label class="switch"><input id="aiDm" type="checkbox" ${cfg.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">OpenAI Provider</div><div class="desc">Enable OpenAI fallback and direct use.</div></div><label class="switch"><input id="aiOpenAI" type="checkbox" ${cfg.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">OpenAI Images</div><div class="desc">Allow image generation requests.</div></div><label class="switch"><input id="aiImages" type="checkbox" ${cfg.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">model_training</span> Model Settings</div>
+          <div class="panel-title"><i class="lucide" data-lucide="brain"></i> Model Settings</div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Preferred Provider</label><select id="aiProvider" class="field-select"><option value="apple" ${cfg.preferredProvider === 'apple' ? 'selected' : ''}>Apple</option><option value="ollama" ${cfg.preferredProvider === 'ollama' ? 'selected' : ''}>Ollama</option><option value="openAI" ${cfg.preferredProvider === 'openAI' ? 'selected' : ''}>OpenAI</option></select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">OpenAI Model</label><input id="aiModel" class="field-input" value="${(cfg.openAIModel || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Image Limit / User</label><input id="aiImageLimit" class="field-input" type="number" min="0" value="${cfg.openAIImageMonthlyLimitPerUser}"></div>
@@ -5285,7 +5365,7 @@
       panels.querySelector('#aiImageLimit')?.addEventListener('change', e => saveConfigPatch({ openAIImageMonthlyLimitPerUser: Number(e.target.value || 0) }));
     }
 
-    function renderLogsView() {
+    function renderActivityView() {
       if (!dashboardOverview || !dashboardStatus) return;
       const top = document.getElementById('logsTop');
       const panels = document.getElementById('logsPanels');
@@ -5313,11 +5393,11 @@
 
       panels.innerHTML = `
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">terminal</span> Command Log</div>
+          <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Command Log</div>
           <div class="event-list" id="logsCommands"></div>
         </section>
         <section class="diagnostics-panel glass">
-          <div class="panel-title"><span class="ms">record_voice_over</span> Voice Log</div>
+          <div class="panel-title"><i class="lucide" data-lucide="mic"></i> Voice Log</div>
           <div class="event-list" id="logsVoice"></div>
         </section>
       `;
@@ -5336,7 +5416,7 @@
       `);
     }
 
-    function renderMediaView() {
+    function renderRecordingsView() {
       if (!mediaLibraryData) return;
       const header = document.getElementById('mediaHeader');
       const panels = document.getElementById('mediaPanels');
@@ -5349,10 +5429,10 @@
 
       if (mediaViewMode === 'player') {
         header.innerHTML = `
-          <div class="section-mini-title"><span class="ms">video_library</span> Recordings</div>
+          <div class="section-mini-title"><i class="lucide" data-lucide="film"></i> Recordings</div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <div style="font-size:12px;color:var(--muted);">Now playing</div>
-            <button id="mediaBackToLibrary" class="mini-btn" type="button"><span class="ms">arrow_back</span> Back to Library</button>
+            <button id="mediaBackToLibrary" class="mini-btn" type="button"><i class="lucide" data-lucide="arrow-left"></i> Back to Library</button>
             ${ffmpegPillHTML()}
           </div>
         `;
@@ -5391,7 +5471,7 @@
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <span class="chip">${selected.fileExtension.toUpperCase()}</span>
                     <button id="mediaQualityToggle" class="mini-btn" type="button" title="Use a lower-bitrate transcode if the original buffers. The first switch may take a few seconds while the variant is generated.">
-                      <span class="ms">${mediaExportState.playbackQuality === 'low' ? 'hd' : 'sd'}</span>
+                      <i class="lucide" data-lucide="${mediaExportState.playbackQuality === 'low' ? 'monitor-play' : 'monitor'}"></i>
                       ${mediaExportState.playbackQuality === 'low' ? 'Lower quality' : 'Auto quality'}
                     </button>
                   </div>
@@ -5402,7 +5482,7 @@
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
           </section>
           <section class="settings-panel glass">
-            <div class="panel-title"><span class="ms">content_cut</span> Clip</div>
+            <div class="panel-title"><i class="lucide" data-lucide="scissors"></i> Clip</div>
             ${mediaExportStatus && !mediaExportStatus.installed ? `
               <div class="placeholder" style="margin:0;">Exports are currently unavailable on this node.</div>
             ` : ''}
@@ -5416,8 +5496,8 @@
               </div>
               <div id="primaryTimelineMetaClip" class="timeline-meta"></div>
               <div class="timeline-actions">
-                <button id="primaryExtendClip" class="mini-btn" type="button"><span class="ms">expand</span> Extend +10s</button>
-                <button id="primaryTrimClip" class="mini-btn" type="button"><span class="ms">compress</span> Trim -10s</button>
+                <button id="primaryExtendClip" class="mini-btn" type="button"><i class="lucide" data-lucide="maximize-2"></i> Extend +10s</button>
+                <button id="primaryTrimClip" class="mini-btn" type="button"><i class="lucide" data-lucide="minimize-2"></i> Trim -10s</button>
               </div>
             </div>
             <div style="font-size:11px;color:var(--muted);margin-top:6px;">This window is shared with the multiview primary timeline.</div>
@@ -5427,11 +5507,11 @@
             </div>
             <div style="font-size:11px;color:var(--muted);margin-top:8px;">Max clip length: 15 minutes.</div>
             <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button id="clipExportStart" class="mini-btn" type="button"><span class="ms">movie_edit</span> Create Clip</button>
+              <button id="clipExportStart" class="mini-btn" type="button"><i class="lucide" data-lucide="clapperboard"></i> Create Clip</button>
             </div>
           </section>
           <section class="settings-panel glass">
-            <div class="panel-title"><span class="ms">view_carousel</span> Multiview</div>
+            <div class="panel-title"><i class="lucide" data-lucide="layout-grid"></i> Multiview</div>
             <div class="field-label">Second clip</div>
             <select id="multiSecondary" class="field-select">${secondaryOptions || '<option value=\"\">No other clips</option>'}</select>
             <div class="timeline-card" style="margin-top:10px;">
@@ -5454,7 +5534,7 @@
               </div>
               <div id="secondaryTimelineMeta" class="timeline-meta"></div>
               <div class="timeline-actions">
-                <button id="alignSecondary" class="mini-btn" type="button"><span class="ms">align_horizontal_left</span> Align to primary</button>
+                <button id="alignSecondary" class="mini-btn" type="button"><i class="lucide" data-lucide="align-left"></i> Align to primary</button>
               </div>
             </div>
             <div class="field-row" style="margin-top:10px;">
@@ -5478,11 +5558,11 @@
               <input id="multiName" class="field-input" placeholder="Multi_view.mp4" value="${mediaExportState.multiName || ''}">
             </div>
             <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-              <button id="multiExportStart" class="mini-btn" type="button"><span class="ms">auto_awesome_mosaic</span> Create Multiview</button>
+              <button id="multiExportStart" class="mini-btn" type="button"><i class="lucide" data-lucide="grid"></i> Create Multiview</button>
             </div>
           </section>
           <section class="settings-panel glass full-span">
-            <div class="panel-title"><span class="ms">pending_actions</span> Export Jobs</div>
+            <div class="panel-title"><i class="lucide" data-lucide="clock"></i> Export Jobs</div>
             <div class="event-list">${jobsHTML}</div>
           </section>
         `;
@@ -5783,21 +5863,21 @@
       ].map(([value, label]) => `<option value="${value}" ${mediaFilterState.dateRange === value ? 'selected' : ''}>${label}</option>`).join('');
 
       header.innerHTML = `
-        <div class="section-mini-title"><span class="ms">video_library</span> Recordings</div>
+        <div class="section-mini-title"><i class="lucide" data-lucide="film"></i> Recordings</div>
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div>
-            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">filter_alt</span> Source</div>
+            <div class="field-label"><i class="lucide" data-lucide="filter" style="width:14px;height:14px;vertical-align:-2px;"></i> Source</div>
             <select id="mediaSourceFilter" class="field-select" style="min-width:220px;">${sourceOptions}</select>
           </div>
           <div>
-            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">sports_esports</span> Game</div>
+            <div class="field-label"><i class="lucide" data-lucide="gamepad-2" style="width:14px;height:14px;vertical-align:-2px;"></i> Game</div>
             <select id="mediaGameFilter" class="field-select" style="min-width:200px;">${gameOptions}</select>
           </div>
           <div>
-            <div class="field-label"><span class="ms" style="font-size:14px;vertical-align:-2px;">calendar_month</span> Date</div>
+            <div class="field-label"><i class="lucide" data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px;"></i> Date</div>
             <select id="mediaDateFilter" class="field-select" style="min-width:180px;">${dateOptions}</select>
           </div>
-          <button id="mediaApplyFilters" class="mini-btn" type="button"><span class="ms">filter_alt</span> Filter</button>
+          <button id="mediaApplyFilters" class="mini-btn" type="button"><i class="lucide" data-lucide="filter"></i> Filter</button>
           <div style="min-width:180px;text-align:right;">
             <div class="field-label" style="margin-bottom:4px;">Results</div>
             <div style="font-size:13px;color:var(--muted);">${mediaLibraryData.totalItems || 0} items · page ${mediaLibraryData.page || 1} of ${mediaLibraryData.totalPages || 1}</div>
@@ -5819,7 +5899,7 @@
         <article class="glass ${selected && selected.id === item.id ? 'ok' : ''}" data-media-id="${item.id}" title="${item.fileName}" style="cursor:pointer;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;gap:0;min-height:248px;">
           <div style="aspect-ratio:16 / 9;background:rgba(10,14,22,0.35);display:flex;align-items:center;justify-content:center;position:relative;">
             <img src="${thumbnailURL}" alt="${item.fileName}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-            <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><span class="ms" style="font-size:34px;">movie</span></div>
+            <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><i class="lucide" data-lucide="film" style="width:34px;height:34px;"></i></div>
             <video class="hover-preview" muted playsinline loop preload="none" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
           </div>
           <div style="padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;">
@@ -5847,8 +5927,8 @@
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;">
             <div style="font-size:12px;color:var(--muted);">Latest scan ${formatTime(mediaLibraryData.generatedAt)}</div>
             <div style="display:flex;gap:8px;">
-              <button id="mediaPrevPage" class="mini-btn" type="button" ${mediaLibraryData.page <= 1 ? 'disabled' : ''}><span class="ms">chevron_left</span> Prev</button>
-              <button id="mediaNextPage" class="mini-btn" type="button" ${mediaLibraryData.page >= mediaLibraryData.totalPages ? 'disabled' : ''}>Next <span class="ms">chevron_right</span></button>
+              <button id="mediaPrevPage" class="mini-btn" type="button" ${mediaLibraryData.page <= 1 ? 'disabled' : ''}><i class="lucide" data-lucide="chevron-left"></i> Prev</button>
+              <button id="mediaNextPage" class="mini-btn" type="button" ${mediaLibraryData.page >= mediaLibraryData.totalPages ? 'disabled' : ''}>Next <i class="lucide" data-lucide="chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -6093,15 +6173,15 @@
 
       panels.innerHTML = `
         <section class="settings-panel glass full-span">
-          <div class="panel-title"><span class="ms">account_tree</span> Cluster Map</div>
+          <div class="panel-title"><i class="lucide" data-lucide="share-2"></i> Cluster Map</div>
           <div id="meshTopologyMap" class="mesh-map-panel"></div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">cpu</span> Nodes</div>
+          <div class="panel-title"><i class="lucide" data-lucide="cpu"></i> Nodes</div>
           <div id="meshNodesList"></div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">hub</span> Node Configuration</div>
+          <div class="panel-title"><i class="lucide" data-lucide="network"></i> Node Configuration</div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${mesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${(mesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
           <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="meshLeader" class="field-input" value="${(mesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
@@ -6109,12 +6189,12 @@
           <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI replies to workers when Primary.</div></div><label class="switch"><input id="meshOffloadAI" type="checkbox" ${mesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookups to workers when Primary.</div></div><label class="switch"><input id="meshOffloadWiki" type="checkbox" ${mesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div style="display:flex;gap:8px;">
-            <button id="meshSave" class="mini-btn" type="button"><span class="ms">save</span> Save</button>
-            <button id="meshRefresh" class="mini-btn" type="button"><span class="ms">refresh</span> Refresh</button>
+            <button id="meshSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save</button>
+            <button id="meshRefresh" class="mini-btn" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
           </div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">monitoring</span> Runtime</div>
+          <div class="panel-title"><i class="lucide" data-lucide="activity"></i> Runtime</div>
           <div class="info-row"><span class="label">Leader</span><span class="value">${cluster.leader || '-'}</span></div>
           <div class="info-row"><span class="label">Connected Nodes</span><span class="value">${cluster.connectedNodes || 0}</span></div>
           <div class="info-row"><span class="label">Mode</span><span class="value">${cluster.mode || '-'}</span></div>
@@ -6184,7 +6264,7 @@
 
       panels.innerHTML = `
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">palette</span> Appearance</div>
+          <div class="panel-title"><i class="lucide" data-lucide="palette"></i> Appearance</div>
           <div class="setting-inline">
             <label class="field-label" style="margin:0;">Theme</label>
             <select id="prefsTheme" class="field-select">
@@ -6201,10 +6281,10 @@
           <div class="setting-row"><div class="left"><div class="title">Compact Density</div><div class="desc">Use denser spacing for cards and rows.</div></div><label class="switch"><input id="prefsCompact" type="checkbox" ${userPrefs.compactMode ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><span class="ms">settings_backup_restore</span> Behavior</div>
+          <div class="panel-title"><i class="lucide" data-lucide="rotate-ccw"></i> Behavior</div>
           <div class="setting-row"><div class="left"><div class="title">Remember Last Tab</div><div class="desc">Re-open the last selected page on next sign-in.</div></div><label class="switch"><input id="prefsRememberTab" type="checkbox" ${userPrefs.rememberLastTab ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Reset Preferences</div><div class="desc">Restore WebUI preferences for this user.</div></div><button id="prefsReset" class="mini-btn" type="button"><span class="ms">restart_alt</span> Reset</button></div>
-          <div class="setting-row"><div class="left"><div class="title">Session</div><div class="desc">Sign out of this WebUI session.</div></div><button id="prefsLogout" class="mini-btn" type="button"><span class="ms">logout</span> Log out</button></div>
+          <div class="setting-row"><div class="left"><div class="title">Reset Preferences</div><div class="desc">Restore WebUI preferences for this user.</div></div><button id="prefsReset" class="mini-btn" type="button"><i class="lucide" data-lucide="refresh-ccw"></i> Reset</button></div>
+          <div class="setting-row"><div class="left"><div class="title">Session</div><div class="desc">Sign out of this WebUI session.</div></div><button id="prefsLogout" class="mini-btn" type="button"><i class="lucide" data-lucide="log-out"></i> Log out</button></div>
         </section>
       `;
 
@@ -6259,17 +6339,17 @@
         secondaryTitle: 'Health',
         eventsTitle: 'Live Operations'
       },
-      actions: {
-        title: 'Actions',
-        icon: 'rule',
-        copy: 'Actions configuration is currently read-only on WebUI.',
-        primaryTitle: 'Action Engine',
+      voice: {
+        title: 'Automations',
+        icon: 'bolt',
+        copy: 'Custom workflows and automated responses.',
+        primaryTitle: 'Automation Engine',
         secondaryTitle: 'Runtime',
-        eventsTitle: 'Recent Commands'
+        eventsTitle: 'Recent Activity'
       },
       patchy: {
         title: 'Patchy',
-        icon: 'construction',
+        icon: 'download_done',
         copy: 'Patch monitoring status with runtime enable/disable.',
         primaryTitle: 'Patchy Status',
         secondaryTitle: 'Monitoring',
@@ -6291,7 +6371,7 @@
         secondaryTitle: 'Provider',
         eventsTitle: 'Recent Commands'
       },
-      media: {
+      recordings: {
         title: 'Recordings',
         icon: 'video_library',
         copy: 'Unified gameplay library across connected SwiftMesh nodes.',
@@ -6315,9 +6395,9 @@
         secondaryTitle: 'Bot Health',
         eventsTitle: 'Recent Voice'
       },
-      logs: {
-        title: 'Logs',
-        icon: 'history',
+      activity: {
+        title: 'Activity',
+        icon: 'assignment',
         copy: 'Recent runtime activity from commands and voice.',
         primaryTitle: 'Commands',
         secondaryTitle: 'Voice',
@@ -6351,7 +6431,7 @@
       const leader = dashboardOverview?.cluster?.leader || dashboardConfig?.swiftMesh?.leaderAddress || '-';
       const nodeName = dashboardConfig?.swiftMesh?.nodeName || '-';
       const connectedNodes = String(dashboardOverview?.cluster?.connectedNodes || 0);
-      document.getElementById('sectionLabel').innerHTML = `<span class="ms" style="font-size:14px;">sync_alt</span>Failover Mode`;
+      document.getElementById('sectionLabel').innerHTML = `<i class="lucide" data-lucide="repeat" style="width:14px;height:14px;margin-right:6px;"></i>Failover Mode`;
       document.getElementById('sectionTitle').textContent = 'Failover Mode Active';
       document.getElementById('sectionCopy').textContent = 'This node is standing by for promotion. Configuration edits are disabled in Web UI while synced from Primary.';
       document.getElementById('sectionPrimaryTitle').textContent = 'Node Status';
@@ -6415,7 +6495,7 @@
             { label: 'Commands Run', value: metricLookup('Commands Run') }
           ];
           break;
-        case 'actions':
+        case 'voice':
           primaryRows = [
             { label: 'Active Rules', value: metricLookup('Active Actions') },
             { label: 'Bot State', value: status.botStatus }
@@ -6487,7 +6567,7 @@
             </div>
           `;
           break;
-        case 'logs':
+        case 'activity':
           primaryRows = [
             { label: 'Recent Commands', value: String(recentCommands.length) },
             { label: 'Recent Voice Events', value: String(recentVoice.length) }
@@ -6522,7 +6602,7 @@
           secondaryRows = [{ label: 'Servers', value: String(status.connectedServerCount) }];
       }
 
-      document.getElementById('sectionLabel').innerHTML = `<span class="ms" style="font-size:14px;">${selected.icon}</span>${selected.title}`;
+      document.getElementById('sectionLabel').innerHTML = `<i class="lucide" data-lucide="${selected.icon}" style="width:14px;height:14px;margin-right:6px;"></i>${selected.title}`;
       document.getElementById('sectionTitle').textContent = selected.title;
       document.getElementById('sectionCopy').textContent = selected.copy;
       document.getElementById('sectionPrimaryTitle').textContent = selected.primaryTitle;
@@ -6531,10 +6611,11 @@
       renderInfoRows('sectionPrimaryInfo', primaryRows);
       renderInfoRows('sectionSecondaryInfo', secondaryRows);
       renderEvents('sectionEvents', events, emptyText, formatter);
-      renderSectionControls(view, config);
-    }
+      renderSectionControls(view, dashboardConfig);
+      refreshIcons();
+      }
 
-    function renderSectionControls(view, config) {
+      function renderSectionControls(view, config) {
       const eventsNode = document.getElementById('sectionEvents');
       if (!eventsNode) return;
       const controls = document.createElement('div');
@@ -6586,11 +6667,11 @@
         eventsNode.prepend(controls);
         controls.querySelector('#cfgDmAiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
         controls.querySelector('#cfgOpenAIEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ openAIEnabled: e.target.checked }));
-      } else if (view === 'actions') {
-        controls.innerHTML = `<div class="placeholder">Actions editing is currently available in the native app. Web parity will follow with rule CRUD and block editing.</div>`;
+      } else if (view === 'voice') {
+        controls.innerHTML = `<div class="placeholder">Automations editing is currently available in the native app. Web parity will follow with rule CRUD and block editing.</div>`;
         eventsNode.prepend(controls);
-      } else if (view === 'diagnostics' || view === 'logs') {
-        controls.innerHTML = `<div class="placeholder">Read-only runtime feed mirrors native diagnostics/log surfaces.</div>`;
+      } else if (view === 'diagnostics' || view === 'activity') {
+        controls.innerHTML = `<div class="placeholder">Read-only runtime feed mirrors native diagnostics/activity surfaces.</div>`;
         eventsNode.prepend(controls);
       }
     }
@@ -6608,16 +6689,16 @@
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
       const aibots = document.getElementById('aibotsView');
-      const media = document.getElementById('mediaView');
-      const logs = document.getElementById('logsView');
+      const recordings = document.getElementById('recordingsView');
+      const activity = document.getElementById('activityView');
       const swiftmesh = document.getElementById('swiftmeshView');
       const userprefs = document.getElementById('userPrefsView');
-      const actions = document.getElementById('actionsView');
+      const voice = document.getElementById('voiceView');
       const section = document.getElementById('sectionView');
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, wikibridge, settings, diagnostics, aibots, media, logs, swiftmesh, userprefs, actions, section]
+        [overview, commands, analytics, patchy, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
 
@@ -6641,11 +6722,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         if (mobileSubtitle) mobileSubtitle.textContent = 'Overview';
         setMessage('', '');
@@ -6662,11 +6743,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderCommandsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Commands';
@@ -6679,11 +6760,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderPatchyView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Patchy';
@@ -6712,11 +6793,11 @@
         settings.classList.remove('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderSettingsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Settings';
@@ -6729,11 +6810,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.remove('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderDiagnosticsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Diagnostics';
@@ -6746,16 +6827,16 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.remove('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderAIBotsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
         setMessage('', '');
-      } else if (view === 'media') {
+      } else if (view === 'recordings') {
         overview.classList.add('hidden');
         commands.classList.add('hidden');
         patchy.classList.add('hidden');
@@ -6763,16 +6844,16 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.remove('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.remove('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
-        renderMediaView();
+        renderRecordingsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Recordings';
         setMessage('', '');
-      } else if (view === 'logs') {
+      } else if (view === 'activity') {
         overview.classList.add('hidden');
         commands.classList.add('hidden');
         patchy.classList.add('hidden');
@@ -6780,13 +6861,13 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.remove('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.remove('hidden');
         swiftmesh.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
-        renderLogsView();
-        if (mobileSubtitle) mobileSubtitle.textContent = 'Logs';
+        renderActivityView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Activity';
         setMessage('', '');
       } else if (view === 'swiftmesh') {
         overview.classList.add('hidden');
@@ -6796,11 +6877,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.remove('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderSwiftMeshView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'SwiftMesh';
@@ -6813,16 +6894,16 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.remove('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.add('hidden');
         renderUserPrefsView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'User Settings';
         setMessage('', '');
-      } else if (view === 'actions') {
+      } else if (view === 'voice') {
         overview.classList.add('hidden');
         commands.classList.add('hidden');
         patchy.classList.add('hidden');
@@ -6830,13 +6911,13 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        logs.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.remove('hidden');
+        voice.classList.remove('hidden');
         section.classList.add('hidden');
-        renderActionsView();
-        if (mobileSubtitle) mobileSubtitle.textContent = 'Actions';
+        renderVoiceView();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Automations';
         setMessage('', '');
       } else {
         overview.classList.add('hidden');
@@ -6846,11 +6927,11 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        media.classList.add('hidden');
-        logs.classList.add('hidden');
+        recordings.classList.add('hidden');
+        activity.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
+        voice.classList.add('hidden');
         section.classList.remove('hidden');
         renderSectionView(view);
         if (mobileSubtitle) mobileSubtitle.textContent = selected?.title ?? view;
@@ -6866,6 +6947,12 @@
       sidebar.classList.remove('open');
     }
 
+    function refreshIcons() {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+
     async function bootstrap() {
       buildAnimatedBackground();
       await loadAuthOptions();
@@ -6879,7 +6966,7 @@
       showDashboard();
       await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'analytics', 'commands', 'actions', 'patchy', 'wikibridge', 'aibots', 'media', 'settings', 'diagnostics', 'logs', 'swiftmesh']);
+      const allowed = new Set(['overview', 'analytics', 'commands', 'voice', 'patchy', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
     }
 
@@ -7008,7 +7095,7 @@
     <div class="modal glass">
       <div class="modal-header">
         <div class="modal-title" id="modalTitle">Modal Title</div>
-        <button class="mini-btn" onclick="hideModal()"><span class="ms">close</span></button>
+        <button class="mini-btn" onclick="hideModal()"><i class="lucide" data-lucide="x"></i></button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>

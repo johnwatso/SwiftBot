@@ -46,6 +46,9 @@ targets:
       - path: SwiftBotApp/Resources/admin
         type: folder
         buildPhase: resources
+      - path: SwiftBotApp/Resources/AppIcon.png
+        type: file
+        buildPhase: resources
       - path: SwiftBot.icon
         type: file
         buildPhase: resources
@@ -77,6 +80,7 @@ targets:
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
+        ARCHS: arm64
         INFOPLIST_FILE: SwiftBot-Info.plist
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: SwiftBot
@@ -148,6 +152,7 @@ targets:
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
+        ARCHS: arm64
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/SwiftBot.app/Contents/MacOS/SwiftBot"
         BUNDLE_LOADER: "$(TEST_HOST)"
@@ -170,6 +175,7 @@ targets:
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
+        ARCHS: arm64
 
 schemes:
   SwiftBot:

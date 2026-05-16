@@ -244,7 +244,15 @@ final class CommandProcessorTests: XCTestCase {
                 generateHelpReply: { _, _ in nil },
                 rollDice: { notation in notation == "1d6" ? "rolled" : nil },
                 generateImageCommand: { _, _, _, _ in true },
-                authorId: { _ in "user-1" },
+                authorId: { raw in
+                    guard let author = raw["author"] else { return "user-1" }
+                    if case let .object(map) = author,
+                       let idVal = map["id"],
+                       case let .string(id) = idVal {
+                        return id
+                    }
+                    return "user-1"
+                },
                 clusterCommand: { _, _ in true },
                 setNotificationChannel: { _, _ in true },
                 updateIgnoredChannels: { _, _, _ in true },

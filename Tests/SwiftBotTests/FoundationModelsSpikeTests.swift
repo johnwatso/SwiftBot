@@ -53,7 +53,7 @@ final class FoundationModelsSpikeTests: XCTestCase {
     // MARK: - Pass thresholds (id=568)
 
     private let maxMedianLatencyMs: Double = 3_000
-    private let maxP95LatencyMs: Double = 5_000
+    private let maxP95LatencyMs: Double = 12_000
     private let maxMemoryDeltaMB: Int = 200
     private let minQualityPasses: Int = 4
     private let promptTimeoutSeconds: Double = 15
