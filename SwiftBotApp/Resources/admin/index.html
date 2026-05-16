@@ -187,8 +187,6 @@
     }
 
     .bg-icon {
-      font-family: "Material Symbols Rounded";
-      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 48;
       font-size: 64px !important;
       line-height: 1;
       color: var(--bg-symbol-color);
@@ -788,9 +786,6 @@
       place-items: center;
       background: var(--nav-icon-bg);
       color: var(--icon-color);
-      font-family: "Material Symbols Rounded";
-      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
-      font-size: 16px;
     }
 
     .stat-detail {
@@ -902,9 +897,6 @@
       cursor: pointer;
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      font-family: "Material Symbols Rounded";
-      font-variation-settings: "FILL" 1, "wght" 600, "GRAD" 0, "opsz" 24;
-      font-size: 16px;
     }
 
     .stat-card,
@@ -1041,9 +1033,6 @@
       place-items: center;
       background: var(--nav-icon-bg);
       color: var(--icon-color);
-      font-family: "Material Symbols Rounded";
-      font-size: 14px;
-      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
     }
 
     .analytics-feed-title {
@@ -1374,14 +1363,13 @@
       margin-bottom: 12px;
       padding: 0 4px;
     }
-    .patchy-category-header .ms {
+    .patchy-category-header .lucide {
       width: 32px;
       height: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 8px;
-      font-size: 18px;
     }
     .patchy-category-header h3 {
       margin: 0;
@@ -1528,12 +1516,9 @@
 
     .mesh-node-icon {
       width: 24px;
-      text-align: center;
+      display: grid;
+      place-items: center;
       color: var(--muted);
-      font-family: "Material Symbols Rounded";
-      font-size: 18px;
-      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 20;
-      line-height: 1;
     }
 
     .mesh-node-name {
@@ -2474,7 +2459,7 @@
 
         <section id="voiceView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="scale"></i> Actions</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="zap"></i> Actions</div>
           </div>
           <div class="actions-shell">
             <section class="actions-column glass">
@@ -2586,7 +2571,7 @@
     const actionConditionMeta = {
       'Server Is': { icon: 'server', desc: 'Match events from one specific server.' },
       'Voice Channel Is': { icon: 'mic', desc: 'Run only when users join a selected channel.' },
-      'Username Contains': { icon: 'user-search', desc: 'Filter by usernames containing text.' },
+      'Username Contains': { icon: 'search', desc: 'Filter by usernames containing text.' },
       'Duration In Channel': { icon: 'clock', desc: 'Require a minimum voice duration.' }
     };
     const actionTypeMeta = {
@@ -4134,7 +4119,7 @@
       return blocks.map((block, idx) => {
         const meta = allBlockMeta.find(m => m.id === block.type) || { 
           name: block.type, 
-          symbol: 'widgets',
+          symbol: 'layout-grid',
           fields: [],
           description: ''
         };
@@ -4450,18 +4435,18 @@
     const PATCHY_CATEGORIES = [
       { id: 'drivers', title: 'Drivers Monitoring', shortTitle: 'Drivers', icon: 'cpu', color: '#2563EB' },
       { id: 'github', title: 'GitHub Monitoring', shortTitle: 'GitHub', icon: 'code', color: '#4F46E5' },
-      { id: 'gaming', title: 'Gaming Platforms', shortTitle: 'Gaming', icon: 'sports_esports', color: '#9333EA' },
-      { id: 'software', title: 'Software Releases', shortTitle: 'Software', icon: 'shippingbox', color: '#0D9488' }
+      { id: 'gaming', title: 'Gaming Platforms', shortTitle: 'Gaming', icon: 'gamepad-2', color: '#9333EA' },
+      { id: 'software', title: 'Software Releases', shortTitle: 'Software', icon: 'package', color: '#0D9488' }
     ];
 
     function patchySourceMeta(kind) {
       const k = (kind || '').toLowerCase();
-      if (k === 'nvidia') return { icon: 'memory', label: 'NVIDIA', category: 'drivers', color: '#76B900' };
-      if (k === 'amd') return { icon: 'developer_board', label: 'AMD', category: 'drivers', color: '#ED1C24' };
-      if (k === 'intel arc') return { icon: 'developer_mode', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
-      if (k === 'steam') return { icon: 'sports_esports', label: 'Steam', category: 'gaming', color: '#2563EB' };
+      if (k === 'nvidia') return { icon: 'cpu', label: 'NVIDIA', category: 'drivers', color: '#76B900' };
+      if (k === 'amd') return { icon: 'circuit-board', label: 'AMD', category: 'drivers', color: '#ED1C24' };
+      if (k === 'intel arc') return { icon: 'monitor', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
+      if (k === 'steam') return { icon: 'gamepad-2', label: 'Steam', category: 'gaming', color: '#2563EB' };
       if (k === 'github') return { icon: 'code', label: 'GitHub', category: 'github', color: '#7C3AED' };
-      return { icon: 'update', label: kind || 'Source', category: 'software', color: '#6366F1' };
+      return { icon: 'refresh-cw', label: kind || 'Source', category: 'software', color: '#6366F1' };
     }
 
     function formatTime(value) {
@@ -5007,7 +4992,7 @@
           const btn = e.currentTarget;
           btn.disabled = true;
           const original = btn.innerHTML;
-          btn.innerHTML = '<span class="ms spin">sync</span> Pulling...';
+          btn.innerHTML = '<i class="lucide spin" data-lucide="refresh-cw"></i> Pulling...';
           await postJSON('/api/patchy/target/pull', { targetID });
           await loadPatchy();
           renderPatchyView();
@@ -6341,7 +6326,7 @@
       },
       voice: {
         title: 'Automations',
-        icon: 'bolt',
+        icon: 'zap',
         copy: 'Custom workflows and automated responses.',
         primaryTitle: 'Automation Engine',
         secondaryTitle: 'Runtime',
@@ -6349,7 +6334,7 @@
       },
       patchy: {
         title: 'Patchy',
-        icon: 'download_done',
+        icon: 'download',
         copy: 'Patch monitoring status with runtime enable/disable.',
         primaryTitle: 'Patchy Status',
         secondaryTitle: 'Monitoring',
@@ -6357,7 +6342,7 @@
       },
       wikibridge: {
         title: 'WikiBridge',
-        icon: 'menu_book',
+        icon: 'book-open',
         copy: 'WikiBridge status and source controls.',
         primaryTitle: 'WikiBridge',
         secondaryTitle: 'Source Status',
@@ -6365,7 +6350,7 @@
       },
       aibots: {
         title: 'AI Bots',
-        icon: 'smart_toy',
+        icon: 'bot',
         copy: 'Provider runtime and key AI settings.',
         primaryTitle: 'AI Runtime',
         secondaryTitle: 'Provider',
@@ -6373,7 +6358,7 @@
       },
       recordings: {
         title: 'Recordings',
-        icon: 'video_library',
+        icon: 'film',
         copy: 'Unified gameplay library across connected SwiftMesh nodes.',
         primaryTitle: 'Libraries',
         secondaryTitle: 'Preview',
@@ -6389,7 +6374,7 @@
       },
       diagnostics: {
         title: 'Diagnostics',
-        icon: 'monitoring',
+        icon: 'activity',
         copy: 'Live diagnostics snapshot for connectivity and uptime.',
         primaryTitle: 'Connection Health',
         secondaryTitle: 'Bot Health',
@@ -6397,7 +6382,7 @@
       },
       activity: {
         title: 'Activity',
-        icon: 'assignment',
+        icon: 'clipboard-list',
         copy: 'Recent runtime activity from commands and voice.',
         primaryTitle: 'Commands',
         secondaryTitle: 'Voice',
@@ -6405,7 +6390,7 @@
       },
       swiftmesh: {
         title: 'SwiftMesh',
-        icon: 'hub',
+        icon: 'network',
         copy: 'Cluster node and routing status with live refresh.',
         primaryTitle: 'Mesh Status',
         secondaryTitle: 'Routing',
@@ -6421,9 +6406,9 @@
     }
 
     function isFailoverWebLocked(view) {
-      const mode = String(dashboardConfig?.swiftMesh?.mode || '').toLowerCase();
-      if (mode !== 'standby') return false;
-      return view !== 'media';
+      if (!dashboardStatus || !dashboardStatus.isFailoverManagedNode) return false;
+      const locked = ['settings', 'voice', 'commands', 'aibots', 'patchy', 'wikibridge', 'recordings'];
+      return locked.includes(view);
     }
 
     function renderFailoverModeView(requestedView) {
@@ -6459,6 +6444,7 @@
           <div class="event-title">${item.description}</div>
         </div>
       `);
+      refreshIcons();
     }
 
     function renderSectionView(view) {
@@ -7052,9 +7038,9 @@
       const stream = document.getElementById('bgStream');
       if (!stream || stream.style.display === 'none') return;
       const icons = [
-        'menu_book', 'construction', 'terminal', 'monitoring', 'auto_awesome', 'hub',
-        'dns', 'groups', 'settings_suggest', 'memory', 'handyman', 'bolt',
-        'smart_toy', 'merge', 'update', 'shield'
+        'book-open', 'wrench', 'terminal', 'activity', 'sparkles', 'network',
+        'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
+        'bot', 'git-merge', 'refresh-cw', 'shield'
       ];
       const rowStep = 88;
       const verticalBuffer = 2000;
@@ -7070,16 +7056,17 @@
 
         const stride = [3, 5, 7][row % 3];
         const offset = (row * 5) % icons.length;
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 12; i++) {
           const iconID = icons[(i * stride + offset) % icons.length];
-          const icon = document.createElement('span');
-          icon.className = 'bg-icon ms';
-          icon.textContent = iconID;
+          const icon = document.createElement('i');
+          icon.className = 'bg-icon lucide';
+          icon.dataset.lucide = iconID;
           line.appendChild(icon);
         }
 
         stream.appendChild(line);
       }
+      refreshIcons();
     }
 
     bootstrap().catch(error => {
