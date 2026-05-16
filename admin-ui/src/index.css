@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background: #0a0c14;
+    color: rgb(226 232 240);
+    -webkit-font-smoothing: antialiased;
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, system-ui,
+      sans-serif;
+  }
+}
+
+@layer utilities {
+  @keyframes fadeInUpScale {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .animate-in {
+    animation: fadeInUpScale 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}

@@ -2258,6 +2258,664 @@
       gap: 10px;
       margin-top: 24px;
     }
+
+    /* ============================================================
+       CANVAS DESIGN SYSTEM — admin overlay
+       Premium glass/dark style with staggered fade-in animations.
+       Loaded last so it overrides earlier rules. Scoped to the
+       admin shell (#appShell) so the auth/login screen is untouched.
+       ============================================================ */
+
+    @keyframes cv-fade-in-up {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes cv-wave {
+      0%, 60%, 100% { transform: rotate(0deg); }
+      10% { transform: rotate(14deg); }
+      20% { transform: rotate(-8deg); }
+      30% { transform: rotate(14deg); }
+      40% { transform: rotate(-4deg); }
+      50% { transform: rotate(10deg); }
+    }
+    .cv-wave {
+      display: inline-block;
+      transform-origin: 70% 70%;
+      animation: cv-wave 2.6s ease-in-out 0.6s infinite;
+    }
+
+    @keyframes cv-pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(0.92); }
+    }
+
+    .cv-animate-in {
+      animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+    .cv-pulse { animation: cv-pulse-dot 2s ease-in-out infinite; }
+
+    /* Background mesh — two blurred color blobs and a faint vignette */
+    #appShell::before,
+    #appShell::after {
+      content: "";
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(120px);
+      opacity: 0.22;
+      border-radius: 9999px;
+      width: 40vw;
+      height: 40vw;
+    }
+    #appShell::before {
+      top: -10%; left: -10%;
+      background: radial-gradient(circle at center, rgba(37, 99, 235, 0.55), transparent 60%);
+    }
+    #appShell::after {
+      bottom: -10%; right: -10%;
+      background: radial-gradient(circle at center, rgba(147, 51, 234, 0.55), transparent 60%);
+    }
+
+    /* Ensure shell content stacks above the mesh layer */
+    #appShell { position: relative; background: #0a0c14; }
+    #appShell > * { position: relative; z-index: 1; }
+
+    /* Glass cards — recolored toward Canvas tokens */
+    #appShell .glass,
+    #appShell .stat-card,
+    #appShell .diagnostics-panel,
+    #appShell .overview-panel {
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(22px) saturate(140%);
+      -webkit-backdrop-filter: blur(22px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      transition: border-color 0.3s ease, transform 0.3s ease,
+                  box-shadow 0.3s ease, background 0.3s ease;
+    }
+    #appShell .glass:hover,
+    #appShell .stat-card:hover,
+    #appShell .diagnostics-panel:hover,
+    #appShell .overview-panel:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    /* Sidebar */
+    #appShell .sidebar {
+      background: rgba(2, 6, 23, 0.6);
+      backdrop-filter: blur(28px) saturate(140%);
+      -webkit-backdrop-filter: blur(28px) saturate(140%);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    #appShell .sidebar-brand .app-icon {
+      width: 40px; height: 40px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+      box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.35);
+      overflow: hidden;
+    }
+    #appShell .brand-subtitle {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.85);
+    }
+    #appShell .nav-heading {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(100, 116, 139, 0.9);
+      padding: 0 16px;
+      margin-bottom: 12px;
+    }
+    #appShell .nav-section + .nav-section { margin-top: 28px; }
+
+    #appShell .nav-link {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 16px;
+      border-radius: 14px;
+      color: rgb(148, 163, 184);
+      background: transparent;
+      border: 1px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    #appShell .nav-link:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: rgb(226, 232, 240);
+    }
+    #appShell .nav-link.active {
+      background: rgba(59, 130, 246, 0.16);
+      color: rgb(96, 165, 250);
+      border-color: rgba(59, 130, 246, 0.28);
+      position: relative;
+    }
+    #appShell .nav-link.active::after {
+      content: "";
+      width: 3px; height: 18px;
+      border-radius: 2px;
+      background: rgb(96, 165, 250);
+      margin-left: auto;
+    }
+    #appShell .nav-link .nav-icon i { color: currentColor; }
+
+    /* Sidebar user card */
+    #appShell .sidebar-user-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 18px;
+      padding: 8px;
+      transition: background 0.2s ease;
+    }
+    #appShell .sidebar-user-card:hover { background: rgba(255, 255, 255, 0.09); }
+    #appShell .user-avatar { width: 40px; height: 40px; border-radius: 12px; }
+
+    /* Content area + scrollbar */
+    #appShell .content {
+      background: rgba(255, 255, 255, 0.01);
+    }
+    #appShell .content::-webkit-scrollbar,
+    #appShell .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+    #appShell .content::-webkit-scrollbar-thumb,
+    #appShell .sidebar-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+    }
+    #appShell .content::-webkit-scrollbar-thumb:hover,
+    #appShell .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Sticky header strip on each view */
+    #appShell .section-sticky {
+      background: rgba(2, 6, 23, 0.35);
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    #appShell .section-mini-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+
+    /* Stat tile grid — denser cards, tighter min-width */
+    #appShell .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    #appShell .stat-card {
+      padding: 14px 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+    #appShell .stat-card:hover { transform: translateY(-1px); }
+    #appShell .stat-card .stat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+    #appShell .stat-card .stat-icon,
+    #appShell .stat-card .panel-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s ease;
+      flex-shrink: 0;
+    }
+    #appShell .stat-card:hover .stat-icon,
+    #appShell .stat-card:hover .panel-icon { transform: scale(1.08); }
+    #appShell .stat-card h3,
+    #appShell .stat-card .stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgb(148, 163, 184);
+      margin: 0;
+      line-height: 1.3;
+    }
+    #appShell .stat-card .stat-value,
+    #appShell .stat-card .value,
+    #appShell .stat-card > strong {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      word-break: break-word;
+    }
+    #appShell .stat-card .stat-subtitle,
+    #appShell .stat-card .stat-subtext,
+    #appShell .stat-card .subtext,
+    #appShell .stat-card small {
+      font-size: 11px;
+      color: rgb(100, 116, 139);
+      line-height: 1.3;
+    }
+    /* "Live snapshot" filler — redundant on every card */
+    #appShell .stat-card .stat-detail { display: none; }
+
+    /* Login screen — pull header closer to auth card, trim padding */
+    .onboarding-shell { padding: 24px 20px; }
+    .onboarding > div:first-child { margin-bottom: 20px !important; }
+    .onboarding-shell .auth-card { padding: 24px !important; border-radius: 24px !important; }
+    .onboarding-shell .auth-card h1,
+    .onboarding-shell h1 { line-height: 1.05; }
+    .onboarding-shell .auth-card > div:first-child { margin-bottom: 20px !important; }
+    @media (max-height: 820px) {
+      .onboarding-shell { padding: 12px 20px; }
+      .onboarding > div:first-child { margin-bottom: 12px !important; }
+      .onboarding-shell h1 { font-size: 36px !important; }
+      .onboarding-shell img[alt="SwiftBot Logo"] { width: 88px !important; height: 88px !important; }
+    }
+
+    /* Buttons — primary / secondary tuned to Canvas blues */
+    #appShell .primary-action {
+      background: linear-gradient(180deg, #2563eb, #1d4ed8);
+      color: #fff;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 18px;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: 0 10px 20px -8px rgba(37, 99, 235, 0.45);
+      transition: transform 0.15s ease, background 0.2s ease;
+    }
+    #appShell .primary-action:hover { background: linear-gradient(180deg, #3b82f6, #2563eb); }
+    #appShell .primary-action:active { transform: scale(0.97); }
+
+    #appShell .secondary-action,
+    #appShell .mini-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      color: rgb(226, 232, 240);
+      border-radius: 12px;
+      padding: 9px 16px;
+      font-weight: 500;
+      transition: background 0.2s ease;
+    }
+    #appShell .secondary-action:hover,
+    #appShell .mini-btn:hover { background: rgba(255, 255, 255, 0.09); }
+
+    /* Panel titles inside overview/diagnostics cards */
+    #appShell .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.01em;
+      padding: 4px 0 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #appShell .panel-title i.lucide { color: rgb(96, 165, 250); }
+
+    /* Event/info lists inside cards */
+    #appShell .event-list > *,
+    #appShell .info-list > * {
+      transition: background 0.2s ease;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    #appShell .event-list > *:hover,
+    #appShell .info-list > *:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    /* Inputs & selects */
+    #appShell input[type="text"],
+    #appShell input[type="search"],
+    #appShell input[type="email"],
+    #appShell input[type="number"],
+    #appShell select,
+    #appShell textarea {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      color: rgb(226, 232, 240);
+      border-radius: 12px;
+      padding: 9px 12px;
+      font-size: 13px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    #appShell input:focus,
+    #appShell select:focus,
+    #appShell textarea:focus {
+      outline: none;
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    }
+
+    /* Auto-staggered fade-in for first-render tiles/cards */
+    #appShell .stats-grid > * { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    #appShell .stats-grid > *:nth-child(1) { animation-delay: 0.05s; }
+    #appShell .stats-grid > *:nth-child(2) { animation-delay: 0.10s; }
+    #appShell .stats-grid > *:nth-child(3) { animation-delay: 0.15s; }
+    #appShell .stats-grid > *:nth-child(4) { animation-delay: 0.20s; }
+    #appShell .stats-grid > *:nth-child(5) { animation-delay: 0.25s; }
+    #appShell .stats-grid > *:nth-child(6) { animation-delay: 0.30s; }
+    #appShell .stats-grid > *:nth-child(n+7) { animation-delay: 0.35s; }
+
+    #appShell .diagnostics-panels > * { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    #appShell .diagnostics-panels > *:nth-child(1) { animation-delay: 0.35s; }
+    #appShell .diagnostics-panels > *:nth-child(2) { animation-delay: 0.40s; }
+    #appShell .diagnostics-panels > *:nth-child(3) { animation-delay: 0.45s; }
+    #appShell .diagnostics-panels > *:nth-child(4) { animation-delay: 0.50s; }
+    #appShell .diagnostics-panels > *:nth-child(5) { animation-delay: 0.55s; }
+    #appShell .diagnostics-panels > *:nth-child(6) { animation-delay: 0.60s; }
+    #appShell .diagnostics-panels > *:nth-child(n+7) { animation-delay: 0.65s; }
+
+    #appShell .sidebar-brand { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both; }
+    #appShell .sidebar-scroll { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
+    #appShell .sidebar-user   { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both; }
+
+    /* Replay animations whenever a view becomes visible */
+    #appShell .view:not(.hidden) .stats-grid > *,
+    #appShell .view:not(.hidden) .diagnostics-panels > *,
+    #appShell .view:not(.hidden) .glass {
+      animation-name: cv-fade-in-up;
+    }
+
+    /* ------------------------------------------------------------
+       Usage Trends panel + line chart
+       ------------------------------------------------------------ */
+    #appShell .cv-usage-panel {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 280px;
+    }
+    #appShell .cv-usage-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    #appShell .cv-usage-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    #appShell .cv-usage-sub {
+      font-size: 13px;
+      color: rgb(100, 116, 139);
+      margin-top: 4px;
+    }
+    #appShell .cv-usage-range {
+      padding: 6px 12px !important;
+      font-size: 12px !important;
+      border-radius: 10px !important;
+    }
+    #appShell .cv-usage-link {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgb(96, 165, 250);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    #appShell .cv-usage-link:hover { text-decoration: underline; }
+    #appShell .cv-usage-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: rgb(100, 116, 139);
+      letter-spacing: 0.04em;
+    }
+    #appShell .cv-usage-chart-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 180px;
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      grid-template-rows: 1fr auto;
+      column-gap: 6px;
+      row-gap: 4px;
+    }
+    #appShell .cv-usage-yaxis {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 10px;
+      color: rgb(100, 116, 139);
+      letter-spacing: 0.04em;
+      padding: 4px 0;
+    }
+    #appShell .cv-usage-chart {
+      grid-column: 2;
+      grid-row: 1;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    #appShell .cv-usage-labels {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    #appShell .cv-usage-empty {
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgb(100, 116, 139);
+      font-size: 13px;
+      pointer-events: none;
+    }
+    #appShell .cv-usage-chart .cv-line {
+      fill: none;
+      stroke: #3b82f6;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    #appShell .cv-usage-chart .cv-area {
+      fill: url(#cvUsageAreaGradient);
+      opacity: 0.45;
+    }
+    #appShell .cv-usage-chart .cv-dot {
+      fill: #3b82f6;
+      stroke: #0a0c14;
+      stroke-width: 2;
+    }
+    #appShell .cv-usage-chart .cv-dot-glow {
+      fill: rgba(59, 130, 246, 0.25);
+    }
+
+    /* ------------------------------------------------------------
+       Recent Voice / Recent Commands — Canvas-style rows + headers
+       ------------------------------------------------------------ */
+    #appShell #overviewPanelVoiceEvents .panel-title,
+    #appShell #overviewPanelRecentCommands .panel-title,
+    #appShell #overviewPanelActiveVoice .panel-title {
+      gap: 12px;
+      align-items: center;
+    }
+    #appShell #overviewPanelVoiceEvents .panel-title i.lucide,
+    #appShell #overviewPanelRecentCommands .panel-title i.lucide,
+    #appShell #overviewPanelActiveVoice .panel-title i.lucide {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px;
+    }
+    #appShell #overviewPanelVoiceEvents .panel-title i.lucide,
+    #appShell #overviewPanelActiveVoice .panel-title i.lucide {
+      background: rgba(59, 130, 246, 0.18);
+      color: rgb(96, 165, 250);
+    }
+    #appShell #overviewPanelRecentCommands .panel-title i.lucide {
+      background: rgba(168, 85, 247, 0.18);
+      color: rgb(192, 132, 252);
+    }
+
+    #appShell .event-list { padding: 0; }
+    #appShell .event-list .event-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      transition: background 0.2s ease;
+      cursor: default;
+    }
+    #appShell .event-list .event-item + .event-item { margin-top: 4px; }
+    #appShell .event-list .event-item:hover { background: rgba(255, 255, 255, 0.05); }
+
+    #appShell .event-list .event-item::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgb(16, 185, 129);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.55);
+      flex-shrink: 0;
+    }
+    #appShell .event-list .event-item.error::before,
+    #appShell .event-list .event-item.leave::before {
+      background: rgb(244, 63, 94);
+      box-shadow: none;
+    }
+
+    #appShell .event-list .event-title {
+      flex: 1;
+      font-size: 13px;
+      color: rgb(226, 232, 240);
+      line-height: 1.35;
+    }
+    #appShell .event-list .event-title strong,
+    #appShell .event-list .event-title .event-user {
+      color: rgb(96, 165, 250);
+      font-weight: 700;
+    }
+    #appShell .event-list .event-title code,
+    #appShell .event-list .event-title .event-command {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: rgb(192, 132, 252);
+      background: rgba(168, 85, 247, 0.08);
+      padding: 1px 6px;
+      border-radius: 6px;
+    }
+    #appShell .event-list .event-time {
+      font-size: 11px;
+      color: rgb(100, 116, 139);
+      flex-shrink: 0;
+    }
+
+    /* Empty state for "Currently in Voice" when no one is online */
+    #appShell .cv-empty-voice {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 24px 12px;
+      text-align: center;
+    }
+    #appShell .cv-empty-voice-icon {
+      font-size: 36px;
+      filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+      animation: cv-empty-bob 3s ease-in-out infinite;
+    }
+    #appShell .cv-empty-voice-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: rgb(226, 232, 240);
+    }
+    #appShell .cv-empty-voice-sub {
+      font-size: 12px;
+      color: rgb(100, 116, 139);
+    }
+    @keyframes cv-empty-bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+
+    /* Automation template picker (Browse Templates modal) */
+    .cv-template-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 60vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .cv-template-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      color: rgb(226, 232, 240);
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+    .cv-template-row:hover {
+      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+    .cv-template-row:active { transform: scale(0.995); }
+    .cv-template-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(59, 130, 246, 0.18);
+      color: rgb(96, 165, 250);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .cv-template-text {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .cv-template-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .cv-template-sub {
+      font-size: 12px;
+      color: rgb(148, 163, 184);
+      line-height: 1.4;
+    }
+    .cv-template-chev {
+      color: rgb(100, 116, 139);
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -2276,60 +2934,43 @@
 
       <div class="onboarding" style="position: relative; z-index: 10; width: 100%; max-width: 440px;">
         <!-- Header Section -->
-        <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 40px;">
-          <div style="position: relative; margin-bottom: 24px;">
-            <div style="position: absolute; inset: -20px; background: rgba(255, 255, 255, 0.05); filter: blur(32px); border-radius: 999px;"></div>
-            <img src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 120px; height: 120px; object-fit: contain; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
+        <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
+          <div style="position: relative; margin-bottom: 14px;">
+            <div style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
+            <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
           </div>
 
-          <h1 style="font-size: 48px; font-weight: 700; color: #fff; letter-spacing: -0.04em; margin: 0;">SwiftBot</h1>
-          <p style="font-size: 18px; color: rgba(255,255,255,0.7); margin: 4px 0 16px; font-weight: 500;">Administrative Dashboard</p>
-          <p style="font-size: 15px; color: rgba(255,255,255,0.45); max-width: 320px; line-height: 1.5;">Manage Discord automation, moderation, and AI workflows from a native macOS app.</p>
+          <h1 id="authBotName" style="font-size: 36px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin: 0; line-height: 1.05;">SwiftBot</h1>
+          <p style="font-size: 15px; color: rgba(255,255,255,0.7); margin: 6px 0 10px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px;">
+            <span class="cv-wave" aria-hidden="true">👋</span>
+            <span>Welcome back</span>
+          </p>
+          <p style="font-size: 13px; color: rgba(255,255,255,0.42); max-width: 300px; line-height: 1.45;">Sign in to continue managing automations, voice, and AI workflows.</p>
         </div>
 
         <!-- Main Interactive Card -->
-        <div class="auth-card glass" style="width: 100%; background: rgba(18, 21, 30, 0.7); border-radius: 32px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 32px; display: flex; flex-direction: column; backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);">
+        <div class="auth-card glass" style="width: 100%; background: rgba(18, 21, 30, 0.7); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 22px; display: flex; flex-direction: column; backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);">
           
-          <div style="display: flex; align-items: flex-start; gap: 20px; margin-bottom: 32px; text-align: left;">
-            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <i class="lucide" data-lucide="shield" style="width: 20px; height: 20px; color: #818cf8;"></i>
+          <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; text-align: left;">
+            <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <i class="lucide" data-lucide="shield" style="width: 18px; height: 18px; color: #818cf8;"></i>
             </div>
             <div>
-              <h2 style="font-size: 18px; font-weight: 600; color: #fff; margin: 0 0 6px;">Connect your Discord account</h2>
-              <p style="font-size: 14px; color: rgba(255,255,255,0.5); line-height: 1.5;">
-                SwiftBot uses secure Discord OAuth authentication to access your servers and bot settings.
+              <h2 style="font-size: 16px; font-weight: 600; color: #fff; margin: 0 0 4px;">Sign in with Discord</h2>
+              <p id="authPromptText" style="font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.45;">
+                Authenticate with Discord to manage <span id="authBotInlineName">SwiftBot</span>.
               </p>
             </div>
           </div>
 
           <div style="width: 100%;">
-            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: linear-gradient(135deg, #5865f2 0%, #4c57d6 100%); border: 0; border-radius: 16px; height: 64px; color: #fff; font-weight: 600; font-size: 17px; transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(88, 101, 242, 0.25);">
-              <div style="display: flex; align-items: center; gap: 14px;">
-                <svg fill="currentColor" viewBox="0 0 24 24" style="width: 24px; height: 24px;"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
+            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: linear-gradient(135deg, #5865f2 0%, #4c57d6 100%); border: 0; border-radius: 14px; height: 56px; color: #fff; font-weight: 600; font-size: 16px; transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(88, 101, 242, 0.25);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <svg fill="currentColor" viewBox="0 0 24 24" style="width: 22px; height: 22px;"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" /></svg>
                 <span>Continue with Discord</span>
               </div>
-              <i class="lucide" data-lucide="chevron-right" style="width: 24px; height: 24px; opacity: 0.8;"></i>
+              <i class="lucide" data-lucide="chevron-right" style="width: 20px; height: 20px; opacity: 0.8;"></i>
             </a>
-          </div>
-
-          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 24px 0; font-size: 12px; color: rgba(255,255,255,0.3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
-            <i class="lucide" data-lucide="lock" style="width: 12px; height: 12px;"></i>
-            <span>Secure OAuth authentication</span>
-          </div>
-
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;">
-              <i class="lucide" data-lucide="monitor" style="width: 20px; height: 20px; color: #818cf8; opacity: 0.8;"></i>
-              <div style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.6); line-height: 1.2;">Runs locally<br>on your Mac</div>
-            </div>
-            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;">
-              <i class="lucide" data-lucide="lock" style="width: 20px; height: 20px; color: #34d399; opacity: 0.8;"></i>
-              <div style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.6); line-height: 1.2;">Encrypted<br>credentials</div>
-            </div>
-            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;">
-              <i class="lucide" data-lucide="shield" style="width: 20px; height: 20px; color: #60a5fa; opacity: 0.8;"></i>
-              <div style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.6); line-height: 1.2;">No external<br>dashboard</div>
-            </div>
           </div>
 
           <div id="authFeedback" class="auth-feedback"></div>
@@ -2342,11 +2983,6 @@
           </form>
         </div>
 
-        <!-- Footer -->
-        <div style="margin-top: 40px; text-align: center; font-size: 12px; color: rgba(255,255,255,0.3); line-height: 1.6;">
-          By continuing, you agree to the Discord <a href="#" style="color: #818cf8; text-decoration: none;">Terms of Service</a><br />
-          and SwiftBot <a href="#" style="color: #818cf8; text-decoration: none;">Privacy Policy</a>.
-        </div>
       </div>
     </section>
 
@@ -2465,6 +3101,22 @@
           <section id="statsGrid" class="stats-grid"></section>
 
           <section id="overviewPanels" class="diagnostics-panels">
+            <article id="overviewPanelUsage" class="diagnostics-panel overview-panel glass cv-usage-panel">
+              <div class="cv-usage-head">
+                <div>
+                  <div class="cv-usage-title">Usage Trends</div>
+                  <div class="cv-usage-sub">Voice sessions over the last 7 days</div>
+                </div>
+                <a class="cv-usage-link" href="#" onclick="event.preventDefault(); selectView('analytics');">View Analytics →</a>
+              </div>
+              <div class="cv-usage-chart-wrap">
+                <div id="usageChartYAxis" class="cv-usage-yaxis"></div>
+                <svg id="usageChart" class="cv-usage-chart" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div id="usageChartLabels" class="cv-usage-labels"></div>
+                <div id="usageChartEmpty" class="cv-usage-empty">No voice sessions recorded yet.</div>
+              </div>
+            </article>
+
             <article id="overviewPanelCluster" class="diagnostics-panel overview-panel glass">
               <div class="panel-title"><i class="lucide" data-lucide="network"></i> Cluster</div>
               <div id="clusterInfo" class="info-list"></div>
@@ -2660,8 +3312,9 @@
           <div class="actions-shell">
             <section class="actions-column glass">
               <div class="panel-title"><i class="lucide" data-lucide="list"></i> Automation Rules</div>
-              <div style="margin-bottom:8px;">
+              <div style="margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">
                 <button id="actionAddRule" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> New Automation</button>
+                <button id="actionBrowseTemplates" class="mini-btn" type="button"><i class="lucide" data-lucide="sparkles"></i> Browse Templates</button>
               </div>
               <div id="actionRuleList"></div>
             </section>
@@ -2757,7 +3410,7 @@
     let overviewLayout = {
       cardsOrder: [],
       cardsHidden: [],
-      panelsOrder: ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'],
+      panelsOrder: ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'],
       panelsHidden: []
     };
     // Server-driven metadata from /api/actions - provides all block types, fields, and variables
@@ -2779,55 +3432,80 @@
     // Get Lucide icon for SF Symbol name (best-effort mapping)
     function sfSymbolToLucide(sfName) {
       const map = {
+        // Actions
         'paperplane.fill': 'send',
         'list.bullet.clipboard': 'clipboard-list',
+        'list.bullet.clipboard.fill': 'clipboard-list',
         'dot.radiowaves.left.and.right': 'rss',
         'envelope.fill': 'mail',
+        'envelope': 'mail',
         'trash.fill': 'trash-2',
+        'trash': 'trash-2',
         'face.smiling': 'smile',
+        'face.smiling.inverse': 'smile-plus',
         'person.crop.circle.badge.plus': 'user-plus',
         'person.crop.circle.badge.minus': 'user-minus',
-        'clock.badge.exclamationmark': 'clock',
+        'person.crop.circle.badge.xmark': 'user-x',
+        'person.crop.circle.badge.checkmark': 'user-check',
+        'clock.badge.exclamationmark': 'alarm-clock',
         'door.left.hand.open': 'log-out',
+        'door.right.hand.open': 'door-open',
         'arrow.right.circle': 'arrow-right-circle',
-        'plus.rectangle': 'plus-square',
+        'plus.rectangle': 'square-plus',
         'link': 'link',
         'clock.arrow.circlepath': 'history',
         'character.textbox': 'type',
         'shuffle': 'shuffle',
         'arrowshape.turn.up.left.fill': 'reply',
         'at': 'at-sign',
-        'at.badge.plus': 'users',
-        'at.badge.minus': 'users',
+        'at.badge.plus': 'at-sign',
+        'at.badge.minus': 'at-sign',
         'number.circle.fill': 'hash',
         'sparkles': 'sparkles',
+        'sparkles.rectangle.stack.fill': 'sparkles',
         'text.alignleft': 'align-left',
         'tag.fill': 'tag',
         'pencil': 'pencil',
-        'person.crop.circle.badge.xmark': 'user-x',
+        // Triggers
         'arrow.left.arrow.right.circle': 'repeat',
         'text.bubble': 'message-square',
+        'text.bubble.fill': 'message-circle',
         'person.badge.plus': 'user-plus',
         'person.badge.minus': 'user-minus',
-        'slash.circle': 'ban',
-        'building.2': 'building',
-        'waveform': 'activity',
+        'slash.circle': 'slash',
+        'video': 'video',
+        'video.fill': 'video',
+        // Conditions
+        'building.2': 'building-2',
+        'waveform': 'audio-waveform',
+        'waveform.badge.plus': 'mic',
+        'waveform.badge.minus': 'mic-off',
         'text.magnifyingglass': 'search',
+        'timer': 'timer',
         'number': 'hash',
+        'number.square': 'hash',
         'folder': 'folder',
-        'person.crop.circle.badge.checkmark': 'user-check',
         'text.quote': 'quote',
         'asterisk.circle': 'asterisk',
         'envelope.badge.shield.half.filled': 'shield-alert',
         'bot': 'bot',
         'person': 'user',
-        'number.square': 'hash',
+        // Categories
         'bolt.fill': 'zap',
+        'bolt.badge.automatic.fill': 'zap',
         'line.3.horizontal.decrease.circle': 'filter',
-        'text.bubble.fill': 'message-circle',
-        'shield.fill': 'shield'
+        'shield.fill': 'shield',
+        // Recipe templates (browse list)
+        'hand.wave.fill': 'hand',
+        'bell.badge.fill': 'bell-ring',
+        'book.pages.fill': 'book-open',
+        'square.grid.2x2.fill': 'layout-grid',
+        'square.and.arrow.down.badge.checkmark': 'shield-check',
+        'terminal.fill': 'terminal',
+        'chart.line.uptrend.xyaxis': 'trending-up',
+        'point.3.connected.trianglepath.dotted': 'share-2'
       };
-      return map[sfName] || 'box';
+      return map[sfName] || 'circle-help';
     }
 
     function defaultDiscordAvatar(userID) {
@@ -2877,7 +3555,7 @@
       return {
         cardsOrder: [],
         cardsHidden: [],
-        panelsOrder: ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'],
+        panelsOrder: ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'],
         panelsHidden: []
       };
     }
@@ -2903,7 +3581,7 @@
     }
 
     function normalizeOverviewLayout(metrics) {
-      const defaultPanels = ['cluster', 'botinfo', 'voice', 'commands', 'invoice', 'controls'];
+      const defaultPanels = ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'];
       const metricIDs = metrics.map(metricID);
       const knownMetricIDs = new Set(metricIDs);
       const orderedCards = (overviewLayout.cardsOrder || []).filter(id => knownMetricIDs.has(id));
@@ -3010,10 +3688,18 @@
       if (divider) {
         divider.style.display = authOptions.discordEnabled && authOptions.localEnabled ? '' : 'none';
       }
+
+      const botName = (authOptions.botName || 'SwiftBot').trim() || 'SwiftBot';
+      const nameNode = document.getElementById('authBotName');
+      if (nameNode) nameNode.textContent = botName;
+      const inlineName = document.getElementById('authBotInlineName');
+      if (inlineName) inlineName.textContent = botName;
+      document.title = `${botName} Admin`;
+
       if (promptText) {
-        promptText.textContent = authOptions.localEnabled
-          ? 'Authenticate with Discord or use the local fallback for testing.'
-          : 'Authenticate with Discord.';
+        promptText.innerHTML = authOptions.localEnabled
+          ? `Authenticate with Discord or use the local fallback to manage <span id="authBotInlineName2">${botName}</span>.`
+          : `Authenticate with Discord to manage <span id="authBotInlineName2">${botName}</span>.`;
       }
     }
 
@@ -3111,6 +3797,7 @@
       if (!panelHost) return;
 
       const panelNodeByID = {
+        usage: document.getElementById('overviewPanelUsage'),
         cluster: document.getElementById('overviewPanelCluster'),
         botinfo: document.getElementById('overviewPanelBotInfo'),
         voice: document.getElementById('overviewPanelVoiceEvents'),
@@ -3211,6 +3898,7 @@
         .map(metric => ({ id: metricID(metric), label: `${metric.title} (Card)`, kind: 'card' }))
         .filter(item => overviewLayout.cardsHidden.includes(item.id));
       const panelLabels = {
+        usage: 'Usage Trends Panel',
         cluster: 'Cluster Panel',
         botinfo: 'Bot Info Panel',
         voice: 'Recent Voice Panel',
@@ -3251,7 +3939,14 @@
       const node = document.getElementById('activeVoiceList');
       if (!node) return;
       if (!list || list.length === 0) {
-        node.innerHTML = `<div class="placeholder">No one is in voice right now</div>`;
+        node.innerHTML = `
+          <div class="cv-empty-voice">
+            <div class="cv-empty-voice-icon" aria-hidden="true">😴</div>
+            <div class="cv-empty-voice-title">All quiet</div>
+            <div class="cv-empty-voice-sub">No one is in voice right now.</div>
+          </div>
+        `;
+        try { lucide.createIcons(); } catch (_) {}
         return;
       }
 
@@ -3554,7 +4249,9 @@
         throw new Error('Analytics unavailable');
       }
       dashboardAnalytics = await response.json();
+      window.dashboardAnalytics = dashboardAnalytics;
       renderAnalyticsView();
+      try { window.__cvUsage?.render(); } catch (_) {}
       return dashboardAnalytics;
     }
 
@@ -3583,23 +4280,41 @@
         'voiceEvents',
         data.recentVoice || [],
         'No voice events yet',
-        item => `
-          <div class="event-item ok">
-            <div class="event-title">${item.description}</div>
-            <div class="event-time">${item.timeText}</div>
-          </div>
-        `
+        item => {
+          const desc = String(item.description || '');
+          const leave = /\b(left|leave|leaved|disconnected)\b/i.test(desc);
+          // Wrap the first capitalized word in a user tag if no <strong> is present.
+          let formatted = desc;
+          if (!/<\s*strong/i.test(formatted)) {
+            formatted = formatted.replace(/^([A-Za-z0-9_.\-]+)\b/, '<span class="event-user">$1</span>');
+          }
+          return `
+            <div class="event-item ${leave ? 'leave' : 'ok'}">
+              <div class="event-title">${formatted}</div>
+              <div class="event-time">${item.timeText}</div>
+            </div>
+          `;
+        }
       );
       renderEvents(
         'recentCommands',
         data.recentCommands || [],
         'No commands yet',
-        item => `
-          <div class="event-item ${item.ok ? 'ok' : 'error'}">
-            <div class="event-title">${item.title}</div>
-            <div class="event-time">${item.timeText}</div>
-          </div>
-        `
+        item => {
+          const title = String(item.title || '');
+          let formatted = title;
+          if (!/<\s*(code|strong)/i.test(formatted)) {
+            formatted = formatted
+              .replace(/^([A-Za-z0-9_.\-]+)\b/, '<span class="event-user">$1</span>')
+              .replace(/(\/[A-Za-z0-9_\-]+)/, '<code class="event-command">$1</code>');
+          }
+          return `
+            <div class="event-item ${item.ok ? 'ok' : 'error'}">
+              <div class="event-title">${formatted}</div>
+              <div class="event-time">${item.timeText}</div>
+            </div>
+          `;
+        }
       );
       renderActiveVoice(data.activeVoice || []);
       renderOverviewPanels();
@@ -3625,6 +4340,8 @@
       const data = await response.json();
       authOptions.discordEnabled = !!data.discordEnabled;
       authOptions.localEnabled = !!data.localEnabled;
+      authOptions.botName = data.botName || '';
+      authOptions.botAvatarURL = data.botAvatarURL || '';
       applyAuthOptions();
     }
 
@@ -3933,15 +4650,124 @@
     }
 
     async function createActionRule() {
-      await postJSON('/api/actions/new', {});
+      const response = await postJSON('/api/actions/new', {});
       await loadActions();
-      renderActionsView();
+      // Auto-select the freshly created rule so it appears highlighted.
+      const created = response?.rule || (actionsData?.rules || [])[((actionsData?.rules || []).length - 1)];
+      if (created?.id) selectedActionRuleID = created.id;
+      renderVoiceView();
+    }
+
+    let automationTemplatesCache = null;
+
+    async function fetchAutomationTemplates() {
+      if (automationTemplatesCache) return automationTemplatesCache;
+      try {
+        const r = await fetch('/api/automations/templates');
+        if (!r.ok) return [];
+        const data = await r.json();
+        automationTemplatesCache = data.templates || [];
+        return automationTemplatesCache;
+      } catch (e) {
+        return [];
+      }
+    }
+
+    async function openAutomationTemplatesModal() {
+      showModal('Pre-made Automations', '<div class="placeholder">Loading templates…</div>', '<button class="secondary-action" type="button" onclick="hideModal()">Cancel</button>');
+      const templates = await fetchAutomationTemplates();
+      if (!templates.length) {
+        document.getElementById('modalBody').innerHTML = '<div class="placeholder">No templates available.</div>';
+        return;
+      }
+      const rows = templates.map(t => {
+        const icon = sfSymbolToLucide(t.symbol);
+        return `
+          <button class="cv-template-row" type="button" data-template-id="${t.id}">
+            <span class="cv-template-icon"><i class="lucide" data-lucide="${icon}"></i></span>
+            <span class="cv-template-text">
+              <span class="cv-template-title">${t.title}</span>
+              <span class="cv-template-sub">${t.subtitle}</span>
+            </span>
+            <i class="lucide cv-template-chev" data-lucide="chevron-right"></i>
+          </button>
+        `;
+      }).join('');
+      document.getElementById('modalBody').innerHTML = `<div class="cv-template-grid">${rows}</div>`;
+      refreshIcons();
+      document.getElementById('modalBody').querySelectorAll('[data-template-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.templateId;
+          btn.disabled = true;
+          btn.style.opacity = '0.5';
+          try {
+            await applyAutomationTemplate(id);
+            hideModal();
+          } finally {
+            btn.disabled = false;
+            btn.style.opacity = '';
+          }
+        });
+      });
+    }
+
+    async function applyAutomationTemplate(templateId) {
+      const templates = await fetchAutomationTemplates();
+      const tpl = templates.find(t => t.id === templateId);
+      if (!tpl) return;
+      // Create a fresh rule, then patch it with the template's defaults.
+      const response = await postJSON('/api/actions/new', {});
+      await loadActions();
+      const stub = response?.rule || (actionsData?.rules || [])[(actionsData?.rules || []).length - 1];
+      if (!stub) return;
+
+      const next = structuredClone(stub);
+      next.name = tpl.title;
+      next.trigger = tpl.trigger;
+      // Seed a single action of the template's actionType, with the message draft
+      // so the user lands in the editor with sensible defaults.
+      const action = {
+        id: (crypto?.randomUUID?.() || ('id-' + Math.random().toString(36).slice(2))),
+        type: tpl.actionType,
+        message: tpl.messageDraft || '',
+        emoji: '👍',
+        statusText: '',
+        serverId: '',
+        channelId: '',
+        dmContent: tpl.messageDraft || '',
+        roleId: '',
+        timeoutDuration: 3600,
+        kickReason: '',
+        targetVoiceChannelId: '',
+        newChannelName: '',
+        webhookURL: '',
+        webhookContent: '',
+        delaySeconds: 5,
+        variableName: '',
+        variableValue: '',
+        randomOptions: [],
+        deleteDelaySeconds: 0,
+        categories: '',
+        entityTypes: '',
+        rewriteStyle: '',
+        mentionUser: true,
+        replyToTriggerMessage: false,
+        replyWithAI: false,
+        contentSource: 'custom'
+      };
+      next.actions = [action];
+
+      await postJSON('/api/actions/upsert', { rule: next });
+      await loadActions();
+      selectedActionRuleID = next.id;
+      renderVoiceView();
     }
 
     async function deleteActionRule(ruleID) {
       await postJSON('/api/actions/delete', { ruleID });
+      if (selectedActionRuleID === ruleID) selectedActionRuleID = null;
       await loadActions();
-      renderActionsView();
+      renderVoiceView();
     }
 
     function scheduleActionRuleSave(rule) {
@@ -3957,6 +4783,9 @@
       if (actionsStaticBound) return;
       document.getElementById('actionAddRule')?.addEventListener('click', async () => {
         await createActionRule();
+      });
+      document.getElementById('actionBrowseTemplates')?.addEventListener('click', () => {
+        openAutomationTemplatesModal();
       });
       // New: Block library uses server-driven metadata for 5-stage pipeline
       document.getElementById('actionLibrary')?.addEventListener('click', async (event) => {
@@ -7260,17 +8089,52 @@
       const container = document.getElementById('bgSymbols');
       if (!container) return;
       container.innerHTML = '';
-      const symbols = ['+', '○', '◇', '×'];
-      for (let i = 0; i < 20; i++) {
-        const div = document.createElement('div');
-        div.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-        div.style.left = `${Math.random() * 100}%`;
-        const duration = 15 + Math.random() * 20;
-        const delay = Math.random() * 20;
-        div.style.animation = `float-up ${duration}s linear infinite`;
-        div.style.animationDelay = `-${delay}s`;
-        container.appendChild(div);
+      // Use the same lucide icon set as the in-app background so the login
+      // looks like a continuation of the dashboard rather than a separate skin.
+      // Mirrors the list in buildAnimatedBackground() + a few SwiftBot-domain
+      // additions (mic, voice, message).
+      const icons = [
+        // Core (matches dashboard backdrop)
+        'book-open', 'wrench', 'terminal', 'activity', 'sparkles', 'network',
+        'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
+        'bot', 'git-merge', 'refresh-cw', 'shield',
+        // SwiftBot domain — voice, comms, audio
+        'mic', 'mic-off', 'headphones', 'radio', 'radio-tower', 'waves',
+        'volume-2', 'speaker', 'audio-waveform', 'podcast',
+        // Comms / Discord
+        'message-square', 'message-circle', 'at-sign', 'hash', 'send',
+        'bell', 'bell-ring',
+        // Code & shell
+        'code', 'code-2', 'braces', 'square-terminal', 'command', 'slash',
+        'keyboard',
+        // Infrastructure
+        'database', 'webhook', 'plug', 'plug-zap', 'wifi', 'cloud',
+        'layout-dashboard', 'gauge', 'binary',
+        // Automation / AI / actions
+        'workflow', 'wand-sparkles', 'brain', 'play', 'pause', 'circle-play',
+        // Security / identity
+        'lock', 'key', 'key-round', 'fingerprint'
+      ];
+      const count = 90;
+      for (let i = 0; i < count; i++) {
+        const wrap = document.createElement('div');
+        wrap.style.left = `${Math.random() * 100}%`;
+        const duration = 22 + Math.random() * 28;
+        const delay = Math.random() * duration;
+        const size = 14 + Math.floor(Math.random() * 22); // 14–35 px
+        wrap.style.opacity = String((0.25 + Math.random() * 0.45).toFixed(2));
+        wrap.style.animation = `float-up ${duration}s linear infinite`;
+        wrap.style.animationDelay = `-${delay.toFixed(2)}s`;
+        const icon = document.createElement('i');
+        icon.className = 'lucide';
+        icon.dataset.lucide = icons[Math.floor(Math.random() * icons.length)];
+        icon.style.width = `${size}px`;
+        icon.style.height = `${size}px`;
+        icon.style.display = 'block';
+        wrap.appendChild(icon);
+        container.appendChild(wrap);
       }
+      try { lucide.createIcons(); } catch (_) {}
     }
 
     function buildAnimatedBackground() {
@@ -7321,6 +8185,223 @@
     window.addEventListener('resize', () => {
       buildAnimatedBackground();
     });
+
+    // ============================================================
+    // CANVAS DESIGN SYSTEM — usage trends chart
+    // Renders the same dailyActivity series used by the Analytics page,
+    // refreshed each time loadAnalytics() runs.
+    // ============================================================
+    (function () {
+      function render() {
+        const svg = document.getElementById('usageChart');
+        const empty = document.getElementById('usageChartEmpty');
+        const labelsWrap = document.getElementById('usageChartLabels');
+        const yAxis = document.getElementById('usageChartYAxis');
+        if (!svg) return;
+
+        const data = (window.dashboardAnalytics && Array.isArray(window.dashboardAnalytics.dailyActivity))
+          ? window.dashboardAnalytics.dailyActivity
+          : [];
+
+        if (data.length < 2) {
+          svg.innerHTML = '';
+          if (labelsWrap) labelsWrap.innerHTML = '';
+          if (yAxis) yAxis.innerHTML = '';
+          if (empty) empty.style.display = '';
+          return;
+        }
+        if (empty) empty.style.display = 'none';
+
+        const W = 600, H = 200, PAD_X = 12, PAD_TOP = 16, PAD_BOTTOM = 22;
+        const maxV = Math.max(1, ...data.map(p => p.count || 0));
+        const denom = Math.max(1, data.length - 1);
+        const points = data.map((p, i) => ({
+          x: PAD_X + (W - PAD_X * 2) * (i / denom),
+          y: PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) * (1 - ((p.count || 0) / maxV)),
+          count: p.count || 0,
+          label: p.label || '',
+        }));
+
+        // Smooth path via per-segment cubic beziers.
+        let d = '';
+        points.forEach((p, i) => {
+          if (i === 0) { d += `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`; return; }
+          const prev = points[i - 1];
+          const cx = (prev.x + p.x) / 2;
+          d += ` C ${cx.toFixed(2)} ${prev.y.toFixed(2)}, ${cx.toFixed(2)} ${p.y.toFixed(2)}, ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+        });
+
+        const baseY = H - PAD_BOTTOM;
+        const area = `${d} L ${points[points.length - 1].x.toFixed(2)} ${baseY} L ${points[0].x.toFixed(2)} ${baseY} Z`;
+
+        const dots = points.map((p) => `
+          <circle class="cv-dot" cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${p.count === maxV ? 4 : 3}">
+            <title>${p.label}: ${p.count} session${p.count === 1 ? '' : 's'}</title>
+          </circle>
+        `).join('');
+
+        svg.innerHTML = `
+          <defs>
+            <linearGradient id="cvUsageAreaGradient" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.55" />
+              <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path class="cv-area" d="${area}"></path>
+          <path class="cv-line" d="${d}"></path>
+          ${dots}
+        `;
+
+        if (labelsWrap) {
+          labelsWrap.innerHTML = data.map(p => `<span>${p.label || ''}</span>`).join('');
+        }
+
+        // Y-axis: 4 evenly spaced tick labels (top → bottom).
+        if (yAxis) {
+          const ticks = 4;
+          const niceMax = niceCeil(maxV);
+          const rows = [];
+          for (let i = 0; i < ticks; i++) {
+            const value = Math.round(niceMax * (1 - i / (ticks - 1)));
+            rows.push(`<span>${value}</span>`);
+          }
+          yAxis.innerHTML = rows.join('');
+        }
+      }
+
+      // Round up to a nicer tick max (1, 2, 5, 10, 20, 50, 100…).
+      function niceCeil(v) {
+        if (v <= 1) return 1;
+        const pow = Math.pow(10, Math.floor(Math.log10(v)));
+        const n = v / pow;
+        let mult;
+        if (n <= 1) mult = 1;
+        else if (n <= 2) mult = 2;
+        else if (n <= 5) mult = 5;
+        else mult = 10;
+        return mult * pow;
+      }
+
+      // Public hook used by loadAnalytics().
+      window.__cvUsage = { render };
+
+      function init() { render(); }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+
+    // ============================================================
+    // CANVAS DESIGN SYSTEM — count-up and stagger replay
+    // ============================================================
+    (function () {
+      const EASE = (p) => (p === 1 ? 1 : 1 - Math.pow(2, -10 * p));
+      const DURATION = 1400;
+
+      function parseTarget(text) {
+        if (!text) return null;
+        const cleaned = String(text).replace(/,/g, '').trim();
+        const match = cleaned.match(/^(-?\d+(?:\.\d+)?)\s*([^\d.\s-].*)?$/);
+        if (!match) return null;
+        const value = parseFloat(match[1]);
+        if (!Number.isFinite(value)) return null;
+        const suffix = match[2] || '';
+        const decimalMatch = cleaned.match(/\.(\d+)/);
+        const decimals = decimalMatch ? decimalMatch[1].length : 0;
+        return { value, suffix, decimals };
+      }
+
+      function animateElement(el, target, delayMs) {
+        const start = Date.now() + delayMs;
+        const startValue = 0;
+        const fmt = (n) => n.toLocaleString(undefined, {
+          minimumFractionDigits: target.decimals,
+          maximumFractionDigits: target.decimals,
+        });
+        function tick() {
+          const now = Date.now();
+          if (now < start) { requestAnimationFrame(tick); return; }
+          const progress = Math.min((now - start) / DURATION, 1);
+          const eased = EASE(progress);
+          const current = startValue + (target.value - startValue) * eased;
+          el.textContent = fmt(current) + target.suffix;
+          if (progress < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }
+
+      // Animate any element matching common stat-value selectors inside the
+      // active view. Idempotent — uses a data flag so we don't re-animate.
+      function runCountUp(root) {
+        const scope = root || document.getElementById('appShell');
+        if (!scope) return;
+        const selectors = [
+          '.stat-card .stat-value',
+          '.stat-card .value',
+          '.stat-card strong',
+          '[data-countup]'
+        ];
+        const nodes = scope.querySelectorAll(selectors.join(','));
+        let i = 0;
+        nodes.forEach((el) => {
+          if (el.dataset.cvAnimated === '1') return;
+          const target = parseTarget(el.textContent);
+          if (!target) return;
+          el.dataset.cvAnimated = '1';
+          animateElement(el, target, i * 60);
+          i += 1;
+        });
+      }
+
+      // Reset flag so a re-render re-animates new content.
+      function resetCountUp(root) {
+        const scope = root || document.getElementById('appShell');
+        if (!scope) return;
+        scope.querySelectorAll('[data-cv-animated="1"]').forEach((el) => {
+          delete el.dataset.cvAnimated;
+        });
+      }
+
+      // Watch for tile/grid mutations and (re)run count-up.
+      function observe(target) {
+        if (!target) return;
+        const observer = new MutationObserver(() => {
+          runCountUp(target);
+        });
+        observer.observe(target, { childList: true, subtree: true });
+      }
+
+      function init() {
+        const shell = document.getElementById('appShell');
+        if (!shell) return;
+        runCountUp(shell);
+        observe(shell.querySelector('#statsGrid'));
+        observe(shell.querySelector('#overviewPanels'));
+        // Replay subtle staggered fade-in when switching views.
+        shell.querySelectorAll('.nav-link').forEach((link) => {
+          link.addEventListener('click', () => {
+            requestAnimationFrame(() => {
+              shell.querySelectorAll('.view:not(.hidden) .stats-grid > *, .view:not(.hidden) .diagnostics-panels > *').forEach((el) => {
+                el.style.animation = 'none';
+                // Force reflow to restart animation.
+                void el.offsetWidth;
+                el.style.animation = '';
+              });
+              resetCountUp(shell);
+              runCountUp(shell);
+            });
+          });
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
   </script>
   <div id="modalOverlay" class="modal-overlay">
     <div class="modal glass">
