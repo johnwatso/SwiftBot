@@ -49,6 +49,9 @@ targets:
       - path: SwiftBotApp/Resources/AppIcon.png
         type: file
         buildPhase: resources
+      - path: SwiftBotApp/Resources/SwiftBird.png
+        type: file
+        buildPhase: resources
       - path: SwiftBot.icon
         type: file
         buildPhase: resources
