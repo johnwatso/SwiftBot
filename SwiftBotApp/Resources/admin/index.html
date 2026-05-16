@@ -187,12 +187,13 @@
     }
 
     .bg-icon {
-      font-size: 64px !important;
-      line-height: 1;
+      width: 64px;
+      height: 64px;
       color: var(--bg-symbol-color);
       flex: 0 0 auto;
       opacity: 0.95;
       user-select: none;
+      stroke-width: 1.5px;
     }
 
     @keyframes driftDiagForward {
@@ -262,9 +263,9 @@
     }
 
     .app-icon {
-      width: 84px;
-      height: 84px;
-      border-radius: 20px;
+      width: 100px;
+      height: 100px;
+      border-radius: 22px;
       display: grid;
       place-items: center;
       background:
@@ -277,8 +278,8 @@
     }
 
     .app-icon svg {
-      width: 46px;
-      height: 46px;
+      width: 52px;
+      height: 52px;
     }
 
     .app-icon-img {
@@ -290,48 +291,54 @@
     }
 
     .title {
-      margin: 6px 0 0;
-      font-size: clamp(40px, 6vw, 52px);
-      line-height: 1.02;
-      letter-spacing: -0.04em;
+      margin: 12px 0 4px;
+      font-size: clamp(32px, 5vw, 44px);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
       font-weight: 700;
     }
 
     .subtitle {
-      max-width: 560px;
+      max-width: 480px;
       margin: 0;
-      font-size: 15px;
+      font-size: 16px;
       line-height: 1.5;
       color: var(--muted);
+      font-weight: 400;
     }
 
     .auth-card {
-      width: min(440px, 100%);
-      padding: 20px;
-      border-radius: var(--radius-xl);
+      width: min(380px, 100%);
+      padding: 32px;
+      border-radius: 28px;
+      margin-top: 24px;
     }
 
     .auth-card p {
-      margin: 0 0 16px;
-      font-size: 14px;
-      line-height: 1.45;
+      margin: 0 0 20px;
+      font-size: 13px;
+      line-height: 1.4;
       color: var(--muted);
+      text-align: center;
     }
 
     .auth-stack {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
     }
 
     .auth-divider {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      margin: 12px 0;
+      opacity: 0.8;
     }
 
     .auth-divider::before,
@@ -345,13 +352,15 @@
     .auth-form {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .auth-feedback {
       min-height: 18px;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
+      margin-top: 14px;
+      text-align: center;
     }
 
     .auth-feedback.error {
@@ -363,41 +372,76 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 46px;
-      padding: 0 22px;
-      border: 0;
-      border-radius: 12px;
+      min-height: 48px;
+      padding: 0 24px;
+      border: 1px solid var(--glass-stroke);
+      border-radius: 14px;
       text-decoration: none;
       color: white;
       font-size: 14px;
       font-weight: 600;
       letter-spacing: -0.01em;
-      background: linear-gradient(180deg, var(--blue-a) 0%, var(--blue-b) 52%, var(--blue-c) 100%);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.2),
-        0 8px 20px rgba(16,111,224,0.28);
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       cursor: pointer;
-      transition: transform 140ms ease, filter 140ms ease;
+      transition: all 180ms ease;
     }
 
-    .primary-action:hover { transform: translateY(-1px); filter: brightness(1.04); }
+    .primary-action:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .primary-action:active {
+      transform: translateY(0);
+      background: rgba(255, 255, 255, 0.06);
+    }
 
     .secondary-action {
       appearance: none;
-      border: 1px solid var(--glass-stroke);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      border-radius: 12px;
-      padding: 10px 14px;
+      border: 0;
+      background: var(--text);
+      color: var(--bg-a);
+      border-radius: 14px;
+      height: 48px;
+      padding: 0 24px;
       font: inherit;
-      font-weight: 600;
-      font-size: 13px;
+      font-weight: 650;
+      font-size: 14px;
       cursor: pointer;
-      transition: background 140ms ease;
+      transition: all 180ms ease;
     }
 
-    .secondary-action:hover { background: rgba(255, 255, 255, 0.1); }
+    .secondary-action:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
 
+    .secondary-action:active {
+      transform: translateY(0);
+    }
+
+    .field-input {
+      height: 48px;
+      padding: 0 16px;
+      border-radius: 14px;
+      border: 1px solid var(--glass-stroke);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      transition: all 180ms ease;
+    }
+
+    .field-input:focus {
+      outline: none;
+      border-color: var(--blue-b);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: 0 0 0 3px rgba(32, 140, 255, 0.15);
+    }
     .app-shell {
       display: none;
       min-height: 100vh;
@@ -2172,16 +2216,18 @@
   <main class="page">
     <section id="authScreen" class="onboarding-shell">
       <div class="onboarding">
-        <div class="app-icon" aria-hidden="true"><img class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
-        <h1 class="title">Welcome to SwiftBot</h1>
+        <div class="app-icon" style="width:120px;height:120px;border-radius:28px;" aria-hidden="true"><img class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
+        <h1 class="title">SwiftBot</h1>
         <p class="subtitle">
-          Sign in with Discord to access the local SwiftBot admin surface. Controls stay hidden until your session is authenticated.
+          Administrative Dashboard
         </p>
         <div class="auth-card glass">
           <div class="auth-stack">
             <p id="authPromptText">Authenticate with Discord.</p>
-            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width:100%;">Sign in with Discord</a>
-            <div id="authDivider" class="auth-divider">or</div>
+            <a id="discordAuthButton" class="primary-action" href="/auth/discord/login" style="width:100%;">
+              <i class="lucide" data-lucide="log-in" style="margin-right:8px;"></i>
+              Sign in with Discord
+            </a>            <div id="authDivider" class="auth-divider">or</div>
             <form id="localAuthForm" class="auth-form">
               <input id="localAuthUsername" class="field-input" autocomplete="username" placeholder="Local username">
               <input id="localAuthPassword" class="field-input" type="password" autocomplete="current-password" placeholder="Local password">
@@ -2793,7 +2839,8 @@
         root.setAttribute('data-theme', userPrefs.theme);
       }
       const bg = document.getElementById('bgStream');
-      if (bg) bg.style.display = userPrefs.backgroundAnimation ? '' : 'none';
+      const isAuth = !document.getElementById('authScreen').classList.contains('hidden');
+      if (bg) bg.style.display = (userPrefs.backgroundAnimation || isAuth) ? '' : 'none';
       root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
       if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
     }
@@ -2828,6 +2875,7 @@
       if (bg) bg.style.display = ''; // Force show on auth screen
       applyAuthOptions();
       loadAuthOptions();
+      refreshIcons();
     }
 
     function setAuthFeedback(message = '', kind = '') {
@@ -7119,7 +7167,7 @@
 
         const stride = [3, 5, 7][row % 3];
         const offset = (row * 5) % icons.length;
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 40; i++) {
           const iconID = icons[(i * stride + offset) % icons.length];
           const icon = document.createElement('i');
           icon.className = 'bg-icon lucide';
