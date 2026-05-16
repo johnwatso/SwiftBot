@@ -35,8 +35,10 @@
 		26001C9AFAE18FF56EA4BCDD /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = 6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */; };
 		2782AC6744E0B9AC94CE141D /* MeshSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBE5EBDA57392AC43CCE370 /* MeshSyncTests.swift */; };
 		27EBD03F4CDFA5B4F8A76F38 /* DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */; };
+		29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */ = {isa = PBXBuildFile; fileRef = C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */; };
 		2C30A3ECEFEBB1D412442557 /* MediaLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */; };
 		2F717839189B088E0B4DA26C /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */; };
+		2FED59E89C7EF46B3D67C5E3 /* SwiftBird.png in Resources */ = {isa = PBXBuildFile; fileRef = 7B9C73206F296924B1FAAF39 /* SwiftBird.png */; };
 		32EF85D74938EFC99D68448B /* HelpEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A902D75D3824989E0F053C6B /* HelpEngine.swift */; };
 		3427FDD6B8F160DBA04F79E1 /* RemoteSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A03317C59A5CE2BC3F067F /* RemoteSetupView.swift */; };
 		35162D9A1C01D79B31F13401 /* SwiftMinerDMTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE0A8502C15AC0C9BD2E795 /* SwiftMinerDMTypes.swift */; };
@@ -256,6 +258,7 @@
 		788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateItem.swift; sourceTree = "<group>"; };
 		791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
+		7B9C73206F296924B1FAAF39 /* SwiftBird.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = SwiftBird.png; sourceTree = "<group>"; };
 		7C4E3B85871C475A7A8D53DE /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheKeyBuilder.swift; sourceTree = "<group>"; };
 		7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSource.swift; sourceTree = "<group>"; };
@@ -305,6 +308,7 @@
 		B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+WikiBridge.swift"; sourceTree = "<group>"; };
 		BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClient.swift; sourceTree = "<group>"; };
 		C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareTunnelClient.swift; sourceTree = "<group>"; };
+		C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = SwiftBird3.png; sourceTree = "<group>"; };
 		C30594CFC06F0AC68516A696 /* SwiftMinerDMThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMThemeTests.swift; sourceTree = "<group>"; };
 		C33D037B65C9DBFE3FECD644 /* RemoteModeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModeRootView.swift; sourceTree = "<group>"; };
 		C510CF282F7E3B9D9A55415A /* AppModel+CommandProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+CommandProcessor.swift"; sourceTree = "<group>"; };
@@ -561,6 +565,8 @@
 			isa = PBXGroup;
 			children = (
 				7C4E3B85871C475A7A8D53DE /* AppIcon.png */,
+				7B9C73206F296924B1FAAF39 /* SwiftBird.png */,
+				C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */,
 			);
 			name = Resources;
 			path = SwiftBotApp/Resources;
@@ -718,6 +724,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */,
+				2FED59E89C7EF46B3D67C5E3 /* SwiftBird.png in Resources */,
+				29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
 				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
 			);

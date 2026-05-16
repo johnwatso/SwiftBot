@@ -989,6 +989,8 @@ actor AdminWebServer {
             return serveAsset(named: "AppIcon", ext: "png")
         case ("GET", "/assets/SwiftBird.png"):
             return serveAsset(named: "SwiftBird", ext: "png")
+        case ("GET", "/assets/SwiftBird3.png"):
+            return serveAsset(named: "SwiftBird3", ext: "png")
         case ("GET", let path) where path.hasPrefix("/assets/games/"):
             let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
             let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
