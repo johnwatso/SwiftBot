@@ -299,13 +299,19 @@ struct DiscordMessageRESTClient {
         req.httpBody = try JSONSerialization.data(withJSONObject: ["recipient_id": userId])
 
         let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let channelId = json["id"] as? String else {
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
         }
-        return channelId
+
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let channelId = json["id"] as? String else {
+                throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
+            }
+            return channelId
+        } catch {
+            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create DM channel"])
+        }
     }
 
     private func sendMultipartImage(

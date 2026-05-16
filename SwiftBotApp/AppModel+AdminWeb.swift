@@ -43,7 +43,8 @@ extension AppModel {
     func adminWebStatusSnapshot() -> AdminWebStatusPayload {
         AdminWebStatusPayload(
             botStatus: status.rawValue,
-            botUsername: botUsername,
+            botUsername: resolvedBotUsername,
+            botAvatarURL: botAvatarURL?.absoluteString,
             connectedServerCount: connectedServers.count,
             gatewayEventCount: gatewayEventCount,
             uptimeText: uptime?.text,
@@ -1227,6 +1228,7 @@ extension AppModel {
                     return AdminWebStatusPayload(
                         botStatus: "stopped",
                         botUsername: "SwiftBot",
+                        botAvatarURL: nil,
                         connectedServerCount: 0,
                         gatewayEventCount: 0,
                         uptimeText: nil,

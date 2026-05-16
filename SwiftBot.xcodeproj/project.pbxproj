@@ -105,6 +105,7 @@
 		8FDF1380E0C0369F9570C5D4 /* StandaloneSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */; };
 		909C5CDE8D006F22A6E4D70F /* SwiftMinerDMTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09A613E717FA199F6B39B864 /* SwiftMinerDMTheme.swift */; };
 		90A5AD4EDB92E31FEE9C2707 /* ClusterSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC995D5DD1A67363B7BD7FAA /* ClusterSecurityTests.swift */; };
+		916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C4E3B85871C475A7A8D53DE /* AppIcon.png */; };
 		91FF3FB5CA902BC308D4B6F2 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */; };
 		92C470056A7AFC94763D56C2 /* RuleExecutionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57BBCBA04C95A7B63B412ED /* RuleExecutionServiceTests.swift */; };
 		93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */; };
@@ -255,6 +256,7 @@
 		788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateItem.swift; sourceTree = "<group>"; };
 		791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerPreferencesView.swift; sourceTree = "<group>"; };
 		7A08A1E26A9A98169FEE2F3B /* PatchyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyViewModel.swift; sourceTree = "<group>"; };
+		7C4E3B85871C475A7A8D53DE /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheKeyBuilder.swift; sourceTree = "<group>"; };
 		7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSource.swift; sourceTree = "<group>"; };
 		7FD42789A025FD409C081463 /* AppModel+Patchy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Patchy.swift"; sourceTree = "<group>"; };
@@ -522,6 +524,7 @@
 		5862010FC4698115F0427E7E = {
 			isa = PBXGroup;
 			children = (
+				E1805FAD499C9CAAC9CB4485 /* Resources */,
 				0B81279A83B1440C3CEC4A11 /* SparklePublisher */,
 				00B77F31D8E3A1FCEE8DCAB0 /* SwiftBotApp */,
 				3B781432336CEB4787B37880 /* SwiftBotTests */,
@@ -552,6 +555,15 @@
 				54C4560115A21441D8D056F3 /* SwiftBotTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E1805FAD499C9CAAC9CB4485 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				7C4E3B85871C475A7A8D53DE /* AppIcon.png */,
+			);
+			name = Resources;
+			path = SwiftBotApp/Resources;
 			sourceTree = "<group>";
 		};
 		E6833AE29324F7856596A38C /* Services */ = {
@@ -705,6 +717,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
 				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
 			);
@@ -922,6 +935,7 @@
 		357DF8D0FCB875B119AC18D3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
@@ -973,6 +987,7 @@
 		4249029B0E9B3339C4E84513 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -989,6 +1004,7 @@
 		6E848D79BA4D37E81AC3A0DC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1009,6 +1025,7 @@
 		A2A3F35BA4A6C9C688D09CC6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1025,6 +1042,7 @@
 		AC4E0E3EB4323C5C7B8EDFBB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1101,6 +1119,7 @@
 		F7397A1EB1237FED3772A19C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = SwiftBot;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;

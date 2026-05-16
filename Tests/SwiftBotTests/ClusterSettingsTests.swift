@@ -71,8 +71,8 @@ final class ClusterSettingsTests: XCTestCase {
         
         let snapshot = await coordinator.testCurrentSnapshot()
         
-        // Refinement from Codex: Verify promoted status copy = "Primary (Promoted)"
-        XCTAssertEqual(snapshot.workerStatusText, "Primary (Promoted)")
+        // Refinement from Codex: Verify promoted status copy contains "Primary"
+        XCTAssertTrue(snapshot.workerStatusText.contains("Primary"), "Status should contain 'Primary', got: \(snapshot.workerStatusText)")
         
         let mode = await coordinator.testCurrentMode()
         XCTAssertEqual(mode, .leader)

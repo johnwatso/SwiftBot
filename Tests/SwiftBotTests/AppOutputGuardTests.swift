@@ -6,6 +6,7 @@ final class AppOutputGuardTests: XCTestCase {
     func testBlockedTypingIndicatorLogsActionDispatcherWarning() async {
         let model = AppModel()
         model.settings.clusterMode = .worker
+        model.clusterSnapshot.mode = .worker
         model.logs.clear()
 
         await model.sendTypingIndicator("channel-1")
@@ -20,6 +21,7 @@ final class AppOutputGuardTests: XCTestCase {
     func testBlockedOutputHelpersReturnFalseAndLogWarnings() async {
         let model = AppModel()
         model.settings.clusterMode = .worker
+        model.clusterSnapshot.mode = .worker
         model.logs.clear()
 
         let removedReaction = await model.removeOwnReaction(

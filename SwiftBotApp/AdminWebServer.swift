@@ -19,6 +19,7 @@ import NIOPosix
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
     let botUsername: String
+    let botAvatarURL: String?
     let connectedServerCount: Int
     let gatewayEventCount: Int
     let uptimeText: String?
@@ -1088,6 +1089,7 @@ actor AdminWebServer {
             let payload = await statusProvider?() ?? AdminWebStatusPayload(
                 botStatus: "stopped",
                 botUsername: "SwiftBot",
+                botAvatarURL: nil,
                 connectedServerCount: 0,
                 gatewayEventCount: 0,
                 uptimeText: nil,
