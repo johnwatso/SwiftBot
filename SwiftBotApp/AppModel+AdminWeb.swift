@@ -1079,11 +1079,17 @@ extension AppModel {
         }
         let serverID = serverIDs.first ?? ""
         let textChannelID = availableTextChannelsByServer[serverID]?.first?.id ?? ""
+
+        // 'Add once' logic for drivers: pick the first driver source not already configured.
+        let existingSources = Set(settings.patchy.sourceTargets.map(\.source))
+        let driverOptions: [PatchySourceKind] = [.nvidia, .amd, .intel]
+        let source = driverOptions.first(where: { !existingSources.contains($0) }) ?? .steam
+
         let target = PatchySourceTarget(
             id: UUID(),
             isEnabled: true,
-            source: .nvidia,
-            steamAppID: "570",
+            source: source,
+            steamAppID: source == .steam ? "570" : "",
             serverId: serverID,
             channelId: textChannelID,
             roleIDs: [],

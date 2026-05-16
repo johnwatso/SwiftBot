@@ -527,25 +527,28 @@
       height: 18px;
       stroke-width: 2.2px;
       vertical-align: middle;
-      color: var(--icon-color);
+      color: inherit;
       flex-shrink: 0;
     }
 
     .nav-icon .lucide {
       width: 18px;
       height: 18px;
+      color: var(--icon-color);
     }
 
     .section-mini-title .lucide {
       width: 16px;
       height: 16px;
       margin-right: 6px;
+      color: var(--icon-color);
     }
 
     .panel-title .lucide {
       width: 20px;
       height: 20px;
       margin-right: 10px;
+      color: var(--icon-color);
     }
 
     .mini-btn .lucide {
@@ -811,7 +814,8 @@
       border-radius: 6px;
       display: grid;
       place-items: center;
-      background: var(--nav-icon-bg);
+      background: rgba(var(--nav-icon-bg-rgb), 0.1); /* Fallback */
+      background: color-mix(in srgb, currentColor 12%, transparent);
       color: var(--icon-color);
     }
 
@@ -1420,6 +1424,11 @@
       align-items: center;
       gap: 4px;
     }
+    .patchy-target-card.duplicate-warning {
+      border-color: rgba(255, 59, 48, 0.4);
+      background: linear-gradient(180deg, rgba(255, 59, 48, 0.05), rgba(255, 59, 48, 0.02));
+    }
+
     .patchy-accent-grid {
       display: flex;
       gap: 8px;
@@ -4825,6 +4834,29 @@
           const channels = textChannelsForServer(target.serverId || (patchyData.servers[0]?.id || ''));
           const roleSummary = asRoleNames(target.serverId, target.roleIDs);
 
+          // Duplicate detection logic
+          let isDuplicate = false;
+          let duplicateReason = '';
+          const otherTargets = patchyData.targets.filter(t => t.id !== target.id);
+          
+          if (['NVIDIA', 'AMD', 'Intel Arc'].includes(target.source)) {
+            isDuplicate = otherTargets.some(t => t.source === target.source);
+            duplicateReason = 'Only one driver target allowed per vendor.';
+          } else if (target.source === 'Steam' && target.steamAppID) {
+            isDuplicate = otherTargets.some(t => t.source === 'Steam' && t.steamAppID === target.steamAppID);
+            duplicateReason = 'Target already exists for this Steam App ID.';
+          } else if (target.source === 'GitHub' && target.githubRepo) {
+            isDuplicate = otherTargets.some(t => t.source === 'GitHub' && t.githubRepo.toLowerCase() === target.githubRepo.toLowerCase());
+            duplicateReason = 'Target already exists for this repository.';
+          }
+
+          // Source filtering for dropdown: hide drivers used by other cards
+          const usedDrivers = otherTargets.filter(t => ['NVIDIA', 'AMD', 'Intel Arc'].includes(t.source)).map(t => t.source);
+          const sourceOptions = (patchyData.sourceKinds || []).filter(kind => {
+            if (kind === target.source) return true; // Always show current
+            return !usedDrivers.includes(kind); // Hide if used by someone else
+          }).map(kind => `<option value="${kind}" ${kind === target.source ? 'selected' : ''}>${kind}</option>`).join('');
+
           // Status logic
           let statusColor = 'var(--muted)';
           let statusIcon = 'schedule';
@@ -4838,10 +4870,11 @@
           const currentAccent = target.embedColorHex || '#5865F2';
 
           html += `
-            <article class="patchy-target-card" data-patchy-id="${target.id}">
+            <article class="patchy-target-card ${isDuplicate ? 'duplicate-warning' : ''}" data-patchy-id="${target.id}">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
                 <div class="command-name" style="color: ${meta.color};"><i class="lucide" data-lucide="${meta.icon}"></i> ${meta.label}</div>
                 <div style="display:flex;align-items:center;gap:12px;">
+                  ${isDuplicate ? `<span class="patchy-status-pill" style="background: rgba(255, 59, 48, 0.1); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3);" title="${duplicateReason}"><i class="lucide" data-lucide="alert-triangle" style="width:14px;height:14px;"></i> Duplicate</span>` : ''}
                   <span class="patchy-status-pill" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">
                     <i class="lucide" data-lucide="${statusIcon === 'check_circle' ? 'check-circle' : (statusIcon === 'error' ? 'alert-circle' : (statusIcon === 'info' ? 'info' : 'clock'))}" style="width:14px;height:14px;"></i>
                     ${target.lastStatus || 'Ready'}
@@ -4852,7 +4885,7 @@
 
               <div class="patchy-row">
                 <label class="patchy-kv">Source
-                  <select class="field-select patchy-source" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${(patchyData.sourceKinds || []).map(kind => `<option value="${kind}" ${kind === target.source ? 'selected' : ''}>${kind}</option>`).join('')}</select>
+                  <select class="field-select patchy-source" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${sourceOptions}</select>
                 </label>
                 
                 ${target.source === 'Steam' ? `
