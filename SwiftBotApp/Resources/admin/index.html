@@ -2350,14 +2350,6 @@
       </div>
     </section>
 
-        <!-- Footer -->
-        <div style="margin-top: 32px; text-align: center; font-size: 13px; color: #64748b; line-height: 1.6;">
-          By continuing, you agree to the Discord <a href="#" style="color: #818cf8; text-decoration: none;">Terms of Service</a><br />
-          and SwiftBot <a href="#" style="color: #818cf8; text-decoration: none;">Privacy Policy</a>.
-        </div>
-      </div>
-    </section>
-
     <section id="appShell" class="app-shell">
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-brand">
@@ -2663,13 +2655,13 @@
 
         <section id="voiceView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="zap"></i> Actions</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="zap"></i> Automations</div>
           </div>
           <div class="actions-shell">
             <section class="actions-column glass">
-              <div class="panel-title"><i class="lucide" data-lucide="list"></i> Action Rules</div>
+              <div class="panel-title"><i class="lucide" data-lucide="list"></i> Automation Rules</div>
               <div style="margin-bottom:8px;">
-                <button id="actionAddRule" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> New Action</button>
+                <button id="actionAddRule" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> New Automation</button>
               </div>
               <div id="actionRuleList"></div>
             </section>
@@ -4194,7 +4186,7 @@
       listNode.innerHTML = rules.map(rule => `
         <article class="rule-list-item ${rule.id === selectedActionRuleID ? 'active' : ''}" data-rule-id="${rule.id}">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-            <div class="rule-name">${rule.name || 'Action Rule'}</div>
+            <div class="rule-name">${rule.name || 'Automation Rule'}</div>
             <label class="switch"><input data-toggle-rule="${rule.id}" type="checkbox" ${rule.isEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
           </div>
           <div class="rule-sub">${rule.triggerSummary || rule.trigger || ''}</div>
@@ -4202,7 +4194,7 @@
             <button class="mini-btn" data-delete-rule="${rule.id}" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>
           </div>
         </article>
-      `).join('') || `<div class="placeholder">No action rules yet.</div>`;
+      `).join('') || `<div class="placeholder">No automation rules yet.</div>`;
 
       listNode.querySelectorAll('[data-rule-id]').forEach(node => {
         node.addEventListener('click', (e) => {
