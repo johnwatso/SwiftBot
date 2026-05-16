@@ -2822,15 +2822,15 @@
     function renderStats(metrics) {
       const visualForMetric = (title) => {
         const key = (title || '').toLowerCase();
-        if (key.includes('status')) return { icon: 'bolt', color: '#73f5ae' };
-        if (key.includes('server')) return { icon: 'dns', color: '#73c1ff' };
-        if (key.includes('voice')) return { icon: 'groups', color: '#ffcd76' };
+        if (key.includes('status')) return { icon: 'zap', color: '#73f5ae' };
+        if (key.includes('server')) return { icon: 'server', color: '#73c1ff' };
+        if (key.includes('voice')) return { icon: 'users', color: '#ffcd76' };
         if (key.includes('command')) return { icon: 'terminal', color: '#ff9f87' };
-        if (key.includes('wiki')) return { icon: 'menu_book', color: '#7edfc0' };
-        if (key.includes('patchy')) return { icon: 'construction', color: '#b5a7ff' };
-        if (key.includes('action')) return { icon: 'rule', color: '#9fc2ff' };
-        if (key.includes('ai')) return { icon: 'smart_toy', color: '#d1abff' };
-        return { icon: 'insights', color: '#8ecbff' };
+        if (key.includes('wiki')) return { icon: 'book-open', color: '#7edfc0' };
+        if (key.includes('patchy')) return { icon: 'wrench', color: '#b5a7ff' };
+        if (key.includes('action')) return { icon: 'zap', color: '#9fc2ff' };
+        if (key.includes('ai')) return { icon: 'bot', color: '#d1abff' };
+        return { icon: 'activity', color: '#8ecbff' };
       };
 
       const grid = document.getElementById('statsGrid');
@@ -2847,12 +2847,12 @@
         <article class="stat-card glass" data-overview-card="${id}" draggable="${isOverviewEditing ? 'true' : 'false'}" style="${isOverviewEditing ? `animation-duration:${duration}s;animation-delay:-${delay}s;` : ''}">
           <div class="stat-header">
             <h3>${metric.title}</h3>
-            <span class="stat-icon" style="color:${visual.color};">${visual.icon}</span>
+            <span class="stat-icon" style="color:${visual.color};"><i class="lucide" data-lucide="${visual.icon}" style="width:16px;height:16px;"></i></span>
           </div>
           <div class="stat-value">${metric.value}</div>
           <div class="stat-subtitle">${metric.subtitle}</div>
           <div class="stat-detail">Live snapshot</div>
-          ${isOverviewEditing ? '<button class="widget-remove" data-remove-card="1" type="button">remove</button>' : ''}
+          ${isOverviewEditing ? '<button class="widget-remove" data-remove-card="1" type="button"><i class="lucide" data-lucide="x" style="width:14px;height:14px;"></i></button>' : ''}
         </article>
       `;
       }).join('');
