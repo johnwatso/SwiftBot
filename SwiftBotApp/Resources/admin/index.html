@@ -441,6 +441,7 @@
     }
 
     .sidebar-scroll {
+      flex: 1;
       min-height: 0;
       overflow: auto;
       padding-right: 2px;
@@ -585,7 +586,15 @@
 
     .sidebar-user {
       margin-top: auto;
-      padding: 8px 6px 2px;
+      padding: 14px 16px;
+      border-top: 1px solid var(--glass-stroke);
+      background: var(--bg-a);
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      margin-left: -16px;
+      margin-right: -12px;
+      width: calc(100% + 28px);
     }
 
     .sidebar-user-card {
@@ -593,14 +602,23 @@
       border: 1px solid var(--glass-stroke);
       background: var(--glass-top);
       padding: 10px;
-      display: grid;
-      gap: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-user-card:hover {
+      background: var(--glass-bottom);
+      border-color: rgba(255,255,255,0.15);
     }
 
     .sidebar-user-main {
       display: flex;
       align-items: center;
       gap: 10px;
+      flex: 1;
+      min-width: 0;
     }
 
     .user-avatar {
@@ -638,19 +656,28 @@
     .sidebar-user-actions { margin-left: auto; }
 
     .icon-btn {
-      width: 34px;
-      height: 34px;
+      width: 32px;
+      height: 32px;
       border-radius: 999px;
       border: 1px solid var(--glass-stroke);
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--glass-top);
       color: var(--text);
       display: grid;
       place-items: center;
       cursor: pointer;
+      transition: all 0.2s ease;
     }
 
-    .icon-btn .ms {
-      font-size: 16px;
+    .icon-btn:hover {
+      background: var(--glass-bottom);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .icon-btn .lucide {
+      width: 16px;
+      height: 16px;
+      color: currentColor;
     }
 
     .view {
@@ -2237,6 +2264,9 @@
                   <div id="sidebarDisplayName" class="user-display">Discord User</div>
                   <div id="sidebarUsername" class="user-handle">@user</div>
                 </div>
+                <button class="icon-btn" onclick="selectView('userprefs')" type="button" aria-label="User Settings" style="margin-left: auto;">
+                  <i class="lucide" data-lucide="user-cog"></i>
+                </button>
               </div>
             </div>
           </div>
@@ -5188,7 +5218,7 @@
         </section>
 
         <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="puzzle"></i> Integrations</div>
+          <div class="panel-title"><i class="lucide" data-lucide="server"></i> Services</div>
           <div class="setting-row"><div class="left"><div class="title">Enable WikiBridge</div><div class="desc">Allow wiki lookups and source routing.</div></div><label class="switch"><input id="setWikiEnabled" type="checkbox" ${cfg.wikiBridge.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Patchy Monitoring</div><div class="desc">Run scheduled Patchy update checks.</div></div><label class="switch"><input id="setPatchyEnabled" type="checkbox" ${cfg.patchy.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="info-row"><span class="label">Wiki Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
