@@ -1245,6 +1245,23 @@ actor AdminWebServer {
                 return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
+        case ("GET", "/api/automations/templates"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            let payload = RecipeTemplate.catalog.map { template -> [String: Any] in
+                return [
+                    "id": template.id,
+                    "title": template.title,
+                    "subtitle": template.subtitle,
+                    "symbol": template.symbol,
+                    "trigger": template.trigger.rawValue,
+                    "actionType": template.actionType.rawValue,
+                    "messageDraft": template.messageDraft,
+                    "fields": template.fields.map { String(describing: $0) }
+                ]
+            }
+            return jsonResponse(["templates": payload])
         case ("GET", "/api/patchy"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -1664,7 +1681,7 @@ actor AdminWebServer {
         case ("POST", "/auth/logout"):
             return handleLogout(request: request)
         case ("GET", "/api/auth/options"):
-            return handleAuthOptions()
+            return await handleAuthOptions()
         case ("GET", "/api/auth/session"):
             return handleSessionInfo(request: request)
         case ("GET", "/api/server/info"):
@@ -1898,7 +1915,7 @@ actor AdminWebServer {
         ])
     }
 
-    private func handleAuthOptions() -> Data {
+    private func handleAuthOptions() async -> Data {
         let discordConfigured =
             !config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1908,10 +1925,18 @@ actor AdminWebServer {
             !config.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let devFeaturesEnabled = config.devFeaturesEnabled
 
+        // Expose the running bot's identity on the unauthenticated login screen
+        // so it can greet the operator personally instead of generic "SwiftBot".
+        let status = await statusProvider?()
+        let botName = status?.botUsername ?? "SwiftBot"
+        let botAvatarURL = status?.botAvatarURL ?? ""
+
         return jsonResponse([
             "discordEnabled": discordConfigured,
             "localEnabled": localEnabled && devFeaturesEnabled,
-            "devFeaturesEnabled": devFeaturesEnabled
+            "devFeaturesEnabled": devFeaturesEnabled,
+            "botName": botName,
+            "botAvatarURL": botAvatarURL
         ])
     }
 

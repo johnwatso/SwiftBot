@@ -65,6 +65,23 @@ struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
     @State private var isAdvancedExpanded = false
 
+    private var hasAnyAuthConfigured: Bool {
+        let s = app.settings.adminWebUI
+        func configured(_ p: OAuthProviderSettings) -> Bool {
+            p.enabled
+                && !p.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !p.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let localReady = s.localAuthEnabled
+            && !s.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !s.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return configured(s.discordOAuth)
+            || configured(s.appleOAuth)
+            || configured(s.steamOAuth)
+            || configured(s.githubOAuth)
+            || localReady
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Toggle("Enable Admin Web UI", isOn: $app.settings.adminWebUI.enabled)
@@ -73,6 +90,10 @@ struct AdminWebServerConfigurationSection: View {
             Text("SwiftBot automatically detects the correct public URL for OAuth redirects.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if app.settings.adminWebUI.enabled && !hasAnyAuthConfigured {
+                AdminWebAuthMissingBanner()
+            }
 
             DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -1081,3 +1102,36 @@ private extension CertificateManager.ValidationStatus {
         }
     }
 }
+
+/// Warning shown when Admin Web UI is enabled but no authentication provider
+/// (Discord OAuth, Apple/Steam/GitHub OAuth, or the local fallback) is fully
+/// configured. Without one, no one can actually sign in — the dashboard sits
+/// at the login screen with no working buttons.
+struct AdminWebAuthMissingBanner: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("No sign-in method configured")
+                    .font(.subheadline.weight(.semibold))
+                Text("The Web UI will start, but no one will be able to sign in. Add a Discord OAuth client (or enable a fallback provider) in the Authentication section below before sharing the URL.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        )
+    }
+}
+
