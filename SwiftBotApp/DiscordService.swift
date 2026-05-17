@@ -263,7 +263,7 @@ actor DiscordService {
     ///   - clientId: The bot's application ID.
     ///   - includeSlashCommands: When true, appends `applications.commands` scope.
     /// - Returns: The invite URL string, or nil if clientId is empty or URL construction fails.
-    func generateInviteURL(clientId: String, includeSlashCommands: Bool) -> String? {
+    func generateInviteURL(clientId: String, includeSlashCommands: Bool, codeGrantRedirectURI: String? = nil) -> String? {
         let trimmed = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -274,18 +274,23 @@ actor DiscordService {
 
         var scope = "bot"
         if includeSlashCommands { scope += " applications.commands" }
-
-        // Manually construct the encoded query to ensure space -> + for scope.
-        // response_type=code + redirect_uri make the invite work even when
-        // the Discord application has "Requires OAuth2 Code Grant" enabled
-        // in the Developer Portal — otherwise Discord rejects with
-        // "Integration requires code grant." Using Discord's own published
-        // landing page as the redirect avoids needing a local handler.
         let encodedScope = scope.replacingOccurrences(of: " ", with: "+")
-        let encodedRedirect = "https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorized"
-        let query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)&response_type=code&redirect_uri=\(encodedRedirect)"
-        components.percentEncodedQuery = query
 
+        var query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)"
+
+        // If the caller provides a pre-registered redirect URI (typically the
+        // admin Discord OAuth callback), append response_type=code so the
+        // invite works even when the Discord application has "Requires OAuth2
+        // Code Grant" enabled in the Developer Portal. The redirect_uri MUST
+        // be one already registered for this application — Discord rejects
+        // unknown redirects with "Invalid OAuth2 redirect_uri".
+        if let redirect = codeGrantRedirectURI?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !redirect.isEmpty,
+           let encodedRedirect = redirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            query += "&response_type=code&redirect_uri=\(encodedRedirect)"
+        }
+
+        components.percentEncodedQuery = query
         return components.url?.absoluteString
     }
 
