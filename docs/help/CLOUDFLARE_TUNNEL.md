@@ -17,6 +17,16 @@ This guide walks through SwiftBot's **Internet Access** feature, which exposes y
 
 All hostnames, tokens, and IDs in this guide are **examples**. Replace `example.com`, `swiftbot`, `swiftbot.example.com`, etc. with your own values.
 
+> ⚠️ **Heads-up: SwiftBot can overwrite existing DNS records.**
+>
+> If you point SwiftBot at a hostname that already has a DNS record, here's what happens during enable:
+>
+> - **`A` or `AAAA` records** on that hostname are **silently deleted and replaced** with a CNAME to the tunnel. No prompt.
+> - **A `CNAME` pointing to a different target** is **blocked** the first time and SwiftBot asks for explicit override before replacing it.
+> - **A `CNAME` already pointing to the correct tunnel target** is left alone.
+>
+> Pick a brand-new subdomain (`swiftbot`, `dashboard`, `bot-admin`, etc.) if you have any doubt. Don't aim it at a hostname that's already serving production traffic — your existing site will go dark the moment Internet Access is enabled.
+
 ---
 
 ## 1. How it works
@@ -184,11 +194,14 @@ The token's **Zone Resources** scope is too narrow.
 
 The chosen domain isn't fully active in Cloudflare. Confirm under **DNS → Records** that the zone status shows **Active** and the nameservers are pointed at Cloudflare. New domains can take a few hours.
 
-### "Configure DNS route" fails with "DNS record already exists"
+### "Configure DNS route" prompts to override an existing CNAME
 
-There's already an `A`, `AAAA`, or `CNAME` record for `swiftbot.example.com` in Cloudflare from a previous attempt or another tool.
+The hostname already has a `CNAME` pointing somewhere other than the tunnel target. SwiftBot blocks the operation by default so you don't accidentally clobber a production record.
 
-- Delete the conflicting record under **DNS → Records**, then retry.
+- If the existing CNAME is no longer needed, click the override action — SwiftBot will delete it and create the tunnel CNAME in its place.
+- If it **is** needed, pick a different subdomain in SwiftBot instead.
+
+> `A` and `AAAA` records on the same hostname are replaced silently — no prompt. See the warning at the top of this guide.
 
 ### Hostname loads but shows "502 Bad Gateway"
 
