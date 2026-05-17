@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/readme/app-icon.png" width="100" alt="SwiftBot icon">
+  <img src="../../assets/readme/app-icon.png" width="100" alt="SwiftBot icon">
 </p>
 
 <h1 align="center">Bot Setup Guide</h1>
@@ -190,6 +190,6 @@ You enabled the Web UI but haven't added a working OAuth provider or a local fal
 
 ## Related
 
-- [README](../README.md) — install and overview
-- [Architecture](../ARCHITECTURE.md) — how SwiftBot is wired internally
-- [Security](../SECURITY.md) — token handling and threat model
+- [README](../../README.md) — install and overview
+- [Architecture](../../ARCHITECTURE.md) — how SwiftBot is wired internally
+- [Security](../../SECURITY.md) — token handling and threat model
