@@ -985,6 +985,8 @@ actor AdminWebServer {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
             return serveIndex()
+        case ("GET", "/favicon.ico"), ("GET", "/favicon.png"):
+            return serveAsset(named: "favicon", ext: "png")
         case ("GET", "/assets/AppIcon.png"):
             return serveAsset(named: "AppIcon", ext: "png")
         case ("GET", "/assets/SwiftBird.png"):
