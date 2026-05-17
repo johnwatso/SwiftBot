@@ -48,13 +48,152 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
 
     var blurb: String {
         switch self {
-        case .compact: return "Fold repetitive bot chatter into a single condensed line."
-        case .summarise: return "Generate an on-device digest of matching messages."
-        case .keepLatest: return "Keep only the most recent N posts; everything older is tidied."
-        case .deduplicate: return "Collapse duplicate messages, keeping the freshest copy."
-        case .archive: return "Archive stale threads after a quiet period."
-        case .quietChannel: return "Mute notifications and collapse routine activity in-app."
-        case .reduceNoise: return "Combined dedupe + compact pass for high-traffic bot channels."
+        case .compact:
+            return "Deletes messages older than the chosen age from Discord. Toggle “Bots only” to leave human messages untouched."
+        case .summarise:
+            return "Generates a plain-English digest of matching messages on-device (Apple Intelligence). The digest is attached to the run report — Discord is not touched."
+        case .keepLatest:
+            return "Keeps the most recent N posts in the channel. Every older message is deleted from Discord."
+        case .deduplicate:
+            return "Deletes duplicate messages from Discord, keeping the freshest copy of each."
+        case .archive:
+            return "Archives stale threads in the channel after the chosen quiet period (Discord thread archive — they stay visible but collapsed)."
+        case .quietChannel:
+            return "In-app only. Marks routine bot chatter as muted so SwiftBot’s UI can collapse it. Nothing is sent to Discord and no messages are deleted."
+        case .reduceNoise:
+            return "Composite pass: deletes duplicate messages, then deletes bot messages older than the chosen age. Best for high-traffic notification channels."
+        }
+    }
+
+    /// One-word summary of where the action lands. Shown next to the blurb so
+    /// users can tell at a glance which strategies actually touch Discord.
+    var destinationLabel: String {
+        switch self {
+        case .compact, .keepLatest, .deduplicate, .reduceNoise: return "Deletes from Discord"
+        case .archive: return "Archives Discord threads"
+        case .summarise: return "In-app digest only"
+        case .quietChannel: return "In-app only"
+        }
+    }
+
+    var destinationTone: Color {
+        switch self {
+        case .compact, .keepLatest, .deduplicate, .reduceNoise: return .orange
+        case .archive: return .indigo
+        case .summarise, .quietChannel: return .blue
+        }
+    }
+}
+
+/// Goal-oriented presentation of a Sweep strategy. Each task maps to a
+/// concrete `SweepStrategyKind` underneath, but the user picks the *goal*
+/// (e.g. "Trim old bot messages") rather than the *mechanism* (".compact").
+/// Experimental tasks are listed so the UI can show them as "Coming soon"
+/// without enabling them.
+enum SweepTask: String, CaseIterable, Identifiable, Codable {
+    case trimOldBotMessages
+    case keepNewest
+    case removeDuplicates
+    case cleanNoisyBotChannel
+    case archiveStaleThreads
+    case dailyDigest
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .trimOldBotMessages: return "Trim old bot messages"
+        case .keepNewest: return "Keep only the newest"
+        case .removeDuplicates: return "Remove duplicate messages"
+        case .cleanNoisyBotChannel: return "Clean a noisy bot channel"
+        case .archiveStaleThreads: return "Archive stale threads"
+        case .dailyDigest: return "Daily AI digest"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .trimOldBotMessages:
+            return "Deletes bot messages older than the chosen age. Human messages are left alone."
+        case .keepNewest:
+            return "Keeps the most recent posts in the channel — set how many below. Every older message is deleted."
+        case .removeDuplicates:
+            return "Deletes duplicate messages, keeping the freshest copy of each."
+        case .cleanNoisyBotChannel:
+            return "Combined pass: removes duplicates, then deletes bot messages older than the chosen age. Best for high-traffic notification channels."
+        case .archiveStaleThreads:
+            return "Archives Discord threads that have been quiet for the chosen period. They stay visible but collapsed."
+        case .dailyDigest:
+            return "Generates a daily on-device summary of channel activity using Apple Intelligence."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .trimOldBotMessages: return "rectangle.compress.vertical"
+        case .keepNewest: return "1.circle"
+        case .removeDuplicates: return "square.on.square.dashed"
+        case .cleanNoisyBotChannel: return "speaker.slash"
+        case .archiveStaleThreads: return "archivebox"
+        case .dailyDigest: return "text.bubble"
+        }
+    }
+
+    var destinationLabel: String {
+        switch self {
+        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return "Deletes from Discord"
+        case .archiveStaleThreads: return "Archives Discord threads"
+        case .dailyDigest: return "On-device digest"
+        }
+    }
+
+    var destinationTone: Color {
+        switch self {
+        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return .orange
+        case .archiveStaleThreads: return .indigo
+        case .dailyDigest: return .blue
+        }
+    }
+
+    /// `false` for tasks that don't yet have a working execution path; the
+    /// picker shows them with a "Coming soon" badge and disables selection.
+    var isAvailable: Bool {
+        switch self {
+        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return true
+        case .archiveStaleThreads, .dailyDigest: return false
+        }
+    }
+
+    /// Build a concrete strategy from this task + the parameters held on the
+    /// policy draft. The strategy gets the age/count fields that match the
+    /// task's defaults.
+    func makeStrategy(ageHours: Int = 24, keepCount: Int = 1) -> SweepStrategy {
+        switch self {
+        case .trimOldBotMessages:
+            return SweepStrategy(kind: .compact, ageHours: ageHours, fromBotsOnly: true)
+        case .keepNewest:
+            return SweepStrategy(kind: .keepLatest, keepCount: keepCount)
+        case .removeDuplicates:
+            return SweepStrategy(kind: .deduplicate, ageHours: ageHours)
+        case .cleanNoisyBotChannel:
+            return SweepStrategy(kind: .reduceNoise, ageHours: ageHours, fromBotsOnly: true)
+        case .archiveStaleThreads:
+            return SweepStrategy(kind: .archive, ageHours: ageHours)
+        case .dailyDigest:
+            return SweepStrategy(kind: .summarise)
+        }
+    }
+
+    /// Derive a task from an existing strategy (for loading saved rules).
+    static func from(_ strategy: SweepStrategy) -> SweepTask {
+        switch strategy.kind {
+        case .compact: return .trimOldBotMessages
+        case .keepLatest: return .keepNewest
+        case .deduplicate: return .removeDuplicates
+        case .reduceNoise: return .cleanNoisyBotChannel
+        case .archive: return .archiveStaleThreads
+        case .summarise: return .dailyDigest
+        case .quietChannel: return .cleanNoisyBotChannel // legacy fallback
         }
     }
 }
@@ -898,6 +1037,8 @@ final class SweepService: ObservableObject {
             let body = (ns.userInfo["responseBody"] as? String) ?? ""
             let snippet = String(body.prefix(180)).trimmingCharacters(in: .whitespacesAndNewlines)
             switch ns.code {
+            case -2:
+                return "SwiftBot isn’t connected to Discord. Tap Start Bot in the sidebar and try again."
             case 401:
                 return "Discord rejected the bot token (401). Reconnect SwiftBot in Discord preferences."
             case 403:
@@ -1300,7 +1441,7 @@ private struct SweepContentView: View {
                     guildName: "",
                     channelID: "",
                     channelName: "",
-                    strategies: [SweepStrategy(kind: .reduceNoise)],
+                    strategies: [SweepTask.cleanNoisyBotChannel.makeStrategy(ageHours: 48)],
                     schedule: .interval(minutes: 60),
                     safety: SweepSafetyRails()
                 ),
@@ -2196,19 +2337,8 @@ struct SweepPolicyEditor: View {
                         .onChange(of: policy.channelID) { _, _ in syncChannelName() }
                     }
 
-                    SweepFormSection(title: "Strategies", symbol: "list.bullet.rectangle") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach($policy.strategies) { $strategy in
-                                strategyCard(strategy: $strategy)
-                            }
-                            Button {
-                                policy.strategies.append(SweepStrategy(kind: .compact))
-                            } label: {
-                                Label("Add Strategy", systemImage: "plus")
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.regular)
-                        }
+                    SweepFormSection(title: "What Sweep should do", symbol: "wand.and.stars") {
+                        taskPicker
                     }
 
                     SweepFormSection(title: "Schedule", symbol: "clock") {
@@ -2353,6 +2483,35 @@ struct SweepPolicyEditor: View {
         }
     }
 
+    /// Editable numeric input — text field + stepper, both bound to the same
+    /// clamped value. Typing a value outside the range will clamp on commit.
+    @ViewBuilder
+    private func numericInput(
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int = 1,
+        suffix: String = "",
+        width: CGFloat = 64
+    ) -> some View {
+        let clamped = Binding<Int>(
+            get: { min(max(value.wrappedValue, range.lowerBound), range.upperBound) },
+            set: { value.wrappedValue = min(max($0, range.lowerBound), range.upperBound) }
+        )
+        HStack(spacing: 6) {
+            TextField("", value: clamped, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: width)
+            if !suffix.isEmpty {
+                Text(suffix)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Stepper("", value: clamped, in: range, step: step)
+                .labelsHidden()
+        }
+    }
+
     @ViewBuilder
     private func labelledField(_ label: String, text: Binding<String>, placeholder: String = "") -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -2384,20 +2543,180 @@ struct SweepPolicyEditor: View {
         policy.channelName = channels.first { $0.id == policy.channelID }?.name ?? ""
     }
 
+    // MARK: Task picker (replaces the old strategy stack)
+
+    private var selectedTask: SweepTask {
+        guard let first = policy.strategies.first else { return .trimOldBotMessages }
+        return SweepTask.from(first)
+    }
+
+    private var draftAgeHours: Int {
+        policy.strategies.first?.ageHours ?? 24
+    }
+
+    private var draftKeepCount: Int {
+        policy.strategies.first?.keepCount ?? 1
+    }
+
+    private var taskPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(SweepTask.allCases) { task in
+                taskRow(task)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func taskRow(_ task: SweepTask) -> some View {
+        let isSelected = selectedTask == task && task.isAvailable
+        let isDisabled = !task.isAvailable
+
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: task.symbol)
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isDisabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
+                    .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(task.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(isDisabled ? Color.secondary : Color.primary)
+                        if isDisabled {
+                            Text("COMING SOON")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                        } else {
+                            Text(task.destinationLabel)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(task.destinationTone)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(task.destinationTone.opacity(0.14)))
+                        }
+                    }
+                    Text(task.blurb)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.4))
+            }
+
+            if isSelected {
+                Divider().opacity(0.4)
+                taskParameters(for: task)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.4) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isDisabled else { return }
+            selectTask(task)
+        }
+        .opacity(isDisabled ? 0.55 : 1.0)
+    }
+
+    @ViewBuilder
+    private func taskParameters(for task: SweepTask) -> some View {
+        switch task {
+        case .trimOldBotMessages, .removeDuplicates, .cleanNoisyBotChannel, .archiveStaleThreads:
+            HStack(spacing: 10) {
+                Text("Older than")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                numericInput(
+                    value: Binding(
+                        get: { draftAgeHours },
+                        set: { setAge($0) }
+                    ),
+                    range: 1...720,
+                    suffix: "hours"
+                )
+                Spacer()
+            }
+        case .keepNewest:
+            HStack(spacing: 10) {
+                Text("Keep latest")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                numericInput(
+                    value: Binding(
+                        get: { draftKeepCount },
+                        set: { setKeepCount($0) }
+                    ),
+                    range: 1...20,
+                    suffix: "posts"
+                )
+                Spacer()
+            }
+        case .dailyDigest:
+            EmptyView()
+        }
+    }
+
+    private func selectTask(_ task: SweepTask) {
+        let strategy = task.makeStrategy(ageHours: draftAgeHours, keepCount: draftKeepCount)
+        policy.strategies = [strategy]
+    }
+
+    private func setAge(_ hours: Int) {
+        guard var s = policy.strategies.first else { return }
+        s.ageHours = hours
+        policy.strategies = [s]
+    }
+
+    private func setKeepCount(_ count: Int) {
+        guard var s = policy.strategies.first else { return }
+        s.keepCount = count
+        policy.strategies = [s]
+    }
+
     @ViewBuilder
     private func strategyCard(strategy: Binding<SweepStrategy>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: strategy.wrappedValue.kind.symbol)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
+        let kind = strategy.wrappedValue.kind
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: kind.symbol)
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                    .frame(width: 26)
+
                 Picker("", selection: strategy.kind) {
-                    ForEach(SweepStrategyKind.allCases) { kind in
-                        Text(kind.displayName).tag(kind)
+                    ForEach(SweepStrategyKind.allCases) { k in
+                        Label(k.displayName, systemImage: k.symbol).tag(k)
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 180)
+                .pickerStyle(.menu)
+                .frame(maxWidth: 200)
+
+                Text(kind.destinationLabel)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(kind.destinationTone)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(kind.destinationTone.opacity(0.14)))
 
                 Spacer()
 
@@ -2412,9 +2731,14 @@ struct SweepPolicyEditor: View {
                 .buttonStyle(.plain)
             }
 
+            Text(kind.blurb)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             strategyParameters(strategy: strategy)
         }
-        .padding(10)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.03))
@@ -2453,14 +2777,8 @@ struct SweepPolicyEditor: View {
                     .frame(maxWidth: 140)
                 Spacer()
             }
-        case .summarise:
-            Text(strategy.wrappedValue.kind.blurb)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .quietChannel:
-            Text(strategy.wrappedValue.kind.blurb)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        case .summarise, .quietChannel:
+            EmptyView() // No parameters — blurb above describes the behaviour.
         }
     }
 
@@ -2485,13 +2803,15 @@ struct SweepPolicyEditor: View {
                     Text("Every")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Stepper("\(m) min",
-                            value: Binding(
-                                get: { m },
-                                set: { policy.schedule = .interval(minutes: $0) }
-                            ),
-                            in: 5...1440, step: 5)
-                        .frame(maxWidth: 180)
+                    numericInput(
+                        value: Binding(
+                            get: { m },
+                            set: { policy.schedule = .interval(minutes: $0) }
+                        ),
+                        range: 5...1440,
+                        step: 5,
+                        suffix: "minutes"
+                    )
                     Spacer()
                 }
             case .daily(let h):
@@ -2499,13 +2819,14 @@ struct SweepPolicyEditor: View {
                     Text("At hour")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Stepper("\(h):00",
-                            value: Binding(
-                                get: { h },
-                                set: { policy.schedule = .daily(hour: $0) }
-                            ),
-                            in: 0...23)
-                        .frame(maxWidth: 160)
+                    numericInput(
+                        value: Binding(
+                            get: { h },
+                            set: { policy.schedule = .daily(hour: $0) }
+                        ),
+                        range: 0...23,
+                        suffix: ":00"
+                    )
                     Spacer()
                 }
             }
@@ -2546,10 +2867,12 @@ struct SweepPolicyEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(width: 110, alignment: .leading)
-                Stepper("\(policy.safety.maxMessagesPerRun)",
-                        value: $policy.safety.maxMessagesPerRun,
-                        in: 10...2000, step: 10)
-                    .frame(maxWidth: 160)
+                numericInput(
+                    value: $policy.safety.maxMessagesPerRun,
+                    range: 10...2000,
+                    step: 10,
+                    suffix: "messages"
+                )
                 Spacer()
             }
             HStack {
@@ -2557,10 +2880,12 @@ struct SweepPolicyEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(width: 110, alignment: .leading)
-                Stepper("\(policy.safety.minMessageAgeMinutes)",
-                        value: $policy.safety.minMessageAgeMinutes,
-                        in: 0...1440, step: 5)
-                    .frame(maxWidth: 160)
+                numericInput(
+                    value: $policy.safety.minMessageAgeMinutes,
+                    range: 0...1440,
+                    step: 5,
+                    suffix: "minutes"
+                )
                 Spacer()
             }
         }
@@ -2672,7 +2997,7 @@ struct SweepPreviewSummary: View {
                 summarySection(
                     title: "Keep",
                     symbol: "checkmark.circle",
-                    tone: .secondary,
+                    tone: .green,
                     groups: keepGroups,
                     emptyHint: nil
                 )

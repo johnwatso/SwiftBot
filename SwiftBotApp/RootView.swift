@@ -175,6 +175,12 @@ struct DashboardSidebar: View {
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
+                            SidebarRow(
+                                item: .recordings,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace,
+                                count: app.recentMediaCount24h
+                            )
                         }
 
                         SidebarSection(title: "System") {
@@ -182,12 +188,6 @@ struct DashboardSidebar: View {
                                 item: .aiBots,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .recordings,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace,
-                                count: app.recentMediaCount24h
                             )
                             SidebarRow(
                                 item: .analytics,
