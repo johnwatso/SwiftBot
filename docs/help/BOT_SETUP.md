@@ -50,14 +50,16 @@ Paste this token into SwiftBot's onboarding screen. Once it's validated, the app
 
 ## 3. Enable privileged gateway intents
 
-Still on the **Bot** page, scroll down to **Privileged Gateway Intents** and enable both:
+Still on the **Bot** page, scroll down to **Privileged Gateway Intents** and enable all three:
 
-- **Server Members Intent** — required for member-join/leave events.
+- **Server Members Intent** — required for member join / leave events.
 - **Message Content Intent** — required for any rule or AI feature that reads message text.
-
-(**Presence Intent** is optional — only needed if you ever want to react to status changes.)
+- **Presence Intent** — required for voice and online-status tracking.
 
 Save changes at the bottom of the page.
+
+> **Why can't SwiftBot enable these for me?**
+> Privileged intents can only be toggled by the application owner through the Discord website. There's no API for it — Discord designed it that way as a safety control so a bot can't silently grant itself elevated access. SwiftBot **requests** these intents when it connects to the Gateway; if any are missing the connection is rejected with **"Disallowed intents specified"** (gateway close code 4014). The Diagnostics tab in the app surfaces this if it happens.
 
 ---
 

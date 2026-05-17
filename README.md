@@ -110,9 +110,10 @@ Quick path:
 2. Click **New Application**
 3. Give the application a name, such as `SwiftBot`
 4. Open the **Bot** section, click **Add Bot**, then copy the **Bot Token**
-5. Enable the required **Privileged Gateway Intents**:
+5. Enable the required **Privileged Gateway Intents** (all three are needed):
    - Server Members Intent
    - Message Content Intent
+   - Presence Intent
 6. Paste the token into SwiftBot during onboarding
 
 SwiftBot generates the correct invite URL once the token is validated. Click **Invite Bot** and pick a server.
