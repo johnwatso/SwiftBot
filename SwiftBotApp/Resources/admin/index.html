@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SwiftBot Admin</title>
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Pin Lucide to a stable version. Using @latest broke a chunk of icons
+       (sidebar nav, recordings/film, etc.) when newer releases renamed icons. -->
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <style>
     :root {
       color-scheme: light dark;
@@ -52,8 +54,8 @@
 
     @keyframes float-up {
       0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
-      10% { opacity: 0.15; }
-      90% { opacity: 0.15; }
+      15% { opacity: 0.55; }
+      85% { opacity: 0.55; }
       100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
     }
 
@@ -2318,8 +2320,26 @@
     }
 
     /* Ensure shell content stacks above the mesh layer */
-    #appShell { position: relative; background: #0a0c14; }
+    /* Force dark-mode token values inside the admin shell — the Canvas
+       look forces a dark background regardless of system theme, so the
+       text/icon colors must follow or content becomes invisible on
+       macOS Light system mode. */
+    #appShell {
+      position: relative;
+      background: #0a0c14;
+      --text: rgba(255, 255, 255, 0.94);
+      --muted: rgba(255, 255, 255, 0.62);
+      --icon-color: rgba(255, 255, 255, 0.88);
+      --nav-icon-bg: rgba(255, 255, 255, 0.05);
+      --section-title-color: #fff;
+      --glass-stroke: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
     #appShell > * { position: relative; z-index: 1; }
+    #appShell .info-row .value,
+    #appShell .info-row .label { color: inherit; }
+    #appShell .info-row .label { opacity: 0.62; }
+    #appShell .info-row .value { color: rgba(255, 255, 255, 0.94); }
 
     /* Glass cards — recolored toward Canvas tokens */
     #appShell .glass,
@@ -2631,6 +2651,79 @@
     #appShell .view:not(.hidden) .diagnostics-panels > *,
     #appShell .view:not(.hidden) .glass {
       animation-name: cv-fade-in-up;
+    }
+
+    /* Icon-only buttons (e.g. the bot start/stop in the overview header). */
+    #appShell .cv-icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      color: rgb(226, 232, 240);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    #appShell .cv-icon-btn:hover { background: rgba(255, 255, 255, 0.09); }
+    #appShell .cv-icon-btn:active { transform: scale(0.95); }
+    #appShell .cv-icon-btn.cv-icon-btn-stopped {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: rgba(16, 185, 129, 0.32);
+      color: rgb(110, 231, 183);
+    }
+    #appShell .cv-icon-btn.cv-icon-btn-stopped:hover { background: rgba(16, 185, 129, 0.24); }
+    #appShell .cv-icon-btn.cv-icon-btn-running {
+      background: rgba(244, 63, 94, 0.14);
+      border-color: rgba(244, 63, 94, 0.30);
+      color: rgb(251, 113, 133);
+    }
+    #appShell .cv-icon-btn.cv-icon-btn-running:hover { background: rgba(244, 63, 94, 0.22); }
+
+    /* User card pinned to the bottom-left of the viewport, NOT the sidebar
+       flow. fixed positioning means it's always visible no matter how the
+       sidebar scrolls or what the browser chrome height does. */
+    #appShell .sidebar .sidebar-user {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: var(--sidebar-width);
+      padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, 0.92) 30%, rgba(2, 6, 23, 0.98) 100%);
+      backdrop-filter: blur(20px) saturate(1.2);
+      -webkit-backdrop-filter: blur(20px) saturate(1.2);
+      z-index: 5;
+    }
+    /* Reserve scroll space inside the sidebar so nav items don't get hidden
+       behind the fixed user card. */
+    #appShell .sidebar .sidebar-scroll {
+      padding-bottom: 80px;
+    }
+
+    /* Pinned top row on the Overview — Usage Trends + Currently in Voice.
+       Two equal-size cards, side by side, always at the top of the view. */
+    #appShell .cv-overview-top {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: stretch;
+    }
+    @media (max-width: 760px) {
+      #appShell .cv-overview-top {
+        grid-template-columns: 1fr;
+      }
+    }
+    #appShell .cv-overview-top > .diagnostics-panel {
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+    }
+    #appShell .cv-overview-top #overviewPanelActiveVoice .event-list {
+      flex: 1;
+      overflow-y: auto;
     }
 
     /* ------------------------------------------------------------
@@ -3095,12 +3188,17 @@
                 <button id="overviewReset" class="secondary-action" type="button">Reset</button>
               </div>
               <button id="overviewEditToggle" class="secondary-action" type="button">Edit</button>
+              <button id="botToggleIcon" class="cv-icon-btn" type="button" aria-label="Start/Stop bot" title="Start Bot">
+                <i class="lucide" data-lucide="play"></i>
+              </button>
             </div>
           </div>
 
           <section id="statsGrid" class="stats-grid"></section>
 
-          <section id="overviewPanels" class="diagnostics-panels">
+          <!-- Pinned row: Usage Trends + Currently in Voice. Same size,
+               always visible. Not part of the draggable panel layout. -->
+          <section id="overviewTopRow" class="cv-overview-top">
             <article id="overviewPanelUsage" class="diagnostics-panel overview-panel glass cv-usage-panel">
               <div class="cv-usage-head">
                 <div>
@@ -3117,16 +3215,15 @@
               </div>
             </article>
 
-            <article id="overviewPanelCluster" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="network"></i> Cluster</div>
-              <div id="clusterInfo" class="info-list"></div>
-              <div class="detail-actions">
-                <button id="swiftMeshButton" class="secondary-action" type="button">View in SwiftMesh</button>
-              </div>
+            <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
+              <div class="panel-title"><i class="lucide" data-lucide="users"></i> Currently In Voice</div>
+              <div id="activeVoiceList" class="event-list"></div>
             </article>
+          </section>
 
+          <section id="overviewPanels" class="diagnostics-panels">
             <article id="overviewPanelBotInfo" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="bot"></i> Bot Info</div>
+              <div class="panel-title"><i class="lucide" data-lucide="bot"></i> <span id="botInfoPanelTitle">SwiftBot Info</span></div>
               <div id="botInfo" class="info-list"></div>
             </article>
 
@@ -3139,20 +3236,16 @@
               <div class="panel-title"><i class="lucide" data-lucide="terminal"></i> Recent Commands</div>
               <div id="recentCommands" class="event-list"></div>
             </article>
-
-            <article id="overviewPanelActiveVoice" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="users"></i> Currently In Voice</div>
-              <div id="activeVoiceList" class="event-list"></div>
-            </article>
-
-            <article id="overviewPanelQuickControls" class="diagnostics-panel overview-panel glass">
-              <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Quick Controls</div>
-              <div class="utility-row">
-                <button id="toggleBot" class="primary-action" type="button">Start Bot</button>
-              </div>
-              <div id="message" class="message"></div>
-            </article>
           </section>
+
+          <!-- Hidden plumbing kept for code that still reads these (renderInfoRows
+               for clusterInfo, swiftMeshButton wiring, toggleBot button, etc.). -->
+          <div id="overviewHiddenPlumbing" style="display:none;">
+            <div id="clusterInfo"></div>
+            <button id="swiftMeshButton" type="button"></button>
+            <button id="toggleBot" type="button"></button>
+            <div id="message"></div>
+          </div>
         </section>
 
         <section id="commandsView" class="view hidden">
@@ -3410,7 +3503,7 @@
     let overviewLayout = {
       cardsOrder: [],
       cardsHidden: [],
-      panelsOrder: ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'],
+      panelsOrder: ['botinfo', 'voice', 'commands'],
       panelsHidden: []
     };
     // Server-driven metadata from /api/actions - provides all block types, fields, and variables
@@ -3555,7 +3648,7 @@
       return {
         cardsOrder: [],
         cardsHidden: [],
-        panelsOrder: ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'],
+        panelsOrder: ['botinfo', 'voice', 'commands'],
         panelsHidden: []
       };
     }
@@ -3581,7 +3674,7 @@
     }
 
     function normalizeOverviewLayout(metrics) {
-      const defaultPanels = ['usage', 'invoice', 'cluster', 'botinfo', 'voice', 'commands', 'controls'];
+      const defaultPanels = ['botinfo', 'voice', 'commands'];
       const metricIDs = metrics.map(metricID);
       const knownMetricIDs = new Set(metricIDs);
       const orderedCards = (overviewLayout.cardsOrder || []).filter(id => knownMetricIDs.has(id));
@@ -3655,6 +3748,10 @@
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('appShell').classList.add('active');
       applyUserPrefs(); // This will respect the backgroundAnimation toggle
+      // The sidebar exists in the DOM during auth, but its lucide <i> tags
+      // can fail to render if createIcons ran before the shell was visible.
+      // Re-run once it's promoted to .active to be safe.
+      refreshIcons();
     }
 
     function showAuthScreen() {
@@ -3721,16 +3818,23 @@
       const metricMap = new Map(metrics.map(metric => [metricID(metric), metric]));
       const visibleIDs = (overviewLayout.cardsOrder || []).filter(id => !overviewLayout.cardsHidden.includes(id) && metricMap.has(id));
 
+      // Bot name from the live status endpoint (driven by the Discord token).
+      const botName = (dashboardStatus?.botUsername || '').trim();
+
       grid.innerHTML = visibleIDs.map(id => {
         const metric = metricMap.get(id);
         const visual = visualForMetric(metric.title);
+        // Personalize the "Bot Status" tile with the running bot's name.
+        const displayTitle = (metric.title === 'Bot Status' && botName)
+          ? `${botName} Status`
+          : metric.title;
         const seed = [...id].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) >>> 0, 7);
         const duration = (0.14 + ((seed % 8) * 0.01)).toFixed(2);
         const delay = ((seed % 9) * 0.02).toFixed(2);
         return `
         <article class="stat-card glass" data-overview-card="${id}" draggable="${isOverviewEditing ? 'true' : 'false'}" style="${isOverviewEditing ? `animation-duration:${duration}s;animation-delay:-${delay}s;` : ''}">
           <div class="stat-header">
-            <h3>${metric.title}</h3>
+            <h3>${displayTitle}</h3>
             <span class="stat-icon" style="color:${visual.color};"><i class="lucide" data-lucide="${visual.icon}" style="width:16px;height:16px;"></i></span>
           </div>
           <div class="stat-value">${metric.value}</div>
@@ -3797,13 +3901,11 @@
       if (!panelHost) return;
 
       const panelNodeByID = {
-        usage: document.getElementById('overviewPanelUsage'),
-        cluster: document.getElementById('overviewPanelCluster'),
+        // 'usage' and 'invoice' are pinned to the top row above stats.
+        // 'cluster' and 'controls' were removed from the overview.
         botinfo: document.getElementById('overviewPanelBotInfo'),
         voice: document.getElementById('overviewPanelVoiceEvents'),
-        commands: document.getElementById('overviewPanelRecentCommands'),
-        invoice: document.getElementById('overviewPanelActiveVoice'),
-        controls: document.getElementById('overviewPanelQuickControls')
+        commands: document.getElementById('overviewPanelRecentCommands')
       };
 
       const visibleOrder = (overviewLayout.panelsOrder || []).filter(id => !overviewLayout.panelsHidden.includes(id));
@@ -3898,13 +4000,9 @@
         .map(metric => ({ id: metricID(metric), label: `${metric.title} (Card)`, kind: 'card' }))
         .filter(item => overviewLayout.cardsHidden.includes(item.id));
       const panelLabels = {
-        usage: 'Usage Trends Panel',
-        cluster: 'Cluster Panel',
         botinfo: 'Bot Info Panel',
         voice: 'Recent Voice Panel',
-        commands: 'Recent Commands Panel',
-        invoice: 'Currently In Voice Panel',
-        controls: 'Quick Controls Panel'
+        commands: 'Recent Commands Panel'
       };
       const hiddenPanels = (overviewLayout.panelsHidden || []).map(id => ({ id, label: panelLabels[id] || `${id} Panel`, kind: 'panel' }));
       const entries = [...hiddenCards, ...hiddenPanels];
@@ -4038,14 +4136,20 @@
     }
 
     function analyticsIcon(category) {
-      switch ((category || '').toLowerCase()) {
-        case 'voice': return 'graphic_eq';
-        case 'command': return 'terminal';
-        case 'gateway': return 'wifi_tethering';
-        case 'automation': return 'auto_awesome';
-        case 'health': return 'ecg_heart';
-        default: return 'radio_button_checked';
-      }
+      // Map analytics categories to lucide icons. Previously this returned
+      // bare Material Symbols names (e.g. "graphic_eq") which rendered as
+      // plain text since Material Symbols isn't loaded.
+      const lucideName = (() => {
+        switch ((category || '').toLowerCase()) {
+          case 'voice': return 'audio-waveform';
+          case 'command': return 'terminal';
+          case 'gateway': return 'wifi';
+          case 'automation': return 'sparkles';
+          case 'health': return 'heart-pulse';
+          default: return 'circle-dot';
+        }
+      })();
+      return `<i class="lucide" data-lucide="${lucideName}"></i>`;
     }
 
     function relativeTime(value) {
@@ -4219,25 +4323,60 @@
           </article>
         `).join('') || `<div class="placeholder">No completed voice sessions yet.</div>`;
       }
+
+      // Convert any `<i class="lucide">` placeholders that were injected
+      // (analytics feed icons, etc.) into SVGs.
+      refreshIcons();
+    }
+
+    // Cache the bot's display name so the UI shows "<BotName> Info" even
+    // before /api/status responds on a fresh page load. The cache is updated
+    // whenever the bot reports a non-empty username via /api/status.
+    const BOT_NAME_CACHE_KEY = 'swiftbot.webui.bot-name';
+    function getCachedBotName() {
+      try { return (localStorage.getItem(BOT_NAME_CACHE_KEY) || '').trim(); }
+      catch (_) { return ''; }
+    }
+    function setCachedBotName(name) {
+      try {
+        if (name && name.trim()) localStorage.setItem(BOT_NAME_CACHE_KEY, name.trim());
+      } catch (_) { /* storage full or disabled — ignore */ }
+    }
+    function effectiveBotName() {
+      return (dashboardStatus?.botUsername || '').trim()
+        || getCachedBotName()
+        || '';
+    }
+    function applyBotIdentityLabels() {
+      const name = effectiveBotName();
+      const botInfoTitle = document.getElementById('botInfoPanelTitle');
+      if (botInfoTitle) {
+        botInfoTitle.textContent = name ? `${name} Info` : 'SwiftBot Info';
+      }
     }
 
     async function loadStatus() {
       const response = await fetch('/api/status');
       const data = await response.json();
       dashboardStatus = data;
-      
+
+      // Persist the bot name the moment we see it so a later reload (or any
+      // window where the bot hasn't fully started yet) still shows it.
+      if (data.botUsername) setCachedBotName(data.botUsername);
+
       const brandImg = document.getElementById('sidebarAppIconImg');
       if (brandImg) {
         brandImg.src = data.botAvatarURL || '/assets/AppIcon.png';
       }
       const brandTitle = document.getElementById('sidebarBrandTitle');
       if (brandTitle) {
-        brandTitle.textContent = data.botUsername || 'SwiftBot';
+        brandTitle.textContent = data.botUsername || getCachedBotName() || 'SwiftBot';
       }
       const brandSubtitle = document.getElementById('sidebarBrandSubtitle');
       if (brandSubtitle) {
         brandSubtitle.textContent = (data.botStatus === 'running') ? 'Online' : 'Stopped';
       }
+      applyBotIdentityLabels();
 
       refreshBotToggleButton();
       return data;
@@ -4283,14 +4422,9 @@
         item => {
           const desc = String(item.description || '');
           const leave = /\b(left|leave|leaved|disconnected)\b/i.test(desc);
-          // Wrap the first capitalized word in a user tag if no <strong> is present.
-          let formatted = desc;
-          if (!/<\s*strong/i.test(formatted)) {
-            formatted = formatted.replace(/^([A-Za-z0-9_.\-]+)\b/, '<span class="event-user">$1</span>');
-          }
           return `
             <div class="event-item ${leave ? 'leave' : 'ok'}">
-              <div class="event-title">${formatted}</div>
+              <div class="event-title">${desc}</div>
               <div class="event-time">${item.timeText}</div>
             </div>
           `;
@@ -4300,21 +4434,12 @@
         'recentCommands',
         data.recentCommands || [],
         'No commands yet',
-        item => {
-          const title = String(item.title || '');
-          let formatted = title;
-          if (!/<\s*(code|strong)/i.test(formatted)) {
-            formatted = formatted
-              .replace(/^([A-Za-z0-9_.\-]+)\b/, '<span class="event-user">$1</span>')
-              .replace(/(\/[A-Za-z0-9_\-]+)/, '<code class="event-command">$1</code>');
-          }
-          return `
-            <div class="event-item ${item.ok ? 'ok' : 'error'}">
-              <div class="event-title">${formatted}</div>
-              <div class="event-time">${item.timeText}</div>
-            </div>
-          `;
-        }
+        item => `
+          <div class="event-item ${item.ok ? 'ok' : 'error'}">
+            <div class="event-title">${item.title}</div>
+            <div class="event-time">${item.timeText}</div>
+          </div>
+        `
       );
       renderActiveVoice(data.activeVoice || []);
       renderOverviewPanels();
@@ -4397,12 +4522,27 @@
     }
 
     function refreshBotToggleButton() {
-      const button = document.getElementById('toggleBot');
-      if (!button || !dashboardStatus) return;
+      if (!dashboardStatus) return;
       const runningStates = ['running', 'connecting', 'reconnecting'];
       const isRunning = runningStates.includes((dashboardStatus.botStatus || '').toLowerCase());
-      button.textContent = isRunning ? 'Stop Bot' : 'Start Bot';
-      button.className = isRunning ? 'secondary-action' : 'primary-action';
+
+      // Legacy hidden button kept for compatibility with other code paths.
+      const legacy = document.getElementById('toggleBot');
+      if (legacy) {
+        legacy.textContent = isRunning ? 'Stop Bot' : 'Start Bot';
+        legacy.className = isRunning ? 'secondary-action' : 'primary-action';
+      }
+
+      // New icon-only header button.
+      const icon = document.getElementById('botToggleIcon');
+      if (icon) {
+        icon.title = isRunning ? 'Stop bot' : 'Start bot';
+        icon.setAttribute('aria-label', icon.title);
+        icon.classList.toggle('cv-icon-btn-running', isRunning);
+        icon.classList.toggle('cv-icon-btn-stopped', !isRunning);
+        icon.innerHTML = `<i class="lucide" data-lucide="${isRunning ? 'square' : 'play'}"></i>`;
+        try { lucide.createIcons(); } catch (_) {}
+      }
     }
 
     async function loadConfig() {
@@ -5009,7 +5149,12 @@
       renderActionLibrary();
       const listNode = document.getElementById('actionRuleList');
       const editorNode = document.getElementById('actionEditor');
-      if (!listNode || !editorNode || !actionsData) return;
+      if (!listNode || !editorNode || !actionsData) {
+        // Even on early bail-out, refresh icons so the block library
+        // (which already had its innerHTML set above) shows correctly.
+        refreshIcons();
+        return;
+      }
 
       const rules = actionsData.rules || [];
       listNode.innerHTML = rules.map(rule => `
@@ -5050,17 +5195,19 @@
       const selected = findSelectedRule();
       if (!selected) {
         editorNode.innerHTML = `<div class="placeholder">Select an action rule to edit.</div>`;
-        return;
-      }
-
-      // Use 5-stage pipeline renderer if we have server metadata
-      if (builderMetadata) {
+      } else if (builderMetadata) {
+        // Use 5-stage pipeline renderer if we have server metadata
         renderPipelineEditor(editorNode, selected);
-        return;
+      } else {
+        // Legacy fallback for old API responses
+        renderLegacyEditor(editorNode, selected);
       }
 
-      // Legacy fallback for old API responses
-      renderLegacyEditor(editorNode, selected);
+      // Always refresh icons at the end — the block library, rule list,
+      // and editor all set innerHTML with `<i class="lucide">` tags that
+      // need lucide.createIcons() to convert them to SVG. Previously this
+      // only fired in the legacy branch, leaving the pipeline path with
+      // missing icons until some other UI action triggered a refresh.
       refreshIcons();
     }
 
@@ -6606,7 +6753,7 @@
         header.querySelector('#mediaBackToLibrary')?.addEventListener('click', () => {
           flushActiveMediaPlayback(panels.querySelector('video'), 'progress');
           mediaViewMode = 'library';
-          renderMediaView();
+          renderRecordingsView();
         });
 
         panels.querySelector('#mediaQualityToggle')?.addEventListener('click', () => {
@@ -6614,7 +6761,7 @@
           const wasPlaying = video && !video.paused && !video.ended;
           const resumeAt = video ? video.currentTime : 0;
           mediaExportState.playbackQuality = mediaExportState.playbackQuality === 'low' ? 'auto' : 'low';
-          renderMediaView();
+          renderRecordingsView();
           const refreshed = document.querySelector('section#mediaView video');
           if (refreshed) {
             const onLoaded = () => {
@@ -6642,7 +6789,7 @@
             return;
           }
           await loadMediaData();
-          renderMediaView();
+          renderRecordingsView();
         });
 
         panels.querySelector('#multiExportStart')?.addEventListener('click', async () => {
@@ -6671,13 +6818,13 @@
             return;
           }
           await loadMediaData();
-          renderMediaView();
+          renderRecordingsView();
         });
 
         panels.querySelector('#clipName')?.addEventListener('input', (e) => { mediaExportState.clipName = e.target.value; });
         panels.querySelector('#multiSecondary')?.addEventListener('change', (e) => {
           mediaExportState.secondaryID = e.target.value;
-          renderMediaView();
+          renderRecordingsView();
         });
         panels.querySelector('#multiName')?.addEventListener('input', (e) => { mediaExportState.multiName = e.target.value; });
 
@@ -6703,7 +6850,7 @@
           mediaExportState.multiEndSeconds = end;
           mediaExportState.multiStart = formatSeconds(start);
           mediaExportState.multiEnd = formatSeconds(end);
-          renderMediaView();
+          renderRecordingsView();
         });
 
         const primaryVideo = panels.querySelector('video');
@@ -6975,7 +7122,7 @@
           flushActiveMediaPlayback(document.querySelector('#mediaPanels video'), 'progress');
           selectedMediaItemID = node.dataset.mediaId;
           mediaViewMode = 'player';
-          renderMediaView();
+          renderRecordingsView();
         });
         node.addEventListener('mouseenter', () => {
           if (!mediaPreviewAllowed()) return;
@@ -7004,19 +7151,19 @@
         mediaFilterState.dateRange = header.querySelector('#mediaDateFilter')?.value || 'all';
         mediaFilterState.page = 1;
         await loadMediaData();
-        renderMediaView();
+        renderRecordingsView();
       });
       panels.querySelector('#mediaPrevPage')?.addEventListener('click', async () => {
         if ((mediaLibraryData.page || 1) <= 1) return;
         mediaFilterState.page = Math.max(1, (mediaLibraryData.page || 1) - 1);
         await loadMediaData();
-        renderMediaView();
+        renderRecordingsView();
       });
       panels.querySelector('#mediaNextPage')?.addEventListener('click', async () => {
         if ((mediaLibraryData.page || 1) >= (mediaLibraryData.totalPages || 1)) return;
         mediaFilterState.page = (mediaLibraryData.page || 1) + 1;
         await loadMediaData();
-        renderMediaView();
+        renderRecordingsView();
       });
     }
 
@@ -7992,6 +8139,9 @@
 
     async function bootstrap() {
       buildAnimatedBackground();
+      // Apply any cached bot name immediately so labels read correctly while
+      // /api/status is still in flight on first load.
+      applyBotIdentityLabels();
       await loadAuthOptions();
       const me = await loadMe();
       if (!me) {
@@ -8061,6 +8211,12 @@
       renderOverviewAddList();
     });
 
+    // The header icon button is just an alias for the legacy toggle —
+    // forward clicks so a single handler runs the API call.
+    document.getElementById('botToggleIcon')?.addEventListener('click', () => {
+      document.getElementById('toggleBot')?.click();
+    });
+
     document.getElementById('toggleBot')?.addEventListener('click', async () => {
       try {
         const runningStates = ['running', 'connecting', 'reconnecting'];
@@ -8122,7 +8278,8 @@
         const duration = 22 + Math.random() * 28;
         const delay = Math.random() * duration;
         const size = 14 + Math.floor(Math.random() * 22); // 14–35 px
-        wrap.style.opacity = String((0.25 + Math.random() * 0.45).toFixed(2));
+        // Don't set opacity inline — the float-up keyframes own the fade
+        // in/out cycle. Setting it here was making symbols invisible.
         wrap.style.animation = `float-up ${duration}s linear infinite`;
         wrap.style.animationDelay = `-${delay.toFixed(2)}s`;
         const icon = document.createElement('i');
