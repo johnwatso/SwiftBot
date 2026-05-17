@@ -3,44 +3,58 @@ import SwiftUI
 
 // MARK: - Sweep Models
 //
-// Sweep is SwiftBot's channel lifecycle / retention subsystem. The first cut
-// ships the full model surface, an actor-backed service with JSON persistence
-// and a scheduler tick, and a SwiftMesh-styled dashboard. Discord side-effects
-// are routed through `SweepDispatcher` — by default the dispatcher is a
-// dry-run shim so the UI is fully exercisable without touching real channels.
+// Sweep is SwiftBot's native macOS utility for intelligently tidying Discord
+// channel clutter — compacting repetitive activity, condensing bot chatter,
+// summarising noisy channels. The first cut ships the full model surface, an
+// actor-backed service with JSON persistence and a scheduler tick, and a
+// SwiftMesh-styled dashboard. Discord side-effects are routed through
+// `SweepDispatcher` — by default the dispatcher is a dry-run shim so the UI
+// is fully exercisable without touching real channels.
 
 enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
-    case delete
+    case compact
+    case summarise
     case keepLatest
     case deduplicate
-    case compactVoiceSessions
-    case summarise
     case archive
-    case pinSummary
+    case quietChannel
+    case reduceNoise
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .delete: return "Delete"
+        case .compact: return "Compact"
+        case .summarise: return "Summarise"
         case .keepLatest: return "Keep Latest"
         case .deduplicate: return "Deduplicate"
-        case .compactVoiceSessions: return "Compact Voice"
-        case .summarise: return "Summarise"
         case .archive: return "Archive"
-        case .pinSummary: return "Pin Summary"
+        case .quietChannel: return "Quiet Channel"
+        case .reduceNoise: return "Reduce Noise"
         }
     }
 
     var symbol: String {
         switch self {
-        case .delete: return "trash"
+        case .compact: return "rectangle.compress.vertical"
+        case .summarise: return "text.bubble"
         case .keepLatest: return "1.circle"
         case .deduplicate: return "square.on.square.dashed"
-        case .compactVoiceSessions: return "waveform"
-        case .summarise: return "text.bubble"
         case .archive: return "archivebox"
-        case .pinSummary: return "pin"
+        case .quietChannel: return "bell.slash"
+        case .reduceNoise: return "waveform.path.ecg"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .compact: return "Fold repetitive bot chatter into a single condensed line."
+        case .summarise: return "Generate an on-device digest of matching messages."
+        case .keepLatest: return "Keep only the most recent N posts; everything older is tidied."
+        case .deduplicate: return "Collapse duplicate messages, keeping the freshest copy."
+        case .archive: return "Archive stale threads after a quiet period."
+        case .quietChannel: return "Mute notifications and collapse routine activity in-app."
+        case .reduceNoise: return "Combined dedupe + compact pass for high-traffic bot channels."
         }
     }
 }
@@ -98,7 +112,10 @@ enum SweepSchedule: Codable, Hashable {
 
 struct SweepSafetyRails: Codable, Hashable {
     var maxMessagesPerRun: Int = 200
-    var dryRunOnly: Bool = true
+    /// Legacy flag retained for back-compat with persisted snapshots. New
+    /// rules default to armed; users sanity-check via the Try Run button on
+    /// the editor before saving. Set programmatically only.
+    var dryRunOnly: Bool = false
     var minMessageAgeMinutes: Int = 5
     var protectPinned: Bool = true
     var protectReacted: Bool = true
@@ -132,15 +149,78 @@ enum SweepActionKind: String, Codable {
     case archive
     case summarise
     case pin
+    case quiet
     case skip
+}
+
+/// How an action is realised. `virtual` actions stay inside SwiftBot (collapsed
+/// views, digests held in the app, muted notifications). `destructive` actions
+/// reach Discord through `ActionDispatcher` and only run on Primary nodes.
+enum SweepActionMode: String, Codable, Hashable {
+    case virtual
+    case destructive
+
+    var displayName: String {
+        switch self {
+        case .virtual: return "Virtual"
+        case .destructive: return "Live"
+        }
+    }
 }
 
 struct SweepAction: Codable, Hashable, Identifiable {
     var id: UUID = UUID()
     let kind: SweepActionKind
+    let mode: SweepActionMode
     let messageID: String
     let preview: String
     let reason: String
+    var authorName: String?
+    var isBot: Bool?
+
+    init(
+        id: UUID = UUID(),
+        kind: SweepActionKind,
+        mode: SweepActionMode? = nil,
+        messageID: String,
+        preview: String,
+        reason: String,
+        authorName: String? = nil,
+        isBot: Bool? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.mode = mode ?? SweepAction.defaultMode(for: kind)
+        self.messageID = messageID
+        self.preview = preview
+        self.reason = reason
+        self.authorName = authorName
+        self.isBot = isBot
+    }
+
+    static func defaultMode(for kind: SweepActionKind) -> SweepActionMode {
+        switch kind {
+        case .delete, .archive, .pin: return .destructive
+        case .keep, .summarise, .quiet, .skip: return .virtual
+        }
+    }
+
+    static func from(
+        _ message: SweepFetchedMessage,
+        kind: SweepActionKind,
+        reason: String,
+        mode: SweepActionMode? = nil
+    ) -> SweepAction {
+        SweepAction(
+            kind: kind,
+            mode: mode,
+            messageID: message.id,
+            preview: message.content,
+            reason: reason,
+            authorName: message.authorName,
+            isBot: message.isBot
+        )
+    }
 }
 
 struct SweepRunReport: Codable, Identifiable, Hashable {
@@ -156,6 +236,30 @@ struct SweepRunReport: Codable, Identifiable, Hashable {
     let dryRun: Bool
     let actions: [SweepAction]
     let error: String?
+    var summary: String?
+}
+
+/// A retroactive proposal generated by `SweepSuggestionEngine` after scanning
+/// recent channel activity. Each suggestion carries a ready-to-apply strategy
+/// and schedule; tapping Apply turns it into a `SweepPolicy`.
+struct SweepSuggestion: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    let guildID: String
+    let guildName: String
+    let channelID: String
+    let channelName: String
+    let strategyKind: SweepStrategyKind
+    let title: String
+    let rationale: String
+    let evidenceCount: Int
+    let confidence: Double
+    let proposedStrategy: SweepStrategy
+    let proposedSchedule: SweepSchedule
+    var createdAt: Date = Date()
+    /// Dry-run report produced by running the proposed strategy against the
+    /// messages we already fetched during the scan. Lets the user preview
+    /// exactly what would happen before tapping Apply.
+    var projection: SweepRunReport?
 }
 
 enum SweepRuntimeState: String, Codable {
@@ -193,6 +297,9 @@ struct SweepSnapshot: Codable {
     var policies: [SweepPolicy] = []
     var globalPaused: Bool = false
     var recentReports: [SweepRunReport] = []
+    var suggestions: [SweepSuggestion] = []
+    var dismissedSuggestionFingerprints: [String] = []
+    var lastSuggestionScanAt: Date?
 }
 
 actor SweepStore {
@@ -254,6 +361,28 @@ struct SweepFetchedMessage: Sendable, Hashable {
     let hasReactions: Bool
 }
 
+/// Live dispatcher: routes Sweep through the real Discord REST runtime via
+/// `DiscordService`. Execution is gated by the cluster role — `canExecute`
+/// reports `true` only when the node is Primary (Standalone/Leader) and the
+/// bot token is loaded.
+struct LiveSweepDispatcher: SweepDispatcher {
+    let discord: DiscordService
+    let isPrimary: @Sendable () async -> Bool
+
+    func canExecute() async -> Bool {
+        guard await isPrimary() else { return false }
+        return await discord.outputAllowed
+    }
+
+    func fetchRecentMessages(channelID: String, limit: Int) async throws -> [SweepFetchedMessage] {
+        try await discord.sweepFetchRecentMessages(channelId: channelID, limit: limit)
+    }
+
+    func deleteMessage(channelID: String, messageID: String) async throws {
+        try await discord.sweepDeleteMessage(channelId: channelID, messageId: messageID)
+    }
+}
+
 /// Default dispatcher: returns a small synthetic sample so the UI is fully
 /// exercisable, and refuses to execute anything (forces dry-run).
 struct PreviewSweepDispatcher: SweepDispatcher {
@@ -295,6 +424,131 @@ struct PreviewSweepDispatcher: SweepDispatcher {
     }
 }
 
+// MARK: - Suggestion engine
+
+/// Pure-function analyser. Given recent messages from a channel, produce zero
+/// or more `SweepSuggestion`s. Heuristics intentionally err on the side of
+/// proposing few high-confidence suggestions — anything noisy gets dropped.
+enum SweepSuggestionEngine {
+    static func analyse(
+        guildID: String,
+        guildName: String,
+        channelID: String,
+        channelName: String,
+        messages: [SweepFetchedMessage]
+    ) -> [SweepSuggestion] {
+        guard messages.count >= 5 else { return [] }
+        var out: [SweepSuggestion] = []
+
+        let botCount = messages.filter(\.isBot).count
+        let botRatio = Double(botCount) / Double(messages.count)
+        let nameHintsBot = channelHintsBot(channelName: channelName)
+
+        // 1. Reduce noise — mostly bot chatter, or a channel whose name (#notifications,
+        // #patchy, #github, etc.) screams "bot dumping ground" even with light volume.
+        let isHighVolumeBot = messages.count >= 20 && botRatio >= 0.5
+        let isPureBotChannel = botRatio >= 0.8 && messages.count >= 8
+        let isNameHintedBot = nameHintsBot && botRatio >= 0.5 && messages.count >= 5
+        if isHighVolumeBot || isPureBotChannel || isNameHintedBot {
+            out.append(SweepSuggestion(
+                guildID: guildID,
+                guildName: guildName,
+                channelID: channelID,
+                channelName: channelName,
+                strategyKind: .reduceNoise,
+                title: "Reduce noise in #\(channelName)",
+                rationale: "\(botCount) of the last \(messages.count) messages are from bots — Sweep can dedupe duplicates and compact older bot posts.",
+                evidenceCount: botCount,
+                confidence: min(1.0, max(0.6, botRatio)),
+                proposedStrategy: SweepStrategy(kind: .reduceNoise, ageHours: 48, fromBotsOnly: true),
+                proposedSchedule: .interval(minutes: 120)
+            ))
+        }
+
+        // 2. Deduplicate — repeated messages
+        var contentCount: [String: Int] = [:]
+        for m in messages {
+            let key = m.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !key.isEmpty else { continue }
+            contentCount[key, default: 0] += 1
+        }
+        let duplicateExtras = contentCount.values
+            .filter { $0 > 1 }
+            .map { $0 - 1 }
+            .reduce(0, +)
+        if duplicateExtras >= 3 && out.first?.strategyKind != .reduceNoise {
+            out.append(SweepSuggestion(
+                guildID: guildID,
+                guildName: guildName,
+                channelID: channelID,
+                channelName: channelName,
+                strategyKind: .deduplicate,
+                title: "Deduplicate #\(channelName)",
+                rationale: "Found \(duplicateExtras) duplicate messages in the last \(messages.count). Sweep can collapse repeats automatically.",
+                evidenceCount: duplicateExtras,
+                confidence: min(1.0, Double(duplicateExtras) / Double(messages.count) + 0.3),
+                proposedStrategy: SweepStrategy(kind: .deduplicate, ageHours: 24),
+                proposedSchedule: .interval(minutes: 60)
+            ))
+        }
+
+        // 3. Keep latest — repeating versioned posts from the same bot author
+        let byAuthor = Dictionary(grouping: messages.filter(\.isBot), by: { $0.authorID })
+        for (_, group) in byAuthor where group.count >= 3 {
+            let prefix = commonPrefix(of: group.map(\.content))
+            if prefix.count >= 6 {
+                let author = group.first?.authorName ?? "this bot"
+                out.append(SweepSuggestion(
+                    guildID: guildID,
+                    guildName: guildName,
+                    channelID: channelID,
+                    channelName: channelName,
+                    strategyKind: .keepLatest,
+                    title: "Keep latest \(author) post in #\(channelName)",
+                    rationale: "\(group.count) similar posts from \(author) starting with “\(prefix.prefix(40))…”. Sweep can keep only the newest.",
+                    evidenceCount: group.count,
+                    confidence: 0.85,
+                    proposedStrategy: SweepStrategy(kind: .keepLatest, keepCount: 1),
+                    proposedSchedule: .interval(minutes: 180)
+                ))
+                break // one keep-latest suggestion per channel is enough
+            }
+        }
+
+        return out
+    }
+
+    private static let botChannelNameHints: [String] = [
+        "bot", "bots", "noti", "notif", "notification", "notifications",
+        "feed", "feeds", "alert", "alerts", "log", "logs", "activity",
+        "patchy", "github", "release", "releases", "ci", "deploy", "deploys",
+        "build", "builds", "voice-log", "audit", "spam"
+    ]
+
+    private static func channelHintsBot(channelName: String) -> Bool {
+        let lower = channelName.lowercased()
+        return botChannelNameHints.contains { lower.contains($0) }
+    }
+
+    /// Fingerprint used to remember dismissals so we don't re-suggest the same
+    /// thing on every scan.
+    static func fingerprint(_ suggestion: SweepSuggestion) -> String {
+        "\(suggestion.channelID)#\(suggestion.strategyKind.rawValue)"
+    }
+
+    private static func commonPrefix(of strings: [String]) -> String {
+        guard let first = strings.first else { return "" }
+        var prefix = first
+        for s in strings.dropFirst() {
+            while !s.hasPrefix(prefix) {
+                prefix = String(prefix.dropLast())
+                if prefix.isEmpty { return "" }
+            }
+        }
+        return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 // MARK: - Service
 
 @MainActor
@@ -307,9 +561,16 @@ final class SweepService: ObservableObject {
         didSet { if oldValue != globalPaused { Task { await persist() } } }
     }
     @Published private(set) var activePolicyID: UUID?
+    @Published private(set) var suggestions: [SweepSuggestion] = []
+    @Published private(set) var isScanningSuggestions: Bool = false
+    @Published private(set) var lastSuggestionScanAt: Date?
+    @Published private(set) var scanProgress: (done: Int, total: Int) = (0, 0)
+    private var dismissedSuggestionFingerprints: Set<String> = []
 
     private let store = SweepStore()
     private var dispatcher: SweepDispatcher = PreviewSweepDispatcher()
+    private var summariser: (@Sendable (String, [String]) async -> String?)?
+    private var activityLogger: ((SweepRunReport) -> Void)?
     private var tickTask: Task<Void, Never>?
 
     init() {
@@ -320,11 +581,27 @@ final class SweepService: ObservableObject {
         self.dispatcher = dispatcher
     }
 
+    /// Inject an async function that turns a channel name + ordered message
+    /// lines into a digest string. Sweep calls this when a run produces
+    /// `.summarise` actions; the resulting text is stored on the run report.
+    func setSummariser(_ summariser: @escaping @Sendable (String, [String]) async -> String?) {
+        self.summariser = summariser
+    }
+
+    /// Called once per completed run (manual or scheduled). AppModel uses this
+    /// to forward Sweep activity into the shared Activity log.
+    func setActivityLogger(_ logger: @escaping (SweepRunReport) -> Void) {
+        self.activityLogger = logger
+    }
+
     private func hydrate() async {
         let snapshot = await store.load()
         self.policies = snapshot.policies
         self.recentReports = snapshot.recentReports
         self.globalPaused = snapshot.globalPaused
+        self.suggestions = snapshot.suggestions
+        self.lastSuggestionScanAt = snapshot.lastSuggestionScanAt
+        self.dismissedSuggestionFingerprints = Set(snapshot.dismissedSuggestionFingerprints)
         recomputeNextRuns()
         startTickLoop()
     }
@@ -334,7 +611,10 @@ final class SweepService: ObservableObject {
             schemaVersion: 1,
             policies: policies,
             globalPaused: globalPaused,
-            recentReports: recentReports
+            recentReports: recentReports,
+            suggestions: suggestions,
+            dismissedSuggestionFingerprints: Array(dismissedSuggestionFingerprints),
+            lastSuggestionScanAt: lastSuggestionScanAt
         )
         await store.save(snapshot)
     }
@@ -487,6 +767,16 @@ final class SweepService: ObservableObject {
             }
 
             let suppressed = plan.filter { $0.kind == .skip }.count
+
+            // Build an on-device digest if any actions asked to be summarised.
+            var digest: String?
+            let summariseLines = plan
+                .filter { $0.kind == .summarise }
+                .map(\.preview)
+            if !summariseLines.isEmpty, let summariser {
+                digest = await summariser(policy.channelName, summariseLines)
+            }
+
             let report = SweepRunReport(
                 policyID: policy.id,
                 policyName: policy.name,
@@ -498,7 +788,8 @@ final class SweepService: ObservableObject {
                 suppressed: suppressed,
                 dryRun: effectivelyDryRun,
                 actions: plan,
-                error: nil
+                error: nil,
+                summary: digest
             )
             recordReport(report)
             markRan(policyID: policy.id, at: start)
@@ -524,9 +815,40 @@ final class SweepService: ObservableObject {
         }
     }
 
+    /// Dry-run a policy that hasn't been saved yet — used by the editor's
+    /// "Try Run" button.
+    func previewDraft(_ policy: SweepPolicy) async -> SweepRunReport? {
+        await runPreview(of: policy)
+    }
+
     func preview(policyID: UUID) async -> SweepRunReport? {
         guard let policy = policies.first(where: { $0.id == policyID }) else { return nil }
+        return await runPreview(of: policy)
+    }
+
+    /// Always returns a `SweepRunReport`. On failure (no token, channel not
+    /// accessible, bot offline, etc.) the report carries `error` set and an
+    /// empty action list — so the calling UI can always present something
+    /// rather than appearing to do nothing.
+    private func runPreview(of policy: SweepPolicy) async -> SweepRunReport {
         let start = Date()
+        let displayName = policy.name.isEmpty ? "Untitled rule" : policy.name
+        guard !policy.channelID.isEmpty else {
+            return SweepRunReport(
+                policyID: policy.id,
+                policyName: displayName,
+                startedAt: start,
+                durationMS: 0,
+                scanned: 0,
+                matched: 0,
+                executed: 0,
+                suppressed: 0,
+                dryRun: true,
+                actions: [],
+                error: "No channel selected for this rule yet.",
+                summary: nil
+            )
+        }
         do {
             let messages = try await dispatcher.fetchRecentMessages(
                 channelID: policy.channelID,
@@ -537,7 +859,7 @@ final class SweepService: ObservableObject {
             let suppressed = plan.filter { $0.kind == .skip }.count
             return SweepRunReport(
                 policyID: policy.id,
-                policyName: policy.name,
+                policyName: displayName,
                 startedAt: start,
                 durationMS: Int(Date().timeIntervalSince(start) * 1000),
                 scanned: messages.count,
@@ -546,11 +868,52 @@ final class SweepService: ObservableObject {
                 suppressed: suppressed,
                 dryRun: true,
                 actions: plan,
-                error: nil
+                error: nil,
+                summary: nil
             )
         } catch {
-            return nil
+            return SweepRunReport(
+                policyID: policy.id,
+                policyName: displayName,
+                startedAt: start,
+                durationMS: Int(Date().timeIntervalSince(start) * 1000),
+                scanned: 0,
+                matched: 0,
+                executed: 0,
+                suppressed: 0,
+                dryRun: true,
+                actions: [],
+                error: SweepService.describeFetchError(error, channelName: policy.channelName),
+                summary: nil
+            )
         }
+    }
+
+    /// Turn the generic `NSError` thrown by `DiscordMessageRESTClient` into a
+    /// message the user can actually act on.
+    static func describeFetchError(_ error: Error, channelName: String) -> String {
+        let channelLabel = channelName.isEmpty ? "this channel" : "#\(channelName)"
+        let ns = error as NSError
+        if ns.domain == "DiscordService" {
+            let body = (ns.userInfo["responseBody"] as? String) ?? ""
+            let snippet = String(body.prefix(180)).trimmingCharacters(in: .whitespacesAndNewlines)
+            switch ns.code {
+            case 401:
+                return "Discord rejected the bot token (401). Reconnect SwiftBot in Discord preferences."
+            case 403:
+                return "The bot can’t read \(channelLabel) (403). Grant SwiftBot the Read Message History permission in this channel."
+            case 404:
+                return "Channel not found (404). \(channelLabel) may have been deleted or renamed."
+            case 429:
+                return "Rate-limited by Discord (429). Wait a few seconds and try again."
+            default:
+                if !snippet.isEmpty {
+                    return "Discord returned \(ns.code) for \(channelLabel): \(snippet)"
+                }
+                return "Discord returned \(ns.code) for \(channelLabel)."
+            }
+        }
+        return ns.localizedDescription
     }
 
     private func markRan(policyID: UUID, at date: Date) {
@@ -563,7 +926,154 @@ final class SweepService: ObservableObject {
     private func recordReport(_ report: SweepRunReport) {
         recentReports.insert(report, at: 0)
         if recentReports.count > 50 { recentReports = Array(recentReports.prefix(50)) }
+        activityLogger?(report)
         Task { await persist() }
+    }
+
+    // MARK: Suggestions
+
+    /// Scope of `scanForSuggestions` per call. Caps both the number of channels
+    /// probed and how far back per channel so we stay polite with the Discord API.
+    /// Pagination + inter-channel stagger keep the total request rate low.
+    static let suggestionScanChannelCap: Int = 12
+    static let suggestionScanMessageLimit: Int = 300
+    static let suggestionScanInterChannelDelayNanos: UInt64 = 1_500_000_000
+
+    struct SweepScanTarget: Sendable, Hashable {
+        let guildID: String
+        let guildName: String
+        let channel: GuildTextChannel
+    }
+
+    @discardableResult
+    func scanForSuggestions(targets: [SweepScanTarget]) async -> [SweepSuggestion] {
+        guard !isScanningSuggestions else { return suggestions }
+        isScanningSuggestions = true
+        defer {
+            isScanningSuggestions = false
+            scanProgress = (0, 0)
+        }
+
+        // Don't re-propose for a channel that already has an enabled rule.
+        let covered = Set(policies.filter(\.isEnabled).map(\.channelID))
+        let work = Array(targets
+            .filter { !covered.contains($0.channel.id) }
+            .prefix(Self.suggestionScanChannelCap))
+
+        scanProgress = (0, work.count)
+
+        var fresh: [SweepSuggestion] = []
+        for (index, target) in work.enumerated() {
+            // Inter-channel stagger — skip before the first fetch.
+            if index > 0 {
+                try? await Task.sleep(nanoseconds: Self.suggestionScanInterChannelDelayNanos)
+            }
+
+            let messages: [SweepFetchedMessage]
+            do {
+                // Dispatcher's fetchRecentMessages handles internal pagination
+                // when `limit` exceeds Discord's per-page cap of 100.
+                messages = try await dispatcher.fetchRecentMessages(
+                    channelID: target.channel.id,
+                    limit: Self.suggestionScanMessageLimit
+                )
+            } catch {
+                scanProgress = (index + 1, work.count)
+                continue
+            }
+            let proposals = SweepSuggestionEngine.analyse(
+                guildID: target.guildID,
+                guildName: target.guildName,
+                channelID: target.channel.id,
+                channelName: target.channel.name,
+                messages: messages
+            )
+            for var proposal in proposals {
+                let fp = SweepSuggestionEngine.fingerprint(proposal)
+                if dismissedSuggestionFingerprints.contains(fp) { continue }
+                proposal.projection = buildProjection(for: proposal, messages: messages)
+                fresh.append(proposal)
+            }
+            scanProgress = (index + 1, work.count)
+        }
+
+        // Merge with existing — preserve any prior suggestions whose channel
+        // wasn't in this scan, replace anything that was.
+        let scannedChannelIDs = Set(work.map(\.channel.id))
+        var merged = suggestions.filter { !scannedChannelIDs.contains($0.channelID) }
+        merged.append(contentsOf: fresh)
+        suggestions = merged
+            .sorted { $0.confidence > $1.confidence }
+        lastSuggestionScanAt = Date()
+        Task { await persist() }
+        return suggestions
+    }
+
+    func applySuggestion(_ suggestion: SweepSuggestion) {
+        let name: String
+        switch suggestion.strategyKind {
+        case .reduceNoise: name = "Reduce noise · #\(suggestion.channelName)"
+        case .deduplicate: name = "Dedupe · #\(suggestion.channelName)"
+        case .keepLatest:  name = "Keep latest · #\(suggestion.channelName)"
+        case .compact:     name = "Compact · #\(suggestion.channelName)"
+        case .summarise:   name = "Summarise · #\(suggestion.channelName)"
+        case .archive:     name = "Archive · #\(suggestion.channelName)"
+        case .quietChannel: name = "Quiet · #\(suggestion.channelName)"
+        }
+        let policy = SweepPolicy(
+            name: name,
+            guildID: suggestion.guildID,
+            guildName: suggestion.guildName,
+            channelID: suggestion.channelID,
+            channelName: suggestion.channelName,
+            strategies: [suggestion.proposedStrategy],
+            schedule: suggestion.proposedSchedule,
+            safety: SweepSafetyRails()
+        )
+        upsert(policy)
+        suggestions.removeAll { $0.id == suggestion.id }
+        Task { await persist() }
+    }
+
+    func dismissSuggestion(_ suggestion: SweepSuggestion) {
+        dismissedSuggestionFingerprints.insert(SweepSuggestionEngine.fingerprint(suggestion))
+        suggestions.removeAll { $0.id == suggestion.id }
+        Task { await persist() }
+    }
+
+    /// Run the proposed strategy against the messages we already fetched and
+    /// pack the result into a synthetic `SweepRunReport` (dry-run only).
+    private func buildProjection(
+        for suggestion: SweepSuggestion,
+        messages: [SweepFetchedMessage]
+    ) -> SweepRunReport {
+        let tempPolicy = SweepPolicy(
+            name: suggestion.title,
+            guildID: suggestion.guildID,
+            guildName: suggestion.guildName,
+            channelID: suggestion.channelID,
+            channelName: suggestion.channelName,
+            strategies: [suggestion.proposedStrategy],
+            schedule: suggestion.proposedSchedule,
+            safety: SweepSafetyRails()
+        )
+        let plan = planActions(for: tempPolicy, messages: messages)
+        let matched = plan.filter { $0.kind != .skip && $0.kind != .keep }.count
+        let suppressed = plan.filter { $0.kind == .skip }.count
+        return SweepRunReport(
+            policyID: tempPolicy.id,
+            policyName: tempPolicy.name,
+            startedAt: Date(),
+            durationMS: 0,
+            scanned: messages.count,
+            matched: matched,
+            executed: 0,
+            suppressed: suppressed,
+            dryRun: true,
+            actions: plan,
+            error: nil,
+            summary: nil
+        )
     }
 
     // MARK: Planner
@@ -577,24 +1087,15 @@ final class SweepService: ObservableObject {
         var candidates: [SweepFetchedMessage] = []
         for message in messages {
             if policy.safety.protectPinned && message.isPinned {
-                actions.append(SweepAction(
-                    kind: .skip, messageID: message.id,
-                    preview: message.content,
-                    reason: "Pinned — protected"))
+                actions.append(.from(message, kind: .skip, reason: "Pinned — protected"))
                 continue
             }
             if policy.safety.protectReacted && message.hasReactions {
-                actions.append(SweepAction(
-                    kind: .skip, messageID: message.id,
-                    preview: message.content,
-                    reason: "Has reactions — protected"))
+                actions.append(.from(message, kind: .skip, reason: "Has reactions — protected"))
                 continue
             }
             if now.timeIntervalSince(message.createdAt) < minAge {
-                actions.append(SweepAction(
-                    kind: .skip, messageID: message.id,
-                    preview: message.content,
-                    reason: "Younger than minimum age"))
+                actions.append(.from(message, kind: .skip, reason: "Younger than minimum age"))
                 continue
             }
             candidates.append(message)
@@ -610,10 +1111,7 @@ final class SweepService: ObservableObject {
         }
         // Anything still remaining is implicitly "kept".
         for message in remaining {
-            actions.append(SweepAction(
-                kind: .keep, messageID: message.id,
-                preview: message.content,
-                reason: "No matching strategy"))
+            actions.append(.from(message, kind: .keep, reason: "No matching strategy"))
         }
 
         // Apply per-run cap.
@@ -626,9 +1124,13 @@ final class SweepService: ObservableObject {
             for action in actions.reversed() {
                 if trimmed < trim && action.kind != .skip && action.kind != .keep {
                     output.append(SweepAction(
-                        kind: .skip, messageID: action.messageID,
+                        kind: .skip,
+                        messageID: action.messageID,
                         preview: action.preview,
-                        reason: "Exceeds per-run cap"))
+                        reason: "Exceeds per-run cap",
+                        authorName: action.authorName,
+                        isBot: action.isBot
+                    ))
                     trimmed += 1
                 } else {
                     output.append(action)
@@ -648,16 +1150,13 @@ final class SweepService: ObservableObject {
         let age = TimeInterval(strategy.ageHours * 3_600)
 
         switch strategy.kind {
-        case .delete:
+        case .compact:
             var consumed: [SweepAction] = []
             var remaining: [SweepFetchedMessage] = []
             for message in messages {
                 let matchesBots = !strategy.fromBotsOnly || message.isBot
                 if matchesBots && now.timeIntervalSince(message.createdAt) >= age {
-                    consumed.append(SweepAction(
-                        kind: .delete, messageID: message.id,
-                        preview: message.content,
-                        reason: "Older than \(strategy.ageHours)h"))
+                    consumed.append(.from(message, kind: .delete, reason: "Older than \(strategy.ageHours)h"))
                 } else {
                     remaining.append(message)
                 }
@@ -669,15 +1168,11 @@ final class SweepService: ObservableObject {
             let keepCount = max(1, strategy.keepCount)
             let kept = Array(sorted.prefix(keepCount))
             let dropped = sorted.dropFirst(keepCount)
-            var consumed: [SweepAction] = kept.map { msg in
-                SweepAction(kind: .keep, messageID: msg.id,
-                            preview: msg.content,
-                            reason: "Latest \(keepCount) preserved")
+            var consumed: [SweepAction] = kept.map {
+                .from($0, kind: .keep, reason: "Latest \(keepCount) preserved")
             }
-            consumed.append(contentsOf: dropped.map { msg in
-                SweepAction(kind: .delete, messageID: msg.id,
-                            preview: msg.content,
-                            reason: "Superseded by newer post")
+            consumed.append(contentsOf: dropped.map {
+                .from($0, kind: .delete, reason: "Superseded by newer post")
             })
             return (consumed, [])
 
@@ -687,11 +1182,8 @@ final class SweepService: ObservableObject {
             var remaining: [SweepFetchedMessage] = []
             for message in messages.sorted(by: { $0.createdAt > $1.createdAt }) {
                 let key = message.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if let _ = seen[key] {
-                    consumed.append(SweepAction(
-                        kind: .delete, messageID: message.id,
-                        preview: message.content,
-                        reason: "Duplicate of newer message"))
+                if seen[key] != nil {
+                    consumed.append(.from(message, kind: .delete, reason: "Duplicate of newer message"))
                 } else {
                     seen[key] = message
                     remaining.append(message)
@@ -699,26 +1191,9 @@ final class SweepService: ObservableObject {
             }
             return (consumed, remaining)
 
-        case .compactVoiceSessions:
-            var consumed: [SweepAction] = []
-            var remaining: [SweepFetchedMessage] = []
-            for message in messages {
-                if message.isBot && now.timeIntervalSince(message.createdAt) >= age {
-                    consumed.append(SweepAction(
-                        kind: .summarise, messageID: message.id,
-                        preview: message.content,
-                        reason: "Voice activity → session digest"))
-                } else {
-                    remaining.append(message)
-                }
-            }
-            return (consumed, remaining)
-
         case .summarise:
-            let consumed = messages.map { msg in
-                SweepAction(kind: .summarise, messageID: msg.id,
-                            preview: msg.content,
-                            reason: "Captured in summary")
+            let consumed = messages.map {
+                SweepAction.from($0, kind: .summarise, reason: "Captured in summary")
             }
             return (consumed, [])
 
@@ -727,24 +1202,50 @@ final class SweepService: ObservableObject {
             var remaining: [SweepFetchedMessage] = []
             for message in messages {
                 if now.timeIntervalSince(message.createdAt) >= age {
-                    consumed.append(SweepAction(
-                        kind: .archive, messageID: message.id,
-                        preview: message.content,
-                        reason: "Archived after \(strategy.ageHours)h"))
+                    consumed.append(.from(message, kind: .archive, reason: "Archived after \(strategy.ageHours)h"))
                 } else {
                     remaining.append(message)
                 }
             }
             return (consumed, remaining)
 
-        case .pinSummary:
-            if let latest = messages.max(by: { $0.createdAt < $1.createdAt }) {
-                return ([SweepAction(
-                    kind: .pin, messageID: latest.id,
-                    preview: latest.content,
-                    reason: "Refresh pinned summary")], messages.filter { $0.id != latest.id })
+        case .quietChannel:
+            // Virtual-only: mark routine bot chatter as quiet so the UI can
+            // collapse it. Discord is not touched.
+            var consumed: [SweepAction] = []
+            var remaining: [SweepFetchedMessage] = []
+            for message in messages {
+                if message.isBot {
+                    consumed.append(.from(message, kind: .quiet, reason: "Routine bot chatter — collapsed in-app"))
+                } else {
+                    remaining.append(message)
+                }
             }
-            return ([], messages)
+            return (consumed, remaining)
+
+        case .reduceNoise:
+            // Composite: dedupe first, then compact stale bot chatter.
+            var seen: [String: SweepFetchedMessage] = [:]
+            var consumed: [SweepAction] = []
+            var afterDedupe: [SweepFetchedMessage] = []
+            for message in messages.sorted(by: { $0.createdAt > $1.createdAt }) {
+                let key = message.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if seen[key] != nil {
+                    consumed.append(.from(message, kind: .delete, reason: "Duplicate · reduced noise"))
+                } else {
+                    seen[key] = message
+                    afterDedupe.append(message)
+                }
+            }
+            var remaining: [SweepFetchedMessage] = []
+            for message in afterDedupe {
+                if message.isBot && now.timeIntervalSince(message.createdAt) >= age {
+                    consumed.append(.from(message, kind: .delete, reason: "Stale bot chatter · reduced noise"))
+                } else {
+                    remaining.append(message)
+                }
+            }
+            return (consumed, remaining)
         }
     }
 }
@@ -753,12 +1254,19 @@ final class SweepService: ObservableObject {
 
 struct SweepView: View {
     @EnvironmentObject var app: AppModel
+
+    var body: some View {
+        SweepContentView(service: app.sweepService)
+    }
+}
+
+private struct SweepContentView: View {
+    @EnvironmentObject var app: AppModel
+    @ObservedObject var service: SweepService
     @State private var editingPolicy: SweepPolicy?
     @State private var showingNewPolicySheet = false
     @State private var previewReport: SweepRunReport?
     @State private var previewingPolicyName: String = ""
-
-    private var service: SweepService { app.sweepService }
 
     var body: some View {
         ScrollView {
@@ -768,11 +1276,15 @@ struct SweepView: View {
                     activeRunPanel
                 }
                 metricTileRow
-                SwiftMeshSection(title: "Policies", symbol: "rectangle.stack.badge.minus") {
-                    policyListContent
-                }
+                rulesCard
                 diagnosticsAndLastRunRow
-                SwiftMeshSection(title: "Audit Timeline", symbol: "clock.arrow.circlepath") {
+                SwiftMeshSection(title: "Recent Activity", symbol: "waveform") {
+                    recentActivityContent
+                }
+                SwiftMeshSection(title: "Suggestions", symbol: "sparkles") {
+                    suggestionsContent
+                }
+                SwiftMeshSection(title: "History", symbol: "clock.arrow.circlepath") {
                     auditTimelineContent
                 }
             }
@@ -783,24 +1295,30 @@ struct SweepView: View {
         .sheet(isPresented: $showingNewPolicySheet) {
             SweepPolicyEditor(
                 policy: SweepPolicy(
-                    name: "New Policy",
+                    name: "New Rule",
                     guildID: "",
                     guildName: "",
                     channelID: "",
                     channelName: "",
-                    strategies: [SweepStrategy(kind: .keepLatest)],
+                    strategies: [SweepStrategy(kind: .reduceNoise)],
                     schedule: .interval(minutes: 60),
                     safety: SweepSafetyRails()
                 ),
                 isNew: true,
-                onSave: { service.upsert($0) }
+                connectedServers: app.connectedServers,
+                channelsByServer: app.availableTextChannelsByServer,
+                onSave: { service.upsert($0) },
+                onTryRun: { await service.previewDraft($0) }
             )
         }
         .sheet(item: $editingPolicy) { policy in
             SweepPolicyEditor(
                 policy: policy,
                 isNew: false,
-                onSave: { service.upsert($0) }
+                connectedServers: app.connectedServers,
+                channelsByServer: app.availableTextChannelsByServer,
+                onSave: { service.upsert($0) },
+                onTryRun: { await service.previewDraft($0) }
             )
         }
         .sheet(item: $previewReport) { report in
@@ -825,7 +1343,22 @@ struct SweepView: View {
                 }
             }
             Spacer()
+            SweepStateBadge(state: service.state)
+        }
+    }
+
+    // MARK: Rules card (with inline action buttons)
+
+    @ViewBuilder
+    private var rulesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
+                Image(systemName: "rectangle.stack.badge.minus")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Rules")
+                    .font(.headline.weight(.semibold))
+                Spacer()
                 Button {
                     service.globalPaused.toggle()
                 } label: {
@@ -833,27 +1366,138 @@ struct SweepView: View {
                           systemImage: service.globalPaused ? "play.fill" : "pause.fill")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .controlSize(.small)
+                .buttonBorderShape(.capsule)
 
                 Button {
                     showingNewPolicySheet = true
                 } label: {
-                    Label("New Policy", systemImage: "plus")
+                    Label("New Rule", systemImage: "plus")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .buttonBorderShape(.capsule)
             }
-            SweepStateBadge(state: service.state)
+
+            policyListContent
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
     }
 
     private var headerSubtitle: String {
         if service.globalPaused {
-            return "Paused · \(service.policies.count) policies"
+            return "Paused · \(service.policies.count) rules"
         }
         let enabled = service.enabledPolicyCount
         let total = service.policies.count
         return "\(enabled)/\(total) enabled · next \(service.nextRunDescription) · \(service.messagesTodayCount) tidied today"
+    }
+
+    // MARK: Recent activity
+
+    @ViewBuilder
+    private var recentActivityContent: some View {
+        if let last = service.lastReport, !last.actions.isEmpty {
+            VStack(spacing: 6) {
+                ForEach(last.actions.prefix(12)) { action in
+                    SweepActivityRow(action: action)
+                }
+            }
+        } else {
+            PlaceholderPanelLine(text: "Activity appears here as Sweep runs.")
+        }
+    }
+
+    // MARK: Suggestions
+
+    @ViewBuilder
+    private var suggestionsContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(scanFooter)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    Task { await runSuggestionScan() }
+                } label: {
+                    if service.isScanningSuggestions {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Scan Now", systemImage: "sparkles")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(service.isScanningSuggestions || scanTargets.isEmpty)
+            }
+
+            if service.suggestions.isEmpty {
+                PlaceholderPanelLine(
+                    text: service.lastSuggestionScanAt == nil
+                        ? "Sweep can scan your recent channels and propose rules for repetitive patterns. Tap Scan Now to look retroactively."
+                        : "No suggestions right now — your channels look tidy."
+                )
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(service.suggestions) { suggestion in
+                        SweepSuggestionRow(
+                            suggestion: suggestion,
+                            onApply: { service.applySuggestion(suggestion) },
+                            onDismiss: { service.dismissSuggestion(suggestion) },
+                            onPreview: {
+                                if let projection = suggestion.projection {
+                                    previewingPolicyName = suggestion.title
+                                    previewReport = projection
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var scanFooter: String {
+        if service.isScanningSuggestions {
+            let (done, total) = service.scanProgress
+            if total > 0 {
+                return "Scanning recent activity… (\(done) / \(total) channels)"
+            }
+            return "Scanning recent activity…"
+        }
+        if let last = service.lastSuggestionScanAt {
+            let delta = Date().timeIntervalSince(last)
+            if delta < 60 { return "Last scan: just now" }
+            if delta < 3_600 { return "Last scan: \(Int(delta / 60))m ago" }
+            if delta < 86_400 { return "Last scan: \(Int(delta / 3_600))h ago" }
+            return "Last scan: \(Int(delta / 86_400))d ago"
+        }
+        return "No scan yet"
+    }
+
+    private var scanTargets: [SweepService.SweepScanTarget] {
+        var targets: [SweepService.SweepScanTarget] = []
+        for (guildID, channels) in app.availableTextChannelsByServer {
+            let guildName = app.connectedServers[guildID] ?? "Server"
+            for channel in channels {
+                targets.append(.init(guildID: guildID, guildName: guildName, channel: channel))
+            }
+        }
+        return targets
+    }
+
+    private func runSuggestionScan() async {
+        await service.scanForSuggestions(targets: scanTargets)
     }
 
     // MARK: Active panel
@@ -1024,7 +1668,7 @@ struct SweepView: View {
     @ViewBuilder
     private var policyListContent: some View {
         if service.policies.isEmpty {
-            PlaceholderPanelLine(text: "No Sweep policies yet. Tap “New Policy” to create one.")
+            PlaceholderPanelLine(text: "No Sweep rules yet. Tap “New Rule” to create one.")
         } else {
             VStack(spacing: 8) {
                 ForEach(service.policies) { policy in
@@ -1160,6 +1804,16 @@ private struct SweepPolicyRow: View {
 
             Spacer()
 
+            Button {
+                onPreview()
+            } label: {
+                Label("Try Run", systemImage: "play.circle")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Run this rule as a dry-run against the channel right now — nothing is changed.")
+
             if let last = policy.lastRunAt {
                 Text(relativeShort(last))
                     .font(.caption)
@@ -1171,8 +1825,8 @@ private struct SweepPolicyRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.02))
@@ -1266,72 +1920,437 @@ private struct SweepAuditRow: View {
     }
 }
 
+// MARK: - Activity row
+
+private struct SweepActivityRow: View {
+    let action: SweepAction
+
+    private var symbol: String {
+        switch action.kind {
+        case .delete: return "rectangle.compress.vertical"
+        case .keep: return "checkmark.circle"
+        case .archive: return "archivebox"
+        case .summarise: return "text.bubble"
+        case .pin: return "pin"
+        case .quiet: return "bell.slash"
+        case .skip: return "shield.lefthalf.filled"
+        }
+    }
+
+    private var tone: Color {
+        switch action.kind {
+        case .delete: return .orange
+        case .keep: return .secondary
+        case .archive: return .indigo
+        case .summarise: return .purple
+        case .pin: return .pink
+        case .quiet: return .gray
+        case .skip: return .green
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tone)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(action.reason)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    if action.mode == .virtual {
+                        Text("VIRTUAL")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.blue.opacity(0.12)))
+                    }
+                }
+                Text(action.preview)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.025))
+        )
+    }
+}
+
+// MARK: - Suggestion row
+
+private struct SweepSuggestionRow: View {
+    let suggestion: SweepSuggestion
+    let onApply: () -> Void
+    let onDismiss: () -> Void
+    let onPreview: () -> Void
+
+    private var projectionLine: String? {
+        guard let p = suggestion.projection else { return nil }
+        return "Would tidy \(p.matched) of \(p.scanned) · \(p.suppressed) protected"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: suggestion.strategyKind.symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 22, height: 22)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(suggestion.title)
+                        .font(.caption.weight(.semibold))
+                    Text(String(format: "%.0f%%", suggestion.confidence * 100))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                }
+                Text(suggestion.rationale)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                if let projectionLine {
+                    Text(projectionLine)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tint)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                if suggestion.projection != nil {
+                    Button("Preview", action: onPreview)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                Button("Apply", action: onApply)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Form section (macOS 26 / Liquid Glass styling)
+
+private struct SweepFormSection<Content: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            content
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.thinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.06), lineWidth: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.black.opacity(0.18), lineWidth: 1)
+                .blendMode(.plusDarker)
+        )
+    }
+}
+
 // MARK: - Policy editor sheet
 
 struct SweepPolicyEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State var policy: SweepPolicy
+    @State private var isTryRunInFlight: Bool = false
+    @State private var tryRunReport: SweepRunReport?
+    @State private var tryRunError: String?
     let isNew: Bool
+    let connectedServers: [String: String]
+    let channelsByServer: [String: [GuildTextChannel]]
     let onSave: (SweepPolicy) -> Void
+    let onTryRun: ((SweepPolicy) async -> SweepRunReport?)?
+
+    init(
+        policy: SweepPolicy,
+        isNew: Bool,
+        connectedServers: [String: String] = [:],
+        channelsByServer: [String: [GuildTextChannel]] = [:],
+        onSave: @escaping (SweepPolicy) -> Void,
+        onTryRun: ((SweepPolicy) async -> SweepRunReport?)? = nil
+    ) {
+        self._policy = State(initialValue: policy)
+        self.isNew = isNew
+        self.connectedServers = connectedServers
+        self.channelsByServer = channelsByServer
+        self.onSave = onSave
+        self.onTryRun = onTryRun
+    }
+
+    private var isPolicyReady: Bool {
+        !policy.channelID.isEmpty
+            && !policy.strategies.isEmpty
+            && !policy.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var sortedServerIDs: [String] {
+        connectedServers.keys.sorted {
+            (connectedServers[$0] ?? "").localizedCaseInsensitiveCompare(connectedServers[$1] ?? "") == .orderedAscending
+        }
+    }
+
+    private var isSingleServer: Bool { connectedServers.count == 1 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(isNew ? "New Sweep Policy" : "Edit Sweep Policy")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button(isNew ? "Create" : "Save") {
-                    onSave(policy)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
+            heroHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    SwiftMeshSection(title: "Target", symbol: "number") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            labelledField("Policy Name", text: $policy.name)
-                            labelledField("Channel Name", text: $policy.channelName, placeholder: "general")
-                            labelledField("Channel ID", text: $policy.channelID, placeholder: "Discord snowflake")
-                            labelledField("Guild Name", text: $policy.guildName, placeholder: "My Server")
-                            labelledField("Guild ID", text: $policy.guildID, placeholder: "Discord snowflake")
+                VStack(alignment: .leading, spacing: 18) {
+                    SweepFormSection(title: "Target", symbol: "scope") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            formRow(label: "Rule Name") {
+                                TextField("Quiet bot chatter in #general", text: $policy.name)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            if !isSingleServer {
+                                formRow(label: "Server") {
+                                    Picker("", selection: $policy.guildID) {
+                                        Text("Select server").tag("")
+                                        ForEach(sortedServerIDs, id: \.self) { id in
+                                            Text(connectedServers[id] ?? "Unknown server").tag(id)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .pickerStyle(.menu)
+                                }
+                            }
+
+                            formRow(label: "Channel") {
+                                Picker("", selection: $policy.channelID) {
+                                    Text("Select channel").tag("")
+                                    ForEach(channelsByServer[policy.guildID] ?? [], id: \.id) { channel in
+                                        Text("#\(channel.name)").tag(channel.id)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .disabled(policy.guildID.isEmpty)
+                            }
                         }
+                        .onAppear { autoSelectIfNeeded() }
+                        .onChange(of: policy.guildID) { _, newValue in
+                            policy.guildName = connectedServers[newValue] ?? ""
+                            let channels = channelsByServer[newValue] ?? []
+                            if !channels.contains(where: { $0.id == policy.channelID }) {
+                                policy.channelID = channels.first?.id ?? ""
+                            }
+                            syncChannelName()
+                        }
+                        .onChange(of: policy.channelID) { _, _ in syncChannelName() }
                     }
 
-                    SwiftMeshSection(title: "Strategies", symbol: "list.bullet.rectangle") {
-                        VStack(alignment: .leading, spacing: 8) {
+                    SweepFormSection(title: "Strategies", symbol: "list.bullet.rectangle") {
+                        VStack(alignment: .leading, spacing: 10) {
                             ForEach($policy.strategies) { $strategy in
                                 strategyCard(strategy: $strategy)
                             }
                             Button {
-                                policy.strategies.append(SweepStrategy(kind: .delete))
+                                policy.strategies.append(SweepStrategy(kind: .compact))
                             } label: {
                                 Label("Add Strategy", systemImage: "plus")
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .controlSize(.regular)
                         }
                     }
 
-                    SwiftMeshSection(title: "Schedule", symbol: "clock") {
+                    SweepFormSection(title: "Schedule", symbol: "clock") {
                         schedulePicker
                     }
 
-                    SwiftMeshSection(title: "Safety Rails", symbol: "shield.lefthalf.filled") {
+                    SweepFormSection(title: "Safety Rails", symbol: "shield.lefthalf.filled") {
                         safetyRails
                     }
+
+                    if let tryRunReport {
+                        SweepFormSection(title: "Try Run Result", symbol: "play.circle.fill") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(tryRunReport.scanned) scanned · \(tryRunReport.matched) would tidy · \(tryRunReport.suppressed) protected")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                SweepPreviewSummary(report: tryRunReport)
+                            }
+                        }
+                        .transition(.opacity)
+                    } else if let tryRunError {
+                        SweepFormSection(title: "Try Run", symbol: "exclamationmark.triangle.fill") {
+                            Text(tryRunError)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .transition(.opacity)
+                    }
                 }
-                .padding(16)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .animation(.easeInOut(duration: 0.18), value: tryRunReport?.id)
             }
+
+            footerBar
         }
-        .frame(minWidth: 560, idealWidth: 620, minHeight: 600, idealHeight: 720)
+        .background(.regularMaterial)
+        .frame(minWidth: 600, idealWidth: 660, minHeight: 640, idealHeight: 760)
+    }
+
+    private var heroHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(systemName: "rectangle.stack.badge.minus")
+                .font(.system(size: 28, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tint)
+                .frame(width: 52, height: 52)
+                .background(
+                    Circle()
+                        .fill(.tint.opacity(0.14))
+                )
+                .overlay(
+                    Circle().stroke(.tint.opacity(0.18), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isNew ? "New Sweep Rule" : "Edit Sweep Rule")
+                    .font(.title2.weight(.bold))
+                Text(isNew
+                     ? "Pick a channel and choose how Sweep tidies it."
+                     : policy.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+    }
+
+    private var footerBar: some View {
+        VStack(spacing: 0) {
+            Divider().opacity(0.45)
+            HStack(spacing: 10) {
+                if onTryRun != nil {
+                    Button {
+                        Task { await runTryRun() }
+                    } label: {
+                        if isTryRunInFlight {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Running…")
+                            }
+                        } else {
+                            Label("Try Run", systemImage: "play.circle")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(!isPolicyReady || isTryRunInFlight)
+                    .help("Run this rule against the channel as a dry-run, without changing anything.")
+                }
+
+                Spacer()
+
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .controlSize(.large)
+                Button {
+                    onSave(policy)
+                    dismiss()
+                } label: {
+                    Text(isNew ? "Create Rule" : "Save")
+                        .frame(minWidth: 86)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!isPolicyReady)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+        }
+        .background(.thinMaterial)
+    }
+
+    private func runTryRun() async {
+        guard let onTryRun else { return }
+        isTryRunInFlight = true
+        tryRunError = nil
+        let report = await onTryRun(policy)
+        isTryRunInFlight = false
+        if let report {
+            tryRunReport = report
+            tryRunError = nil
+        } else {
+            tryRunReport = nil
+            tryRunError = "Couldn’t reach Discord for this channel. Check the channel is still accessible and that the bot is connected."
+        }
+    }
+
+    @ViewBuilder
+    private func formRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+            content()
+        }
     }
 
     @ViewBuilder
@@ -1344,6 +2363,25 @@ struct SweepPolicyEditor: View {
             TextField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
         }
+    }
+
+    private func autoSelectIfNeeded() {
+        // If exactly one server is connected, lock it in silently so users
+        // aren't asked to pick from a list of one.
+        if isSingleServer, let only = sortedServerIDs.first, policy.guildID.isEmpty {
+            policy.guildID = only
+            policy.guildName = connectedServers[only] ?? ""
+            if policy.channelID.isEmpty,
+               let firstChannel = (channelsByServer[only] ?? []).first {
+                policy.channelID = firstChannel.id
+                policy.channelName = firstChannel.name
+            }
+        }
+    }
+
+    private func syncChannelName() {
+        let channels = channelsByServer[policy.guildID] ?? []
+        policy.channelName = channels.first { $0.id == policy.channelID }?.name ?? ""
     }
 
     @ViewBuilder
@@ -1390,7 +2428,7 @@ struct SweepPolicyEditor: View {
     @ViewBuilder
     private func strategyParameters(strategy: Binding<SweepStrategy>) -> some View {
         switch strategy.wrappedValue.kind {
-        case .delete, .archive, .compactVoiceSessions, .pinSummary, .deduplicate:
+        case .compact, .archive, .deduplicate, .reduceNoise:
             HStack {
                 Text("Older than")
                     .font(.caption)
@@ -1398,7 +2436,7 @@ struct SweepPolicyEditor: View {
                 Stepper("\(strategy.wrappedValue.ageHours)h",
                         value: strategy.ageHours, in: 1...720)
                     .frame(maxWidth: 160)
-                if strategy.wrappedValue.kind == .delete {
+                if strategy.wrappedValue.kind == .compact {
                     Toggle("Bots only", isOn: strategy.fromBotsOnly)
                         .toggleStyle(.checkbox)
                         .font(.caption)
@@ -1416,7 +2454,11 @@ struct SweepPolicyEditor: View {
                 Spacer()
             }
         case .summarise:
-            Text("Generates a digest from matching messages. Routed to the policy's channel.")
+            Text(strategy.wrappedValue.kind.blurb)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .quietChannel:
+            Text(strategy.wrappedValue.kind.blurb)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1493,9 +2535,6 @@ struct SweepPolicyEditor: View {
     @ViewBuilder
     private var safetyRails: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Dry-run only (never execute, just preview)", isOn: $policy.safety.dryRunOnly)
-                .toggleStyle(.switch)
-                .font(.caption)
             Toggle("Protect pinned messages", isOn: $policy.safety.protectPinned)
                 .toggleStyle(.switch)
                 .font(.caption)
@@ -1537,85 +2576,207 @@ private struct SweepPreviewSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Preview — \(policyName)")
-                        .font(.title3.weight(.semibold))
-                    Text("\(report.scanned) scanned · \(report.matched) would execute · \(report.suppressed) protected")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-            }
-            .padding(16)
+            header
 
-            Divider()
+            Divider().opacity(0.45)
 
             ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(report.actions) { action in
-                        previewRow(action: action)
+                VStack(alignment: .leading, spacing: 14) {
+                    if let err = report.error {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.red)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Try Run failed")
+                                    .font(.subheadline.weight(.semibold))
+                                Text(err)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.thinMaterial)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(.red.opacity(0.4), lineWidth: 1)
+                        )
                     }
+                    SweepPreviewSummary(report: report)
                 }
-                .padding(16)
+                .padding(20)
             }
         }
-        .frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 560)
+        .background(.regularMaterial)
+        .frame(minWidth: 560, idealWidth: 660, minHeight: 480, idealHeight: 600)
     }
 
-    @ViewBuilder
-    private func previewRow(action: SweepAction) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol(for: action.kind))
-                .foregroundStyle(tone(for: action.kind))
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(action.preview)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                Text(action.reason)
-                    .font(.caption2)
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Try Run — \(policyName)")
+                    .font(.title3.weight(.semibold))
+                Text("\(report.scanned) scanned · \(report.matched) would tidy · \(report.suppressed) protected")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
             Spacer()
-            Text(action.kind.rawValue.uppercased())
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(tone(for: action.kind))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(tone(for: action.kind).opacity(0.12)))
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .buttonBorderShape(.capsule)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+    }
+}
+
+// MARK: - Preview summary (grouped, plain-English)
+
+/// Compact summary of a `SweepRunReport`. Groups actions by kind, then by
+/// author (for tidies/keeps) or reason (for protections), so the user sees
+/// "Would delete 50 from PatchBot" instead of 50 individual rows.
+struct SweepPreviewSummary: View {
+    let report: SweepRunReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !destructiveGroups.isEmpty {
+                summarySection(
+                    title: "Would tidy",
+                    symbol: "rectangle.compress.vertical",
+                    tone: .orange,
+                    groups: destructiveGroups,
+                    emptyHint: nil
+                )
+            }
+            if !virtualGroups.isEmpty {
+                summarySection(
+                    title: "Virtual",
+                    symbol: "bell.slash",
+                    tone: .purple,
+                    groups: virtualGroups,
+                    emptyHint: nil
+                )
+            }
+            if !keepGroups.isEmpty {
+                summarySection(
+                    title: "Keep",
+                    symbol: "checkmark.circle",
+                    tone: .secondary,
+                    groups: keepGroups,
+                    emptyHint: nil
+                )
+            }
+            if !protectedGroups.isEmpty {
+                summarySection(
+                    title: "Protected",
+                    symbol: "shield.lefthalf.filled",
+                    tone: .green,
+                    groups: protectedGroups,
+                    emptyHint: nil
+                )
+            }
+            if destructiveGroups.isEmpty && virtualGroups.isEmpty && keepGroups.isEmpty && protectedGroups.isEmpty {
+                Text("Nothing would be touched in this run.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Grouping
+
+    private struct Group: Hashable {
+        let label: String
+        let count: Int
+    }
+
+    private var destructiveGroups: [Group] {
+        groupByAuthor(actions: report.actions.filter { [.delete, .archive, .pin].contains($0.kind) })
+    }
+
+    private var virtualGroups: [Group] {
+        groupByAuthor(actions: report.actions.filter { [.summarise, .quiet].contains($0.kind) })
+    }
+
+    private var keepGroups: [Group] {
+        groupByAuthor(actions: report.actions.filter { $0.kind == .keep })
+    }
+
+    private var protectedGroups: [Group] {
+        let skips = report.actions.filter { $0.kind == .skip }
+        let byReason = Dictionary(grouping: skips, by: { $0.reason })
+        return byReason
+            .map { Group(label: $0.key, count: $0.value.count) }
+            .sorted { $0.count > $1.count }
+    }
+
+    private func groupByAuthor(actions: [SweepAction]) -> [Group] {
+        guard !actions.isEmpty else { return [] }
+        let byAuthor = Dictionary(grouping: actions, by: { $0.authorName ?? "Unknown" })
+        return byAuthor
+            .map { Group(label: $0.key, count: $0.value.count) }
+            .sorted { $0.count > $1.count }
+    }
+
+    // MARK: Section view
+
+    @ViewBuilder
+    private func summarySection(
+        title: String,
+        symbol: String,
+        tone: Color,
+        groups: [Group],
+        emptyHint: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tone)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text("· \(groups.reduce(0) { $0 + $1.count })")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(groups, id: \.self) { group in
+                    HStack(spacing: 6) {
+                        Text("\(group.count)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(tone)
+                            .frame(minWidth: 32, alignment: .trailing)
+                            .monospacedDigit()
+                        Text(group.label)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .padding(.leading, 4)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.primary.opacity(0.025))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.thinMaterial)
         )
-    }
-
-    private func symbol(for kind: SweepActionKind) -> String {
-        switch kind {
-        case .delete: return "trash"
-        case .keep: return "checkmark.circle"
-        case .archive: return "archivebox"
-        case .summarise: return "text.bubble"
-        case .pin: return "pin"
-        case .skip: return "shield.lefthalf.filled"
-        }
-    }
-
-    private func tone(for kind: SweepActionKind) -> Color {
-        switch kind {
-        case .delete: return .red
-        case .keep: return .secondary
-        case .archive: return .orange
-        case .summarise: return .purple
-        case .pin: return .blue
-        case .skip: return .green
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(tone.opacity(0.18), lineWidth: 1)
+        )
     }
 }

@@ -172,8 +172,52 @@ extension AppModel {
                 fetchSteamAppInfo: { [weak self] query in
                     guard let self else { return (ok: false, embed: nil) }
                     return await self.fetchSteamAppInfo(query: query)
+                },
+                sweepCommand: { [weak self] action in
+                    guard let self else { return (ok: false, message: "Sweep is unavailable.") }
+                    return await self.handleSweepSlash(action: action)
                 }
             )
         )
+    }
+
+    func handleSweepSlash(action: String) async -> (ok: Bool, message: String) {
+        let sweep = self.sweepService
+        let normalised = action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalised {
+        case "pause":
+            sweep.globalPaused = true
+            return (true, "Sweep paused. Scheduled runs will not fire until resumed.")
+        case "resume":
+            sweep.globalPaused = false
+            return (true, "Sweep resumed.")
+        case "preview":
+            guard let first = sweep.policies.first(where: { $0.isEnabled }) else {
+                return (false, "No enabled Sweep rules to preview.")
+            }
+            if let report = await sweep.preview(policyID: first.id) {
+                let matched = report.matched
+                let summary = report.summary.map { "\n\n\($0)" } ?? ""
+                return (true, "Preview · \(first.name): \(report.scanned) scanned, \(matched) would be tidied.\(summary)")
+            }
+            return (false, "Preview failed for \(first.name).")
+        case "run", "":
+            let enabled = sweep.policies.filter(\.isEnabled)
+            guard !enabled.isEmpty else { return (false, "No enabled Sweep rules.") }
+            var total = 0
+            for policy in enabled {
+                if let report = await sweep.run(policyID: policy.id, manual: true) {
+                    total += report.executed
+                }
+            }
+            return (true, "Ran \(enabled.count) rule(s) · \(total) message(s) tidied.")
+        case "status":
+            let enabled = sweep.enabledPolicyCount
+            let total = sweep.policies.count
+            let paused = sweep.globalPaused ? " (paused)" : ""
+            return (true, "Sweep · \(enabled)/\(total) rules enabled · next \(sweep.nextRunDescription)\(paused)")
+        default:
+            return (false, "Unknown action ‘\(action)’. Try run · preview · pause · resume · status.")
+        }
     }
 }

@@ -8,6 +8,7 @@ struct DiscordPreferencesView: View {
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
+    @State private var showingPermissionsCheck = false
 
     private var canGenerateInviteLink: Bool {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -39,6 +40,17 @@ struct DiscordPreferencesView: View {
                             Image(systemName: showToken ? "eye.slash" : "eye")
                         }
                         .buttonStyle(.plain)
+
+                        Button {
+                            showingPermissionsCheck = true
+                        } label: {
+                            Label("Check Permissions", systemImage: "checkmark.shield")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .buttonBorderShape(.capsule)
+                        .disabled(!canGenerateInviteLink)
+                        .help("Inspect what the bot can do in each connected server.")
                     }
 
                     Text("Obtain this from the Discord Developer Portal.")
@@ -78,6 +90,9 @@ struct DiscordPreferencesView: View {
             }
             .disabled(app.isFailoverManagedNode)
             .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        }
+        .sheet(isPresented: $showingPermissionsCheck) {
+            BotPermissionsCheckView(token: app.settings.token)
         }
         .overlay(alignment: .topTrailing) {
             if let transientToastMessage {

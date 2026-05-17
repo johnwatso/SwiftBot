@@ -112,9 +112,13 @@ struct DiscordMessageRESTClient {
         return try JSONDecoder().decode([String: DiscordJSON].self, from: data)
     }
 
-    func fetchRecentMessages(channelId: String, limit: Int, token: String) async throws -> [[String: DiscordJSON]] {
+    func fetchRecentMessages(channelId: String, limit: Int, token: String, before: String? = nil) async throws -> [[String: DiscordJSON]] {
         var components = URLComponents(url: restBase.appendingPathComponent("channels/\(channelId)/messages"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "limit", value: String(max(1, min(100, limit))))]
+        var items = [URLQueryItem(name: "limit", value: String(max(1, min(100, limit))))]
+        if let before, !before.isEmpty {
+            items.append(URLQueryItem(name: "before", value: before))
+        }
+        components?.queryItems = items
         guard let url = components?.url else {
             throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid messages URL"])
         }

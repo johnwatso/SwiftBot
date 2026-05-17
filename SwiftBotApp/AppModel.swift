@@ -198,6 +198,7 @@ final class AppModel: ObservableObject {
     let pluginManager: PluginManager
     var weeklyPlugin: WeeklySummaryPlugin?
     let patchyChecker: UpdateChecker?
+    let sweepService = SweepService()
     var patchyMonitorTask: Task<Void, Never>?
     var lastPatchyMonitoringSnapshot: PatchyMonitoringSnapshot?
     var adminWebCertificateRenewalTask: Task<Void, Never>?
@@ -350,6 +351,56 @@ final class AppModel: ObservableObject {
         }
         self.ruleStore.onPersisted = { [weak self] in
             await self?.handleRuleStorePersisted()
+        }
+
+        // Wire Sweep to the real Discord runtime. The dispatcher self-gates via
+        // canExecute() so it stays a no-op on non-Primary nodes.
+        let discord = self.service
+        self.sweepService.setDispatcher(
+            LiveSweepDispatcher(
+                discord: discord,
+                isPrimary: { [weak self] in
+                    guard let self else { return false }
+                    let mode = await MainActor.run { self.clusterSnapshot.mode }
+                    return mode == .standalone || mode == .leader
+                }
+            )
+        )
+        // On-device digest via Apple Intelligence.
+        let aiService = self.aiService
+        self.sweepService.setSummariser { channelName, lines in
+            await aiService.summarizeSweepDigest(channelName: channelName, lines: lines)
+        }
+        // Forward Sweep run reports into the shared Activity log so the user
+        // can see them alongside Patchy / voice activity.
+        self.sweepService.setActivityLogger { [weak self] report in
+            guard let self else { return }
+            let channel = self.sweepChannelName(for: report)
+            let prefix: String
+            let body: String
+            let level: String
+            if let err = report.error {
+                prefix = "[ERR]"
+                level = "error"
+                body = "Sweep failed · \(report.policyName) · #\(channel): \(err)"
+            } else if report.executed == 0 && report.matched == 0 {
+                prefix = "[INFO]"
+                level = "info"
+                body = "Sweep ran · \(report.policyName) · #\(channel): nothing to tidy (\(report.scanned) scanned)"
+            } else if report.dryRun {
+                prefix = "[INFO]"
+                level = "info"
+                body = "Sweep dry-run · \(report.policyName) · #\(channel): would tidy \(report.matched), \(report.suppressed) protected"
+            } else {
+                prefix = "[INFO]"
+                level = "info"
+                body = "Sweep tidied \(report.executed) in #\(channel) · \(report.policyName) (\(report.suppressed) protected)"
+            }
+            // Activity log (the Activity tab reads from logs.lines)
+            self.logs.append("\(prefix) \(body)")
+            // Also push into the structured event list for analytics consumers.
+            let eventKind: ActivityEvent.Kind = level == "error" ? .error : .info
+            self.addEvent(.init(timestamp: Date(), kind: eventKind, message: body))
         }
         StreamDebug.inAppSink = { [weak self] line in
             Task { @MainActor [weak self] in
@@ -984,6 +1035,17 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Resolves the channel display name for a Sweep run report by looking up
+    /// the policy that ran. Falls back to the policy name if the policy isn't
+    /// found (e.g. it was deleted between run and log).
+    func sweepChannelName(for report: SweepRunReport) -> String {
+        if let policy = sweepService.policies.first(where: { $0.id == report.policyID }),
+           !policy.channelName.isEmpty {
+            return policy.channelName
+        }
+        return report.policyName
     }
 
     func addEvent(_ event: ActivityEvent) {

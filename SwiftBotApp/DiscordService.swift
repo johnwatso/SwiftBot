@@ -791,6 +791,111 @@ actor DiscordService {
         try await messageRESTClient.deleteMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
+    // MARK: Sweep helpers
+
+    /// Sweep entry point — fetch recent messages, using the cached bot token.
+    /// Read-only; not gated by `outputAllowed`.
+    ///
+    /// For `limit > 100` this paginates via the `before` cursor with a short
+    /// inter-page delay so we don't burst the API.
+    func sweepFetchRecentMessages(channelId: String, limit: Int) async throws -> [SweepFetchedMessage] {
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep fetch failed: no bot token."])
+        }
+        let target = max(1, limit)
+        var collected: [[String: DiscordJSON]] = []
+        var before: String? = nil
+        while collected.count < target {
+            let pageLimit = min(100, target - collected.count)
+            let page = try await messageRESTClient.fetchRecentMessages(
+                channelId: channelId,
+                limit: pageLimit,
+                token: token,
+                before: before
+            )
+            if page.isEmpty { break }
+            collected.append(contentsOf: page)
+            // Discord returns messages newest-first; advance the cursor with the oldest one we got.
+            if case let .string(id)? = page.last?["id"] {
+                before = id
+            } else {
+                break
+            }
+            // Stop early if Discord returned less than a full page.
+            if page.count < pageLimit { break }
+            // Inter-page stagger to stay polite with the API.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+        return collected.compactMap { Self.mapSweepMessage(from: $0) }
+    }
+
+    /// Sweep entry point — delete a message using the cached bot token.
+    /// Gated by `outputAllowed` so only Primary nodes can execute.
+    func sweepDeleteMessage(channelId: String, messageId: String) async throws {
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep delete failed: no bot token."])
+        }
+        try await deleteMessage(channelId: channelId, messageId: messageId, token: token)
+    }
+
+    private static let sweepTimestampWithFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let sweepTimestampNoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseSweepTimestamp(_ stamp: String) -> Date? {
+        if let date = sweepTimestampWithFraction.date(from: stamp) { return date }
+        return sweepTimestampNoFraction.date(from: stamp)
+    }
+
+    private static func mapSweepMessage(from raw: [String: DiscordJSON]) -> SweepFetchedMessage? {
+        guard case let .string(id)? = raw["id"] else { return nil }
+        let content: String = {
+            if case let .string(value)? = raw["content"] { return value }
+            return ""
+        }()
+        let createdAt: Date = {
+            if case let .string(stamp)? = raw["timestamp"],
+               let parsed = parseSweepTimestamp(stamp) {
+                return parsed
+            }
+            return Date()
+        }()
+        let isPinned: Bool = {
+            if case let .bool(value)? = raw["pinned"] { return value }
+            return false
+        }()
+        let hasReactions: Bool = {
+            if case .array(let arr)? = raw["reactions"], !arr.isEmpty { return true }
+            return false
+        }()
+        var authorID = ""
+        var authorName = ""
+        var isBot = false
+        if case let .object(author)? = raw["author"] {
+            if case let .string(value)? = author["id"] { authorID = value }
+            if case let .string(value)? = author["username"] { authorName = value }
+            if case let .bool(value)? = author["bot"] { isBot = value }
+        }
+        return SweepFetchedMessage(
+            id: id,
+            authorID: authorID,
+            authorName: authorName,
+            isBot: isBot,
+            content: content,
+            createdAt: createdAt,
+            isPinned: isPinned,
+            hasReactions: hasReactions
+        )
+    }
+
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: addRole blocked — outputAllowed is false (node is not Primary).")

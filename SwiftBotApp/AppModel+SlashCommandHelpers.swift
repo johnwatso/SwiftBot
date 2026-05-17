@@ -52,6 +52,15 @@ extension AppModel {
             ["name": "meta", "description": "Fetch current THE FINALS meta from Skycoach", "type": 1],
             ["name": "steam", "description": "Search Steam for game info and player counts", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "Game name to search for", "required": true]
+            ]],
+            ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [
+                ["type": 3, "name": "action", "description": "run | preview | pause | resume | status", "required": false, "choices": [
+                    ["name": "run", "value": "run"],
+                    ["name": "preview", "value": "preview"],
+                    ["name": "pause", "value": "pause"],
+                    ["name": "resume", "value": "resume"],
+                    ["name": "status", "value": "status"]
+                ]]
             ]]
         ]
 

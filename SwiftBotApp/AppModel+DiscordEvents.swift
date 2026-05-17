@@ -290,6 +290,29 @@ extension AppModel {
         availableTextChannelsByServer = snapshot.availableTextChannelsByServer
         availableRolesByServer = snapshot.availableRolesByServer
         knownUsersById = snapshot.usernamesById
+        maybeStartFirstSweepScan()
+    }
+
+    /// Kick off a one-time retroactive Sweep suggestion scan the first time
+    /// channels are available. Subsequent scans are user-initiated.
+    private func maybeStartFirstSweepScan() {
+        guard sweepService.lastSuggestionScanAt == nil else { return }
+        guard !availableTextChannelsByServer.isEmpty else { return }
+
+        var targets: [SweepService.SweepScanTarget] = []
+        for (guildID, channels) in availableTextChannelsByServer {
+            let guildName = connectedServers[guildID] ?? "Server"
+            for channel in channels {
+                targets.append(.init(guildID: guildID, guildName: guildName, channel: channel))
+            }
+        }
+        guard !targets.isEmpty else { return }
+
+        Task { [weak self] in
+            // Small delay so the gateway/cache settles before we hit the REST API.
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await self?.sweepService.scanForSuggestions(targets: targets)
+        }
     }
 
     func scheduleDiscordCacheSave() {
