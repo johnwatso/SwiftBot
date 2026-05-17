@@ -369,6 +369,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case recordings = "Recordings"
     case analytics = "Analytics"
     case swiftMesh = "SwiftMesh"
+    case sweep = "Sweep"
 
     var id: String { rawValue }
 
@@ -384,6 +385,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .recordings: return "video.fill"
         case .analytics: return "chart.line.uptrend.xyaxis"
         case .swiftMesh: return "point.3.connected.trianglepath.dotted"
+        case .sweep: return "rectangle.stack.badge.minus"
         }
     }
 }

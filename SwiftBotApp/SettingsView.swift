@@ -13,6 +13,7 @@ struct GeneralSettingsView: View {
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
     @State private var showRunSetupPrompt = false
+    @State private var showingPermissionsCheck = false
 
     private var isFailoverManagedNode: Bool {
         app.settings.clusterMode == .worker || app.settings.clusterMode == .standby
@@ -90,6 +91,17 @@ struct GeneralSettingsView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .help(showToken ? "Hide token" : "Show token")
+
+                                Button {
+                                    showingPermissionsCheck = true
+                                } label: {
+                                    Label("Check Permissions", systemImage: "checkmark.shield")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .buttonBorderShape(.capsule)
+                                .disabled(!canGenerateInviteLink || isFailoverManagedNode)
+                                .help("Inspect what the bot can do in each connected server.")
                             }
 
                             Text("Create a bot in the Discord Developer Portal and paste its token here.")
@@ -246,6 +258,9 @@ struct GeneralSettingsView: View {
                 guard !Task.isCancelled else { return }
                 app.saveSettings()
             }
+        }
+        .sheet(isPresented: $showingPermissionsCheck) {
+            BotPermissionsCheckView(token: app.settings.token)
         }
     }
 

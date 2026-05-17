@@ -547,6 +547,38 @@ actor DiscordAIService {
         return cleaned.isEmpty ? nil : cleaned
     }
 
+    /// Sweep digest — on-device summarisation of a stretch of channel activity
+    /// using Apple Intelligence. Returns nil if Apple Intelligence isn't
+    /// available or the input is empty.
+    func summarizeSweepDigest(channelName: String, lines: [String]) async -> String? {
+        let body = lines
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        guard !body.isEmpty, appleAvailability() else { return nil }
+
+        let systemPrompt = """
+        You condense noisy Discord channel activity into a calm, scannable summary.
+        Group recurring patterns (driver releases, voice join/leave, repeated alerts) into a single line each.
+        Drop pleasantries and routine acknowledgements.
+        Output two or three short sentences, plain prose, no bullet points, no heading, no mention of being an AI.
+        """
+        let prompt = """
+        Summarise the recent activity from #\(channelName):
+
+        \(body)
+        """
+        let engine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
+        let messages = [
+            Message(channelID: "sweep", userID: "swiftbot", username: "Sweep", content: systemPrompt, role: .system),
+            Message(channelID: "sweep", userID: "swiftbot", username: "Sweep", content: prompt, role: .user)
+        ]
+
+        guard let reply = await engine.generate(messages: messages) else { return nil }
+        let cleaned = cleanOutput(reply)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
     func generateOpenAIImage(prompt: String, apiKey: String, model: String) async -> Data? {
         await openAIImageGenerator(prompt, apiKey, model)
     }

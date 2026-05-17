@@ -71,6 +71,7 @@ struct UnifiedRootView: View {
                 case .recordings: RecordingsView()
                 case .analytics: AnalyticsView()
                 case .swiftMesh: SwiftMeshView()
+                case .sweep: SweepView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -154,14 +155,18 @@ struct DashboardSidebar: View {
                             SidebarRow(
                                 item: .voice,
                                 selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace,
-                                count: app.activeVoice.count
+                                selectionHighlightNamespace: selectionHighlightNamespace
                             )
                         }
 
                         SidebarSection(title: "Services") {
                             SidebarRow(
                                 item: .patchy,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .sweep,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
@@ -225,7 +230,8 @@ struct DashboardSidebar: View {
                         .tint(.secondary)
                     }
                 }
-                .controlSize(.regular)
+                .controlSize(.large)
+                .buttonBorderShape(.capsule)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 12)
             }

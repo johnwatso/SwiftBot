@@ -59,6 +59,7 @@ final class CommandProcessor {
         var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
         var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
         var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
+        var sweepCommand: (String) async -> (ok: Bool, message: String)
     }
 
     private let dependencies: Dependencies
@@ -278,6 +279,10 @@ final class CommandProcessor {
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
             let ok = await dependencies.clusterCommand(action, context.channelId)
             return statusEmbed(title: "Cluster", ok: ok)
+        case "sweep":
+            let action = Self.slashOptionString(named: "action", in: data) ?? "status"
+            let result = await dependencies.sweepCommand(action)
+            return embed(title: "Sweep", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "weekly":
             return embed(title: "Weekly Summary", description: dependencies.weeklySummary())
         case "bugreport":

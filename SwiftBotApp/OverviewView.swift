@@ -1409,29 +1409,36 @@ struct OverviewClusterMapCard: View {
     var onOpenSwiftMesh: (() -> Void)?
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("SwiftMesh")
+                    .font(.headline.weight(.semibold))
+                Spacer()
+                Button {
+                    onOpenSwiftMesh?()
+                } label: {
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.semibold))
+                        .padding(6)
+                        .background(.regularMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Open SwiftMesh")
+            }
+
             if nodes.isEmpty {
                 PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
                     .frame(height: 118, alignment: .center)
             } else {
                 ClusterMapView(nodes: nodes, presentation: .overview)
             }
-
-            Button {
-                onOpenSwiftMesh?()
-            } label: {
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.semibold))
-                    .padding(6)
-                    .background(.regularMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Open SwiftMesh")
-            .padding(7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .accessibilityLabel("Cluster Map")
+        .accessibilityLabel("SwiftMesh Cluster Map")
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)

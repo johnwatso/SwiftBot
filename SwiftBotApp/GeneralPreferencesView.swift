@@ -12,6 +12,7 @@ struct GeneralPreferencesView: View {
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
     @State private var showingClearTokenConfirmation = false
+    @State private var showingPermissionsCheck = false
 
     private var canGenerateInviteLink: Bool {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -86,6 +87,17 @@ struct GeneralPreferencesView: View {
                     Text("Obtain this from the Discord Developer Portal.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Button {
+                        showingPermissionsCheck = true
+                    } label: {
+                        Label("Check Permissions", systemImage: "checkmark.shield")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .buttonBorderShape(.capsule)
+                    .disabled(!canGenerateInviteLink)
+                    .help("Inspect what the bot can do in each connected server.")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -235,6 +247,9 @@ struct GeneralPreferencesView: View {
             }
         } message: {
             Text("Removing the token will disconnect SwiftBot from Discord until a new token is entered.")
+        }
+        .sheet(isPresented: $showingPermissionsCheck) {
+            BotPermissionsCheckView(token: app.settings.token)
         }
         .overlay(alignment: .topTrailing) {
             if let transientToastMessage {
