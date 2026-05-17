@@ -119,7 +119,9 @@ SwiftBot generates the correct invite URL once the token is validated. Click **I
 
 For OAuth-based Web UI login, **Requires OAuth2 Code Grant**, **Invalid OAuth2 redirect_uri** errors, or running with a public hostname behind Cloudflare, see the full walkthrough:
 
-➡️ **[Bot Setup Guide](docs/BOT_SETUP.md)** — token, intents, OAuth, redirect URIs, troubleshooting.
+➡️ **[Bot Setup Guide](docs/help/BOT_SETUP.md)** — token, intents, OAuth, redirect URIs, troubleshooting.
+
+More walkthroughs live in [docs/help/](docs/help/).
 
 ## Releases vs. Development Builds
 
@@ -236,7 +238,7 @@ When reporting runtime problems, include the SwiftBot version, macOS version, th
 
 ## Related Docs
 
-- [Bot Setup Guide](docs/BOT_SETUP.md)
+- [Help & Setup Guides](docs/help/) — Bot Setup and other walkthroughs
 - [Architecture](ARCHITECTURE.md)
 - [AI Guide](AI_GUIDE.md)
 - [Feature Plan](notes/FEATURE_PLAN_PHASE1.txt)
