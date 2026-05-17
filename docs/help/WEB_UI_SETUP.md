@@ -2,20 +2,98 @@
   <img src="../../assets/readme/app-icon.png" width="100" alt="SwiftBot icon">
 </p>
 
-<h1 align="center">Cloudflare Tunnel Setup</h1>
+<h1 align="center">Web UI Setup</h1>
 
-This guide walks through SwiftBot's **Internet Access** feature, which exposes your Admin Web UI on the public internet over a secure Cloudflare Tunnel — no port-forwarding, no manual TLS certificates.
+This guide covers how to enable and access SwiftBot's **Admin Web UI** — the browser-based dashboard that mirrors the macOS app.
 
-1. [How it works](#1-how-it-works)
-2. [Prerequisites](#2-prerequisites)
-3. [Create a Cloudflare API token](#3-create-a-cloudflare-api-token)
-4. [Configure SwiftBot](#4-configure-swiftbot)
-5. [Enable Internet Access](#5-enable-internet-access)
-6. [Update Discord OAuth redirects](#6-update-discord-oauth-redirects)
-7. [Disabling and changing the hostname](#7-disabling-and-changing-the-hostname)
-8. [Troubleshooting](#8-troubleshooting)
+1. [Access modes overview](#1-access-modes-overview)
+2. [Local-only access](#2-local-only-access)
+3. [Public access via Cloudflare Tunnel](#3-public-access-via-cloudflare-tunnel) (recommended)
+4. [Public access via your own reverse proxy](#4-public-access-via-your-own-reverse-proxy)
+5. [Port forwarding — not supported](#5-port-forwarding--not-supported)
+6. [Cloudflare Tunnel step-by-step](#6-cloudflare-tunnel-step-by-step)
+7. [Update Discord OAuth redirects](#7-update-discord-oauth-redirects)
+8. [Disabling and changing the hostname](#8-disabling-and-changing-the-hostname)
+9. [Troubleshooting](#9-troubleshooting)
 
 All hostnames, tokens, and IDs in this guide are **examples**. Replace `example.com`, `swiftbot`, `swiftbot.example.com`, etc. with your own values.
+
+---
+
+## 1. Access modes overview
+
+The Web UI is the same code regardless of how it's exposed. What differs is **how requests reach your machine**:
+
+| Mode | Reachable from | Setup effort | Supported |
+| --- | --- | --- | --- |
+| **Local-only** | The machine running SwiftBot, on `localhost` | Zero — just toggle Web UI on | ✅ Default |
+| **Cloudflare Tunnel** | Anywhere on the public internet, over HTTPS | Cloudflare API token + a domain in Cloudflare | ✅ Recommended |
+| **Custom reverse proxy** | Wherever your proxy is reachable | You operate nginx, Caddy, Traefik, etc. | ✅ Supported via "Override Public Base URL" |
+| **Port forwarding** | Anywhere, if your router allows inbound | Router config + dynamic DNS + manual TLS | ❌ **Not supported** — see [§5](#5-port-forwarding--not-supported) |
+
+If you only ever need to manage the bot from the same Mac, **local-only is fine**. The remaining modes exist because Discord OAuth callbacks have to reach your dashboard from the public internet.
+
+---
+
+## 2. Local-only access
+
+This is the default. After installing SwiftBot:
+
+1. Open **Settings → Web UI**.
+2. Enable **Enable Admin Web UI**.
+3. Visit `http://localhost:8090` (or whatever port is set under **Advanced**).
+
+In local-only mode Discord OAuth still works — register `http://localhost:8090/auth/discord/callback` as a redirect URI on your Discord application (see [Bot Setup → Step 5](BOT_SETUP.md#5-register-redirect-uris)).
+
+---
+
+## 3. Public access via Cloudflare Tunnel
+
+SwiftBot's built-in **Internet Access** feature provisions a [Cloudflare Tunnel](https://www.cloudflare.com/products/tunnel/) automatically — no port forwarding, no static IP, no manual TLS. Outbound TLS connection only.
+
+Why Cloudflare is the recommended path:
+
+- Free, no credit card.
+- TLS certificates are issued and renewed automatically at Cloudflare's edge.
+- DDoS protection and edge caching come for free.
+- The connection is **outbound only** from your machine — no inbound firewall rules.
+
+Full walkthrough: [§6 Cloudflare Tunnel step-by-step](#6-cloudflare-tunnel-step-by-step).
+
+---
+
+## 4. Public access via your own reverse proxy
+
+If you already operate a reverse proxy (nginx, Caddy, Traefik, HAProxy, a different tunnel service like Tailscale Funnel or ngrok, etc.), point it at SwiftBot's local port and tell SwiftBot what public URL it's served under.
+
+1. Forward your proxy to `http://localhost:8090` on the SwiftBot host.
+2. In SwiftBot, **Settings → Web UI → Advanced**, set **Override Public Base URL** to your public URL — e.g. `https://swiftbot.example.com`.
+3. Make sure your proxy terminates TLS — SwiftBot's local server is plain HTTP.
+4. Register `https://swiftbot.example.com/auth/discord/callback` as a Discord OAuth redirect URI.
+
+The Cloudflare Tunnel toggle in SwiftBot does **not** need to be enabled in this mode.
+
+> ⚠️ Whatever proxy you run, make sure it doesn't expose anything on the SwiftBot host besides the Web UI port. The bot doesn't expect arbitrary inbound traffic.
+
+---
+
+## 5. Port forwarding — not supported
+
+**Don't open port 8090 (or any other SwiftBot port) directly on your router.** SwiftBot isn't designed to be reached this way and we don't support it.
+
+Reasons:
+
+- **The local server is plain HTTP.** No TLS termination. Bot tokens, session cookies, and OAuth state would travel in clear text across the public internet.
+- **No DDoS or rate-limit protection.** Any abuse hits your machine directly.
+- **macOS port forwarding is dynamic.** If your ISP's IP changes (it will), the dashboard goes dark until you update DNS manually.
+- **Discord OAuth requires HTTPS.** Discord refuses non-HTTPS callbacks for production OAuth flows.
+- **No supported configuration field for it.** The Web UI assumes either localhost or a TLS-terminating front-end (tunnel or proxy).
+
+If you genuinely want public access without Cloudflare, run a proxy that handles TLS in front of SwiftBot (see [§4](#4-public-access-via-your-own-reverse-proxy)). That's strictly better in every dimension than raw port forwarding.
+
+---
+
+## 6. Cloudflare Tunnel step-by-step
 
 > ⚠️ **Heads-up: SwiftBot can overwrite existing DNS records.**
 >
@@ -27,9 +105,7 @@ All hostnames, tokens, and IDs in this guide are **examples**. Replace `example.
 >
 > Pick a brand-new subdomain (`swiftbot`, `dashboard`, `bot-admin`, etc.) if you have any doubt. Don't aim it at a hostname that's already serving production traffic — your existing site will go dark the moment Internet Access is enabled.
 
----
-
-## 1. How it works
+### How it works
 
 When you enable Internet Access, SwiftBot does the following on your behalf using the Cloudflare API:
 
@@ -45,7 +121,7 @@ The result: `https://swiftbot.example.com` resolves through Cloudflare, terminat
 
 ---
 
-## 2. Prerequisites
+### Prerequisites
 
 You need:
 
@@ -61,7 +137,7 @@ If you don't have a domain in Cloudflare yet:
 
 ---
 
-## 3. Create a Cloudflare API token
+### Create a Cloudflare API token
 
 Cloudflare API tokens are scoped — you grant the **minimum** permissions SwiftBot needs.
 
@@ -90,7 +166,7 @@ Cloudflare shows the token **once**. Copy it now and treat it like a password.
 
 ---
 
-## 4. Configure SwiftBot
+### Configure SwiftBot
 
 In SwiftBot, open **Settings → Web UI → Internet Access**.
 
@@ -111,7 +187,7 @@ In SwiftBot, open **Settings → Web UI → Internet Access**.
 
 ---
 
-## 5. Enable Internet Access
+### Enable Internet Access
 
 Flip the **Enable Internet Access** toggle at the top of the section.
 
@@ -132,7 +208,7 @@ Setup typically takes 10–30 seconds. When all rows turn green, the URL preview
 
 ---
 
-## 6. Update Discord OAuth redirects
+## 7. Update Discord OAuth redirects
 
 If you signed in with Discord OAuth before enabling Internet Access, your redirect URI was the local one (`http://localhost:8090/auth/discord/callback`). Now that the dashboard has a public hostname, you need to **add** the new redirect to your Discord application.
 
@@ -151,7 +227,7 @@ For full Discord OAuth setup details, see [Bot Setup → Step 5](BOT_SETUP.md#5-
 
 ---
 
-## 7. Disabling and changing the hostname
+## 8. Disabling and changing the hostname
 
 ### Temporarily disable
 
@@ -168,11 +244,11 @@ Toggle **Enable Internet Access** off. SwiftBot stops `cloudflared` immediately.
 1. Disable Internet Access.
 2. Update the subdomain or zone in SwiftBot.
 3. Re-enable. SwiftBot creates a new DNS record. The old one stays unless you delete it manually.
-4. Add the new redirect URI to your Discord application (Step 6).
+4. Add the new redirect URI to your Discord application ([§7](#7-update-discord-oauth-redirects)).
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### "Cloudflare authentication required"
 
@@ -182,7 +258,7 @@ The token field is empty or the **Verify** button hasn't been clicked. Paste it 
 
 - Make sure you copied the token, not the token's **ID**. The token is the long secret shown once after creation.
 - Check the token wasn't revoked or expired (Cloudflare dashboard → My Profile → API Tokens).
-- The token must have the four permissions listed in [Step 3](#3-create-a-cloudflare-api-token). If you created it with fewer scopes, edit it and add the missing ones, or create a new one.
+- The token must have the four permissions listed under [Create a Cloudflare API token](#create-a-cloudflare-api-token). If you created it with fewer scopes, edit it and add the missing ones, or create a new one.
 
 ### Verify succeeds but the zone dropdown is empty
 
@@ -213,7 +289,7 @@ The hostname already has a `CNAME` pointing somewhere other than the tunnel targ
 
 ### Discord OAuth fails with "Invalid OAuth2 redirect_uri"
 
-You haven't added the public redirect URI to your Discord application yet. See [Step 6](#6-update-discord-oauth-redirects).
+You haven't added the public redirect URI to your Discord application yet. See [§7 Update Discord OAuth redirects](#7-update-discord-oauth-redirects).
 
 ### Want to use a different DNS provider?
 

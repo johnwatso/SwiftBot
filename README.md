@@ -121,7 +121,7 @@ SwiftBot generates the correct invite URL once the token is validated. Click **I
 For OAuth-based Web UI login, **Requires OAuth2 Code Grant**, **Invalid OAuth2 redirect_uri** errors, or running with a public hostname behind Cloudflare, see the full walkthrough:
 
 ➡️ **[Bot Setup Guide](docs/help/BOT_SETUP.md)** — token, intents, OAuth, redirect URIs, troubleshooting.
-➡️ **[Cloudflare Tunnel Setup](docs/help/CLOUDFLARE_TUNNEL.md)** — expose the dashboard publicly via Cloudflare.
+➡️ **[Web UI Setup Guide](docs/help/WEB_UI_SETUP.md)** — local-only vs public access (Cloudflare Tunnel, reverse proxy), and why port forwarding isn't supported.
 
 More walkthroughs live in [docs/help/](docs/help/).
 
