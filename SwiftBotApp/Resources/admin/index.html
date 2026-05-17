@@ -3238,24 +3238,24 @@
       </div>
 
       <div class="onboarding" style="position: relative; z-index: 10; width: 100%; max-width: 440px;">
-        <!-- Header Section -->
-        <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
-          <div style="position: relative; margin-bottom: 14px;">
-            <div style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
-            <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
+        <!-- Main Interactive Card -->
+        <div class="auth-card glass" style="width: 100%; background: rgba(18, 21, 30, 0.7); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 28px 22px 22px; display: flex; flex-direction: column; backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);">
+
+          <!-- Header (inside the card) -->
+          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
+            <div style="position: relative; margin-bottom: 14px;">
+              <div style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
+              <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
+            </div>
+
+            <h1 id="authBotName" style="font-size: 32px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin: 0; line-height: 1.05;">SwiftBot</h1>
+            <p style="font-size: 14px; color: rgba(255,255,255,0.7); margin: 6px 0 8px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px;">
+              <span class="cv-wave" aria-hidden="true">👋</span>
+              <span>Welcome back</span>
+            </p>
+            <p style="font-size: 13px; color: rgba(255,255,255,0.42); max-width: 300px; line-height: 1.45; margin: 0;">Sign in to continue managing automations, voice, and AI workflows.</p>
           </div>
 
-          <h1 id="authBotName" style="font-size: 36px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin: 0; line-height: 1.05;">SwiftBot</h1>
-          <p style="font-size: 15px; color: rgba(255,255,255,0.7); margin: 6px 0 10px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px;">
-            <span class="cv-wave" aria-hidden="true">👋</span>
-            <span>Welcome back</span>
-          </p>
-          <p style="font-size: 13px; color: rgba(255,255,255,0.42); max-width: 300px; line-height: 1.45;">Sign in to continue managing automations, voice, and AI workflows.</p>
-        </div>
-
-        <!-- Main Interactive Card -->
-        <div class="auth-card glass" style="width: 100%; background: rgba(18, 21, 30, 0.7); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 22px; display: flex; flex-direction: column; backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);">
-          
           <div style="display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; text-align: left;">
             <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               <i class="lucide" data-lucide="shield" style="width: 18px; height: 18px; color: #818cf8;"></i>
