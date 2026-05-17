@@ -326,7 +326,16 @@ extension AppModel {
             }
         }
         let includeSlash = includeSlashCommands ?? (settings.commandsEnabled && settings.slashCommandsEnabled)
-        return await service.generateInviteURL(clientId: cid, includeSlashCommands: includeSlash)
+        // Pass the admin Discord redirect URI (if configured) so the invite
+        // URL is accepted even when the bot's Discord application has
+        // "Requires OAuth2 Code Grant" enabled. The redirect must be one
+        // already registered in the Discord Developer Portal.
+        let redirect = adminWebDiscordRedirectURL()
+        return await service.generateInviteURL(
+            clientId: cid,
+            includeSlashCommands: includeSlash,
+            codeGrantRedirectURI: redirect.isEmpty ? nil : redirect
+        )
     }
 
     // MARK: - Diagnostics
