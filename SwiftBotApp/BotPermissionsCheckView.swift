@@ -389,12 +389,20 @@ struct BotPermissionsCheckView: View {
     private func openReinviteURL(for guild: DiscordGuildPermissions) {
         guard let botID, !botID.isEmpty else { return }
         var components = URLComponents(string: "https://discord.com/oauth2/authorize")
+        // response_type=code + redirect_uri make this URL work even when
+        // the application has "Requires OAuth2 Code Grant" enabled in the
+        // Discord Developer Portal. Without these, the bare bot-invite URL
+        // fails with "Integration requires code grant." Discord's published
+        // default landing page is fine here — we don't need to actually
+        // exchange the returned code; the install completes during consent.
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: botID),
             URLQueryItem(name: "scope", value: "bot applications.commands"),
             URLQueryItem(name: "permissions", value: String(DiscordPermissionCatalog.desiredBitfield)),
             URLQueryItem(name: "guild_id", value: guild.id),
-            URLQueryItem(name: "disable_guild_select", value: "true")
+            URLQueryItem(name: "disable_guild_select", value: "true"),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "redirect_uri", value: "https://discord.com/oauth2/authorized")
         ]
         guard let url = components?.url else { return }
         NSWorkspace.shared.open(url)

@@ -276,8 +276,14 @@ actor DiscordService {
         if includeSlashCommands { scope += " applications.commands" }
 
         // Manually construct the encoded query to ensure space -> + for scope.
+        // response_type=code + redirect_uri make the invite work even when
+        // the Discord application has "Requires OAuth2 Code Grant" enabled
+        // in the Developer Portal — otherwise Discord rejects with
+        // "Integration requires code grant." Using Discord's own published
+        // landing page as the redirect avoids needing a local handler.
         let encodedScope = scope.replacingOccurrences(of: " ", with: "+")
-        let query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)"
+        let encodedRedirect = "https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorized"
+        let query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)&response_type=code&redirect_uri=\(encodedRedirect)"
         components.percentEncodedQuery = query
 
         return components.url?.absoluteString
@@ -800,7 +806,8 @@ actor DiscordService {
     /// inter-page delay so we don't burst the API.
     func sweepFetchRecentMessages(channelId: String, limit: Int) async throws -> [SweepFetchedMessage] {
         guard let token = botToken, !token.isEmpty else {
-            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep fetch failed: no bot token."])
+            // Custom code so callers can distinguish "bot offline" from "Discord rejected the token".
+            throw NSError(domain: "DiscordService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Bot is not connected."])
         }
         let target = max(1, limit)
         var collected: [[String: DiscordJSON]] = []
