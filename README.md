@@ -104,19 +104,22 @@ Future updates are handled in-app through Sparkle auto-updates.
 
 SwiftBot requires a Discord application with a bot user.
 
+Quick path:
+
 1. Open the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application**
 3. Give the application a name, such as `SwiftBot`
-4. Open the **Bot** section
-5. Click **Add Bot**
-6. Enable the required **Privileged Gateway Intents**:
+4. Open the **Bot** section, click **Add Bot**, then copy the **Bot Token**
+5. Enable the required **Privileged Gateway Intents**:
    - Server Members Intent
    - Message Content Intent
-7. Copy the **Bot Token**
+6. Paste the token into SwiftBot during onboarding
 
-Paste the token into SwiftBot during onboarding. After the token is validated, SwiftBot will generate the correct server invite link for your bot.
+SwiftBot generates the correct invite URL once the token is validated. Click **Invite Bot** and pick a server.
 
-Invite the bot to your server using that generated link, then complete onboarding.
+For OAuth-based Web UI login, **Requires OAuth2 Code Grant**, **Invalid OAuth2 redirect_uri** errors, or running with a public hostname behind Cloudflare, see the full walkthrough:
+
+➡️ **[Bot Setup Guide](docs/BOT_SETUP.md)** — token, intents, OAuth, redirect URIs, troubleshooting.
 
 ## Releases vs. Development Builds
 
@@ -233,6 +236,7 @@ When reporting runtime problems, include the SwiftBot version, macOS version, th
 
 ## Related Docs
 
+- [Bot Setup Guide](docs/BOT_SETUP.md)
 - [Architecture](ARCHITECTURE.md)
 - [AI Guide](AI_GUIDE.md)
 - [Feature Plan](notes/FEATURE_PLAN_PHASE1.txt)
