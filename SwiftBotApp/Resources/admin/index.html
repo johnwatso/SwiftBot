@@ -63,7 +63,7 @@
       position: absolute;
       inset: 0;
       opacity: 0.02;
-      background-image: radial-gradient(circle at center, #ffffff 1px, transparent 1px);
+      background-image: radial-gradient(circle at center, var(--bg-grid-dot, #ffffff) 1px, transparent 1px);
       background-size: 32px 32px;
       pointer-events: none;
     }
@@ -73,7 +73,7 @@
       inset: 0;
       overflow: hidden;
       pointer-events: none;
-      color: rgba(255, 255, 255, 0.2);
+      color: var(--bg-symbols-color, rgba(255, 255, 255, 0.2));
       font-size: 10px;
     }
 
@@ -109,6 +109,8 @@
         --section-title-color: #1d1d1f;
         --mesh-node-bg: rgba(255, 255, 255, 0.94);
         --mesh-node-stroke: rgba(0, 0, 0, 0.08);
+        --bg-grid-dot: #000000;
+        --bg-symbols-color: rgba(0, 0, 0, 0.55);
       }
 
       html:not([data-theme]), body:not([data-theme]) {
@@ -139,6 +141,8 @@
       --section-title-color: #1d1d1f;
       --mesh-node-bg: rgba(255, 255, 255, 0.94);
       --mesh-node-stroke: rgba(0, 0, 0, 0.08);
+      --bg-grid-dot: #000000;
+      --bg-symbols-color: rgba(0, 0, 0, 0.55);
     }
 
     :root[data-theme="dark"] {
@@ -2319,37 +2323,129 @@
       background: radial-gradient(circle at center, rgba(147, 51, 234, 0.55), transparent 60%);
     }
 
-    /* Ensure shell content stacks above the mesh layer */
-    /* Force dark-mode token values inside the admin shell — the Canvas
-       look forces a dark background regardless of system theme, so the
-       text/icon colors must follow or content becomes invisible on
-       macOS Light system mode. */
+    /* Ensure shell content stacks above the mesh layer.
+       The Canvas admin shell defines its own theme tokens (--cv-*) so the
+       picker in Settings can flip the entire shell between Dark and Light
+       without leaving white-on-white surfaces. Dark is the default; Light
+       overrides come below via [data-theme="light"] and a prefers-color-scheme
+       fallback for the "auto" case. */
     #appShell {
       position: relative;
-      background: #0a0c14;
+      /* Surface tokens */
+      --cv-shell-bg: #0a0c14;
+      --cv-glass-bg: rgba(15, 23, 42, 0.42);
+      --cv-sidebar-bg: rgba(2, 6, 23, 0.6);
+      --cv-sidebar-user-grad: linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, 0.92) 30%, rgba(2, 6, 23, 0.98) 100%);
+      --cv-section-sticky-bg: rgba(2, 6, 23, 0.35);
+      --cv-content-bg: rgba(255, 255, 255, 0.01);
+      --cv-surface-1: rgba(255, 255, 255, 0.05);
+      --cv-surface-1-strong: rgba(255, 255, 255, 0.09);
+      --cv-surface-2: rgba(255, 255, 255, 0.04);
+      --cv-surface-3: rgba(255, 255, 255, 0.03);
+      --cv-scrollbar: rgba(255, 255, 255, 0.05);
+      --cv-scrollbar-hover: rgba(255, 255, 255, 0.10);
+      /* Borders */
+      --cv-border: rgba(255, 255, 255, 0.08);
+      --cv-border-soft: rgba(255, 255, 255, 0.05);
+      --cv-border-softer: rgba(255, 255, 255, 0.07);
+      --cv-border-faint: rgba(255, 255, 255, 0.06);
+      --cv-border-hover: rgba(255, 255, 255, 0.18);
+      /* Text */
+      --cv-text-strong: #fff;
+      --cv-text-body: rgb(226, 232, 240);
+      --cv-text-muted: rgb(148, 163, 184);
+      --cv-text-subtle: rgb(100, 116, 139);
+      /* Chart accent */
+      --cv-chart-dot-stroke: #0a0c14;
+
+      background: var(--cv-shell-bg);
       --text: rgba(255, 255, 255, 0.94);
       --muted: rgba(255, 255, 255, 0.62);
       --icon-color: rgba(255, 255, 255, 0.88);
-      --nav-icon-bg: rgba(255, 255, 255, 0.05);
-      --section-title-color: #fff;
-      --glass-stroke: rgba(255, 255, 255, 0.08);
+      --nav-icon-bg: var(--cv-surface-1);
+      --section-title-color: var(--cv-text-strong);
+      --glass-stroke: var(--cv-border);
       color: var(--text);
+    }
+
+    /* Light-theme overrides for the Canvas shell. Applied for explicit
+       [data-theme="light"] and for the "auto" case (via the
+       prefers-color-scheme block below). */
+    html[data-theme="light"] #appShell {
+      --cv-shell-bg: #f4f5f7;
+      --cv-glass-bg: rgba(255, 255, 255, 0.78);
+      --cv-sidebar-bg: rgba(255, 255, 255, 0.78);
+      --cv-sidebar-user-grad: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.92) 30%, rgba(255, 255, 255, 0.98) 100%);
+      --cv-section-sticky-bg: rgba(255, 255, 255, 0.7);
+      --cv-content-bg: rgba(0, 0, 0, 0.01);
+      --cv-surface-1: rgba(0, 0, 0, 0.05);
+      --cv-surface-1-strong: rgba(0, 0, 0, 0.09);
+      --cv-surface-2: rgba(0, 0, 0, 0.04);
+      --cv-surface-3: rgba(0, 0, 0, 0.03);
+      --cv-scrollbar: rgba(0, 0, 0, 0.12);
+      --cv-scrollbar-hover: rgba(0, 0, 0, 0.22);
+      --cv-border: rgba(0, 0, 0, 0.10);
+      --cv-border-soft: rgba(0, 0, 0, 0.06);
+      --cv-border-softer: rgba(0, 0, 0, 0.08);
+      --cv-border-faint: rgba(0, 0, 0, 0.07);
+      --cv-border-hover: rgba(0, 0, 0, 0.18);
+      --cv-text-strong: #1d1d1f;
+      --cv-text-body: #1d1d1f;
+      --cv-text-muted: rgb(82, 92, 110);
+      --cv-text-subtle: rgb(110, 120, 138);
+      --cv-chart-dot-stroke: #ffffff;
+      --text: #1d1d1f;
+      --muted: rgba(0, 0, 0, 0.62);
+      --icon-color: #1d1d1f;
+      --section-title-color: var(--cv-text-strong);
+      --glass-stroke: var(--cv-border);
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme]) #appShell {
+        --cv-shell-bg: #f4f5f7;
+        --cv-glass-bg: rgba(255, 255, 255, 0.78);
+        --cv-sidebar-bg: rgba(255, 255, 255, 0.78);
+        --cv-sidebar-user-grad: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.92) 30%, rgba(255, 255, 255, 0.98) 100%);
+        --cv-section-sticky-bg: rgba(255, 255, 255, 0.7);
+        --cv-content-bg: rgba(0, 0, 0, 0.01);
+        --cv-surface-1: rgba(0, 0, 0, 0.05);
+        --cv-surface-1-strong: rgba(0, 0, 0, 0.09);
+        --cv-surface-2: rgba(0, 0, 0, 0.04);
+        --cv-surface-3: rgba(0, 0, 0, 0.03);
+        --cv-scrollbar: rgba(0, 0, 0, 0.12);
+        --cv-scrollbar-hover: rgba(0, 0, 0, 0.22);
+        --cv-border: rgba(0, 0, 0, 0.10);
+        --cv-border-soft: rgba(0, 0, 0, 0.06);
+        --cv-border-softer: rgba(0, 0, 0, 0.08);
+        --cv-border-faint: rgba(0, 0, 0, 0.07);
+      --cv-border-hover: rgba(0, 0, 0, 0.18);
+        --cv-text-strong: #1d1d1f;
+        --cv-text-body: #1d1d1f;
+        --cv-text-muted: rgb(82, 92, 110);
+        --cv-text-subtle: rgb(110, 120, 138);
+        --cv-chart-dot-stroke: #ffffff;
+        --text: #1d1d1f;
+        --muted: rgba(0, 0, 0, 0.62);
+        --icon-color: #1d1d1f;
+        --section-title-color: var(--cv-text-strong);
+        --glass-stroke: var(--cv-border);
+      }
     }
     #appShell > * { position: relative; z-index: 1; }
     #appShell .info-row .value,
     #appShell .info-row .label { color: inherit; }
     #appShell .info-row .label { opacity: 0.62; }
-    #appShell .info-row .value { color: rgba(255, 255, 255, 0.94); }
+    #appShell .info-row .value { color: var(--text); }
 
     /* Glass cards — recolored toward Canvas tokens */
     #appShell .glass,
     #appShell .stat-card,
     #appShell .diagnostics-panel,
     #appShell .overview-panel {
-      background: rgba(15, 23, 42, 0.42);
+      background: var(--cv-glass-bg);
       backdrop-filter: blur(22px) saturate(140%);
       -webkit-backdrop-filter: blur(22px) saturate(140%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--cv-border);
       border-radius: 20px;
       transition: border-color 0.3s ease, transform 0.3s ease,
                   box-shadow 0.3s ease, background 0.3s ease;
@@ -2358,15 +2454,15 @@
     #appShell .stat-card:hover,
     #appShell .diagnostics-panel:hover,
     #appShell .overview-panel:hover {
-      border-color: rgba(255, 255, 255, 0.18);
+      border-color: var(--cv-border-hover, rgba(0, 0, 0, 0.18));
     }
 
     /* Sidebar */
     #appShell .sidebar {
-      background: rgba(2, 6, 23, 0.6);
+      background: var(--cv-sidebar-bg);
       backdrop-filter: blur(28px) saturate(140%);
       -webkit-backdrop-filter: blur(28px) saturate(140%);
-      border-right: 1px solid rgba(255, 255, 255, 0.05);
+      border-right: 1px solid var(--cv-border-soft);
     }
     #appShell .sidebar-brand .app-icon {
       width: 40px; height: 40px;
@@ -2400,7 +2496,7 @@
       gap: 12px;
       padding: 11px 16px;
       border-radius: 14px;
-      color: rgb(148, 163, 184);
+      color: var(--cv-text-muted);
       background: transparent;
       border: 1px solid transparent;
       font-size: 13px;
@@ -2408,8 +2504,8 @@
       transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
     }
     #appShell .nav-link:hover {
-      background: rgba(255, 255, 255, 0.04);
-      color: rgb(226, 232, 240);
+      background: var(--cv-surface-2);
+      color: var(--cv-text-body);
     }
     #appShell .nav-link.active {
       background: rgba(59, 130, 246, 0.16);
@@ -2428,41 +2524,41 @@
 
     /* Sidebar user card */
     #appShell .sidebar-user-card {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--cv-surface-1);
       border-radius: 18px;
       padding: 8px;
       transition: background 0.2s ease;
     }
-    #appShell .sidebar-user-card:hover { background: rgba(255, 255, 255, 0.09); }
+    #appShell .sidebar-user-card:hover { background: var(--cv-surface-1-strong); }
     #appShell .user-avatar { width: 40px; height: 40px; border-radius: 12px; }
 
     /* Content area + scrollbar */
     #appShell .content {
-      background: rgba(255, 255, 255, 0.01);
+      background: var(--cv-content-bg);
     }
     #appShell .content::-webkit-scrollbar,
     #appShell .sidebar-scroll::-webkit-scrollbar { width: 6px; }
     #appShell .content::-webkit-scrollbar-thumb,
     #appShell .sidebar-scroll::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--cv-scrollbar);
       border-radius: 10px;
     }
     #appShell .content::-webkit-scrollbar-thumb:hover,
     #appShell .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: var(--cv-scrollbar-hover);
     }
 
     /* Sticky header strip on each view */
     #appShell .section-sticky {
-      background: rgba(2, 6, 23, 0.35);
+      background: var(--cv-section-sticky-bg);
       backdrop-filter: blur(16px) saturate(140%);
       -webkit-backdrop-filter: blur(16px) saturate(140%);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--cv-border-soft);
     }
     #appShell .section-mini-title {
       font-size: 18px;
       font-weight: 700;
-      color: #fff;
+      color: var(--cv-text-strong);
       letter-spacing: -0.01em;
     }
 
@@ -2491,7 +2587,7 @@
     #appShell .stat-card .panel-icon {
       width: 28px; height: 28px;
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--cv-surface-1);
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -2506,7 +2602,7 @@
       font-weight: 600;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgb(148, 163, 184);
+      color: var(--cv-text-muted);
       margin: 0;
       line-height: 1.3;
     }
@@ -2515,7 +2611,7 @@
     #appShell .stat-card > strong {
       font-size: 22px;
       font-weight: 700;
-      color: #fff;
+      color: var(--cv-text-strong);
       letter-spacing: -0.02em;
       line-height: 1.15;
       word-break: break-word;
@@ -2525,7 +2621,7 @@
     #appShell .stat-card .subtext,
     #appShell .stat-card small {
       font-size: 11px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       line-height: 1.3;
     }
     /* "Live snapshot" filler — redundant on every card */
@@ -2562,25 +2658,25 @@
 
     #appShell .secondary-action,
     #appShell .mini-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      color: rgb(226, 232, 240);
+      background: var(--cv-surface-1);
+      border: 1px solid var(--cv-border-softer);
+      color: var(--cv-text-body);
       border-radius: 12px;
       padding: 9px 16px;
       font-weight: 500;
       transition: background 0.2s ease;
     }
     #appShell .secondary-action:hover,
-    #appShell .mini-btn:hover { background: rgba(255, 255, 255, 0.09); }
+    #appShell .mini-btn:hover { background: var(--cv-surface-1-strong); }
 
     /* Panel titles inside overview/diagnostics cards */
     #appShell .panel-title {
       font-size: 13px;
       font-weight: 700;
-      color: #fff;
+      color: var(--cv-text-strong);
       letter-spacing: 0.01em;
       padding: 4px 0 14px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--cv-border-soft);
       margin-bottom: 14px;
       display: flex;
       align-items: center;
@@ -2597,7 +2693,7 @@
     }
     #appShell .event-list > *:hover,
     #appShell .info-list > *:hover {
-      background: rgba(255, 255, 255, 0.04);
+      background: var(--cv-surface-2);
     }
 
     /* Inputs & selects */
@@ -2607,9 +2703,9 @@
     #appShell input[type="number"],
     #appShell select,
     #appShell textarea {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      color: rgb(226, 232, 240);
+      background: var(--cv-surface-1);
+      border: 1px solid var(--cv-border-softer);
+      color: var(--cv-text-body);
       border-radius: 12px;
       padding: 9px 12px;
       font-size: 13px;
@@ -2658,16 +2754,16 @@
       width: 36px;
       height: 36px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      color: rgb(226, 232, 240);
+      background: var(--cv-surface-1);
+      border: 1px solid var(--cv-border-softer);
+      color: var(--cv-text-body);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease, color 0.15s ease;
     }
-    #appShell .cv-icon-btn:hover { background: rgba(255, 255, 255, 0.09); }
+    #appShell .cv-icon-btn:hover { background: var(--cv-surface-1-strong); }
     #appShell .cv-icon-btn:active { transform: scale(0.95); }
     #appShell .cv-icon-btn.cv-icon-btn-stopped {
       background: rgba(16, 185, 129, 0.16);
@@ -2691,7 +2787,7 @@
       bottom: 0;
       width: var(--sidebar-width);
       padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-      background: linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, 0.92) 30%, rgba(2, 6, 23, 0.98) 100%);
+      background: var(--cv-sidebar-user-grad);
       backdrop-filter: blur(20px) saturate(1.2);
       -webkit-backdrop-filter: blur(20px) saturate(1.2);
       z-index: 5;
@@ -2745,12 +2841,12 @@
     #appShell .cv-usage-title {
       font-size: 17px;
       font-weight: 700;
-      color: #fff;
+      color: var(--cv-text-strong);
       letter-spacing: -0.01em;
     }
     #appShell .cv-usage-sub {
       font-size: 13px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       margin-top: 4px;
     }
     #appShell .cv-usage-range {
@@ -2770,7 +2866,7 @@
       display: flex;
       justify-content: space-between;
       font-size: 10px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       letter-spacing: 0.04em;
     }
     #appShell .cv-usage-chart-wrap {
@@ -2791,7 +2887,7 @@
       justify-content: space-between;
       align-items: flex-end;
       font-size: 10px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       letter-spacing: 0.04em;
       padding: 4px 0;
     }
@@ -2812,7 +2908,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       font-size: 13px;
       pointer-events: none;
     }
@@ -2829,7 +2925,7 @@
     }
     #appShell .cv-usage-chart .cv-dot {
       fill: #3b82f6;
-      stroke: #0a0c14;
+      stroke: var(--cv-chart-dot-stroke);
       stroke-width: 2;
     }
     #appShell .cv-usage-chart .cv-dot-glow {
@@ -2877,7 +2973,7 @@
       cursor: default;
     }
     #appShell .event-list .event-item + .event-item { margin-top: 4px; }
-    #appShell .event-list .event-item:hover { background: rgba(255, 255, 255, 0.05); }
+    #appShell .event-list .event-item:hover { background: var(--cv-surface-1); }
 
     #appShell .event-list .event-item::before {
       content: "";
@@ -2897,7 +2993,7 @@
     #appShell .event-list .event-title {
       flex: 1;
       font-size: 13px;
-      color: rgb(226, 232, 240);
+      color: var(--cv-text-body);
       line-height: 1.35;
     }
     #appShell .event-list .event-title strong,
@@ -2916,7 +3012,7 @@
     }
     #appShell .event-list .event-time {
       font-size: 11px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
       flex-shrink: 0;
     }
 
@@ -2938,11 +3034,11 @@
     #appShell .cv-empty-voice-title {
       font-size: 14px;
       font-weight: 600;
-      color: rgb(226, 232, 240);
+      color: var(--cv-text-body);
     }
     #appShell .cv-empty-voice-sub {
       font-size: 12px;
-      color: rgb(100, 116, 139);
+      color: var(--cv-text-subtle);
     }
     @keyframes cv-empty-bob {
       0%, 100% { transform: translateY(0); }
@@ -2964,10 +3060,10 @@
       gap: 14px;
       width: 100%;
       padding: 14px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(127, 127, 127, 0.06);
+      border: 1px solid rgba(127, 127, 127, 0.12);
       border-radius: 14px;
-      color: rgb(226, 232, 240);
+      color: var(--text);
       text-align: left;
       cursor: pointer;
       transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
@@ -2998,16 +3094,132 @@
     .cv-template-title {
       font-size: 14px;
       font-weight: 600;
-      color: #fff;
+      color: var(--text);
     }
     .cv-template-sub {
       font-size: 12px;
-      color: rgb(148, 163, 184);
+      color: var(--muted);
       line-height: 1.4;
     }
     .cv-template-chev {
-      color: rgb(100, 116, 139);
+      color: var(--muted);
       flex-shrink: 0;
+    }
+
+    /* ============================================================
+       LOGIN SCREEN — light-theme overrides
+       The auth screen markup uses inline styles, so light-mode
+       overrides must use !important to win the cascade. Applied for
+       explicit data-theme="light" and the auto case via prefers-color-scheme.
+       ============================================================ */
+    html[data-theme="light"] #authScreen,
+    html[data-theme="light"] .onboarding-shell {
+      background: #f4f5f7 !important;
+      color: #1d1d1f !important;
+    }
+    html[data-theme="light"] #authScreen #authBotName {
+      color: #1d1d1f !important;
+    }
+    html[data-theme="light"] #authScreen .onboarding > div:first-child p:nth-of-type(1) {
+      color: rgba(0, 0, 0, 0.7) !important;
+    }
+    html[data-theme="light"] #authScreen .onboarding > div:first-child p:nth-of-type(2) {
+      color: rgba(0, 0, 0, 0.5) !important;
+    }
+    html[data-theme="light"] #authScreen .auth-card {
+      background: rgba(255, 255, 255, 0.78) !important;
+      border-color: rgba(0, 0, 0, 0.08) !important;
+    }
+    html[data-theme="light"] #authScreen .auth-card h2 {
+      color: #1d1d1f !important;
+    }
+    html[data-theme="light"] #authScreen #authPromptText {
+      color: rgba(0, 0, 0, 0.55) !important;
+    }
+    html[data-theme="light"] #authScreen .auth-card > div:first-child > div:first-child {
+      background: rgba(0, 0, 0, 0.04) !important;
+      border-color: rgba(0, 0, 0, 0.08) !important;
+    }
+    html[data-theme="light"] #authScreen #localAuthForm .field-input {
+      background: rgba(0, 0, 0, 0.04) !important;
+      border-color: rgba(0, 0, 0, 0.08) !important;
+      color: #1d1d1f !important;
+    }
+    html[data-theme="light"] #authScreen #localAuthForm .field-input::placeholder {
+      color: rgba(0, 0, 0, 0.42) !important;
+    }
+    html[data-theme="light"] #authScreen #localAuthSubmit {
+      background: #1d1d1f !important;
+      color: #ffffff !important;
+    }
+    html[data-theme="light"] #authScreen #authDivider {
+      color: rgba(0, 0, 0, 0.5) !important;
+    }
+    /* Tone down the dark-blue background orbs so they don't look muddy on white. */
+    html[data-theme="light"] #authScreen .bg-orb:nth-of-type(1) {
+      background: rgba(99, 102, 241, 0.10) !important;
+    }
+    html[data-theme="light"] #authScreen .bg-orb:nth-of-type(2) {
+      background: rgba(168, 85, 247, 0.10) !important;
+    }
+    /* Logo white-glow doesn't read on white — swap for a soft dark shadow. */
+    html[data-theme="light"] #authScreen #authBotAvatar {
+      filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
+    }
+    html[data-theme="light"] #authScreen #authBotAvatar + div,
+    html[data-theme="light"] #authScreen .onboarding > div:first-child > div:first-child > div:first-child {
+      background: rgba(0, 0, 0, 0.04) !important;
+    }
+
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme]) #authScreen,
+      html:not([data-theme]) .onboarding-shell {
+        background: #f4f5f7 !important;
+        color: #1d1d1f !important;
+      }
+      html:not([data-theme]) #authScreen #authBotName { color: #1d1d1f !important; }
+      html:not([data-theme]) #authScreen .onboarding > div:first-child p:nth-of-type(1) {
+        color: rgba(0, 0, 0, 0.7) !important;
+      }
+      html:not([data-theme]) #authScreen .onboarding > div:first-child p:nth-of-type(2) {
+        color: rgba(0, 0, 0, 0.5) !important;
+      }
+      html:not([data-theme]) #authScreen .auth-card {
+        background: rgba(255, 255, 255, 0.78) !important;
+        border-color: rgba(0, 0, 0, 0.08) !important;
+      }
+      html:not([data-theme]) #authScreen .auth-card h2 { color: #1d1d1f !important; }
+      html:not([data-theme]) #authScreen #authPromptText { color: rgba(0, 0, 0, 0.55) !important; }
+      html:not([data-theme]) #authScreen .auth-card > div:first-child > div:first-child {
+        background: rgba(0, 0, 0, 0.04) !important;
+        border-color: rgba(0, 0, 0, 0.08) !important;
+      }
+      html:not([data-theme]) #authScreen #localAuthForm .field-input {
+        background: rgba(0, 0, 0, 0.04) !important;
+        border-color: rgba(0, 0, 0, 0.08) !important;
+        color: #1d1d1f !important;
+      }
+      html:not([data-theme]) #authScreen #localAuthForm .field-input::placeholder {
+        color: rgba(0, 0, 0, 0.42) !important;
+      }
+      html:not([data-theme]) #authScreen #localAuthSubmit {
+        background: #1d1d1f !important;
+        color: #ffffff !important;
+      }
+      html:not([data-theme]) #authScreen #authDivider { color: rgba(0, 0, 0, 0.5) !important; }
+      html:not([data-theme]) #authScreen .bg-orb:nth-of-type(1) {
+        background: rgba(99, 102, 241, 0.10) !important;
+      }
+      html:not([data-theme]) #authScreen .bg-orb:nth-of-type(2) {
+        background: rgba(168, 85, 247, 0.10) !important;
+      }
+      html:not([data-theme]) #authScreen #authBotAvatar {
+        filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
+      }
+      html:not([data-theme]) #authScreen #authBotAvatar + div,
+      html:not([data-theme]) #authScreen .onboarding > div:first-child > div:first-child > div:first-child {
+        background: rgba(0, 0, 0, 0.04) !important;
+      }
     }
   </style>
 </head>
@@ -8241,10 +8453,33 @@
     document.getElementById('sidebarLogout')?.addEventListener('click', logout);
     document.getElementById('mobileLogout')?.addEventListener('click', logout);
 
+    // Apple-style system color palette used to tint the floating tech icons
+    // in light mode. Returns null in dark mode so icons keep their subtle
+    // monochrome look — vibrant colors only show up against the light shell.
+    function getAppleIconPalette() {
+      const explicit = document.documentElement.getAttribute('data-theme');
+      const isLight = explicit === 'light'
+        || (!explicit && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+      if (!isLight) return null;
+      return [
+        '#007AFF', // systemBlue
+        '#5856D6', // systemIndigo
+        '#AF52DE', // systemPurple
+        '#FF2D55', // systemPink
+        '#FF3B30', // systemRed
+        '#FF9500', // systemOrange
+        '#34C759', // systemGreen
+        '#00C7BE', // systemMint
+        '#30B0C7', // systemTeal
+        '#32ADE6', // systemCyan
+      ];
+    }
+
     function populateAuthSymbols() {
       const container = document.getElementById('bgSymbols');
       if (!container) return;
       container.innerHTML = '';
+      const palette = getAppleIconPalette();
       // Use the same lucide icon set as the in-app background so the login
       // looks like a continuation of the dashboard rather than a separate skin.
       // Mirrors the list in buildAnimatedBackground() + a few SwiftBot-domain
@@ -8288,6 +8523,9 @@
         icon.style.width = `${size}px`;
         icon.style.height = `${size}px`;
         icon.style.display = 'block';
+        if (palette) {
+          icon.style.color = palette[Math.floor(Math.random() * palette.length)];
+        }
         wrap.appendChild(icon);
         container.appendChild(wrap);
       }
@@ -8307,6 +8545,7 @@
         'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
         'bot', 'git-merge', 'refresh-cw', 'shield'
       ];
+      const palette = getAppleIconPalette();
       const rowStep = 88;
       const verticalBuffer = 2000;
       const rows = Math.max(18, Math.ceil((window.innerHeight + verticalBuffer) / rowStep));
@@ -8326,6 +8565,9 @@
           const icon = document.createElement('i');
           icon.className = 'bg-icon lucide';
           icon.dataset.lucide = iconID;
+          if (palette) {
+            icon.style.color = palette[(i * stride + offset + row) % palette.length];
+          }
           line.appendChild(icon);
         }
 

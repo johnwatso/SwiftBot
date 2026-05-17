@@ -376,7 +376,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: return "square.grid.2x2.fill"
-        case .patchy: return "square.and.arrow.down.badge.checkmark"
+        case .patchy: return "square.and.arrow.down.badge.checkmark.fill"
         case .voice: return "bolt.badge.automatic.fill"
         case .commands: return "terminal.fill"
         case .activity: return "list.bullet.clipboard.fill"
@@ -384,8 +384,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .aiBots: return "sparkles.rectangle.stack.fill"
         case .recordings: return "video.fill"
         case .analytics: return "chart.line.uptrend.xyaxis"
-        case .swiftMesh: return "point.3.connected.trianglepath.dotted"
-        case .sweep: return "rectangle.stack.badge.minus"
+        case .swiftMesh: return "point.3.filled.connected.trianglepath.dotted"
+        case .sweep: return "rectangle.stack.fill.badge.minus"
         }
     }
 }
