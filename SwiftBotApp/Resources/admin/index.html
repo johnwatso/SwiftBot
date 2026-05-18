@@ -702,11 +702,9 @@
     }
 
     .sidebar-user {
-      margin-top: auto;
-      padding: 14px 16px;
-      border-top: 1px solid var(--glass-stroke);
-      background: var(--bg-a);
-      z-index: 5;
+      padding: 0 8px 16px;
+      border-bottom: 1px solid var(--glass-stroke);
+      margin-bottom: 10px;
     }
 
     .sidebar-user-card {
@@ -2813,12 +2811,17 @@
     #appShell .diagnostics-panels > *:nth-child(6) { animation-delay: 0.60s; }
     #appShell .diagnostics-panels > *:nth-child(n+7) { animation-delay: 0.65s; }
 
+    #appShell .cv-overview-top > * { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    #appShell .cv-overview-top > *:nth-child(1) { animation-delay: 0.35s; }
+    #appShell .cv-overview-top > *:nth-child(2) { animation-delay: 0.40s; }
+
     #appShell .sidebar-brand { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both; }
     #appShell .sidebar-scroll { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
     #appShell .sidebar-user   { animation: cv-fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both; }
 
     /* Replay animations whenever a view becomes visible */
     #appShell .view:not(.hidden) .stats-grid > *,
+    #appShell .view:not(.hidden) .cv-overview-top > *,
     #appShell .view:not(.hidden) .diagnostics-panels > *,
     #appShell .view:not(.hidden) .glass {
       animation-name: cv-fade-in-up;
@@ -2852,26 +2855,6 @@
       color: rgb(251, 113, 133);
     }
     #appShell .cv-icon-btn.cv-icon-btn-running:hover { background: rgba(244, 63, 94, 0.22); }
-
-    /* User card pinned to the bottom-left of the viewport, NOT the sidebar
-       flow. fixed positioning means it's always visible no matter how the
-       sidebar scrolls or what the browser chrome height does. */
-    #appShell .sidebar .sidebar-user {
-      position: fixed;
-      left: 0;
-      bottom: 0;
-      width: var(--sidebar-width);
-      padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-      background: var(--cv-sidebar-user-grad);
-      backdrop-filter: blur(20px) saturate(1.2);
-      -webkit-backdrop-filter: blur(20px) saturate(1.2);
-      z-index: 5;
-    }
-    /* Reserve scroll space inside the sidebar so nav items don't get hidden
-       behind the fixed user card. */
-    #appShell .sidebar .sidebar-scroll {
-      padding-bottom: 80px;
-    }
 
     /* Pinned top row on the Overview — Usage Trends + Currently in Voice.
        Two equal-size cards, side by side, always at the top of the view. */
@@ -3350,6 +3333,26 @@
           </div>
         </div>
         <div class="sidebar-inner">
+          <div class="sidebar-user">
+            <div class="sidebar-user-card">
+              <div class="sidebar-user-main">
+                <img id="sidebarAvatar" class="user-avatar" alt="User avatar">
+                <div class="user-meta">
+                  <div id="sidebarDisplayName" class="user-display">Discord User</div>
+                  <div id="sidebarUsername" class="user-handle">@user</div>
+                </div>
+                <div class="sidebar-user-actions">
+                  <button class="icon-btn" onclick="selectView('userprefs')" type="button" aria-label="User Settings">
+                    <i class="lucide" data-lucide="user-cog"></i>
+                  </button>
+                  <button class="icon-btn" onclick="logout()" type="button" aria-label="Log out">
+                    <i class="lucide" data-lucide="log-out"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="sidebar-scroll">
             <div class="nav-section">
               <div class="nav-heading">Dashboard</div>
@@ -3409,26 +3412,6 @@
                 <span class="nav-icon"><i class="lucide" data-lucide="settings"></i></span>
                 <span class="nav-text">Settings</span>
               </button>
-            </div>
-          </div>
-
-          <div class="sidebar-user">
-            <div class="sidebar-user-card">
-              <div class="sidebar-user-main">
-                <img id="sidebarAvatar" class="user-avatar" alt="User avatar">
-                <div class="user-meta">
-                  <div id="sidebarDisplayName" class="user-display">Discord User</div>
-                  <div id="sidebarUsername" class="user-handle">@user</div>
-                </div>
-                <div class="sidebar-user-actions">
-                  <button class="icon-btn" onclick="selectView('userprefs')" type="button" aria-label="User Settings">
-                    <i class="lucide" data-lucide="user-cog"></i>
-                  </button>
-                  <button class="icon-btn" onclick="logout()" type="button" aria-label="Log out">
-                    <i class="lucide" data-lucide="log-out"></i>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
