@@ -6227,6 +6227,7 @@
               </div>
               <p style="font-size: 12px; color: var(--muted); margin: 0 0 12px; line-height: 1.4;">${s.rationale}</p>
               <div style="display: flex; align-items: center; gap: 8px;">
+                ${s.projection ? `<button class="mini-btn secondary-action" onclick="showSweepReportById('${s.id}', true)">Preview</button>` : ''}
                 <button class="mini-btn primary-action" onclick="applySweepSuggestion('${s.id}')">Apply Rule</button>
                 <button class="mini-btn secondary-action" onclick="dismissSweepSuggestion('${s.id}')">Dismiss</button>
               </div>
@@ -6254,7 +6255,8 @@
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <button class="icon-btn" style="width: 28px; height: 28px;" onclick="runSweepPolicy('${p.id}')" title="Run Now"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px;" onclick="previewSweepPolicy('${p.id}')" title="Preview (Dry Run)"><i class="lucide" data-lucide="eye" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px;" onclick="runSweepPolicy('${p.id}')" title="Run Now (Live)"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
               <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} onchange="toggleSweepPolicy('${p.id}', this.checked)"><span class="switch-track"><span class="switch-knob"></span></span></label>
               <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" onclick="deleteSweepPolicy('${p.id}')" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
             </div>
@@ -6267,7 +6269,7 @@
       // Audit Log
       if (sweepData.recentReports && sweepData.recentReports.length > 0) {
         auditList.innerHTML = sweepData.recentReports.map(r => `
-          <div class="event-item" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div class="event-item" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" onclick="showSweepReportById('${r.id}')">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
               <span style="font-weight: 600; font-size: 12px; color: ${r.error ? '#f87171' : 'inherit'}">${r.policyName}</span>
               <span style="font-size: 10px; color: var(--muted);">${formatTime(r.startedAt)}</span>
@@ -6295,6 +6297,110 @@
       setMessage('Sweep started.', 'success');
       await loadSweep();
       renderSweepView();
+    }
+
+    async function previewSweepPolicy(id) {
+      const response = await postJSON('/api/sweep/policy/preview', { policyID: id });
+      if (!response.ok) {
+        setMessage('Preview failed. Bot might be offline.', 'error');
+        return;
+      }
+      const data = await response.json();
+      showSweepReport(data.report);
+    }
+
+    function showSweepReportById(id, isSuggestion = false) {
+      if (isSuggestion) {
+        const suggestion = sweepData.suggestions.find(s => s.id === id);
+        if (suggestion && suggestion.projection) {
+          showSweepReport(suggestion.projection);
+        }
+      } else {
+        const report = sweepData.recentReports.find(r => r.id === id);
+        if (report) showSweepReport(report);
+      }
+    }
+
+    function showSweepReport(report) {
+      if (!report) return;
+      
+      const title = `Preview: ${report.policyName}`;
+      const stats = `
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
+            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Scanned</div>
+            <div style="font-size: 18px; font-weight: 700;">${report.scanned}</div>
+          </div>
+          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
+            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Matched</div>
+            <div style="font-size: 18px; font-weight: 700; color: #6366f1;">${report.matched}</div>
+          </div>
+          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
+            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Tidied</div>
+            <div style="font-size: 18px; font-weight: 700; color: #4ade80;">${report.dryRun ? report.matched : report.executed}</div>
+          </div>
+          <div class="glass" style="padding: 10px; text-align: center; border-radius: 10px;">
+            <div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 4px;">Protected</div>
+            <div style="font-size: 18px; font-weight: 700; color: #f97316;">${report.suppressed}</div>
+          </div>
+        </div>
+      `;
+
+      let actionsHtml = '';
+      if (report.error) {
+        actionsHtml = `<div style="padding: 20px; text-align: center; color: #f87171; font-weight: 600;">${report.error}</div>`;
+      } else if (!report.actions || report.actions.length === 0) {
+        actionsHtml = '<div class="placeholder">No actions would be taken for this channel.</div>';
+      } else {
+        actionsHtml = `
+          <div style="display: grid; gap: 8px;">
+            ${report.actions.slice(0, 50).map(a => renderSweepActionRow(a)).join('')}
+            ${report.actions.length > 50 ? `<div style="font-size: 11px; color: var(--muted); text-align: center; padding: 10px;">... and ${report.actions.length - 50} more actions</div>` : ''}
+          </div>
+        `;
+      }
+
+      const body = `
+        <div style="max-height: 70vh; overflow-y: auto; padding: 4px;">
+          ${stats}
+          <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Planned Actions</div>
+          ${actionsHtml}
+          ${report.summary ? `
+            <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="sparkles"></i> AI Summary</div>
+            <div class="glass" style="padding: 16px; font-size: 13px; line-height: 1.5; border-radius: 12px; white-space: pre-wrap;">${report.summary}</div>
+          ` : ''}
+        </div>
+      `;
+
+      const footer = `<button class="primary-action" onclick="hideModal()" style="width: 100px;">Close</button>`;
+      
+      showModal(title, body, footer);
+      refreshIcons();
+    }
+
+    function renderSweepActionRow(action) {
+      let icon = 'shield-half';
+      let color = 'var(--muted)';
+      switch (action.kind) {
+        case 'delete': icon = 'trash-2'; color = '#f97316'; break;
+        case 'keep': icon = 'check-circle'; color = 'var(--muted)'; break;
+        case 'archive': icon = 'archive'; color = '#6366f1'; break;
+        case 'summarise': icon = 'text-bubble'; color = '#a855f7'; break;
+        case 'pin': icon = 'pin'; color = '#ec4899'; break;
+        case 'quiet': icon = 'bell-slash'; color = 'var(--muted)'; break;
+        case 'skip': icon = 'shield-check'; color = '#22c55e'; break;
+      }
+
+      return `
+        <div class="glass" style="padding: 10px 12px; display: flex; align-items: center; gap: 12px; border-radius: 10px; font-size: 12px;">
+          <div class="stat-icon" style="color: ${color}; width: 24px; height: 24px;"><i class="lucide" data-lucide="${icon}" style="width: 14px; height: 14px;"></i></div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; margin-bottom: 2px;">${action.reason}</div>
+            <div style="color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px;">${action.preview}</div>
+          </div>
+          ${action.mode === 'virtual' ? '<span style="font-size: 9px; font-weight: 700; color: #3b82f6; background: rgba(59, 130, 246, 0.1); padding: 1px 5px; border-radius: 4px;">VIRTUAL</span>' : ''}
+        </div>
+      `;
     }
 
     async function deleteSweepPolicy(id) {
