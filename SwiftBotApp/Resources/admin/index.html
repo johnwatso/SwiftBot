@@ -3237,7 +3237,7 @@
   <div class="bg-stream" id="bgStream" aria-hidden="true"></div>
 
   <main class="page">
-    <section id="authScreen" class="onboarding-shell" style="background: #080b11;">
+    <section id="authScreen" class="onboarding-shell hidden" style="background: #080b11;">
       <!-- BACKGROUND ANIMATION LAYER -->
       <div class="absolute inset-0 z-0" style="position: absolute; inset: 0; pointer-events: none;">
         <div class="bg-grid"></div>
@@ -8354,19 +8354,23 @@
       // Apply any cached bot name immediately so labels read correctly while
       // /api/status is still in flight on first load.
       applyBotIdentityLabels();
-      await loadAuthOptions();
+      
       const me = await loadMe();
       if (!me) {
+        await loadAuthOptions();
         showAuthScreen();
         return;
       }
+      
       loadOverviewLayout();
-
       showDashboard();
       await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
       const allowed = new Set(['overview', 'analytics', 'commands', 'voice', 'patchy', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
+      
+      // Load auth options in background for the "logout" logic/labels
+      loadAuthOptions();
     }
 
     document.querySelectorAll('.nav-link').forEach(link => {
