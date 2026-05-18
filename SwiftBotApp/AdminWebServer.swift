@@ -142,6 +142,29 @@ struct AdminWebAnalyticsInsightPayload: Codable {
     let tone: String
 }
 
+struct AdminWebSweepPayload: Codable {
+    let globalPaused: Bool
+    let state: String
+    let stateTone: String
+    let nextRunDescription: String
+    let enabledPolicyCount: Int
+    let totalPolicyCount: Int
+    let messagesTodayCount: Int
+    let suppressedTodayCount: Int
+    let summariesThisWeekCount: Int
+    let policies: [SweepPolicy]
+    let recentReports: [SweepRunReport]
+    let suggestions: [SweepSuggestion]
+    let isScanningSuggestions: Bool
+    let lastSuggestionScanAt: Date?
+    let scanProgressDone: Int
+    let scanProgressTotal: Int
+}
+
+struct AdminWebSweepRunReportPayload: Codable {
+    let report: SweepRunReport
+}
+
 struct AdminWebAnalyticsPayload: Codable {
     let generatedAt: Date
     let peakActivityLabel: String
@@ -398,6 +421,23 @@ struct AdminWebMediaPlaybackPatch: Codable {
     let watchedSeconds: Int?
 }
 
+struct AdminWebSweepGlobalPausedPatch: Codable {
+    let paused: Bool
+}
+
+struct AdminWebSweepPolicyEnabledPatch: Codable {
+    let policyID: UUID
+    let enabled: Bool
+}
+
+struct AdminWebSweepPolicyIDPatch: Codable {
+    let policyID: UUID
+}
+
+struct AdminWebSweepSuggestionIDPatch: Codable {
+    let suggestionID: UUID
+}
+
 actor AdminWebServer {
     struct RuntimeState: Equatable {
         var isEnabled: Bool
@@ -561,6 +601,17 @@ actor AdminWebServer {
     private var mediaPlaybackRecorder: (@Sendable (AdminWebMediaPlaybackPatch) async -> Bool)?
     private var mediaClipExportStarter: (@Sendable (MediaExportClipRequest) async -> MediaExportJobResponse)?
     private var mediaMultiViewExportStarter: (@Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse)?
+    private var sweepProvider: (@Sendable () async -> AdminWebSweepPayload)?
+    private var setSweepGlobalPaused: (@Sendable (Bool) async -> Bool)?
+    private var updateSweepPolicy: (@Sendable (SweepPolicy) async -> Bool)?
+    private var deleteSweepPolicy: (@Sendable (UUID) async -> Bool)?
+    private var setSweepPolicyEnabled: (@Sendable (UUID, Bool) async -> Bool)?
+    private var runSweepPolicy: (@Sendable (UUID) async -> Bool)?
+    private var previewSweepPolicy: (@Sendable (UUID) async -> AdminWebSweepRunReportPayload?)?
+    private var previewSweepDraft: (@Sendable (SweepPolicy) async -> AdminWebSweepRunReportPayload?)?
+    private var scanSweepSuggestions: (@Sendable () async -> Bool)?
+    private var applySweepSuggestion: (@Sendable (UUID) async -> Bool)?
+    private var dismissSweepSuggestion: (@Sendable (UUID) async -> Bool)?
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
@@ -624,6 +675,17 @@ actor AdminWebServer {
         mediaPlaybackRecorder: @escaping @Sendable (AdminWebMediaPlaybackPatch) async -> Bool,
         mediaClipExportStarter: @escaping @Sendable (MediaExportClipRequest) async -> MediaExportJobResponse,
         mediaMultiViewExportStarter: @escaping @Sendable (MediaExportMultiViewRequest) async -> MediaExportJobResponse,
+        sweepProvider: @escaping @Sendable () async -> AdminWebSweepPayload,
+        setSweepGlobalPaused: @escaping @Sendable (Bool) async -> Bool,
+        updateSweepPolicy: @escaping @Sendable (SweepPolicy) async -> Bool,
+        deleteSweepPolicy: @escaping @Sendable (UUID) async -> Bool,
+        setSweepPolicyEnabled: @escaping @Sendable (UUID, Bool) async -> Bool,
+        runSweepPolicy: @escaping @Sendable (UUID) async -> Bool,
+        previewSweepPolicy: @escaping @Sendable (UUID) async -> AdminWebSweepRunReportPayload?,
+        previewSweepDraft: @escaping @Sendable (SweepPolicy) async -> AdminWebSweepRunReportPayload?,
+        scanSweepSuggestions: @escaping @Sendable () async -> Bool,
+        applySweepSuggestion: @escaping @Sendable (UUID) async -> Bool,
+        dismissSweepSuggestion: @escaping @Sendable (UUID) async -> Bool,
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
@@ -679,6 +741,17 @@ actor AdminWebServer {
         self.mediaPlaybackRecorder = mediaPlaybackRecorder
         self.mediaClipExportStarter = mediaClipExportStarter
         self.mediaMultiViewExportStarter = mediaMultiViewExportStarter
+        self.sweepProvider = sweepProvider
+        self.setSweepGlobalPaused = setSweepGlobalPaused
+        self.updateSweepPolicy = updateSweepPolicy
+        self.deleteSweepPolicy = deleteSweepPolicy
+        self.setSweepPolicyEnabled = setSweepPolicyEnabled
+        self.runSweepPolicy = runSweepPolicy
+        self.previewSweepPolicy = previewSweepPolicy
+        self.previewSweepDraft = previewSweepDraft
+        self.scanSweepSuggestions = scanSweepSuggestions
+        self.applySweepSuggestion = applySweepSuggestion
+        self.dismissSweepSuggestion = dismissSweepSuggestion
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
@@ -1376,6 +1449,151 @@ actor AdminWebServer {
             }
             guard await pullPatchyTarget?(patch.targetID) == true else {
                 return jsonResponse(["error": "pull_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("GET", "/api/sweep"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await sweepProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "sweep_unavailable"], status: "503 Service Unavailable")
+        case ("POST", "/api/sweep/pause"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepGlobalPausedPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await setSweepGlobalPaused?(patch.paused) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/update"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(SweepPolicy.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateSweepPolicy?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepPolicyIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deleteSweepPolicy?(patch.policyID) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepPolicyEnabledPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await setSweepPolicyEnabled?(patch.policyID, patch.enabled) == true else {
+                return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/run"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepPolicyIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await runSweepPolicy?(patch.policyID) == true else {
+                return jsonResponse(["error": "run_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/policy/preview"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepPolicyIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            if let report = await previewSweepPolicy?(patch.policyID) {
+                return codableResponse(report)
+            }
+            return jsonResponse(["error": "preview_failed"], status: "400 Bad Request")
+        case ("POST", "/api/sweep/draft/preview"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(SweepPolicy.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            if let report = await previewSweepDraft?(patch) {
+                return codableResponse(report)
+            }
+            return jsonResponse(["error": "preview_failed"], status: "400 Bad Request")
+        case ("POST", "/api/sweep/suggestions/scan"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard await scanSweepSuggestions?() == true else {
+                return jsonResponse(["error": "scan_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/suggestions/apply"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepSuggestionIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await applySweepSuggestion?(patch.suggestionID) == true else {
+                return jsonResponse(["error": "apply_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+        case ("POST", "/api/sweep/suggestions/dismiss"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebSweepSuggestionIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await dismissSweepSuggestion?(patch.suggestionID) == true else {
+                return jsonResponse(["error": "dismiss_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
         case ("GET", "/api/wikibridge"):

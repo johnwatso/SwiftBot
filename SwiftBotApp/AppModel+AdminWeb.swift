@@ -1525,6 +1525,64 @@ extension AppModel {
                 guard let model = self else { return MediaExportJobResponse(job: nil, error: "Unavailable") }
                 return await model.adminWebStartMediaMultiViewExport(request: request)
             },
+            sweepProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebSweepPayload(
+                        globalPaused: false, state: "Idle", stateTone: "gray", nextRunDescription: "Unknown",
+                        enabledPolicyCount: 0, totalPolicyCount: 0, messagesTodayCount: 0, suppressedTodayCount: 0, summariesThisWeekCount: 0,
+                        policies: [], recentReports: [], suggestions: [], isScanningSuggestions: false, lastSuggestionScanAt: nil, scanProgressDone: 0, scanProgressTotal: 0
+                    )
+                }
+                return await MainActor.run { model.adminWebSweepSnapshot() }
+            },
+            setSweepGlobalPaused: { [weak self] paused in
+                guard let model = self else { return false }
+                await MainActor.run { model.sweepService.globalPaused = paused }
+                return true
+            },
+            updateSweepPolicy: { [weak self] policy in
+                guard let model = self else { return false }
+                await MainActor.run { model.sweepService.upsert(policy) }
+                return true
+            },
+            deleteSweepPolicy: { [weak self] policyID in
+                guard let model = self else { return false }
+                await MainActor.run { model.sweepService.delete(policyID: policyID) }
+                return true
+            },
+            setSweepPolicyEnabled: { [weak self] policyID, enabled in
+                guard let model = self else { return false }
+                await MainActor.run { model.sweepService.setEnabled(enabled, for: policyID) }
+                return true
+            },
+            runSweepPolicy: { [weak self] policyID in
+                guard let model = self else { return false }
+                _ = await model.sweepService.run(policyID: policyID, manual: true)
+                return true
+            },
+            previewSweepPolicy: { [weak self] policyID in
+                guard let model = self, let report = await model.sweepService.preview(policyID: policyID) else { return nil }
+                return AdminWebSweepRunReportPayload(report: report)
+            },
+            previewSweepDraft: { [weak self] policy in
+                guard let model = self, let report = await model.sweepService.previewDraft(policy) else { return nil }
+                return AdminWebSweepRunReportPayload(report: report)
+            },
+            scanSweepSuggestions: { [weak self] in
+                guard let model = self else { return false }
+                await model.scanAllSweepSuggestions()
+                return true
+            },
+            applySweepSuggestion: { [weak self] suggestionID in
+                guard let model = self else { return false }
+                await MainActor.run { model.applySweepSuggestion(id: suggestionID) }
+                return true
+            },
+            dismissSweepSuggestion: { [weak self] suggestionID in
+                guard let model = self else { return false }
+                await MainActor.run { model.dismissSweepSuggestion(id: suggestionID) }
+                return true
+            },
             startBot: { [weak self] in
                 guard let model = self else { return false }
                 await model.startBot()
@@ -2258,7 +2316,55 @@ extension AppModel {
             } catch {
                 break
             }
-        }
-    }
+            }
+            }
 
-}
+            // MARK: - Sweep
+
+            @MainActor
+            private func adminWebSweepSnapshot() -> AdminWebSweepPayload {
+                let s = sweepService
+                return AdminWebSweepPayload(
+                    globalPaused: s.globalPaused,
+                    state: s.state.displayName,
+                    stateTone: s.state.tone.description,
+                    nextRunDescription: s.nextRunDescription,
+                    enabledPolicyCount: s.enabledPolicyCount,
+                    totalPolicyCount: s.policies.count,
+                    messagesTodayCount: s.messagesTodayCount,
+                    suppressedTodayCount: s.suppressedTodayCount,
+                    summariesThisWeekCount: s.summariesThisWeekCount,
+                    policies: s.policies,
+                    recentReports: s.recentReports,
+                    suggestions: s.suggestions,
+                    isScanningSuggestions: s.isScanningSuggestions,
+                    lastSuggestionScanAt: s.lastSuggestionScanAt,
+                    scanProgressDone: s.scanProgress.done,
+                    scanProgressTotal: s.scanProgress.total
+                )
+            }
+
+            @MainActor
+            func scanAllSweepSuggestions() async {
+                var targets: [SweepService.SweepScanTarget] = []
+                for (guildID, channels) in self.availableTextChannelsByServer {
+                    let guildName = self.connectedServers[guildID] ?? "Server"
+                    for channel in channels {
+                        targets.append(.init(guildID: guildID, guildName: guildName, channel: channel))
+                    }
+                }
+                await sweepService.scanForSuggestions(targets: targets)
+            }
+
+            @MainActor
+            func applySweepSuggestion(id: UUID) {
+                guard let suggestion = sweepService.suggestions.first(where: { $0.id == id }) else { return }
+                sweepService.applySuggestion(suggestion)
+            }
+
+            @MainActor
+            func dismissSweepSuggestion(id: UUID) {
+                guard let suggestion = sweepService.suggestions.first(where: { $0.id == id }) else { return }
+                sweepService.dismissSuggestion(suggestion)
+            }
+            }
