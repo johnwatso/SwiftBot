@@ -3398,7 +3398,7 @@
                 <span class="nav-text">Recordings</span>
               </button>
               <button class="nav-link" data-view="sweep" type="button">
-                <span class="nav-icon"><i class="lucide" data-lucide="rectangle-stack"></i></span>
+                <span class="nav-icon"><i class="lucide" data-lucide="layers"></i></span>
                 <span class="nav-text">Sweep</span>
               </button>
               <button class="nav-link" data-view="analytics" type="button">
@@ -3632,7 +3632,7 @@
         <section id="sweepView" class="view hidden">
           <div class="section-sticky">
             <div class="section-sticky-row">
-              <div class="section-mini-title"><i class="lucide" data-lucide="rectangle-stack"></i> Sweep</div>
+              <div class="section-mini-title"><i class="lucide" data-lucide="layers"></i> Sweep</div>
               <div style="display: flex; align-items: center; gap: 10px;">
                 <button id="sweepPauseAll" class="secondary-action" type="button">Pause All</button>
                 <button id="sweepNewRule" class="primary-action" type="button"><i class="lucide" data-lucide="plus"></i> New Rule</button>
@@ -3649,7 +3649,7 @@
 
           <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px;">
             <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="list-bullet"></i> Active Rules</div>
+              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Active Rules</div>
               <div id="sweepRulesList" style="display: grid; gap: 10px;"></div>
             </div>
             <div>
@@ -6196,7 +6196,7 @@
           <div class="stat-subtitle">${sweepData.globalPaused ? 'Paused by operator' : `${sweepData.enabledPolicyCount} enabled`}</div>
         </article>
         <article class="stat-card glass">
-          <div class="stat-header"><h3>Policies</h3><div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="list-bullet"></i></div></div>
+          <div class="stat-header"><h3>Policies</h3><div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="list"></i></div></div>
           <div class="stat-value">${sweepData.enabledPolicyCount}</div>
           <div class="stat-subtitle">of ${sweepData.totalPolicyCount} total</div>
         </article>
@@ -6206,7 +6206,7 @@
           <div class="stat-subtitle">Across all policies</div>
         </article>
         <article class="stat-card glass">
-          <div class="stat-header"><h3>Tidied Today</h3><div class="stat-icon" style="color: #a855f7;"><i class="lucide" data-lucide="trash"></i></div></div>
+          <div class="stat-header"><h3>Tidied Today</h3><div class="stat-icon" style="color: #a855f7;"><i class="lucide" data-lucide="trash-2"></i></div></div>
           <div class="stat-value">${sweepData.messagesTodayCount}</div>
           <div class="stat-subtitle">Across recent runs</div>
         </article>
@@ -6241,7 +6241,7 @@
       if (sweepData.policies && sweepData.policies.length > 0) {
         rulesList.innerHTML = sweepData.policies.map(p => `
           <div class="glass" style="padding: 14px 16px; display: flex; align-items: center; gap: 14px; border-radius: 12px; opacity: ${p.isEnabled ? '1' : '0.6'};">
-            <div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="rectangle-stack"></i></div>
+            <div class="stat-icon" style="color: #6366f1;"><i class="lucide" data-lucide="layers"></i></div>
             <div style="flex: 1; min-width: 0;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
                 <span style="font-weight: 600; font-size: 13px;">${p.name}</span>
@@ -6256,7 +6256,7 @@
             <div style="display: flex; align-items: center; gap: 6px;">
               <button class="icon-btn" style="width: 28px; height: 28px;" onclick="runSweepPolicy('${p.id}')" title="Run Now"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
               <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} onchange="toggleSweepPolicy('${p.id}', this.checked)"><span class="switch-track"><span class="switch-knob"></span></span></label>
-              <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" onclick="deleteSweepPolicy('${p.id}')" title="Delete"><i class="lucide" data-lucide="trash" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" onclick="deleteSweepPolicy('${p.id}')" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
             </div>
           </div>
         `).join('');
