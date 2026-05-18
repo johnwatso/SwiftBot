@@ -3,7 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot Admin</title>
+  <title>SwiftBot</title>
+  <script>
+    (function() {
+      try {
+        const storageKey = 'swiftbot.webui.prefs';
+        const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        const theme = ['light', 'dark'].includes(parsed.theme) ? parsed.theme : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="icon" type="image/png" href="/favicon.png">
   <!-- Pin Lucide to a stable version. Using @latest broke a chunk of icons
        (sidebar nav, recordings/film, etc.) when newer releases renamed icons. -->
@@ -2635,6 +2645,21 @@
     .onboarding-shell .auth-card h1,
     .onboarding-shell h1 { line-height: 1.05; }
     .onboarding-shell .auth-card > div:first-child { margin-bottom: 20px !important; }
+
+    #authBotAvatar {
+      filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
+      transform: translateZ(0); /* Safari GPU hint */
+    }
+    .auth-logo-glow {
+      background: rgba(255, 255, 255, 0.05);
+      filter: blur(28px);
+      opacity: 0; /* Hide by default to prevent Safari square flash */
+      transform: translateZ(0); /* Safari GPU hint */
+    }
+    html[data-theme="dark"] .auth-logo-glow {
+      opacity: 1;
+    }
+
     @media (max-height: 820px) {
       .onboarding-shell { padding: 12px 20px; }
       .onboarding > div:first-child { margin-bottom: 12px !important; }
@@ -3128,8 +3153,10 @@
       color: rgba(0, 0, 0, 0.5) !important;
     }
     html[data-theme="light"] #authScreen .auth-card {
-      background: rgba(255, 255, 255, 0.78) !important;
-      border-color: rgba(0, 0, 0, 0.08) !important;
+      background: rgba(255, 255, 255, 0.25) !important;
+      border-color: rgba(255, 255, 255, 0.5) !important;
+      backdrop-filter: blur(14px) saturate(2.2) !important;
+      -webkit-backdrop-filter: blur(14px) saturate(2.2) !important;
     }
     html[data-theme="light"] #authScreen .auth-card h2 {
       color: #1d1d1f !important;
@@ -3163,9 +3190,6 @@
     html[data-theme="light"] #authScreen #authBotAvatar {
       filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
     }
-    html[data-theme="light"] #authScreen .auth-logo-glow {
-      display: none !important;
-    }
 
     @media (prefers-color-scheme: light) {
       html:not([data-theme]) #authScreen,
@@ -3181,8 +3205,10 @@
         color: rgba(0, 0, 0, 0.5) !important;
       }
       html:not([data-theme]) #authScreen .auth-card {
-        background: rgba(255, 255, 255, 0.78) !important;
-        border-color: rgba(0, 0, 0, 0.08) !important;
+        background: rgba(255, 255, 255, 0.25) !important;
+        border-color: rgba(255, 255, 255, 0.5) !important;
+        backdrop-filter: blur(14px) saturate(2.2) !important;
+        -webkit-backdrop-filter: blur(14px) saturate(2.2) !important;
       }
       html:not([data-theme]) #authScreen .auth-card h2 { color: #1d1d1f !important; }
       html:not([data-theme]) #authScreen #authPromptText { color: rgba(0, 0, 0, 0.55) !important; }
@@ -3208,9 +3234,6 @@
       html:not([data-theme]) #authScreen #authBotAvatar {
         filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
       }
-      html:not([data-theme]) #authScreen .auth-logo-glow {
-        display: none !important;
-      }
     }
   </style>
 </head>
@@ -3230,13 +3253,13 @@
 
       <div class="onboarding" style="position: relative; z-index: 10; width: 100%; max-width: 440px;">
         <!-- Main Interactive Card -->
-        <div class="auth-card glass" style="width: 100%; background: rgba(18, 21, 30, 0.7); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 28px 22px 22px; display: flex; flex-direction: column; backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);">
+        <div class="auth-card glass" style="width: 100%; background: rgba(10, 10, 15, 0.25); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.15); padding: 28px 22px 22px; display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(2.2); -webkit-backdrop-filter: blur(14px) saturate(2.2); transform: translateZ(0); -webkit-transform: translateZ(0);">
 
           <!-- Header (inside the card) -->
           <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
             <div style="position: relative; margin-bottom: 14px;">
-              <div class="auth-logo-glow" style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
-              <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
+              <div class="auth-logo-glow" style="position: absolute; inset: -16px; border-radius: 999px;"></div>
+              <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10;">
             </div>
 
             <h1 id="authBotName" style="font-size: 32px; font-weight: 700; color: #fff; letter-spacing: -0.03em; margin: 0; line-height: 1.05;">SwiftBot</h1>
@@ -3988,7 +4011,7 @@
       if (nameNode) nameNode.textContent = botName;
       const inlineName = document.getElementById('authBotInlineName');
       if (inlineName) inlineName.textContent = botName;
-      document.title = `${botName} Admin`;
+      document.title = botName;
     }
 
     function renderStats(metrics) {
@@ -8441,7 +8464,15 @@
       const explicit = document.documentElement.getAttribute('data-theme');
       const isLight = explicit === 'light'
         || (!explicit && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
-      if (!isLight) return null;
+      
+      // If dark mode, return a slightly more saturated palette to pop through the glass.
+      if (!isLight) {
+        return [
+          '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#ef4444', 
+          '#f97316', '#22c55e', '#10b981', '#06b6d4', '#0ea5e9'
+        ];
+      }
+      
       return [
         '#007AFF', // systemBlue
         '#5856D6', // systemIndigo
@@ -8483,15 +8514,15 @@
         'database', 'webhook', 'plug', 'plug-zap', 'wifi', 'cloud',
         'layout-dashboard', 'gauge', 'binary',
         // Automation / AI / actions
-        'workflow', 'wand-sparkles', 'brain', 'play', 'pause', 'circle-play',
+        'workflow', 'wand-sparkles', 'play', 'pause', 'circle-play',
         // Security / identity
         'lock', 'key', 'key-round', 'fingerprint'
       ];
-      const count = 90;
+      const count = 150;
       for (let i = 0; i < count; i++) {
         const wrap = document.createElement('div');
         wrap.style.left = `${Math.random() * 100}%`;
-        const duration = 22 + Math.random() * 28;
+        const duration = 30 + Math.random() * 40; // Slower: 30–70s vs 22–50s
         const delay = Math.random() * duration;
         const size = 14 + Math.floor(Math.random() * 22); // 14–35 px
         // Don't set opacity inline — the float-up keyframes own the fade
