@@ -93,20 +93,7 @@ extension AppModel {
             authorIsBot: nil,
             joinedAt: event.joinedAt
         )
-        let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
-        for rule in matchedRules {
-            _ = PipelineContext()
-            for action in rule.processedActions where action.type == .sendMessage {
-                let ruleMessage = action.message
-                    .replacingOccurrences(of: "{username}", with: safeUsername)
-                    .replacingOccurrences(of: "{server}", with: serverName)
-                    .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
-                    .replacingOccurrences(of: "{userId}", with: userId)
-                let targetChannel = action.channelId.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                guard !targetChannel.isEmpty else { continue }
-                _ = await send(targetChannel, ruleMessage)
-            }
-        }
+        await fireAutomations(for: ruleEvent)
 
         // Log username only — no internal IDs or metadata.
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "👋 \(safeUsername) joined \(serverName)"))
@@ -149,10 +136,7 @@ extension AppModel {
             joinedAt: nil
         )
 
-        let matchedRules = ruleEngine.evaluateRules(event: ruleEvent)
-        for rule in matchedRules {
-            _ = await service.executeRulePipeline(actions: rule.processedActions, for: ruleEvent, isDirectMessage: ruleEvent.isDirectMessage)
-        }
+        await fireAutomations(for: ruleEvent)
 
         addEvent(ActivityEvent(timestamp: now, kind: .info, message: "🚪 \(username) left the server"))
         logs.append("Member leave handled for \(username)")

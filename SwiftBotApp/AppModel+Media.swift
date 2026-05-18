@@ -827,10 +827,7 @@ extension AppModel {
             joinedAt: nil
         )
 
-        let matchedRules = ruleEngine.evaluateRules(event: event)
-        for rule in matchedRules {
-            _ = await service.executeRulePipeline(actions: rule.processedActions, for: event, isDirectMessage: event.isDirectMessage)
-        }
+        await fireAutomations(for: event)
     }
 
     func saveMeshCursors(_ cursors: [String: ReplicationCursor]) async {

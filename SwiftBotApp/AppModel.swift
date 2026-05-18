@@ -107,6 +107,11 @@ final class AppModel: ObservableObject {
     let isBetaBuild: Bool = (Bundle.main.object(forInfoDictionaryKey: "ShipHookIsBetaBuild") as? Bool) ?? false
 
     var logs = LogStore()
+    let automationStore = AutomationStore()
+    let automationDrafter = AutomationDrafter()
+    /// Legacy rule store — empty no-op shim. Retained so the web admin
+    /// rule editor, analytics rule panels, and bot data provider compile.
+    /// All real rule logic now lives in `automationStore`.
     let ruleStore = RuleStore()
 
     let store = ConfigStore()
@@ -163,7 +168,7 @@ final class AppModel: ObservableObject {
     let certificateManager = CertificateManager()
     let tunnelProvider: any TunnelProvider = TunnelManager.shared
     let clusterStatusService = ClusterStatusPollingService()
-    let ruleEngine: RuleEngine
+    lazy var automationEngine: AutomationEngine = buildAutomationEngine()
     let wikiContextCache = WikiContextCache()
     var guildOwnerIdByGuild: [String: String] = [:]
     var serviceCallbacksConfigured = false
@@ -342,15 +347,14 @@ final class AppModel: ObservableObject {
     }
 
     init() {
-        self.ruleEngine = RuleEngine(store: ruleStore)
         self.pluginManager = PluginManager(bus: eventBus)
         if let store = try? JSONVersionStore(fileURL: PatchyRuntime.checkerStoreURL()) {
             self.patchyChecker = UpdateChecker(store: store)
         } else {
             self.patchyChecker = nil
         }
-        self.ruleStore.onPersisted = { [weak self] in
-            await self?.handleRuleStorePersisted()
+        self.automationStore.onPersisted = { [weak self] in
+            Task { [weak self] in await self?.handleRuleStorePersisted() }
         }
 
         // Wire Sweep to the real Discord runtime. The dispatcher self-gates via
@@ -494,7 +498,8 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            await service.setRuleEngine(ruleEngine)
+            await service.setAutomationEngine(automationEngine, store: automationStore)
+            await MainActor.run { automationStore.load() }
             await service.setHistoryProvider { [weak self] scope in
                 guard let self else { return [] }
                 let (messages, _) = await self.aiMessagesForScope(

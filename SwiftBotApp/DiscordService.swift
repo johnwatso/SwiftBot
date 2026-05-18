@@ -19,7 +19,8 @@ actor DiscordService {
     private let session: URLSession
     private let identitySession: URLSession
     private var botToken: String?
-    private var ruleEngine: RuleEngine?
+    private var automationEngine: AutomationEngine?
+    private var automationSnapshotProvider: (@Sendable () async -> [Automations.Rule])?
     private var voiceRuleStateStore = VoiceRuleStateStore()
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
     private var channelTypeById: [String: Int] = [:]
@@ -29,59 +30,6 @@ actor DiscordService {
     private lazy var identityRESTClient = DiscordIdentityRESTClient(session: session, identitySession: identitySession, restBase: restBase)
     private lazy var interactionRESTClient = DiscordInteractionRESTClient(session: session, restBase: restBase)
     private lazy var messageRESTClient = DiscordMessageRESTClient(session: session, restBase: restBase)
-    private lazy var ruleExecutionService = RuleExecutionService(
-        aiService: aiService,
-        dependencies: .init(
-            sendMessage: { [weak self] channelId, content, token in
-                try await self?.sendMessage(channelId: channelId, content: content, token: token)
-            },
-            sendPayloadMessage: { [weak self] channelId, payload, token in
-                _ = try await self?.sendMessage(channelId: channelId, payload: payload, token: token)
-            },
-            sendDM: { [weak self] userId, content in
-                try await self?.sendDM(userId: userId, content: content)
-            },
-            addReaction: { [weak self] channelId, messageId, emoji, token in
-                try await self?.addReaction(channelId: channelId, messageId: messageId, emoji: emoji, token: token)
-            },
-            deleteMessage: { [weak self] channelId, messageId, token in
-                try await self?.deleteMessage(channelId: channelId, messageId: messageId, token: token)
-            },
-            addRole: { [weak self] guildId, userId, roleId, token in
-                try await self?.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
-            },
-            removeRole: { [weak self] guildId, userId, roleId, token in
-                try await self?.removeRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
-            },
-            timeoutMember: { [weak self] guildId, userId, durationSeconds, token in
-                try await self?.timeoutMember(guildId: guildId, userId: userId, durationSeconds: durationSeconds, token: token)
-            },
-            kickMember: { [weak self] guildId, userId, reason, token in
-                try await self?.kickMember(guildId: guildId, userId: userId, reason: reason, token: token)
-            },
-            moveMember: { [weak self] guildId, userId, channelId, token in
-                try await self?.moveMember(guildId: guildId, userId: userId, channelId: channelId, token: token)
-            },
-            createChannel: { [weak self] guildId, name, token in
-                try await self?.createChannel(guildId: guildId, name: name, token: token)
-            },
-            sendWebhook: { [weak self] url, content in
-                try await self?.sendWebhook(url: url, content: content)
-            },
-            updatePresence: { [weak self] text in
-                await self?.updatePresence(text: text)
-            },
-            resolveChannelName: { [weak self] guildId, channelId in
-                await self?.resolvedChannelName(guildId: guildId, channelId: channelId) ?? "Unknown"
-            },
-            resolveGuildName: { [weak self] guildId in
-                await self?.guildNamesById[guildId]
-            },
-            debugLog: { [discordLogger] message in
-                discordLogger.debug("\(message, privacy: .public)")
-            }
-        )
-    )
     private let wikiLookupService: WikiLookupService
     private lazy var gatewayConnection = DiscordGatewayConnection(session: session, gatewayURL: gatewayURL)
     private var gatewayCallbacksConfigured = false
@@ -166,8 +114,9 @@ actor DiscordService {
         await onPayload?(payload)
     }
 
-    func setRuleEngine(_ engine: RuleEngine) {
-        ruleEngine = engine
+    func setAutomationEngine(_ engine: AutomationEngine, store: AutomationStore) {
+        automationEngine = engine
+        automationSnapshotProvider = { @Sendable in await store.snapshot() }
     }
 
     func setHistoryProvider(_ provider: @escaping HistoryProvider) {
@@ -180,7 +129,8 @@ actor DiscordService {
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
     func wasMessageHandledByRules(messageId: String) async -> Bool {
-        await ruleExecutionService.wasMessageHandledByRules(messageId: messageId)
+        guard let engine = automationEngine else { return false }
+        return await engine.wasMessageHandledByRules(messageId: messageId)
     }
 
     func connect(token: String) async {
@@ -602,28 +552,14 @@ actor DiscordService {
         }
 
         guard let event else { return }
+        guard let engine = automationEngine,
+              let provider = automationSnapshotProvider else { return }
 
-        let engine = ruleEngine
-        let ruleActions = await MainActor.run {
-            engine?.evaluateRules(event: event).map { (isDM: event.isDirectMessage, actions: $0.processedActions) } ?? []
+        let snapshot = await provider()
+        let matches = engine.evaluate(event: event, in: snapshot)
+        for rule in matches {
+            await engine.execute(rule: rule, event: event, token: botToken)
         }
-
-        for ruleResult in ruleActions {
-            _ = await executeRulePipeline(actions: ruleResult.actions, for: event, isDirectMessage: ruleResult.isDM)
-        }
-    }
-
-    func executeRulePipeline(
-        actions: [Action],
-        for event: VoiceRuleEvent,
-        isDirectMessage: Bool
-    ) async -> PipelineContext {
-        await ruleExecutionService.executeRulePipeline(
-            actions: actions,
-            for: event,
-            isDirectMessage: isDirectMessage,
-            token: botToken
-        )
     }
 
     private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {

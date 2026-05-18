@@ -323,30 +323,6 @@ actor SwiftMeshConfigStore {
     }
 }
 
-actor RuleConfigStore {
-    private let url: URL
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-
-    init(filename: String = SwiftBotStorage.rulesFileName) {
-        let folder = SwiftBotStorage.folderURL()
-        self.url = folder.appendingPathComponent(filename)
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    }
-
-    func load() -> [Rule]? {
-        guard let data = try? Data(contentsOf: url),
-              let rules = try? decoder.decode([Rule].self, from: data)
-        else { return nil }
-        return rules
-    }
-
-    func save(_ rules: [Rule]) throws {
-        let data = try encoder.encode(rules)
-        try data.write(to: url, options: .atomic)
-    }
-}
-
 actor MediaLibraryConfigStore {
     private let url: URL
     private let encoder = JSONEncoder()
