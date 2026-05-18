@@ -3431,13 +3431,7 @@
           <div class="section-sticky">
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="layout-dashboard"></i> Dashboard</div>
-              <div id="overviewEditControls" class="overview-edit-controls hidden">
-                <select id="overviewAddSelect" class="overview-add-select"></select>
-                <button id="overviewAddApply" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add</button>
-                <button id="overviewReset" class="secondary-action" type="button">Reset</button>
-              </div>
               <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="overviewEditToggle" class="secondary-action" type="button">Edit Layout</button>
                 <button id="botToggleIcon" class="bot-toggle-btn" type="button">
                   <i class="lucide" data-lucide="play"></i>
                   <span id="botToggleText">Start Bot</span>
@@ -8446,33 +8440,6 @@
       renderOverviewAddList();
     });
 
-    document.getElementById('overviewReset')?.addEventListener('click', () => {
-      if (!dashboardOverview) return;
-      overviewLayout = defaultOverviewLayout();
-      normalizeOverviewLayout(dashboardOverview.metrics || []);
-      saveOverviewLayout();
-      renderStats(dashboardOverview.metrics || []);
-      renderOverviewPanels();
-      renderOverviewAddList();
-    });
-
-    document.getElementById('overviewAddApply')?.addEventListener('click', () => {
-      const select = document.getElementById('overviewAddSelect');
-      if (!select || !select.value) return;
-      const [kind, rawID] = select.value.split(':');
-      if (kind === 'card') {
-        overviewLayout.cardsHidden = (overviewLayout.cardsHidden || []).filter(id => id !== rawID);
-      } else if (kind === 'panel') {
-        overviewLayout.panelsHidden = (overviewLayout.panelsHidden || []).filter(id => id !== rawID);
-      }
-      saveOverviewLayout();
-      if (dashboardOverview) renderStats(dashboardOverview.metrics || []);
-      renderOverviewPanels();
-      renderOverviewAddList();
-    });
-
-    // The header icon button is just an alias for the legacy toggle —
-    // forward clicks so a single handler runs the API call.
     document.getElementById('botToggleIcon')?.addEventListener('click', () => {
       document.getElementById('toggleBot')?.click();
     });
@@ -8481,12 +8448,25 @@
       try {
         const runningStates = ['running', 'connecting', 'reconnecting'];
         const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
+        
+        // Optimistic UI update: flip the state immediately in the status object
+        if (dashboardStatus) {
+            dashboardStatus.botStatus = isRunning ? 'stopped' : 'running';
+            refreshBotToggleButton();
+        }
+
         await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
+        
+        // Explicitly load status and refresh UI after the request completes
         await Promise.all([loadStatus(), loadOverview(), loadAnalytics(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
         refreshCurrentView();
+        refreshBotToggleButton();
+        
         setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
       } catch (error) {
         setMessage(error.message, 'error');
+        // Revert UI on error by reloading status
+        loadStatus().then(refreshBotToggleButton);
       }
     });
 
