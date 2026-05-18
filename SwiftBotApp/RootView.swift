@@ -63,7 +63,8 @@ struct UnifiedRootView: View {
                         }
                     })
                 case .patchy: PatchyView()
-                case .voice: VoiceView()
+                case .voice: AutomationsView()
+                case .moderation: ModerationView()
                 case .commands: CommandsView()
                 case .activity: ActivityLogView()
                 case .wikiBridge: WikiBridgeView()
@@ -154,6 +155,11 @@ struct DashboardSidebar: View {
                             )
                             SidebarRow(
                                 item: .voice,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .moderation,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
