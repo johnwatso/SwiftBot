@@ -691,9 +691,14 @@
       min-width: 0;
       height: 100vh;
       overflow: auto;
-      padding: 32px 40px;
+      padding: 0;
       position: relative;
       z-index: 2;
+    }
+
+    .view {
+      display: block;
+      padding: 0 40px 40px;
     }
 
     .sidebar-user {
@@ -701,12 +706,7 @@
       padding: 14px 16px;
       border-top: 1px solid var(--glass-stroke);
       background: var(--bg-a);
-      position: sticky;
-      bottom: 0;
       z-index: 5;
-      margin-left: -16px;
-      margin-right: -12px;
-      width: calc(100% + 28px);
     }
 
     .sidebar-user-card {
@@ -765,7 +765,12 @@
       text-overflow: ellipsis;
     }
 
-    .sidebar-user-actions { margin-left: auto; }
+    .sidebar-user-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
 
     .icon-btn {
       width: 32px;
@@ -778,6 +783,7 @@
       place-items: center;
       cursor: pointer;
       transition: all 0.2s ease;
+      flex-shrink: 0;
     }
 
     .icon-btn:hover {
@@ -801,7 +807,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 20px;
+      margin: 16px 16px 20px;
       padding: 16px;
       border-radius: var(--radius-xl);
       background: var(--glass-top);
@@ -824,11 +830,14 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
-      margin-bottom: 20px;
-      padding: 24px;
-      border-radius: var(--radius-xl);
+      margin: 0 -40px 20px;
+      padding: 24px 40px;
+      border-radius: 0;
       background: var(--glass-top);
-      border: 1px solid var(--glass-stroke);
+      border: 0;
+      border-bottom: 1px solid var(--glass-stroke);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
     }
 
     .overview-title {
@@ -965,10 +974,12 @@
       position: sticky;
       top: 0;
       z-index: 4;
-      margin-bottom: 12px;
-      padding: 12px 2px 8px;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      margin: 0 -40px 12px;
+      padding: 12px 40px 12px;
+      border-bottom: 1px solid var(--glass-stroke);
+      background: rgba(10, 10, 15, 0.4);
+      backdrop-filter: blur(24px) saturate(1.8);
+      -webkit-backdrop-filter: blur(24px) saturate(1.8);
     }
 
     .section-sticky-row {
@@ -976,7 +987,47 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      flex-wrap: wrap;
+    }
+
+    .bot-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      height: 38px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.2s ease;
+      background: var(--glass-top);
+      border: 1px solid var(--glass-stroke);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .bot-toggle-btn:hover {
+      background: var(--glass-bottom);
+      transform: translateY(-1px);
+    }
+
+    .bot-toggle-btn-running {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+
+    .bot-toggle-btn-running:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    .bot-toggle-btn-stopped {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+    }
+
+    .bot-toggle-btn-stopped:hover {
+      background: rgba(34, 197, 94, 0.2);
     }
 
     .section-mini-title {
@@ -3369,9 +3420,14 @@
                   <div id="sidebarDisplayName" class="user-display">Discord User</div>
                   <div id="sidebarUsername" class="user-handle">@user</div>
                 </div>
-                <button class="icon-btn" onclick="selectView('userprefs')" type="button" aria-label="User Settings" style="margin-left: auto;">
-                  <i class="lucide" data-lucide="user-cog"></i>
-                </button>
+                <div class="sidebar-user-actions">
+                  <button class="icon-btn" onclick="selectView('userprefs')" type="button" aria-label="User Settings">
+                    <i class="lucide" data-lucide="user-cog"></i>
+                  </button>
+                  <button class="icon-btn" onclick="logout()" type="button" aria-label="Log out">
+                    <i class="lucide" data-lucide="log-out"></i>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3397,10 +3453,13 @@
                 <button id="overviewAddApply" class="mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add</button>
                 <button id="overviewReset" class="secondary-action" type="button">Reset</button>
               </div>
-              <button id="overviewEditToggle" class="secondary-action" type="button">Edit</button>
-              <button id="botToggleIcon" class="cv-icon-btn" type="button" aria-label="Start/Stop bot" title="Start Bot">
-                <i class="lucide" data-lucide="play"></i>
-              </button>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="overviewEditToggle" class="secondary-action" type="button">Edit Layout</button>
+                <button id="botToggleIcon" class="bot-toggle-btn" type="button">
+                  <i class="lucide" data-lucide="play"></i>
+                  <span id="botToggleText">Start Bot</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -4743,14 +4802,16 @@
         legacy.className = isRunning ? 'secondary-action' : 'primary-action';
       }
 
-      // New icon-only header button.
-      const icon = document.getElementById('botToggleIcon');
-      if (icon) {
-        icon.title = isRunning ? 'Stop bot' : 'Start bot';
-        icon.setAttribute('aria-label', icon.title);
-        icon.classList.toggle('cv-icon-btn-running', isRunning);
-        icon.classList.toggle('cv-icon-btn-stopped', !isRunning);
-        icon.innerHTML = `<i class="lucide" data-lucide="${isRunning ? 'square' : 'play'}"></i>`;
+      // New header button with icon and text.
+      const btn = document.getElementById('botToggleIcon');
+      const text = document.getElementById('botToggleText');
+      if (btn && text) {
+        const label = isRunning ? 'Stop Bot' : 'Start Bot';
+        btn.title = label;
+        text.textContent = label;
+        btn.classList.toggle('bot-toggle-btn-running', isRunning);
+        btn.classList.toggle('bot-toggle-btn-stopped', !isRunning);
+        btn.innerHTML = `<i class="lucide" data-lucide="${isRunning ? 'square' : 'play'}"></i><span>${label}</span>`;
         try { lucide.createIcons(); } catch (_) {}
       }
     }
