@@ -3137,10 +3137,6 @@
     html[data-theme="light"] #authScreen #authPromptText {
       color: rgba(0, 0, 0, 0.55) !important;
     }
-    html[data-theme="light"] #authScreen .auth-card > div:first-child > div:first-child {
-      background: rgba(0, 0, 0, 0.04) !important;
-      border-color: rgba(0, 0, 0, 0.08) !important;
-    }
     html[data-theme="light"] #authScreen #localAuthForm .field-input {
       background: rgba(0, 0, 0, 0.04) !important;
       border-color: rgba(0, 0, 0, 0.08) !important;
@@ -3167,9 +3163,8 @@
     html[data-theme="light"] #authScreen #authBotAvatar {
       filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
     }
-    html[data-theme="light"] #authScreen #authBotAvatar + div,
-    html[data-theme="light"] #authScreen .onboarding > div:first-child > div:first-child > div:first-child {
-      background: rgba(0, 0, 0, 0.04) !important;
+    html[data-theme="light"] #authScreen .auth-logo-glow {
+      display: none !important;
     }
 
     @media (prefers-color-scheme: light) {
@@ -3191,10 +3186,6 @@
       }
       html:not([data-theme]) #authScreen .auth-card h2 { color: #1d1d1f !important; }
       html:not([data-theme]) #authScreen #authPromptText { color: rgba(0, 0, 0, 0.55) !important; }
-      html:not([data-theme]) #authScreen .auth-card > div:first-child > div:first-child {
-        background: rgba(0, 0, 0, 0.04) !important;
-        border-color: rgba(0, 0, 0, 0.08) !important;
-      }
       html:not([data-theme]) #authScreen #localAuthForm .field-input {
         background: rgba(0, 0, 0, 0.04) !important;
         border-color: rgba(0, 0, 0, 0.08) !important;
@@ -3217,9 +3208,8 @@
       html:not([data-theme]) #authScreen #authBotAvatar {
         filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
       }
-      html:not([data-theme]) #authScreen #authBotAvatar + div,
-      html:not([data-theme]) #authScreen .onboarding > div:first-child > div:first-child > div:first-child {
-        background: rgba(0, 0, 0, 0.04) !important;
+      html:not([data-theme]) #authScreen .auth-logo-glow {
+        display: none !important;
       }
     }
   </style>
@@ -3245,7 +3235,7 @@
           <!-- Header (inside the card) -->
           <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
             <div style="position: relative; margin-bottom: 14px;">
-              <div style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
+              <div class="auth-logo-glow" style="position: absolute; inset: -16px; background: rgba(255, 255, 255, 0.05); filter: blur(28px); border-radius: 999px;"></div>
               <img id="authBotAvatar" src="/assets/SwiftBird3.png" alt="SwiftBot Logo" style="width: 88px; height: 88px; object-fit: contain; border-radius: 999px; position: relative; z-index: 10; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));">
             </div>
 
@@ -8351,6 +8341,8 @@
     }
 
     async function bootstrap() {
+      loadUserPrefs();
+      applyUserPrefs();
       buildAnimatedBackground();
       // Apply any cached bot name immediately so labels read correctly while
       // /api/status is still in flight on first load.
