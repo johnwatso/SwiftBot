@@ -175,14 +175,14 @@ struct DashboardMetricCard: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             Text(value)
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -196,8 +196,9 @@ struct DashboardMetricCard: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: 112, alignment: .leading)
-        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .glassCard(
             cornerRadius: cornerRadius,
             tint: .primary.opacity(isHovering ? 0.03 : 0.01),

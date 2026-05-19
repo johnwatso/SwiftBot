@@ -64,7 +64,6 @@ struct UnifiedRootView: View {
                     })
                 case .patchy: PatchyView()
                 case .automations: AutomationsView()
-                case .voice: VoiceView()
                 case .moderation: ModerationView()
                 case .commands: CommandsView()
                 case .activity: ActivityLogView()
@@ -156,11 +155,6 @@ struct DashboardSidebar: View {
                             )
                             SidebarRow(
                                 item: .automations,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .voice,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
