@@ -225,49 +225,13 @@ struct CommandsView: View {
     // MARK: - Metric Rail
 
     private var metricRail: some View {
-        let commands = allVisualCommands
-        let enabledCount = commands.filter { cmd in
-            commandEnabledBinding(for: cmd).wrappedValue
-        }.count
-        return LazyVGrid(
+        LazyVGrid(
             columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
             spacing: 8
         ) {
-            DashboardMetricCard(
-                title: "Commands",
-                value: "\(commands.count)",
-                subtitle: "Total",
-                symbol: "terminal.fill",
-                color: .secondary
-            )
-            DashboardMetricCard(
-                title: "Enabled",
-                value: "\(enabledCount)",
-                subtitle: "Active",
-                symbol: "checkmark.circle.fill",
-                color: .green
-            )
-            DashboardMetricCard(
-                title: "Utilities",
-                value: "\(commandsInGroup(.utilities, commands: commands).count)",
-                subtitle: "AI & Tools",
-                symbol: "wand.and.stars",
-                color: .purple
-            )
-            DashboardMetricCard(
-                title: "Moderation",
-                value: "\(commandsInGroup(.moderation, commands: commands).count)",
-                subtitle: "Admin",
-                symbol: "shield.lefthalf.filled",
-                color: .orange
-            )
-            DashboardMetricCard(
-                title: "Infra",
-                value: "\(commandsInGroup(.infrastructure, commands: commands).count)",
-                subtitle: "Cluster",
-                symbol: "server.rack",
-                color: .cyan
-            )
+            ForEach(CommandsDashboardSummary.metrics(app: app)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -512,5 +476,155 @@ private struct CommandBadge: View {
                 Capsule()
                     .strokeBorder(color.opacity(0.28), lineWidth: 1)
             )
+    }
+}
+
+enum CommandsDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        let commands = visualCommands(app: app)
+        let enabledCount = commands.filter { command in
+            isEnabled(command: command, app: app)
+        }.count
+        let failedToday = app.commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count
+        let lastCommand = app.commandLog.first
+
+        return [
+            DashboardMetricDescriptor(
+                id: "commandsRun",
+                title: "Commands Run",
+                value: "\(app.stats.commandsRun)",
+                subtitle: "this session",
+                symbol: "terminal.fill",
+                detail: lastCommand.map { "Last \($0.command)" } ?? "No recent commands",
+                color: .red
+            ),
+            DashboardMetricDescriptor(
+                id: "commands",
+                title: "Commands",
+                value: "\(commands.count)",
+                subtitle: "\(enabledCount) enabled",
+                symbol: "terminal.fill",
+                color: .secondary
+            ),
+            DashboardMetricDescriptor(
+                id: "commands-failed-today",
+                title: "Failed Today",
+                value: "\(failedToday)",
+                subtitle: failedToday == 0 ? "No failures" : "Needs review",
+                symbol: "xmark.octagon.fill",
+                color: failedToday == 0 ? .gray : .red
+            ),
+            DashboardMetricDescriptor(
+                id: "commands-utilities",
+                title: "Utilities",
+                value: "\(commands.filter { $0.category == .utilities }.count)",
+                subtitle: "AI & Tools",
+                symbol: "wand.and.stars",
+                color: .purple
+            ),
+            DashboardMetricDescriptor(
+                id: "commands-moderation",
+                title: "Moderation",
+                value: "\(commands.filter { $0.category == .moderation }.count)",
+                subtitle: "Admin",
+                symbol: "shield.lefthalf.filled",
+                color: .orange
+            ),
+            DashboardMetricDescriptor(
+                id: "commands-infra",
+                title: "Infra",
+                value: "\(commands.filter { $0.category == .infrastructure }.count)",
+                subtitle: "Cluster",
+                symbol: "server.rack",
+                color: .cyan
+            )
+        ]
+    }
+
+    @MainActor
+    private static func visualCommands(app: AppModel) -> [VisualCommand] {
+        guard app.settings.commandsEnabled else { return [] }
+
+        var commandsByName: [String: VisualCommand] = [:]
+        if app.settings.slashCommandsEnabled {
+            for raw in app.allSlashCommandDefinitions() {
+                guard let name = raw["name"] as? String else { continue }
+                let description = (raw["description"] as? String) ?? "No description"
+                let options = (raw["options"] as? [[String: Any]]) ?? []
+                let usageSuffix = options.compactMap { option in
+                    guard let optionName = option["name"] as? String else { return nil }
+                    let required = (option["required"] as? Bool) ?? false
+                    return required ? " \(optionName):<value>" : " [\(optionName):<value>]"
+                }.joined()
+                let command = VisualCommand(
+                    id: "slash-\(name)",
+                    name: name,
+                    usage: "/\(name)\(usageSuffix)",
+                    description: description,
+                    category: group(for: name),
+                    surfaces: ["Slash"],
+                    aliases: [],
+                    adminOnly: name == "debug",
+                    icon: icon(for: name)
+                )
+                commandsByName[name.lowercased()] = command
+            }
+        }
+
+        commandsByName["bug-mention"] = VisualCommand(
+            id: "mention-bug",
+            name: "bug",
+            usage: "@swiftbot bug (reply to a message)",
+            description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
+            category: .moderation,
+            surfaces: ["Mention"],
+            aliases: [],
+            adminOnly: true,
+            icon: "ant.fill"
+        )
+
+        return commandsByName.values.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    @MainActor
+    private static func isEnabled(command: VisualCommand, app: AppModel) -> Bool {
+        if command.id == "mention-bug" {
+            return app.settings.bugTrackingEnabled
+        }
+        return command.surfaces.allSatisfy { surface in
+            app.isCommandEnabled(name: command.name, surface: surface.lowercased())
+        }
+    }
+
+    private static func group(for name: String) -> CommandGroup {
+        switch name {
+        case "help", "ping", "about":
+            return .general
+        case "ask", "wiki", "patchy", "sweep":
+            return .utilities
+        case "ban", "kick", "timeout", "mute", "purge":
+            return .moderation
+        case "mesh", "status", "debug":
+            return .infrastructure
+        default:
+            return .gaming
+        }
+    }
+
+    private static func icon(for name: String) -> String {
+        switch name {
+        case "help": return "questionmark.circle.fill"
+        case "ping": return "dot.radiowaves.left.and.right"
+        case "ask": return "sparkles"
+        case "wiki": return "book.pages.fill"
+        case "patchy": return "square.and.arrow.down.badge.checkmark.fill"
+        case "sweep": return "rectangle.stack.fill.badge.minus"
+        case "mesh": return "point.3.connected.trianglepath.dotted"
+        case "debug": return "ladybug.fill"
+        default: return "terminal.fill"
+        }
     }
 }

@@ -1361,6 +1361,34 @@ private enum MetricProminence {
     case secondary
 }
 
+enum AnalyticsDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        let calendar = Calendar.current
+        let commandUserIDs = app.commandLog
+            .filter { calendar.isDateInToday($0.time) }
+            .map(\.user)
+        let voiceUserIDs = app.activeVoice.map(\.userId)
+        let activeUsers = Set(commandUserIDs + voiceUserIDs).count
+        let sessionsThisWeek = app.voiceLog.filter { entry in
+            guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) else { return false }
+            return entry.time >= weekAgo
+        }.count
+
+        return [
+            DashboardMetricDescriptor(
+                id: "analytics",
+                title: "Analytics",
+                value: "\(activeUsers)",
+                subtitle: "daily active users",
+                symbol: "chart.line.uptrend.xyaxis",
+                detail: "\(sessionsThisWeek) voice events this week",
+                color: .green
+            )
+        ]
+    }
+}
+
 private struct AnalyticsSnapshot: Codable, Equatable {
     let generatedAt: Date
     let voice: AnalyticsVoiceSummary

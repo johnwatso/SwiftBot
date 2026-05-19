@@ -1673,55 +1673,9 @@ private struct SweepContentView: View {
 
     private var metricTileRow: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            DashboardMetricCard(
-                title: "Status",
-                value: service.state.displayName,
-                subtitle: service.globalPaused ? "Paused by operator" : "\(service.enabledPolicyCount) enabled",
-                symbol: service.state == .running ? "rectangle.stack.fill.badge.minus" : "rectangle.stack.badge.minus",
-                color: service.state.tone
-            )
-            DashboardMetricCard(
-                title: "Policies",
-                value: "\(service.enabledPolicyCount)",
-                subtitle: "of \(service.policies.count) total",
-                symbol: "list.bullet.rectangle",
-                color: .accentColor
-            )
-            DashboardMetricCard(
-                title: "Next Run",
-                value: service.nextRunDescription,
-                subtitle: service.globalPaused ? "Resume to schedule" : "Across all policies",
-                symbol: "clock",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Last Run",
-                value: lastRunValue,
-                subtitle: lastRunSubtitle,
-                symbol: "checkmark.seal.fill",
-                color: lastRunTone
-            )
-            DashboardMetricCard(
-                title: "Tidied Today",
-                value: "\(service.messagesTodayCount)",
-                subtitle: "Across \(service.recentReports.count) runs",
-                symbol: "tray.full",
-                color: .indigo
-            )
-            DashboardMetricCard(
-                title: "Suppressed",
-                value: "\(service.suppressedTodayCount)",
-                subtitle: "Saved by safety rails",
-                symbol: "shield.lefthalf.filled",
-                color: .green
-            )
-            DashboardMetricCard(
-                title: "Summaries",
-                value: "\(service.summariesThisWeekCount)",
-                subtitle: "Past 7 days",
-                symbol: "text.bubble",
-                color: .purple
-            )
+            ForEach(SweepDashboardSummary.metrics(service: service)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -1878,6 +1832,93 @@ private struct SweepStateBadge: View {
         case .paused: return "pause.fill"
         case .error: return "exclamationmark.triangle.fill"
         }
+    }
+}
+
+enum SweepDashboardSummary {
+    @MainActor
+    static func metrics(service: SweepService) -> [DashboardMetricDescriptor] {
+        [
+            DashboardMetricDescriptor(
+                id: "sweep",
+                title: "Sweep",
+                value: service.state.displayName,
+                subtitle: service.globalPaused ? "Paused by operator" : "\(service.enabledPolicyCount) enabled",
+                symbol: service.state == .running ? "rectangle.stack.fill.badge.minus" : "rectangle.stack.badge.minus",
+                color: service.state.tone
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-policies",
+                title: "Policies",
+                value: "\(service.enabledPolicyCount)",
+                subtitle: "of \(service.policies.count) total",
+                symbol: "list.bullet.rectangle",
+                color: .accentColor
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-next-run",
+                title: "Next Run",
+                value: service.nextRunDescription,
+                subtitle: service.globalPaused ? "Resume to schedule" : "Across all policies",
+                symbol: "clock",
+                color: .blue
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-last-run",
+                title: "Last Run",
+                value: lastRunValue(service: service),
+                subtitle: lastRunSubtitle(service: service),
+                symbol: "checkmark.seal.fill",
+                color: lastRunTone(service: service)
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-tidied-today",
+                title: "Tidied Today",
+                value: "\(service.messagesTodayCount)",
+                subtitle: "Across \(service.recentReports.count) runs",
+                symbol: "tray.full",
+                color: .indigo
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-suppressed",
+                title: "Suppressed",
+                value: "\(service.suppressedTodayCount)",
+                subtitle: "Saved by safety rails",
+                symbol: "shield.lefthalf.filled",
+                color: .green
+            ),
+            DashboardMetricDescriptor(
+                id: "sweep-summaries",
+                title: "Summaries",
+                value: "\(service.summariesThisWeekCount)",
+                subtitle: "Past 7 days",
+                symbol: "text.bubble",
+                color: .purple
+            )
+        ]
+    }
+
+    @MainActor
+    private static func lastRunValue(service: SweepService) -> String {
+        guard let last = service.lastReport else { return "-" }
+        let delta = Date().timeIntervalSince(last.startedAt)
+        if delta < 60 { return "Just now" }
+        if delta < 3_600 { return "\(Int(delta / 60))m ago" }
+        if delta < 86_400 { return "\(Int(delta / 3_600))h ago" }
+        return "\(Int(delta / 86_400))d ago"
+    }
+
+    @MainActor
+    private static func lastRunSubtitle(service: SweepService) -> String {
+        guard let last = service.lastReport else { return "No runs yet" }
+        if let err = last.error { return "Error · \(err)" }
+        return "\(last.executed) tidied · \(last.suppressed) saved"
+    }
+
+    @MainActor
+    private static func lastRunTone(service: SweepService) -> Color {
+        guard let last = service.lastReport else { return .gray }
+        return last.error == nil ? .green : .red
     }
 }
 

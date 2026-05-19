@@ -69,39 +69,13 @@ struct WikiBridgeView: View {
     // MARK: - Metric Rail
 
     private var metricRail: some View {
-        let primary = app.settings.wikiBot.primarySource()
-        return LazyVGrid(
+        LazyVGrid(
             columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
             spacing: 8
         ) {
-            DashboardMetricCard(
-                title: "Sources",
-                value: "\(app.settings.wikiBot.sources.count)",
-                subtitle: "Configured",
-                symbol: "square.stack.3d.up.fill",
-                color: .indigo
-            )
-            DashboardMetricCard(
-                title: "Enabled",
-                value: "\(app.settings.wikiBot.sources.filter(\.enabled).count)",
-                subtitle: "Active",
-                symbol: "checkmark.circle.fill",
-                color: .green
-            )
-            DashboardMetricCard(
-                title: "Commands",
-                value: "\(totalCommands)",
-                subtitle: "Total",
-                symbol: "command",
-                color: .teal
-            )
-            DashboardMetricCard(
-                title: "Primary",
-                value: primary?.name ?? "—",
-                subtitle: primary?.isPrimary == true ? "Active" : "Auto",
-                symbol: "star.fill",
-                color: .orange
-            )
+            ForEach(WikiBridgeDashboardSummary.metrics(app: app)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -864,5 +838,62 @@ private struct WikiSourceEditorSheet: View {
     private var isValid: Bool {
         !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !draft.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+enum WikiBridgeDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        let sources = app.settings.wikiBot.sources
+        let primary = app.settings.wikiBot.primarySource()
+        let totalCommands = sources.reduce(0) { $0 + $1.commands.count }
+        let enabledSources = sources.filter(\.enabled).count
+        let enabledCommands = sources
+            .filter(\.enabled)
+            .reduce(0) { $0 + $1.commands.filter(\.enabled).count }
+
+        return [
+            DashboardMetricDescriptor(
+                id: "wikibridge",
+                title: "WikiBridge",
+                value: app.settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
+                subtitle: "\(enabledSources) active sources",
+                symbol: "book.pages.fill",
+                detail: "\(enabledCommands) active commands",
+                color: .mint
+            ),
+            DashboardMetricDescriptor(
+                id: "wikibridge-sources",
+                title: "Sources",
+                value: "\(sources.count)",
+                subtitle: "Configured",
+                symbol: "square.stack.3d.up.fill",
+                color: .indigo
+            ),
+            DashboardMetricDescriptor(
+                id: "wikibridge-enabled",
+                title: "Enabled",
+                value: "\(enabledSources)",
+                subtitle: "Active",
+                symbol: "checkmark.circle.fill",
+                color: .green
+            ),
+            DashboardMetricDescriptor(
+                id: "wikibridge-commands",
+                title: "Commands",
+                value: "\(totalCommands)",
+                subtitle: "Total",
+                symbol: "command",
+                color: .teal
+            ),
+            DashboardMetricDescriptor(
+                id: "wikibridge-primary",
+                title: "Primary",
+                value: primary?.name ?? "-",
+                subtitle: primary?.isPrimary == true ? "Active" : "Auto",
+                symbol: "star.fill",
+                color: .orange
+            )
+        ]
     }
 }

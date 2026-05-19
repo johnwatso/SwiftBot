@@ -81,10 +81,16 @@ struct RecordingsView: View {
 
     private var librarySummary: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            DashboardMetricCard(title: "Most Clips", value: topGame.name, subtitle: "\(topGame.clipCount) clips", symbol: "trophy.fill", color: .orange)
-            DashboardMetricCard(title: "Watched", value: "\(app.mediaPlaybackStarts)", subtitle: "\(app.mediaPlaybackUniqueItemCount) unique", symbol: "play.rectangle.fill", color: .cyan)
-            DashboardMetricCard(title: "Last Added", value: lastAddedText, subtitle: "\(items.count) indexed", symbol: "clock.fill", color: .mint)
-            DashboardMetricCard(title: "Remote Node", value: remoteNodeText, subtitle: app.settings.clusterMode.displayName, symbol: "desktopcomputer.and.arrow.down", color: remoteNodeColor)
+            ForEach(RecordingsDashboardSummary.metrics(
+                app: app,
+                items: items,
+                topGameName: topGame.name,
+                topClipCount: topGame.clipCount,
+                remoteNodeText: remoteNodeText,
+                remoteNodeColor: remoteNodeColor
+            )) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -231,6 +237,72 @@ private struct RecordingGameSummary {
     let clipCount: Int
     let latest: Date?
     let nodes: Int
+}
+
+enum RecordingsDashboardSummary {
+    @MainActor
+    static func overviewMetric(app: AppModel) -> DashboardMetricDescriptor {
+        DashboardMetricDescriptor(
+            id: "recentMedia",
+            title: "New Recordings",
+            value: "\(app.recentMediaCount24h)",
+            subtitle: "last 24 hours",
+            symbol: "film.fill",
+            detail: "Across media sources",
+            color: .teal
+        )
+    }
+
+    @MainActor
+    static func metrics(
+        app: AppModel,
+        items: [AdminWebMediaItemPayload],
+        topGameName: String,
+        topClipCount: Int,
+        remoteNodeText: String,
+        remoteNodeColor: Color
+    ) -> [DashboardMetricDescriptor] {
+        let lastAddedText: String = {
+            guard let date = items.map(\.modifiedAt).max() else { return "No videos yet" }
+            return date.formatted(.relative(presentation: .numeric, unitsStyle: .wide))
+        }()
+
+        return [
+            overviewMetric(app: app),
+            DashboardMetricDescriptor(
+                id: "recordings-most-clips",
+                title: "Most Clips",
+                value: topGameName,
+                subtitle: "\(topClipCount) clips",
+                symbol: "trophy.fill",
+                color: .orange
+            ),
+            DashboardMetricDescriptor(
+                id: "recordings-watched",
+                title: "Watched",
+                value: "\(app.mediaPlaybackStarts)",
+                subtitle: "\(app.mediaPlaybackUniqueItemCount) unique",
+                symbol: "play.rectangle.fill",
+                color: .cyan
+            ),
+            DashboardMetricDescriptor(
+                id: "recordings-last-added",
+                title: "Last Added",
+                value: lastAddedText,
+                subtitle: "\(items.count) indexed",
+                symbol: "clock.fill",
+                color: .mint
+            ),
+            DashboardMetricDescriptor(
+                id: "recordings-remote-node",
+                title: "Remote Node",
+                value: remoteNodeText,
+                subtitle: app.settings.clusterMode.displayName,
+                symbol: "desktopcomputer.and.arrow.down",
+                color: remoteNodeColor
+            )
+        ]
+    }
 }
 
 private struct RecordingStatusBadge: View {

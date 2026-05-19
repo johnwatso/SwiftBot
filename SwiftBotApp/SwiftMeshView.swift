@@ -175,57 +175,9 @@ struct SwiftMeshView: View {
 
     private var metricTileRow: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            DashboardMetricCard(
-                title: "Mode",
-                value: tileMode,
-                subtitle: tileModeSubtitle,
-                symbol: tileModeSymbol,
-                color: .accentColor
-            )
-            DashboardMetricCard(
-                title: "Leader Term",
-                value: "\(app.clusterSnapshot.leaderTerm)",
-                subtitle: app.clusterSnapshot.lastJobRoute.rawValue.capitalized,
-                symbol: "number.square",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Connected",
-                value: "\(connectedNodeCount)",
-                subtitle: "\(app.clusterNodes.filter { $0.status == .healthy }.count) healthy · \(app.clusterNodes.filter { $0.status == .disconnected }.count) offline",
-                symbol: "point.3.connected.trianglepath.dotted",
-                color: .green
-            )
-            DashboardMetricCard(
-                title: "Active Jobs",
-                value: "\(app.clusterNodes.reduce(0) { $0 + max(0, $1.jobsActive) })",
-                subtitle: app.registeredWorkersDebugCount > 0
-                    ? "\(app.registeredWorkersDebugCount) registered"
-                    : "No registered workers",
-                symbol: "chart.bar.fill",
-                color: .indigo
-            )
-            DashboardMetricCard(
-                title: "Avg Latency",
-                value: averageLatencyDisplay,
-                subtitle: latencyRangeSubtitle,
-                symbol: "speedometer",
-                color: latencyTone
-            )
-            DashboardMetricCard(
-                title: "Auto-Reclaim",
-                value: autoReclaimDisplay,
-                subtitle: autoReclaimSubtitle,
-                symbol: "arrow.uturn.up.circle",
-                color: app.autoReclaimRemainingSeconds != nil ? .purple : .gray
-            )
-            DashboardMetricCard(
-                title: "Gateway Δ",
-                value: gatewayDeltaDisplay,
-                subtitle: gatewayDeltaSubtitle,
-                symbol: "bolt.horizontal",
-                color: gatewayDeltaTone
-            )
+            ForEach(SwiftMeshDashboardSummary.metrics(app: app)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -451,6 +403,179 @@ struct DiagnosticsLine: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Color.primary.opacity(0.03))
         )
+    }
+}
+
+enum SwiftMeshDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        let connectedNodeCount = app.clusterNodes.count
+        let healthyCount = app.clusterNodes.filter { $0.status == .healthy }.count
+        let offlineCount = app.clusterNodes.filter { $0.status == .disconnected }.count
+        let activeJobs = app.clusterNodes.reduce(0) { $0 + max(0, $1.jobsActive) }
+
+        return [
+            DashboardMetricDescriptor(
+                id: "meshMode",
+                title: "SwiftMesh",
+                value: tileMode(app: app),
+                subtitle: tileModeSubtitle(app: app),
+                symbol: tileModeSymbol(app: app),
+                detail: app.clusterSnapshot.serverStatusText,
+                color: .accentColor
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-leader-term",
+                title: "Leader Term",
+                value: "\(app.clusterSnapshot.leaderTerm)",
+                subtitle: app.clusterSnapshot.lastJobRoute.rawValue.capitalized,
+                symbol: "number.square",
+                color: .blue
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-connected",
+                title: "Connected",
+                value: "\(connectedNodeCount)",
+                subtitle: "\(healthyCount) healthy · \(offlineCount) offline",
+                symbol: "point.3.connected.trianglepath.dotted",
+                color: .green
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-active-jobs",
+                title: "Active Jobs",
+                value: "\(activeJobs)",
+                subtitle: app.registeredWorkersDebugCount > 0
+                    ? "\(app.registeredWorkersDebugCount) registered"
+                    : "No registered workers",
+                symbol: "chart.bar.fill",
+                color: .indigo
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-latency",
+                title: "Avg Latency",
+                value: averageLatencyDisplay(app: app),
+                subtitle: latencyRangeSubtitle(app: app),
+                symbol: "speedometer",
+                color: latencyTone(app: app)
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-auto-reclaim",
+                title: "Auto-Reclaim",
+                value: autoReclaimDisplay(app: app),
+                subtitle: autoReclaimSubtitle(app: app),
+                symbol: "arrow.uturn.up.circle",
+                color: app.autoReclaimRemainingSeconds != nil ? .purple : .gray
+            ),
+            DashboardMetricDescriptor(
+                id: "mesh-gateway-delta",
+                title: "Gateway Δ",
+                value: gatewayDeltaDisplay(app: app),
+                subtitle: gatewayDeltaSubtitle(app: app),
+                symbol: "bolt.horizontal",
+                color: gatewayDeltaTone(app: app)
+            )
+        ]
+    }
+
+    @MainActor
+    private static func tileMode(app: AppModel) -> String {
+        app.settings.clusterMode == .standalone
+            ? "Standalone"
+            : app.clusterSnapshot.mode.displayName
+    }
+
+    @MainActor
+    private static func tileModeSubtitle(app: AppModel) -> String {
+        let configured = app.settings.clusterMode.displayName
+        let runtime = app.clusterSnapshot.mode.displayName
+        return configured == runtime ? "Configured \(configured)" : "Configured \(configured) · Runtime \(runtime)"
+    }
+
+    @MainActor
+    private static func tileModeSymbol(app: AppModel) -> String {
+        switch app.clusterSnapshot.mode {
+        case .leader: return "crown.fill"
+        case .standby: return "shield.lefthalf.filled"
+        case .worker: return "cpu"
+        case .standalone: return "circle"
+        }
+    }
+
+    @MainActor
+    private static func averageLatencyDisplay(app: AppModel) -> String {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard !latencies.isEmpty else { return "-" }
+        return "\(Int((latencies.reduce(0, +) / Double(latencies.count)).rounded())) ms"
+    }
+
+    @MainActor
+    private static func latencyRangeSubtitle(app: AppModel) -> String {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard let lo = latencies.min(), let hi = latencies.max() else { return "No samples" }
+        return "min \(Int(lo.rounded())) · max \(Int(hi.rounded())) ms"
+    }
+
+    @MainActor
+    private static func latencyTone(app: AppModel) -> Color {
+        let latencies = app.clusterNodes.compactMap { $0.latencyMs }
+        guard let max = latencies.max() else { return .gray }
+        if max >= 200 { return .red }
+        if max >= 140 { return .orange }
+        return .teal
+    }
+
+    @MainActor
+    private static func autoReclaimDisplay(app: AppModel) -> String {
+        if let secs = app.autoReclaimRemainingSeconds, secs > 0 {
+            return formatHM(secs)
+        }
+        return app.settings.clusterAutoReclaimAfterHours > 0 ? "Armed" : "Off"
+    }
+
+    @MainActor
+    private static func autoReclaimSubtitle(app: AppModel) -> String {
+        let hours = app.settings.clusterAutoReclaimAfterHours
+        if hours <= 0 { return "Disabled in Settings" }
+        if app.autoReclaimRemainingSeconds != nil { return "Until reclaim" }
+        if app.settings.clusterMode == .leader && app.clusterSnapshot.mode == .standby {
+            return "Awaiting stable window"
+        }
+        return "After \(hours)h healthy"
+    }
+
+    @MainActor
+    private static func gatewayDeltaDisplay(app: AppModel) -> String {
+        guard let local = app.connectionDiagnostics.heartbeatLatencyMs else { return "-" }
+        guard let follower = app.clusterSnapshot.followerStates.values.compactMap(\.discordGatewayLatencyMs).max() else { return "Solo" }
+        return "\(abs(local - follower)) ms"
+    }
+
+    @MainActor
+    private static func gatewayDeltaSubtitle(app: AppModel) -> String {
+        guard let local = app.connectionDiagnostics.heartbeatLatencyMs else { return "No local heartbeat" }
+        guard let follower = app.clusterSnapshot.followerStates.values.compactMap(\.discordGatewayLatencyMs).max() else {
+            return "Local \(local) ms · no follower"
+        }
+        return "Local \(local) ms · worst peer \(follower) ms"
+    }
+
+    @MainActor
+    private static func gatewayDeltaTone(app: AppModel) -> Color {
+        guard let local = app.connectionDiagnostics.heartbeatLatencyMs,
+              let follower = app.clusterSnapshot.followerStates.values.compactMap(\.discordGatewayLatencyMs).max()
+        else { return .gray }
+        let delta = abs(local - follower)
+        if delta >= 300 { return .red }
+        if delta >= 150 { return .orange }
+        return .teal
+    }
+
+    private static func formatHM(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        return "\(minutes)m"
     }
 }
 

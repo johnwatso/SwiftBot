@@ -304,6 +304,49 @@ struct AdminWebSimpleOption: Codable {
     let name: String
 }
 
+// MARK: - Automations / Moderation payloads
+
+/// Returned by GET /api/automations?category=... — everything the
+/// frontend needs to render one tab's worth of UI.
+struct AdminWebAutomationsPayload: Codable {
+    let category: String                              // "automation" or "moderation"
+    let rules: [Automations.Rule]
+    let templates: [AdminWebAutomationTemplate]
+    let serverContext: AdminWebAutomationServerContext
+    let metrics: AdminWebAutomationMetrics
+}
+
+struct AdminWebAutomationTemplate: Codable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let tint: String                                  // "blue" | "green" | "purple" | "orange" | "red" | "indigo"
+    let rule: Automations.Rule
+}
+
+struct AdminWebAutomationServerContext: Codable {
+    let guildName: String?
+    let guildId: String?
+    let textChannels: [AdminWebSimpleOption]
+    let voiceChannels: [AdminWebSimpleOption]
+    let roles: [AdminWebSimpleOption]
+}
+
+struct AdminWebAutomationMetrics: Codable {
+    let total: Int
+    let enabled: Int
+    let triggerKinds: Int
+}
+
+struct AdminWebAutomationRulePatch: Codable {
+    let rule: Automations.Rule
+}
+
+struct AdminWebAutomationRuleIDPatch: Codable {
+    let id: String
+}
+
 struct AdminWebPatchyPayload: Codable {
     let monitoringEnabled: Bool
     let showDebug: Bool
@@ -547,6 +590,10 @@ actor AdminWebServer {
     private var updateConfig: (@Sendable (AdminWebConfigPatch) async -> Bool)?
     private var commandCatalogProvider: (@Sendable () async -> AdminWebCommandCatalogPayload)?
     private var updateCommandEnabled: (@Sendable (String, String, Bool) async -> Bool)?
+    private var automationsProvider: (@Sendable (Automations.Category) async -> AdminWebAutomationsPayload)?
+    private var upsertAutomation: (@Sendable (Automations.Rule) async -> Bool)?
+    private var deleteAutomation: (@Sendable (String) async -> Bool)?
+    private var toggleAutomation: (@Sendable (String) async -> Bool)?
     private var patchyProvider: (@Sendable () async -> AdminWebPatchyPayload)?
     private var updatePatchyState: (@Sendable (AdminWebPatchyStatePatch) async -> Bool)?
     private var createPatchyTarget: (@Sendable () async -> PatchySourceTarget?)?
@@ -617,6 +664,10 @@ actor AdminWebServer {
         updateConfig: @escaping @Sendable (AdminWebConfigPatch) async -> Bool,
         commandCatalogProvider: @escaping @Sendable () async -> AdminWebCommandCatalogPayload,
         updateCommandEnabled: @escaping @Sendable (String, String, Bool) async -> Bool,
+        automationsProvider: @escaping @Sendable (Automations.Category) async -> AdminWebAutomationsPayload,
+        upsertAutomation: @escaping @Sendable (Automations.Rule) async -> Bool,
+        deleteAutomation: @escaping @Sendable (String) async -> Bool,
+        toggleAutomation: @escaping @Sendable (String) async -> Bool,
         patchyProvider: @escaping @Sendable () async -> AdminWebPatchyPayload,
         updatePatchyState: @escaping @Sendable (AdminWebPatchyStatePatch) async -> Bool,
         createPatchyTarget: @escaping @Sendable () async -> PatchySourceTarget?,
@@ -679,6 +730,10 @@ actor AdminWebServer {
         self.updateConfig = updateConfig
         self.commandCatalogProvider = commandCatalogProvider
         self.updateCommandEnabled = updateCommandEnabled
+        self.automationsProvider = automationsProvider
+        self.upsertAutomation = upsertAutomation
+        self.deleteAutomation = deleteAutomation
+        self.toggleAutomation = toggleAutomation
         self.patchyProvider = patchyProvider
         self.updatePatchyState = updatePatchyState
         self.createPatchyTarget = createPatchyTarget
@@ -1237,10 +1292,64 @@ actor AdminWebServer {
             }
             await logger?("Admin Web UI toggled command \(patch.surface):\(patch.name) -> \(patch.enabled)")
             return jsonResponse(["ok": true])
-        // /api/actions, /api/actions/new, /api/actions/upsert, /api/actions/delete,
-        // and /api/automations/templates were the legacy block-builder rule
-        // endpoints. They've been retired — automations now live in the macOS
-        // app and aren't exposed over the admin web for the moment.
+        // /api/actions/* (legacy block-builder rule endpoints) retired; the
+        // current automations + moderation surfaces live under /api/automations.
+        case ("GET", "/api/automations"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            let category = categoryParam(from: request)
+            if let provider = automationsProvider {
+                let payload = await provider(category)
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "automations_unavailable"], status: "503 Service Unavailable")
+
+        case ("POST", "/api/automations/upsert"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAutomationRulePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await upsertAutomation?(patch.rule) == true else {
+                return jsonResponse(["error": "upsert_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/automations/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAutomationRuleIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deleteAutomation?(patch.id) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/automations/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAutomationRuleIDPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await toggleAutomation?(patch.id) == true else {
+                return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+
         case ("GET", "/api/patchy"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -2086,6 +2195,23 @@ actor AdminWebServer {
             "meshEnabled": meshEnabled,
             "discordConnected": discordConnected
         ])
+    }
+
+    /// Reads `?category=automation|moderation` from a request path, defaulting
+    /// to `.automation` when absent or unrecognised.
+    private func categoryParam(from request: HTTPRequest) -> Automations.Category {
+        let raw = request.path
+            .split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+            .dropFirst().first.map(String.init) ?? ""
+        for pair in raw.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            if parts.count == 2, parts[0] == "category" {
+                if let kind = Automations.Category(rawValue: parts[1]) {
+                    return kind
+                }
+            }
+        }
+        return .automation
     }
 
     private func authenticatedSession(for request: HTTPRequest) -> Session? {
