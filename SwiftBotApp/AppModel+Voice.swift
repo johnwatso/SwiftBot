@@ -122,6 +122,29 @@ extension AppModel {
         await announcer.enqueue(text)
     }
 
+    /// Speak `text` through the Mac's local speakers using
+    /// `AVSpeechSynthesizer` — no Discord voice connection involved. Used as
+    /// a preview while the Discord voice path is blocked by DAVE.
+    func speakLocallyPreview(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let utterance = AVSpeechUtterance(string: trimmed)
+        let preferredIdentifier = settings.voice.preferredVoiceIdentifier
+        if !preferredIdentifier.isEmpty,
+           let v = AVSpeechSynthesisVoice(identifier: preferredIdentifier) {
+            utterance.voice = v
+        } else {
+            utterance.voice = VoiceTTSSource.preferredEnglishVoice()
+        }
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        if localSpeechPreviewSynthesizer.isSpeaking {
+            localSpeechPreviewSynthesizer.stopSpeaking(at: .immediate)
+        }
+        localSpeechPreviewSynthesizer.speak(utterance)
+    }
+
     /// Apply a new watched text-channel selection from the UI.
     func setWatchedTextChannelForAnnouncer(_ channelID: String) async {
         settings.voice.watchedTextChannelID = channelID

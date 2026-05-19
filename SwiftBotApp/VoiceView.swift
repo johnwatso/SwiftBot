@@ -15,6 +15,7 @@ struct VoiceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                daveBlockedBanner
                 metricTileRow
                 SwiftMeshSection(title: "Connection", symbol: "antenna.radiowaves.left.and.right") {
                     connectionPanel
@@ -82,6 +83,42 @@ struct VoiceView: View {
         let guildName = app.connectedServers[app.settings.voice.guildID] ?? "—"
         if channel.isEmpty { return "Connected to \(guildName)" }
         return "Connected to #\(channel) in \(guildName)"
+    }
+
+    private var daveBlockedBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.title3)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Voice playback is paused")
+                    .font(.subheadline.weight(.semibold))
+                Text(
+                    "Discord enforced their DAVE end-to-end encryption " +
+                    "protocol on March 2, 2026. Third-party bots can no " +
+                    "longer connect to regular voice channels without a " +
+                    "Swift MLS / DAVE implementation, which doesn't exist " +
+                    "yet. The full pipeline (WS, UDP, RTP, Opus, AES-GCM) " +
+                    "is built and waiting; only the encryption layer needs " +
+                    "swapping. Use **Preview on Mac** below to audition " +
+                    "voices in the meantime."
+                )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private var statusBadge: some View {
@@ -184,10 +221,10 @@ struct VoiceView: View {
                 Button {
                     Task { await app.connectVoice() }
                 } label: {
-                    Label(connectButtonTitle, systemImage: "phone.arrow.up.right.fill")
+                    Label("Join (blocked: DAVE required)", systemImage: "lock.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!canConnect)
+                .disabled(true)
 
                 Button {
                     Task { await app.disconnectVoice() }
@@ -197,15 +234,16 @@ struct VoiceView: View {
                 .disabled(app.voiceConnectionStatus == .idle)
 
                 Spacer()
-
-                if case .failed(let reason) = app.voiceConnectionStatus {
-                    Text(reason)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
             }
 
-            Text("The bot will join the selected voice channel using `aead_aes256_gcm_rtpsize` with Apple's AES-256-GCM and stream Opus audio over UDP.")
+            Text(
+                "Discord requires the DAVE end-to-end encryption protocol " +
+                "on regular voice channels as of March 2, 2026. SwiftBot's " +
+                "WS/UDP/RTP/Opus pipeline is built and tested up to the " +
+                "encryption negotiation; we're waiting on a Swift MLS " +
+                "implementation (or a libdave wrapper) before this can be " +
+                "enabled."
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -247,24 +285,32 @@ struct VoiceView: View {
                 Toggle("", isOn: $textChannelSourceEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .onChange(of: textChannelSourceEnabled) { _, newValue in
-                        app.settings.voice.textChannelSourceEnabled = newValue
-                    }
+                    .disabled(true)
+                    .help("Disabled until DAVE support lands — no voice channel to read into.")
             }
 
             pickerField(label: "Text Channel", selection: $selectedTextChannel, options: textChannelOptions) { newValue in
                 Task { await app.setWatchedTextChannelForAnnouncer(newValue) }
             }
-            .disabled(selectedGuild.isEmpty || !textChannelSourceEnabled)
+            .disabled(true)
 
-            HStack(spacing: 8) {
-                TextField("Test something", text: $testText)
-                    .textFieldStyle(.roundedBorder)
-                Button("Speak") {
-                    let snapshot = testText
-                    Task { await app.speakAnnouncement(snapshot) }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    TextField("Test something", text: $testText)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Preview on Mac") {
+                        app.speakLocallyPreview(testText)
+                    }
+                    .disabled(testText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Speak in Discord") {
+                        let snapshot = testText
+                        Task { await app.speakAnnouncement(snapshot) }
+                    }
+                    .disabled(!app.voiceConnectionStatus.isConnected || testText.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .disabled(!app.voiceConnectionStatus.isConnected || testText.trimmingCharacters(in: .whitespaces).isEmpty)
+                Text("Preview plays through this Mac's speakers using the selected voice — no Discord connection needed. Speak in Discord is blocked until DAVE support lands.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Divider().padding(.vertical, 4)

@@ -187,6 +187,9 @@ final class AppModel: ObservableObject {
     var voicePendingServerToken: String?
     var voicePendingServerEndpoint: String?
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
+    /// Retained AVSpeechSynthesizer for in-app preview playback (used while
+    /// the Discord voice path is blocked by DAVE).
+    let localSpeechPreviewSynthesizer = AVSpeechSynthesizer()
     var uptimeTask: Task<Void, Never>?
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?
