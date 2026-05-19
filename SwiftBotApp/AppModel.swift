@@ -176,6 +176,17 @@ final class AppModel: ObservableObject {
     lazy var commandProcessor = makeCommandProcessor()
     let voicePresenceStore = VoicePresenceStore()
     let voiceSessionStore = VoiceSessionStore()
+
+    // Voice playback / announcement pipeline (see AppModel+Voice.swift).
+    var voicePlaybackServiceStorage: VoicePlaybackService?
+    var voiceAnnouncementServiceStorage: VoiceAnnouncementService?
+    var textChannelAnnouncerStorage: TextChannelAnnouncer?
+    var voicePendingGuildID: String?
+    var voicePendingChannelID: String?
+    var voicePendingSessionID: String?
+    var voicePendingServerToken: String?
+    var voicePendingServerEndpoint: String?
+    @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
     var uptimeTask: Task<Void, Never>?
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?

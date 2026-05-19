@@ -113,6 +113,21 @@ actor DiscordGatewayConnection {
         await onConnectionState?(.stopped)
     }
 
+    /// Send Voice State Update (op 4) to join or leave a voice channel.
+    /// Pass `channelID: nil` to leave the current voice channel.
+    func sendVoiceStateUpdate(guildID: String, channelID: String?, selfMute: Bool = false, selfDeaf: Bool = true) async {
+        let payload: [String: Any] = [
+            "op": 4,
+            "d": [
+                "guild_id": guildID,
+                "channel_id": channelID as Any? ?? NSNull(),
+                "self_mute": selfMute,
+                "self_deaf": selfDeaf
+            ]
+        ]
+        await sendRaw(payload)
+    }
+
     func sendPresence(text: String) async {
         let payload: [String: Any] = [
             "op": 3,

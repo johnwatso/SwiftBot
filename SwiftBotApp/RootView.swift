@@ -63,7 +63,8 @@ struct UnifiedRootView: View {
                         }
                     })
                 case .patchy: PatchyView()
-                case .voice: AutomationsView()
+                case .automations: AutomationsView()
+                case .voice: VoiceView()
                 case .moderation: ModerationView()
                 case .commands: CommandsView()
                 case .activity: ActivityLogView()
@@ -150,6 +151,11 @@ struct DashboardSidebar: View {
                         SidebarSection(title: "Workflows") {
                             SidebarRow(
                                 item: .commands,
+                                selection: $selection,
+                                selectionHighlightNamespace: selectionHighlightNamespace
+                            )
+                            SidebarRow(
+                                item: .automations,
                                 selection: $selection,
                                 selectionHighlightNamespace: selectionHighlightNamespace
                             )
