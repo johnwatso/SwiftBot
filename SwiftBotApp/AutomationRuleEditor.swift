@@ -533,7 +533,7 @@ struct AutomationRuleEditor: View {
                 .pickerStyle(.menu)
             }
             if (rule.steps[index].sendTarget ?? .replyToTrigger) == .specificChannel {
-                channelRow(label: "Channel", id: $rule.steps[index].channelId)
+                channelRow(label: "Channel", id: $rule.steps[index].channelId, requireValue: true)
             }
             multilineRow(label: "Message", value: $rule.steps[index].content,
                          placeholder: "Hey {username}!")
@@ -562,7 +562,10 @@ struct AutomationRuleEditor: View {
             case .kick:
                 stringRow(label: "Reason", value: $rule.steps[index].kickReason, placeholder: "(optional)")
             case .moveVoice:
-                channelRow(label: "Voice channel", id: $rule.steps[index].targetVoiceChannelId, voiceOnly: true)
+                channelRow(label: "Voice channel",
+                           id: $rule.steps[index].targetVoiceChannelId,
+                           voiceOnly: true,
+                           requireValue: true)
             }
 
         case .modifyMessage:
@@ -636,12 +639,15 @@ struct AutomationRuleEditor: View {
             }
             .frame(width: 110, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
-                TextField(placeholder, text: Binding(
-                    get: { value.wrappedValue ?? "" },
-                    set: { value.wrappedValue = $0.isEmpty ? nil : $0 }
-                ), axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(2...5)
+                VariableAutocompleteField(
+                    text: Binding(
+                        get: { value.wrappedValue ?? "" },
+                        set: { value.wrappedValue = $0.isEmpty ? nil : $0 }
+                    ),
+                    placeholder: placeholder,
+                    triggerKind: rule.trigger.kind,
+                    multiline: true
+                )
 
                 if variablesEnabled {
                     variablePickerMenu(value: value)
@@ -721,20 +727,42 @@ struct AutomationRuleEditor: View {
     }
 
     @ViewBuilder
-    private func channelRow(label: String, id: Binding<String?>, voiceOnly: Bool = false) -> some View {
+    private func channelRow(label: String, id: Binding<String?>,
+                            voiceOnly: Bool = false,
+                            requireValue: Bool = false) -> some View {
         let pool = voiceOnly ? serverContext.voiceChannels : serverContext.textChannels
+        // When the field requires a value but the binding is empty, default
+        // to the first available channel. Avoids the "(Any)" state in slots
+        // where Any would mean "the rule does nothing".
+        let resolved = id.wrappedValue ?? ""
+        let effective: String = {
+            if !requireValue { return resolved }
+            if !resolved.isEmpty, pool.contains(where: { $0.id == resolved }) { return resolved }
+            return pool.first?.id ?? ""
+        }()
+
         formRow(label: label) {
             Picker("", selection: Binding(
-                get: { id.wrappedValue ?? "" },
+                get: { effective },
                 set: { id.wrappedValue = $0.isEmpty ? nil : $0 }
             )) {
-                Text("Any").tag("")
+                if !requireValue {
+                    Text("Any").tag("")
+                }
                 ForEach(pool, id: \.id) { c in
                     Text(voiceOnly ? c.name : "#\(c.name)").tag(c.id)
                 }
             }
             .labelsHidden()
             .pickerStyle(.menu)
+            .onAppear {
+                // Sync the binding when the requireValue default kicked in
+                // so a Save after no manual interaction still writes the
+                // resolved channel rather than a nil.
+                if requireValue, (id.wrappedValue ?? "").isEmpty, !effective.isEmpty {
+                    id.wrappedValue = effective
+                }
+            }
         }
     }
 

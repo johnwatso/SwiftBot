@@ -22,14 +22,13 @@ struct OverviewView: View {
     private let memorySampleTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private static let memorySampleCapacity = 36 // ~3 minutes at 5s cadence
 
-    private struct MetricWidget: Identifiable {
+    private typealias MetricWidget = DashboardMetricDescriptor
+
+    private struct MetricWidgetGroup: Identifiable {
         let id: String
         let title: String
-        let value: String
-        let subtitle: String
         let symbol: String
-        let detail: String
-        let color: Color
+        let widgets: [MetricWidget]
     }
 
     private struct VoiceChannelGroup: Identifiable {
@@ -489,27 +488,102 @@ struct OverviewView: View {
         }
     }
 
+    private var availableMetricGroups: [MetricWidgetGroup] {
+        [
+            MetricWidgetGroup(
+                id: "overview",
+                title: "Overview",
+                symbol: "speedometer",
+                widgets: overviewSystemMetrics
+            ),
+            MetricWidgetGroup(
+                id: "aiBots",
+                title: "AI Bots",
+                symbol: "sparkles.rectangle.stack.fill",
+                widgets: AIBotsDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "swiftMesh",
+                title: "SwiftMesh",
+                symbol: "point.3.connected.trianglepath.dotted",
+                widgets: SwiftMeshDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "automations",
+                title: "Automations",
+                symbol: "bolt.badge.automatic.fill",
+                widgets: AutomationDashboardSummary.metrics(app: app, category: .automation)
+            ),
+            MetricWidgetGroup(
+                id: "moderation",
+                title: "Moderation",
+                symbol: "shield.lefthalf.filled",
+                widgets: AutomationDashboardSummary.metrics(app: app, category: .moderation)
+            ),
+            MetricWidgetGroup(
+                id: "commands",
+                title: "Commands",
+                symbol: "terminal.fill",
+                widgets: CommandsDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "patchy",
+                title: "Patchy",
+                symbol: "square.and.arrow.down.badge.checkmark.fill",
+                widgets: PatchyDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "sweep",
+                title: "Sweep",
+                symbol: "rectangle.stack.fill.badge.minus",
+                widgets: SweepDashboardSummary.metrics(service: app.sweepService)
+            ),
+            MetricWidgetGroup(
+                id: "wikiBridge",
+                title: "WikiBridge",
+                symbol: "book.pages.fill",
+                widgets: WikiBridgeDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "recordings",
+                title: "Recordings",
+                symbol: "film.fill",
+                widgets: [RecordingsDashboardSummary.overviewMetric(app: app)]
+            ),
+            MetricWidgetGroup(
+                id: "activity",
+                title: "Activity",
+                symbol: "list.bullet.clipboard.fill",
+                widgets: ActivityDashboardSummary.metrics(app: app)
+            ),
+            MetricWidgetGroup(
+                id: "analytics",
+                title: "Analytics",
+                symbol: "chart.line.uptrend.xyaxis",
+                widgets: AnalyticsDashboardSummary.metrics(app: app)
+            )
+        ]
+    }
+
     private var availableMetricWidgets: [MetricWidget] {
+        uniqueMetrics(availableMetricGroups.flatMap(\.widgets))
+    }
+
+    private var overviewSystemMetrics: [MetricWidget] {
+        var widgets: [MetricWidget] = [
+            MetricWidget(
+                id: "status",
+                title: "Status",
+                value: settings.clusterMode == .worker ? app.primaryServiceStatusText : status.rawValue.capitalized,
+                subtitle: settings.clusterMode == .worker ? clusterSnapshot.serverStatusText : (uptime?.text ?? "--"),
+                symbol: "bolt.horizontal.circle.fill",
+                detail: "Auto Start \(settings.autoStart ? "On" : "Off")",
+                color: .green
+            )
+        ]
+
         if settings.clusterMode == .worker {
-            return [
-                MetricWidget(
-                    id: "status",
-                    title: "Status",
-                    value: app.primaryServiceStatusText,
-                    subtitle: clusterSnapshot.serverStatusText,
-                    symbol: "bolt.horizontal.circle.fill",
-                    detail: "Auto Start \(settings.autoStart ? "On" : "Off")",
-                    color: .green
-                ),
-                MetricWidget(
-                    id: "meshMode",
-                    title: "Mesh Mode",
-                    value: settings.clusterMode.displayName,
-                    subtitle: settings.clusterNodeName,
-                    symbol: "point.3.connected.trianglepath.dotted",
-                    detail: "Primary \(settings.clusterLeaderAddress.isEmpty ? "Not set" : "Configured")",
-                    color: .purple
-                ),
+            widgets.append(
                 MetricWidget(
                     id: "listenPort",
                     title: "Listen Port",
@@ -518,138 +592,51 @@ struct OverviewView: View {
                     symbol: "antenna.radiowaves.left.and.right",
                     detail: "Node \(settings.clusterNodeName.isEmpty ? "Unnamed" : settings.clusterNodeName)",
                     color: .blue
-                ),
-                MetricWidget(
-                    id: "inVoice",
-                    title: "In Voice",
-                    value: "\(activeVoice.count)",
-                    subtitle: "users right now",
-                    symbol: "person.3.sequence.fill",
-                    detail: "Live presence",
-                    color: .orange
-                ),
-                MetricWidget(
-                    id: "wikibridge",
-                    title: "WikiBridge",
-                    value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
-                    subtitle: "\(enabledWikiSourceCount) sources",
-                    symbol: "book.pages.fill",
-                    detail: "\(enabledWikiCommandCount) commands",
-                    color: .orange
-                ),
-                MetricWidget(
-                    id: "patchy",
-                    title: "Patchy",
-                    value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
-                    subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
-                    symbol: "square.and.arrow.down.badge.checkmark",
-                    detail: "Jobs \(workerJobCount)",
-                    color: .red
-                ),
-                MetricWidget(
-                    id: "recentMedia",
-                    title: "New Recordings",
-                    value: "\(app.recentMediaCount24h)",
-                    subtitle: "last 24 hours",
-                    symbol: "film.fill",
-                    detail: "Across media sources",
-                    color: .teal
-                ),
-                MetricWidget(
-                    id: "actions",
-                    title: "Automations",
-                    value: "\(enabledActionRuleCount) active",
-                    subtitle: "\(rules.count) total rules",
-                    symbol: "bolt.badge.automatic.fill",
-                    detail: helpSummary,
-                    color: .red
                 )
-            ]
+            )
+        } else {
+            widgets.append(
+                MetricWidget(
+                    id: "servers",
+                    title: "Servers",
+                    value: "\(connectedServers.count)",
+                    subtitle: "servers connected",
+                    symbol: "server.rack",
+                    detail: settings.clusterMode == .standalone ? "Standalone" : settings.clusterMode.displayName,
+                    color: .blue
+                )
+            )
         }
 
-        return [
-            MetricWidget(
-                id: "status",
-                title: "Status",
-                value: status.rawValue.capitalized,
-                subtitle: uptime?.text ?? "--",
-                symbol: "bolt.horizontal.circle.fill",
-                detail: "Auto Start \(settings.autoStart ? "On" : "Off")",
-                color: .green
-            ),
-            MetricWidget(
-                id: "servers",
-                title: "Servers",
-                value: "\(connectedServers.count)",
-                subtitle: "servers connected",
-                symbol: "server.rack",
-                detail: settings.clusterMode == .standalone ? "Standalone" : settings.clusterMode.displayName,
-                color: .blue
-            ),
+        widgets.append(
             MetricWidget(
                 id: "inVoice",
                 title: "In Voice",
                 value: "\(activeVoice.count)",
                 subtitle: "users right now",
                 symbol: "person.3.sequence.fill",
-                detail: "Route \(clusterSnapshot.lastJobRoute.rawValue.capitalized)",
+                detail: settings.clusterMode == .worker ? "Live presence" : "Route \(clusterSnapshot.lastJobRoute.rawValue.capitalized)",
                 color: .orange
-            ),
-            MetricWidget(
-                id: "commandsRun",
-                title: "Commands Run",
-                value: "\(stats.commandsRun)",
-                subtitle: "this session",
-                symbol: "terminal.fill",
-                detail: "Recent commands activity",
-                color: .red
-            ),
-            MetricWidget(
-                id: "recentMedia",
-                title: "New Recordings",
-                value: "\(app.recentMediaCount24h)",
-                subtitle: "last 24 hours",
-                symbol: "film.fill",
-                detail: "Across media sources",
-                color: .teal
-            ),
-            MetricWidget(
-                id: "wikibridge",
-                title: "WikiBridge",
-                value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
-                subtitle: "\(enabledWikiSourceCount) sources",
-                symbol: "book.pages.fill",
-                detail: "\(enabledWikiCommandCount) commands",
-                color: .mint
-            ),
-            MetricWidget(
-                id: "patchy",
-                title: "Patchy",
-                value: settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
-                subtitle: "\(patchyEnabledTargetCount)/\(patchyTargetCount) targets",
-                symbol: "square.and.arrow.down.badge.checkmark",
-                detail: "Help \(helpSummary)",
-                color: .purple
-            ),
-            MetricWidget(
-                id: "actions",
-                title: "Automations",
-                value: "\(enabledActionRuleCount) active",
-                subtitle: "\(rules.count) total rules",
-                symbol: "bolt.badge.automatic.fill",
-                detail: "Errors \(stats.errors)",
-                color: .indigo
-            ),
-            MetricWidget(
-                id: "aiBots",
-                title: "AI Bots",
-                value: aiProviderSummary,
-                subtitle: settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled",
-                symbol: "sparkles",
-                detail: "Guild AI \(settings.behavior.useAIInGuildChannels ? "On" : "Off")",
-                color: .purple
             )
-        ]
+        )
+        return widgets
+    }
+
+    private var defaultMetricIDs: [String] {
+        let defaults = settings.clusterMode == .worker
+            ? ["status", "meshMode", "listenPort", "inVoice", "wikibridge", "patchy", "recentMedia", "actions", "moderation", "sweep", "activity", "analytics", "aiBots"]
+            : ["status", "servers", "inVoice", "commandsRun", "recentMedia", "wikibridge", "patchy", "actions", "moderation", "sweep", "activity", "analytics", "aiBots"]
+        let availableIDs = Set(availableMetricWidgets.map(\.id))
+        return defaults.filter { availableIDs.contains($0) }
+    }
+
+    private func uniqueMetrics(_ metrics: [MetricWidget]) -> [MetricWidget] {
+        var seen = Set<String>()
+        return metrics.filter { metric in
+            guard !seen.contains(metric.id) else { return false }
+            seen.insert(metric.id)
+            return true
+        }
     }
 
     private var orderedVisibleMetricWidgets: [MetricWidget] {
@@ -662,9 +649,13 @@ struct OverviewView: View {
         }
     }
 
-    private var hiddenWidgets: [MetricWidget] {
+    private var hiddenMetricGroups: [MetricWidgetGroup] {
         let visibleIDs = Set(orderedVisibleMetricWidgets.map(\.id))
-        return availableMetricWidgets.filter { !visibleIDs.contains($0.id) }
+        return availableMetricGroups.compactMap { group in
+            let widgets = group.widgets.filter { !visibleIDs.contains($0.id) }
+            guard !widgets.isEmpty else { return nil }
+            return MetricWidgetGroup(id: group.id, title: group.title, symbol: group.symbol, widgets: widgets)
+        }
     }
 
     private var shouldShowSwiftMeshOverviewMap: Bool {
@@ -672,8 +663,11 @@ struct OverviewView: View {
     }
 
     private var canResetDashboard: Bool {
-        let defaultOrder = availableMetricWidgets.map(\.id)
-        return metricOrder != defaultOrder || !hiddenMetricIDs.isEmpty
+        let defaultIDs = defaultMetricIDs
+        let availableIDs = Set(availableMetricWidgets.map(\.id))
+        let normalizedOrder = metricOrder.filter { availableIDs.contains($0) }
+        let defaultHiddenIDs = availableIDs.subtracting(defaultIDs)
+        return normalizedOrder != defaultIDs || hiddenMetricIDs != defaultHiddenIDs
     }
 
     var body: some View {
@@ -730,15 +724,24 @@ struct OverviewView: View {
             Spacer()
             if isEditingDashboard {
                 Menu {
-                    if hiddenWidgets.isEmpty {
+                    if hiddenMetricGroups.isEmpty {
                         Text("No hidden widgets")
                     } else {
-                        ForEach(hiddenWidgets) { widget in
-                            Button {
-                                hiddenMetricIDs.remove(widget.id)
-                                persistDashboardPreferences()
-                            } label: {
-                                Label(widget.title, systemImage: widget.symbol)
+                        ForEach(hiddenMetricGroups) { group in
+                            Section {
+                                ForEach(group.widgets) { widget in
+                                    Button {
+                                        hiddenMetricIDs.remove(widget.id)
+                                        if !metricOrder.contains(widget.id) {
+                                            metricOrder.append(widget.id)
+                                        }
+                                        persistDashboardPreferences()
+                                    } label: {
+                                        Label(widget.title, systemImage: widget.symbol)
+                                    }
+                                }
+                            } header: {
+                                Label(group.title, systemImage: group.symbol)
                             }
                         }
                     }
@@ -748,8 +751,8 @@ struct OverviewView: View {
                 .menuStyle(.borderlessButton)
 
                 Button("Reset") {
-                    metricOrder = availableMetricWidgets.map(\.id)
-                    hiddenMetricIDs.removeAll()
+                    metricOrder = defaultMetricIDs
+                    hiddenMetricIDs = Set(availableMetricWidgets.map(\.id)).subtracting(defaultMetricIDs)
                     persistDashboardPreferences()
                 }
                 .disabled(!canResetDashboard)
@@ -771,13 +774,7 @@ struct OverviewView: View {
             ForEach(orderedVisibleMetricWidgets) { widget in
                 ZStack(alignment: .topTrailing) {
                     DashboardMetricCard(
-                        title: widget.title,
-                        value: widget.value,
-                        subtitle: widget.subtitle,
-                        symbol: widget.symbol,
-                        detail: widget.detail,
-                        color: widget.color,
-                        appleIntelligenceGlowEnabled: widget.id == "aiBots" && settings.preferredAIProvider == .apple
+                        metric: widget
                     )
                     .rotationEffect(.degrees(isEditingDashboard ? wiggleAmplitude(for: widget.id) : 0))
                     .animation(
@@ -1325,6 +1322,14 @@ struct OverviewView: View {
 
     private func syncDashboardPreferences() {
         let availableIDs = availableMetricWidgets.map(\.id)
+        if metricOrderStorage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           metricHiddenStorage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            metricOrder = defaultMetricIDs
+            hiddenMetricIDs = Set(availableIDs).subtracting(defaultMetricIDs)
+            persistDashboardPreferences()
+            return
+        }
+
         let parsedOrder = metricOrderStorage
             .split(separator: ",")
             .map { String($0) }
@@ -1448,130 +1453,6 @@ struct OverviewClusterMapCard: View {
         .task(id: provider.settings.clusterMode) {
             guard provider.settings.clusterMode == .leader || provider.settings.clusterMode == .standby else { return }
             await app.pollClusterStatus()
-        }
-    }
-}
-
-struct DashboardMetricCard: View {
-    let title: String
-    let value: String
-    let subtitle: String
-    let symbol: String
-    var detail: String = ""
-    let color: Color
-    var appleIntelligenceGlowEnabled = false
-    @State private var isHovering = false
-    @State private var glowOpacity = 0.0
-    @State private var playPulse = false
-
-    private let cornerRadius: CGFloat = 20
-
-    private var isGlowActive: Bool {
-        appleIntelligenceGlowEnabled && isHovering
-    }
-
-    private var shouldRenderGlow: Bool {
-        isGlowActive || glowOpacity > 0.001
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(color)
-                    .frame(width: 20, height: 20)
-                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 4)
-
-            Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .glassCard(
-            cornerRadius: cornerRadius,
-            tint: .primary.opacity(isHovering ? 0.03 : 0.01),
-            stroke: .primary.opacity(isHovering ? 0.12 : 0.06)
-        )
-        .scaleEffect(isHovering ? 1.01 : 1)
-        .shadow(color: .black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 10 : 5, y: isHovering ? 5 : 2)
-        .overlay {
-            if shouldRenderGlow || playPulse {
-                ZStack {
-                    if shouldRenderGlow {
-                        IntelligenceGlowBorder(cornerRadius: cornerRadius, isAnimating: isGlowActive)
-                            .opacity(glowOpacity)
-                    }
-
-                    if playPulse {
-                        IntelligenceGlowPulse(cornerRadius: cornerRadius) {
-                            playPulse = false
-                        }
-                    }
-                }
-            }
-        }
-        .onHover { hovering in
-            let wasHovering = isHovering
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isHovering = hovering
-            }
-
-            if hovering && appleIntelligenceGlowEnabled && !wasHovering {
-                playPulse = true
-            } else if !hovering {
-                playPulse = false
-            }
-
-            updateGlowState()
-        }
-        .onAppear {
-            updateGlowState(animated: false)
-        }
-        .onChange(of: appleIntelligenceGlowEnabled) { _, enabled in
-            if !enabled {
-                playPulse = false
-            }
-            updateGlowState()
-        }
-        .onDisappear {
-            playPulse = false
-        }
-    }
-
-    private func updateGlowState(animated: Bool = true) {
-        let targetOpacity = isGlowActive ? 1.0 : 0.0
-
-        if animated {
-            withAnimation(.easeInOut(duration: isGlowActive ? 0.18 : 0.32)) {
-                glowOpacity = targetOpacity
-            }
-        } else {
-            glowOpacity = targetOpacity
         }
     }
 }

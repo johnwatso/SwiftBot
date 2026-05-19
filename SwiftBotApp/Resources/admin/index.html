@@ -3270,6 +3270,115 @@
         filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.18)) !important;
       }
     }
+
+    /* Automations / Moderation */
+    .automation-template-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .automation-template-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      min-height: 140px;
+    }
+    .automation-template-card:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.18);
+    }
+    .automation-template-icon {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .automation-template-title {
+      font-weight: 600; font-size: 14px;
+    }
+    .automation-template-subtitle {
+      font-size: 12px; color: var(--muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .automation-rule-card {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .automation-rule-dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      flex: none;
+    }
+    .automation-rule-text { flex: 1; min-width: 0; }
+    .automation-rule-name { font-weight: 600; font-size: 14px; }
+    .automation-rule-summary { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .automation-rule-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* Editor modal — wider than default */
+    .automation-editor-modal .modal-content {
+      max-width: 760px; width: 90vw;
+    }
+    .automation-editor-section {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .automation-editor-section h3 {
+      font-size: 13px; font-weight: 600;
+      margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+      color: var(--cv-text-strong);
+    }
+    .automation-editor-row {
+      display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px;
+    }
+    .automation-editor-row > label {
+      width: 110px; font-size: 13px; color: var(--muted);
+      padding-top: 6px; flex: none;
+    }
+    .automation-editor-row > .field-input,
+    .automation-editor-row > .field-select,
+    .automation-editor-row > textarea {
+      flex: 1; min-width: 0;
+    }
+    .automation-filter-card, .automation-step-card {
+      padding: 12px; border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      margin-bottom: 10px;
+    }
+    .automation-filter-header, .automation-step-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 12px; font-weight: 600;
+      color: var(--cv-text-strong);
+    }
+    .automation-multi-input {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .automation-chip {
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(99, 102, 241, 0.18);
+      color: var(--cv-text-strong);
+      font-size: 12px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .automation-chip button {
+      background: none; border: 0; color: inherit; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0;
+    }
   </style>
 </head>
 <body>
@@ -3372,6 +3481,14 @@
               <button class="nav-link" data-view="commands" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="terminal"></i></span>
                 <span class="nav-text">Commands</span>
+              </button>
+              <button class="nav-link" data-view="automations" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="zap"></i></span>
+                <span class="nav-text">Automations</span>
+              </button>
+              <button class="nav-link" data-view="moderation" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="shield"></i></span>
+                <span class="nav-text">Moderation</span>
               </button>
             </div>
 
@@ -3677,6 +3794,38 @@
             <section id="userPrefsTop" class="settings-top glass"></section>
             <section id="userPrefsPanels" class="settings-panels"></section>
           </div>
+        </section>
+
+        <section id="automationsView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="zap"></i> Automations</div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="primary-action automation-new-rule" data-category="automation" type="button"><i class="lucide" data-lucide="plus"></i> New Rule</button>
+              </div>
+            </div>
+          </div>
+          <div id="automationsMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="grid"></i> Start from a template</div>
+          <div id="automationsTemplates" class="automation-template-row"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Rules</div>
+          <div id="automationsRules" style="display: grid; gap: 10px;"></div>
+        </section>
+
+        <section id="moderationView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="shield"></i> Moderation</div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="primary-action automation-new-rule" data-category="moderation" type="button"><i class="lucide" data-lucide="plus"></i> New Rule</button>
+              </div>
+            </div>
+          </div>
+          <div id="moderationMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="grid"></i> Start from a template</div>
+          <div id="moderationTemplates" class="automation-template-row"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Moderation rules</div>
+          <div id="moderationRules" style="display: grid; gap: 10px;"></div>
         </section>
 
         <section id="sectionView" class="view hidden">
@@ -4847,6 +4996,674 @@
       return data;
     }
 
+    // ===== Automations / Moderation =====================================
+
+    // Two parallel data stores so the views render independently.
+    const automationData = { automation: null, moderation: null };
+
+    const AUTO_TRIGGER_LABELS = {
+      userJoinedVoice: 'Someone joins voice',
+      userLeftVoice: 'Someone leaves voice',
+      userMovedVoice: 'Someone switches voice channels',
+      messageCreated: 'A message is posted',
+      memberJoined: 'A member joins the server',
+      memberLeft: 'A member leaves the server',
+      reactionAdded: 'Someone reacts',
+      slashCommand: 'A slash command runs',
+      mediaAdded: 'Media is added'
+    };
+    const AUTO_STEP_LABELS = {
+      sendMessage: 'Send a message',
+      modifyMember: 'Modify the member',
+      modifyMessage: 'Modify the message',
+      log: 'Write to the log',
+      webhook: 'Call a webhook',
+      delay: 'Wait'
+    };
+    const AUTO_MEMBER_OPS = {
+      addRole: 'Add role',
+      removeRole: 'Remove role',
+      timeout: 'Timeout',
+      kick: 'Kick',
+      moveVoice: 'Move voice'
+    };
+    const AUTO_FILTER_LABELS = {
+      inChannel: 'In a channel',
+      directMessage: 'Where (DM vs channel)',
+      userIsOneOf: 'User is one of',
+      userHasAnyRole: 'User has any of these roles',
+      userHasAllRoles: 'User has all of these roles',
+      userHasNoneOfRoles: 'User has none of these roles',
+      messageContains: 'Message contains',
+      messageContainsAny: 'Message contains any of',
+      messageEquals: 'Message is exactly',
+      messageDoesNotContain: 'Message does NOT contain',
+      messageMatchesRegex: 'Message matches regex',
+      messageIsReply: 'Message is a reply',
+      fromBot: 'Posted by bot / person',
+      minVoiceDurationSeconds: 'Voice duration ≥',
+      reactionEmoji: 'Reaction emoji',
+      mediaSource: 'Media source'
+    };
+    const AUTO_FILTER_MENU = {
+      messageCreated: ['inChannel', 'directMessage', 'messageContains', 'messageContainsAny',
+                       'messageEquals', 'messageDoesNotContain', 'messageMatchesRegex',
+                       'messageIsReply', 'fromBot', 'userIsOneOf',
+                       'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
+      userJoinedVoice: ['inChannel', 'minVoiceDurationSeconds', 'userIsOneOf',
+                        'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
+      userLeftVoice:  ['inChannel', 'minVoiceDurationSeconds', 'userIsOneOf',
+                       'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
+      userMovedVoice: ['inChannel', 'minVoiceDurationSeconds', 'userIsOneOf',
+                       'userHasAnyRole', 'userHasAllRoles', 'userHasNoneOfRoles'],
+      memberJoined:   ['userIsOneOf'],
+      memberLeft:     ['userIsOneOf'],
+      reactionAdded:  ['inChannel', 'reactionEmoji', 'userHasAnyRole', 'userHasNoneOfRoles'],
+      slashCommand:   ['inChannel', 'userIsOneOf', 'userHasAnyRole'],
+      mediaAdded:     ['mediaSource']
+    };
+
+    function autoNewID() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function autoBlankFilter(kind) {
+      const f = { id: autoNewID(), kind };
+      switch (kind) {
+        case 'inChannel':                f.channelIds = []; break;
+        case 'directMessage':            f.boolValue = true; break;
+        case 'userIsOneOf':              f.userIds = []; break;
+        case 'userHasAnyRole':
+        case 'userHasAllRoles':
+        case 'userHasNoneOfRoles':       f.roleIds = []; break;
+        case 'messageContains':
+        case 'messageEquals':
+        case 'messageDoesNotContain':
+        case 'messageMatchesRegex':
+        case 'reactionEmoji':
+        case 'mediaSource':              f.text = ''; break;
+        case 'messageContainsAny':       f.textValues = []; break;
+        case 'messageIsReply':           f.boolValue = true; break;
+        case 'fromBot':                  f.boolValue = false; break;
+        case 'minVoiceDurationSeconds':  f.intValue = 60; break;
+      }
+      return f;
+    }
+
+    function autoBlankRule(category) {
+      const isMod = category === 'moderation';
+      return {
+        id: autoNewID(),
+        name: isMod ? 'New moderation rule' : 'New automation',
+        enabled: true,
+        category,
+        trigger: { kind: 'messageCreated' },
+        filterLogic: 'all',
+        filters: [],
+        steps: [isMod
+          ? { id: autoNewID(), kind: 'modifyMessage', messageOp: 'delete' }
+          : { id: autoNewID(), kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '' }]
+      };
+    }
+
+    async function loadAutomations(category) {
+      const response = await fetch(`/api/automations?category=${category}`);
+      if (!response.ok) throw new Error('Automations unavailable');
+      const data = await response.json();
+      automationData[category] = data;
+      return data;
+    }
+
+    function renderAutomationsView(category) {
+      const data = automationData[category];
+      if (!data) return;
+      renderAutomationMetrics(category, data.metrics);
+      renderAutomationTemplates(category, data.templates);
+      renderAutomationRules(category, data.rules);
+      refreshIcons();
+    }
+
+    function renderAutomationMetrics(category, metrics) {
+      const root = document.getElementById(category === 'moderation' ? 'moderationMetrics' : 'automationsMetrics');
+      if (!root) return;
+      const tint = category === 'moderation' ? '#ef4444' : 'var(--accent)';
+      const tiles = [
+        { title: category === 'moderation' ? 'Moderation' : 'Automations', value: String(metrics.total),
+          subtitle: metrics.total === 0 ? 'None yet' : `${metrics.total} rule${metrics.total === 1 ? '' : 's'}`,
+          icon: category === 'moderation' ? 'shield' : 'zap', color: tint },
+        { title: 'Enabled', value: String(metrics.enabled),
+          subtitle: `${metrics.total - metrics.enabled} disabled`,
+          icon: 'check-circle', color: metrics.enabled > 0 ? '#22c55e' : 'var(--muted)' },
+        { title: 'Trigger Types', value: String(metrics.triggerKinds),
+          subtitle: metrics.triggerKinds === 0 ? '—' : 'across all rules',
+          icon: 'zap', color: '#3b82f6' }
+      ];
+      root.innerHTML = tiles.map(t => `
+        <div class="stat-card glass">
+          <div class="stat-header">
+            <span class="stat-title">${t.title}</span>
+            <span class="stat-icon" style="color: ${t.color};"><i class="lucide" data-lucide="${t.icon}"></i></span>
+          </div>
+          <div class="stat-value">${t.value}</div>
+          <div class="stat-sub">${t.subtitle}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderAutomationTemplates(category, templates) {
+      const root = document.getElementById(category === 'moderation' ? 'moderationTemplates' : 'automationsTemplates');
+      if (!root) return;
+      if (!templates || !templates.length) {
+        root.innerHTML = '<div class="placeholder">No templates available.</div>';
+        return;
+      }
+      const tints = { blue: '#3b82f6', green: '#22c55e', purple: '#a855f7', orange: '#f97316', red: '#ef4444', indigo: '#6366f1' };
+      root.innerHTML = templates.map(t => {
+        const colour = tints[t.tint] || '#3b82f6';
+        const icon = sfSymbolToLucide(t.symbol);
+        return `
+          <div class="automation-template-card" data-template-id="${t.id}" data-category="${category}">
+            <div class="automation-template-icon" style="background: ${colour}25; color: ${colour};">
+              <i class="lucide" data-lucide="${icon}"></i>
+            </div>
+            <div class="automation-template-title">${escapeHTML(t.title)}</div>
+            <div class="automation-template-subtitle">${escapeHTML(t.subtitle)}</div>
+          </div>
+        `;
+      }).join('');
+      root.querySelectorAll('.automation-template-card').forEach(el => {
+        el.addEventListener('click', () => {
+          const tplID = el.dataset.templateId;
+          const tpl = templates.find(t => t.id === tplID);
+          if (!tpl) return;
+          // Clone rule with fresh IDs
+          const rule = JSON.parse(JSON.stringify(tpl.rule));
+          rule.id = autoNewID();
+          rule.category = category;
+          rule.steps = (rule.steps || []).map(s => ({ ...s, id: autoNewID() }));
+          openAutomationEditor(rule, category, true);
+        });
+      });
+    }
+
+    function renderAutomationRules(category, rules) {
+      const root = document.getElementById(category === 'moderation' ? 'moderationRules' : 'automationsRules');
+      if (!root) return;
+      if (!rules || !rules.length) {
+        root.innerHTML = `<div class="placeholder">No ${category === 'moderation' ? 'moderation rules' : 'automations'} yet. Click <strong>New Rule</strong> or pick a template.</div>`;
+        return;
+      }
+      root.innerHTML = rules.map(rule => {
+        const dotColour = rule.enabled ? '#22c55e' : 'rgba(255,255,255,0.35)';
+        const trigger = AUTO_TRIGGER_LABELS[rule.trigger?.kind] || rule.trigger?.kind || '';
+        const stepKind = rule.steps?.[0]?.kind;
+        const stepLabel = stepKind ? AUTO_STEP_LABELS[stepKind] : '—';
+        return `
+          <div class="automation-rule-card glass" data-rule-id="${rule.id}">
+            <div class="automation-rule-dot" style="background: ${dotColour};"></div>
+            <div class="automation-rule-text">
+              <div class="automation-rule-name">${escapeHTML(rule.name || 'Untitled')}</div>
+              <div class="automation-rule-summary">${escapeHTML(trigger)} → ${escapeHTML(stepLabel)}</div>
+            </div>
+            <div class="automation-rule-actions">
+              <button class="mini-btn auto-rule-toggle" type="button">${rule.enabled ? 'Disable' : 'Enable'}</button>
+              <button class="mini-btn auto-rule-edit" type="button"><i class="lucide" data-lucide="pencil"></i></button>
+              <button class="mini-btn auto-rule-delete" type="button"><i class="lucide" data-lucide="trash-2"></i></button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      root.querySelectorAll('.automation-rule-card').forEach(el => {
+        const ruleID = el.dataset.ruleId;
+        const rule = rules.find(r => r.id === ruleID);
+        el.querySelector('.auto-rule-toggle')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await postJSON('/api/automations/toggle', { id: ruleID });
+          await loadAutomations(category);
+          renderAutomationsView(category);
+        });
+        el.querySelector('.auto-rule-edit')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (rule) openAutomationEditor(JSON.parse(JSON.stringify(rule)), category, false);
+        });
+        el.querySelector('.auto-rule-delete')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Delete "${rule?.name || 'this rule'}"?`)) return;
+          await postJSON('/api/automations/delete', { id: ruleID });
+          await loadAutomations(category);
+          renderAutomationsView(category);
+        });
+        el.addEventListener('click', () => {
+          if (rule) openAutomationEditor(JSON.parse(JSON.stringify(rule)), category, false);
+        });
+      });
+    }
+
+    // ----- Editor modal --------------------------------------------------
+
+    function escapeHTML(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    let automationEditorState = { rule: null, category: 'automation', isNew: false };
+
+    function openAutomationEditor(rule, category, isNew) {
+      automationEditorState = { rule, category, isNew };
+      const titleText = (category === 'moderation' ? 'Moderation Rule' : 'Automation');
+      const title = (isNew ? 'New ' : 'Edit ') + titleText;
+      showModal(title, '<div id="automationEditorBody"></div>', `
+        <button class="secondary-action" type="button" onclick="hideModal()">Cancel</button>
+        <button id="automationEditorSave" class="primary-action" type="button">${isNew ? 'Create' : 'Save'}</button>
+      `);
+      document.querySelector('.modal-overlay')?.classList.add('automation-editor-modal');
+      renderAutomationEditorBody();
+      document.getElementById('automationEditorSave')?.addEventListener('click', saveAutomationFromEditor);
+    }
+
+    async function saveAutomationFromEditor() {
+      const { rule, category } = automationEditorState;
+      if (!rule.name?.trim()) { alert('Give the rule a name.'); return; }
+      if (!rule.steps?.length) { alert('Add at least one step.'); return; }
+      await postJSON('/api/automations/upsert', { rule });
+      await loadAutomations(category);
+      renderAutomationsView(category);
+      hideModal();
+    }
+
+    function renderAutomationEditorBody() {
+      const root = document.getElementById('automationEditorBody');
+      if (!root) return;
+      const { rule, category } = automationEditorState;
+      const ctx = automationData[category]?.serverContext || { textChannels: [], voiceChannels: [], roles: [] };
+
+      root.innerHTML = `
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="tag"></i> Name</h3>
+          <div class="automation-editor-row">
+            <label>Name</label>
+            <input id="autoName" class="field-input" value="${escapeHTML(rule.name)}">
+          </div>
+          <div class="automation-editor-row">
+            <label>Enabled</label>
+            <input id="autoEnabled" type="checkbox" ${rule.enabled ? 'checked' : ''}>
+          </div>
+        </div>
+
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="zap"></i> WHEN this happens</h3>
+          <div class="automation-editor-row">
+            <label>When</label>
+            <select id="autoTrigger" class="field-select">
+              ${Object.entries(AUTO_TRIGGER_LABELS).map(([k, label]) =>
+                `<option value="${k}" ${rule.trigger.kind === k ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </div>
+          ${rule.trigger.kind === 'slashCommand' ? `
+            <div class="automation-editor-row">
+              <label>Command</label>
+              <input id="autoCommandName" class="field-input" value="${escapeHTML(rule.trigger.commandName || '')}" placeholder="report">
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="filter"></i> IF these conditions match</h3>
+          <div id="autoFiltersBody"></div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+            <select id="autoFilterAdd" class="field-select" style="max-width:280px;">
+              <option value="">Add condition…</option>
+              ${(AUTO_FILTER_MENU[rule.trigger.kind] || []).map(k =>
+                `<option value="${k}">${AUTO_FILTER_LABELS[k]}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="automation-editor-section">
+          <h3><i class="lucide" data-lucide="git-branch"></i> THEN do these steps</h3>
+          <div id="autoStepsBody"></div>
+          <button class="mini-btn" id="autoAddStep" type="button" style="margin-top:8px;">
+            <i class="lucide" data-lucide="plus"></i> Add step
+          </button>
+        </div>
+      `;
+
+      // Binders
+      root.querySelector('#autoName').addEventListener('input', (e) => { rule.name = e.target.value; });
+      root.querySelector('#autoEnabled').addEventListener('change', (e) => { rule.enabled = e.target.checked; });
+      root.querySelector('#autoTrigger').addEventListener('change', (e) => {
+        rule.trigger.kind = e.target.value;
+        rule.filters = []; // reset incompatible filters
+        renderAutomationEditorBody();
+      });
+      root.querySelector('#autoCommandName')?.addEventListener('input', (e) => {
+        rule.trigger.commandName = e.target.value;
+      });
+      root.querySelector('#autoFilterAdd').addEventListener('change', (e) => {
+        const kind = e.target.value;
+        if (!kind) return;
+        rule.filters.push(autoBlankFilter(kind));
+        renderAutomationEditorBody();
+      });
+      root.querySelector('#autoAddStep').addEventListener('click', () => {
+        rule.steps.push({ id: autoNewID(), kind: 'sendMessage', sendTarget: 'replyToTrigger', content: '' });
+        renderAutomationEditorBody();
+      });
+
+      renderAutomationFilters(ctx);
+      renderAutomationSteps(ctx);
+      refreshIcons();
+    }
+
+    function renderAutomationFilters(ctx) {
+      const body = document.getElementById('autoFiltersBody');
+      if (!body) return;
+      const { rule } = automationEditorState;
+      if (!rule.filters.length) {
+        body.innerHTML = '<div class="placeholder" style="margin: 0;">No conditions — this rule fires every time the trigger happens.</div>';
+        return;
+      }
+      const logicSelector = rule.filters.length > 1 ? `
+        <div class="automation-editor-row" style="margin-bottom:14px;">
+          <label>Match</label>
+          <select id="autoFilterLogic" class="field-select" style="max-width:280px;">
+            <option value="all" ${rule.filterLogic === 'all' ? 'selected' : ''}>All of these (AND)</option>
+            <option value="any" ${rule.filterLogic === 'any' ? 'selected' : ''}>Any of these (OR)</option>
+          </select>
+        </div>` : '';
+
+      const cards = rule.filters.map((f, i) => `
+        <div class="automation-filter-card" data-filter-index="${i}">
+          <div class="automation-filter-header">
+            <span>${AUTO_FILTER_LABELS[f.kind]}</span>
+            <button class="mini-btn auto-filter-remove" type="button"><i class="lucide" data-lucide="x"></i></button>
+          </div>
+          ${renderAutomationFilterFields(f, i, ctx)}
+        </div>
+      `).join('');
+
+      body.innerHTML = logicSelector + cards;
+
+      body.querySelector('#autoFilterLogic')?.addEventListener('change', (e) => {
+        rule.filterLogic = e.target.value;
+      });
+      body.querySelectorAll('.auto-filter-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const i = parseInt(e.target.closest('[data-filter-index]').dataset.filterIndex, 10);
+          rule.filters.splice(i, 1);
+          renderAutomationEditorBody();
+        });
+      });
+      bindAutomationFilterFieldEvents(ctx);
+    }
+
+    function renderAutomationFilterFields(f, idx, ctx) {
+      const channelOpts = (pool) => pool.map(c => `<option value="${c.id}">${(pool === ctx.voiceChannels ? '' : '#') + escapeHTML(c.name)}</option>`).join('');
+      const selectedSet = (arr) => new Set(arr || []);
+      const isSelected = (sel, id) => sel.has(id) ? 'selected' : '';
+      const multiList = (label, pool, arr, dataKey) => {
+        const sel = selectedSet(arr);
+        return `<div class="automation-editor-row">
+          <label>${label}</label>
+          <select multiple size="${Math.min(6, Math.max(3, pool.length))}" class="field-select auto-filter-multi" data-field="${dataKey}" data-filter-index="${idx}">
+            ${pool.map(o => `<option value="${o.id}" ${isSelected(sel, o.id)}>${(dataKey === 'channelIds' && pool === ctx.textChannels) ? '#' : ''}${escapeHTML(o.name)}</option>`).join('')}
+          </select>
+        </div>`;
+      };
+      switch (f.kind) {
+        case 'inChannel': {
+          // Voice triggers want voice channels
+          const isVoice = ['userJoinedVoice','userLeftVoice','userMovedVoice'].includes(automationEditorState.rule.trigger.kind);
+          const pool = isVoice ? ctx.voiceChannels : ctx.textChannels;
+          return multiList('Channels', pool, f.channelIds, 'channelIds');
+        }
+        case 'directMessage':
+          return `<div class="automation-editor-row">
+            <label>Where</label>
+            <select class="field-select auto-filter-bool" data-filter-index="${idx}">
+              <option value="true" ${f.boolValue ? 'selected' : ''}>DMs only</option>
+              <option value="false" ${!f.boolValue ? 'selected' : ''}>In a channel</option>
+            </select>
+          </div>`;
+        case 'userIsOneOf':
+          return `<div class="automation-editor-row">
+            <label>User IDs</label>
+            <input class="field-input auto-filter-csv" data-field="userIds" data-filter-index="${idx}" value="${escapeHTML((f.userIds || []).join(', '))}" placeholder="comma-separated IDs">
+          </div>`;
+        case 'userHasAnyRole':
+        case 'userHasAllRoles':
+        case 'userHasNoneOfRoles':
+          return multiList('Roles', ctx.roles, f.roleIds, 'roleIds') +
+            '<div class="placeholder" style="margin:6px 0 0;font-size:11px;color:#f59e0b;">Role checks are informational until member roles are plumbed through events.</div>';
+        case 'messageContainsAny':
+          return `<div class="automation-editor-row">
+            <label>Any of</label>
+            <input class="field-input auto-filter-csv" data-field="textValues" data-filter-index="${idx}" value="${escapeHTML((f.textValues || []).join(', '))}" placeholder="comma-separated phrases">
+          </div>`;
+        case 'messageContains':
+        case 'messageEquals':
+        case 'messageDoesNotContain':
+        case 'messageMatchesRegex':
+        case 'reactionEmoji':
+        case 'mediaSource':
+          return `<div class="automation-editor-row">
+            <label>Text</label>
+            <input class="field-input auto-filter-text" data-filter-index="${idx}" value="${escapeHTML(f.text || '')}">
+          </div>`;
+        case 'messageIsReply':
+          return `<div class="automation-editor-row">
+            <label>Reply</label>
+            <select class="field-select auto-filter-bool" data-filter-index="${idx}">
+              <option value="true" ${f.boolValue ? 'selected' : ''}>Is a reply</option>
+              <option value="false" ${!f.boolValue ? 'selected' : ''}>Is not a reply</option>
+            </select>
+          </div>`;
+        case 'fromBot':
+          return `<div class="automation-editor-row">
+            <label>Author</label>
+            <select class="field-select auto-filter-bool" data-filter-index="${idx}">
+              <option value="true" ${f.boolValue ? 'selected' : ''}>From a bot</option>
+              <option value="false" ${!f.boolValue ? 'selected' : ''}>From a person</option>
+            </select>
+          </div>`;
+        case 'minVoiceDurationSeconds':
+          return `<div class="automation-editor-row">
+            <label>Minimum (s)</label>
+            <input type="number" class="field-input auto-filter-int" data-filter-index="${idx}" value="${f.intValue ?? 60}">
+          </div>`;
+      }
+      return '';
+    }
+
+    function bindAutomationFilterFieldEvents(ctx) {
+      const body = document.getElementById('autoFiltersBody');
+      if (!body) return;
+      const { rule } = automationEditorState;
+      body.querySelectorAll('.auto-filter-text').forEach(el => {
+        el.addEventListener('input', (e) => {
+          const i = parseInt(e.target.dataset.filterIndex, 10);
+          rule.filters[i].text = e.target.value;
+        });
+      });
+      body.querySelectorAll('.auto-filter-bool').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const i = parseInt(e.target.dataset.filterIndex, 10);
+          rule.filters[i].boolValue = e.target.value === 'true';
+        });
+      });
+      body.querySelectorAll('.auto-filter-int').forEach(el => {
+        el.addEventListener('input', (e) => {
+          const i = parseInt(e.target.dataset.filterIndex, 10);
+          const v = parseInt(e.target.value, 10);
+          rule.filters[i].intValue = Number.isFinite(v) && v > 0 ? v : null;
+        });
+      });
+      body.querySelectorAll('.auto-filter-multi').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const i = parseInt(e.target.dataset.filterIndex, 10);
+          const key = e.target.dataset.field;
+          rule.filters[i][key] = Array.from(e.target.selectedOptions).map(o => o.value);
+        });
+      });
+      body.querySelectorAll('.auto-filter-csv').forEach(el => {
+        el.addEventListener('input', (e) => {
+          const i = parseInt(e.target.dataset.filterIndex, 10);
+          const key = e.target.dataset.field;
+          rule.filters[i][key] = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+        });
+      });
+    }
+
+    function renderAutomationSteps(ctx) {
+      const body = document.getElementById('autoStepsBody');
+      if (!body) return;
+      const { rule } = automationEditorState;
+      body.innerHTML = rule.steps.map((s, i) => `
+        <div class="automation-step-card" data-step-index="${i}">
+          <div class="automation-step-header">
+            <span>Step ${i + 1}</span>
+            ${rule.steps.length > 1 ? `<button class="mini-btn auto-step-remove" type="button"><i class="lucide" data-lucide="x"></i></button>` : ''}
+          </div>
+          <div class="automation-editor-row">
+            <label>Action</label>
+            <select class="field-select auto-step-kind" data-step-index="${i}">
+              ${Object.entries(AUTO_STEP_LABELS).map(([k, label]) =>
+                `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </div>
+          ${renderAutomationStepFields(s, i, ctx)}
+        </div>
+      `).join('');
+
+      body.querySelectorAll('.auto-step-kind').forEach(el => {
+        el.addEventListener('change', (e) => {
+          const i = parseInt(e.target.dataset.stepIndex, 10);
+          rule.steps[i] = { id: rule.steps[i].id, kind: e.target.value };
+          renderAutomationEditorBody();
+        });
+      });
+      body.querySelectorAll('.auto-step-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const i = parseInt(e.target.closest('[data-step-index]').dataset.stepIndex, 10);
+          rule.steps.splice(i, 1);
+          renderAutomationEditorBody();
+        });
+      });
+      bindAutomationStepFieldEvents();
+    }
+
+    function renderAutomationStepFields(s, idx, ctx) {
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
+      const channelOpts = (pool, selectedID) =>
+        `<option value="">(any)</option>` +
+        pool.map(c => `<option value="${c.id}" ${c.id === selectedID ? 'selected' : ''}>${pool === ctx.voiceChannels ? '' : '#'}${escapeHTML(c.name)}</option>`).join('');
+      const roleOpts = (selectedID) =>
+        `<option value="">(none)</option>` +
+        ctx.roles.map(r => `<option value="${r.id}" ${r.id === selectedID ? 'selected' : ''}>@${escapeHTML(r.name)}</option>`).join('');
+
+      switch (s.kind) {
+        case 'sendMessage':
+          return [
+            row('Send to', `<select class="field-select auto-step-field" data-field="sendTarget" data-step-index="${idx}">
+              <option value="replyToTrigger" ${(s.sendTarget||'replyToTrigger')==='replyToTrigger'?'selected':''}>Reply</option>
+              <option value="sameChannel" ${s.sendTarget==='sameChannel'?'selected':''}>Same channel</option>
+              <option value="directMessage" ${s.sendTarget==='directMessage'?'selected':''}>DM the user</option>
+              <option value="specificChannel" ${s.sendTarget==='specificChannel'?'selected':''}>Specific channel</option>
+            </select>`),
+            (s.sendTarget === 'specificChannel' ? row('Channel',
+              `<select class="field-select auto-step-field" data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
+            row('Message', `<textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>`),
+            row('AI prompt', `<textarea class="field-input auto-step-field" data-field="aiPrompt" data-step-index="${idx}" rows="2" placeholder="Optional — AI writes the body if set">${escapeHTML(s.aiPrompt || '')}</textarea>`)
+          ].join('');
+        case 'modifyMember':
+          return [
+            row('Operation', `<select class="field-select auto-step-field" data-field="memberOp" data-step-index="${idx}">
+              ${Object.entries(AUTO_MEMBER_OPS).map(([k,l]) =>
+                `<option value="${k}" ${(s.memberOp||'addRole')===k?'selected':''}>${l}</option>`).join('')}
+            </select>`),
+            (s.memberOp === 'addRole' || s.memberOp === 'removeRole' || !s.memberOp)
+              ? row('Role', `<select class="field-select auto-step-field" data-field="roleId" data-step-index="${idx}">${roleOpts(s.roleId)}</select>`)
+              : '',
+            (s.memberOp === 'timeout')
+              ? row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="timeoutSeconds" data-step-index="${idx}" value="${s.timeoutSeconds ?? 60}">`)
+              : '',
+            (s.memberOp === 'kick')
+              ? row('Reason', `<input class="field-input auto-step-field" data-field="kickReason" data-step-index="${idx}" value="${escapeHTML(s.kickReason || '')}">`)
+              : '',
+            (s.memberOp === 'moveVoice')
+              ? row('Voice channel', `<select class="field-select auto-step-field" data-field="targetVoiceChannelId" data-step-index="${idx}">${channelOpts(ctx.voiceChannels, s.targetVoiceChannelId)}</select>`)
+              : ''
+          ].join('');
+        case 'modifyMessage':
+          return [
+            row('Operation', `<select class="field-select auto-step-field" data-field="messageOp" data-step-index="${idx}">
+              <option value="delete" ${(s.messageOp||'delete')==='delete'?'selected':''}>Delete the triggering message</option>
+              <option value="react" ${s.messageOp==='react'?'selected':''}>React to the message</option>
+            </select>`),
+            (s.messageOp === 'react')
+              ? row('Emoji', `<input class="field-input auto-step-field" data-field="reactEmoji" data-step-index="${idx}" value="${escapeHTML(s.reactEmoji || '')}" placeholder="👀">`)
+              : ''
+          ].join('');
+        case 'log':
+          return row('Log text', `<textarea class="field-input auto-step-field" data-field="logText" data-step-index="${idx}" rows="2">${escapeHTML(s.logText || '')}</textarea>`);
+        case 'webhook':
+          return row('URL', `<input class="field-input auto-step-field" data-field="webhookUrl" data-step-index="${idx}" value="${escapeHTML(s.webhookUrl || '')}" placeholder="https://...">`) +
+                 row('Body', `<textarea class="field-input auto-step-field" data-field="webhookContent" data-step-index="${idx}" rows="3">${escapeHTML(s.webhookContent || '')}</textarea>`);
+        case 'delay':
+          return row('Seconds', `<input type="number" class="field-input auto-step-field" data-field="delaySeconds" data-step-index="${idx}" value="${s.delaySeconds ?? 5}">`);
+      }
+      return '';
+    }
+
+    function bindAutomationStepFieldEvents() {
+      const body = document.getElementById('autoStepsBody');
+      if (!body) return;
+      const { rule } = automationEditorState;
+      body.querySelectorAll('.auto-step-field').forEach(el => {
+        const handler = (e) => {
+          const i = parseInt(e.target.dataset.stepIndex, 10);
+          const key = e.target.dataset.field;
+          let v = e.target.value;
+          if (e.target.type === 'number') {
+            const n = parseInt(v, 10);
+            v = Number.isFinite(n) ? n : null;
+          }
+          rule.steps[i][key] = v;
+          // Re-render when the kind or sendTarget changes to swap fields
+          if (key === 'sendTarget' || key === 'memberOp' || key === 'messageOp') {
+            renderAutomationEditorBody();
+          }
+        };
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler);
+      });
+    }
+
+    function sfSymbolToLucide(symbol) {
+      // Minimal map for the template icons we use.
+      const map = {
+        'hand.wave.fill': 'hand',
+        'sparkles': 'sparkles',
+        'door.left.hand.open': 'door-open',
+        'waveform': 'waveform',
+        'face.smiling': 'smile',
+        'text.bubble.fill': 'message-square',
+        'link.badge.plus': 'link',
+        'exclamationmark.bubble.fill': 'message-square-warning',
+        'speaker.slash.fill': 'volume-x',
+        'textformat.size.larger': 'type',
+        'person.crop.square.badge.camera': 'user',
+        'person.fill.xmark': 'user-x',
+        'doc.text.below.ecg': 'file-text',
+        'music.note': 'music',
+        'trash.fill': 'trash-2'
+      };
+      return map[symbol] || 'circle';
+    }
+
+
     async function loadMediaLibrary() {
       const params = new URLSearchParams();
       if (mediaFilterState.source) params.set('source', mediaFilterState.source);
@@ -4993,6 +5810,14 @@
       }
       if (currentView === 'sweep') {
         renderSweepView();
+        return;
+      }
+      if (currentView === 'automations') {
+        renderAutomationsView('automation');
+        return;
+      }
+      if (currentView === 'moderation') {
+        renderAutomationsView('moderation');
         return;
       }
       if (currentView === 'wikibridge') {
@@ -7553,6 +8378,8 @@
       const analytics = document.getElementById('analyticsView');
       const patchy = document.getElementById('patchyView');
       const sweep = document.getElementById('sweepView');
+      const automations = document.getElementById('automationsView');
+      const moderation = document.getElementById('moderationView');
       const wikibridge = document.getElementById('wikibridgeView');
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
@@ -7568,7 +8395,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, sweep, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, patchy, sweep, automations, moderation, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -7630,6 +8457,22 @@
         sweep.classList.remove('hidden');
         renderSweepView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Sweep';
+        setMessage('', '');
+      } else if (view === 'automations') {
+        automations?.classList.remove('hidden');
+        (async () => {
+          try { await loadAutomations('automation'); } catch (e) { console.error(e); }
+          renderAutomationsView('automation');
+        })();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Automations';
+        setMessage('', '');
+      } else if (view === 'moderation') {
+        moderation?.classList.remove('hidden');
+        (async () => {
+          try { await loadAutomations('moderation'); } catch (e) { console.error(e); }
+          renderAutomationsView('moderation');
+        })();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Moderation';
         setMessage('', '');
       } else if (view === 'wikibridge') {
         overview.classList.add('hidden');
@@ -7818,7 +8661,7 @@
       showDashboard();
       await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'analytics', 'commands', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
+      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
       
       // Load auth options in background for the "logout" logic/labels
@@ -7831,6 +8674,13 @@
 
     document.getElementById('mobileMenu').addEventListener('click', () => {
       document.getElementById('sidebar').classList.toggle('open');
+    });
+
+    document.querySelectorAll('.automation-new-rule').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.dataset.category || 'automation';
+        openAutomationEditor(autoBlankRule(cat), cat, true);
+      });
     });
 
     document.getElementById('sidebarUserSettings')?.addEventListener('click', () => {

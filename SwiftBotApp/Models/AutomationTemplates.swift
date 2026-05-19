@@ -32,6 +32,66 @@ struct AutomationTemplate: Identifiable, Hashable {
     static let automationCatalog: [AutomationTemplate] = [
 
         AutomationTemplate(
+            id: "voice-join-announce",
+            title: "Voice join announcement",
+            subtitle: "When someone joins a voice channel, post a connection notice in a text channel.",
+            symbol: "speaker.wave.2.fill",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "Voice join announcement",
+                trigger: Automations.Trigger(kind: .userJoinedVoice),
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .specificChannel,
+                        content: "🔊 {userMention} connected to {channelName}"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "voice-leave-announce",
+            title: "Voice leave announcement",
+            subtitle: "When someone leaves voice, post how long they were in.",
+            symbol: "speaker.slash.fill",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "Voice leave announcement",
+                trigger: Automations.Trigger(kind: .userLeftVoice),
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .specificChannel,
+                        content: "🔇 {userMention} disconnected from {channelName} (Online For {duration})"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "trigger-message",
+            title: "Trigger message",
+            subtitle: "When someone posts a keyword, reply with a canned response.",
+            symbol: "text.bubble.fill",
+            tint: .blue,
+            rule: Automations.Rule(
+                name: "Trigger message",
+                trigger: Automations.Trigger(kind: .messageCreated),
+                filters: [
+                    Automations.Filter(kind: .messageContains, text: "hello")
+                ],
+                steps: [
+                    Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .replyToTrigger,
+                        content: "Hey {username}! 👋"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
             id: "welcome-dm",
             title: "Welcome DM",
             subtitle: "DM a friendly hello to new members.",
@@ -70,42 +130,6 @@ struct AutomationTemplate: Identifiable, Hashable {
         ),
 
         AutomationTemplate(
-            id: "leave-log",
-            title: "Goodbye log",
-            subtitle: "Write a log entry when a member leaves.",
-            symbol: "door.left.hand.open",
-            tint: .orange,
-            rule: Automations.Rule(
-                name: "Member leave log",
-                trigger: Automations.Trigger(kind: .memberLeft),
-                steps: [
-                    Automations.Step(
-                        kind: .log,
-                        logText: "{username} left {guildName}"
-                    )
-                ]
-            )
-        ),
-
-        AutomationTemplate(
-            id: "voice-session-log",
-            title: "Voice session log",
-            subtitle: "Post a log when someone leaves a voice channel, showing how long they were in.",
-            symbol: "waveform",
-            tint: .indigo,
-            rule: Automations.Rule(
-                name: "Voice session log",
-                trigger: Automations.Trigger(kind: .userLeftVoice),
-                steps: [
-                    Automations.Step(
-                        kind: .log,
-                        logText: "{username} left voice after {duration}"
-                    )
-                ]
-            )
-        ),
-
-        AutomationTemplate(
             id: "keyword-reaction",
             title: "Keyword reaction",
             subtitle: "React with an emoji whenever a message contains a keyword.",
@@ -122,28 +146,6 @@ struct AutomationTemplate: Identifiable, Hashable {
                         kind: .modifyMessage,
                         messageOp: .react,
                         reactEmoji: "👀"
-                    )
-                ]
-            )
-        ),
-
-        AutomationTemplate(
-            id: "keyword-reply",
-            title: "Keyword reply",
-            subtitle: "Reply automatically when someone mentions a keyword.",
-            symbol: "text.bubble.fill",
-            tint: .blue,
-            rule: Automations.Rule(
-                name: "Keyword reply",
-                trigger: Automations.Trigger(kind: .messageCreated),
-                filters: [
-                    Automations.Filter(kind: .messageContains, text: "hello")
-                ],
-                steps: [
-                    Automations.Step(
-                        kind: .sendMessage,
-                        sendTarget: .replyToTrigger,
-                        content: "Hey {username}! 👋"
                     )
                 ]
             )
@@ -193,8 +195,51 @@ struct AutomationTemplate: Identifiable, Hashable {
     ]
 
     // MARK: - Moderation catalog
+    //
+    // Includes both block-bad-stuff rules and audit/log rules. Logging
+    // member joins/leaves and voice sessions is server-management work,
+    // not "do something cool", so it lives here.
 
     static let moderationCatalog: [AutomationTemplate] = [
+
+        AutomationTemplate(
+            id: "mod-leave-log",
+            title: "Member leave log",
+            subtitle: "Write a log entry when a member leaves the server.",
+            symbol: "door.left.hand.open",
+            tint: .orange,
+            rule: Automations.Rule(
+                name: "Member leave log",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .memberLeft),
+                steps: [
+                    Automations.Step(
+                        kind: .log,
+                        logText: "{username} left {guildName}"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-voice-log",
+            title: "Voice session log",
+            subtitle: "Log when someone leaves a voice channel and how long they were in.",
+            symbol: "waveform",
+            tint: .indigo,
+            rule: Automations.Rule(
+                name: "Voice session log",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .userLeftVoice),
+                steps: [
+                    Automations.Step(
+                        kind: .log,
+                        logText: "{username} left voice after {duration}"
+                    )
+                ]
+            )
+        ),
+
 
         AutomationTemplate(
             id: "mod-link-cleanup",

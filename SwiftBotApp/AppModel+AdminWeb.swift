@@ -1105,9 +1105,61 @@ extension AppModel {
         return true
     }
 
-    // createAdminWebActionRule / upsertAdminWebActionRule / deleteAdminWebActionRule
-    // removed — the admin web no longer exposes a rule editor. Authoring lives
-    // in the macOS Automations / Moderation tabs against AutomationStore.
+    // MARK: - Admin Web: Automations snapshot
+
+    func adminWebAutomationsSnapshot(category: Automations.Category) -> AdminWebAutomationsPayload {
+        // Make sure the store has been loaded at least once.
+        if !automationStore.isLoaded { automationStore.load() }
+
+        let rules = automationStore.rules.filter { $0.category == category }
+        let enabledCount = rules.filter(\.enabled).count
+        let triggerKinds = Set(rules.map(\.trigger.kind)).count
+
+        // Server context — same shape automationServerContext() returns,
+        // converted into the wire format.
+        let ctx = automationServerContext()
+        let webCtx = AdminWebAutomationServerContext(
+            guildName: ctx.guildName,
+            guildId: ctx.guildId,
+            textChannels: ctx.textChannels.map { AdminWebSimpleOption(id: $0.id, name: $0.name) },
+            voiceChannels: ctx.voiceChannels.map { AdminWebSimpleOption(id: $0.id, name: $0.name) },
+            roles: ctx.roles.map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+        )
+
+        let templates = AutomationTemplate.catalog(for: category).map { tpl in
+            AdminWebAutomationTemplate(
+                id: tpl.id,
+                title: tpl.title,
+                subtitle: tpl.subtitle,
+                symbol: tpl.symbol,
+                tint: Self.tintRawValue(tpl.tint),
+                rule: tpl.rule
+            )
+        }
+
+        return AdminWebAutomationsPayload(
+            category: category.rawValue,
+            rules: rules,
+            templates: templates,
+            serverContext: webCtx,
+            metrics: AdminWebAutomationMetrics(
+                total: rules.count,
+                enabled: enabledCount,
+                triggerKinds: triggerKinds
+            )
+        )
+    }
+
+    private static func tintRawValue(_ tint: AutomationTemplate.TemplateTint) -> String {
+        switch tint {
+        case .blue:    return "blue"
+        case .green:   return "green"
+        case .purple:  return "purple"
+        case .orange:  return "orange"
+        case .red:     return "red"
+        case .indigo:  return "indigo"
+        }
+    }
 
     func updatePrefixFromAdmin(_ prefix: String) -> Bool {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1303,6 +1355,39 @@ extension AppModel {
             updateCommandEnabled: { [weak self] name, surface, enabled in
                 guard let model = self else { return false }
                 return await MainActor.run { model.updateAdminWebCommandEnabled(name: name, surface: surface, enabled: enabled) }
+            },
+            automationsProvider: { [weak self] category in
+                guard let model = self else {
+                    return AdminWebAutomationsPayload(
+                        category: category.rawValue,
+                        rules: [],
+                        templates: [],
+                        serverContext: AdminWebAutomationServerContext(guildName: nil, guildId: nil, textChannels: [], voiceChannels: [], roles: []),
+                        metrics: AdminWebAutomationMetrics(total: 0, enabled: 0, triggerKinds: 0)
+                    )
+                }
+                return await MainActor.run { model.adminWebAutomationsSnapshot(category: category) }
+            },
+            upsertAutomation: { [weak self] rule in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    model.automationStore.upsert(rule)
+                    return true
+                }
+            },
+            deleteAutomation: { [weak self] id in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    model.automationStore.remove(id: id)
+                    return true
+                }
+            },
+            toggleAutomation: { [weak self] id in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    model.automationStore.toggleEnabled(id: id)
+                    return true
+                }
             },
             patchyProvider: { [weak self] in
                 guard let model = self else {

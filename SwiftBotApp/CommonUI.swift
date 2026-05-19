@@ -1,6 +1,17 @@
 import SwiftUI
 import Security
 
+struct DashboardMetricDescriptor: Identifiable {
+    let id: String
+    let title: String
+    let value: String
+    let subtitle: String
+    let symbol: String
+    var detail: String = ""
+    let color: Color
+    var appleIntelligenceGlowEnabled = false
+}
+
 struct SwiftBotGlassBackground: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -94,6 +105,160 @@ extension View {
                     )
                     .allowsHitTesting(false)
             )
+    }
+}
+
+struct DashboardMetricCard: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let symbol: String
+    var detail: String = ""
+    let color: Color
+    var appleIntelligenceGlowEnabled = false
+    @State private var isHovering = false
+    @State private var glowOpacity = 0.0
+    @State private var playPulse = false
+
+    private let cornerRadius: CGFloat = 20
+
+    init(
+        title: String,
+        value: String,
+        subtitle: String,
+        symbol: String,
+        detail: String = "",
+        color: Color,
+        appleIntelligenceGlowEnabled: Bool = false
+    ) {
+        self.title = title
+        self.value = value
+        self.subtitle = subtitle
+        self.symbol = symbol
+        self.detail = detail
+        self.color = color
+        self.appleIntelligenceGlowEnabled = appleIntelligenceGlowEnabled
+    }
+
+    init(metric: DashboardMetricDescriptor) {
+        self.init(
+            title: metric.title,
+            value: metric.value,
+            subtitle: metric.subtitle,
+            symbol: metric.symbol,
+            detail: metric.detail,
+            color: metric.color,
+            appleIntelligenceGlowEnabled: metric.appleIntelligenceGlowEnabled
+        )
+    }
+
+    private var isGlowActive: Bool {
+        appleIntelligenceGlowEnabled && isHovering
+    }
+
+    private var shouldRenderGlow: Bool {
+        isGlowActive || glowOpacity > 0.001
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                    .frame(width: 20, height: 20)
+                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Text(value)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: 112, alignment: .leading)
+        .padding(14)
+        .glassCard(
+            cornerRadius: cornerRadius,
+            tint: .primary.opacity(isHovering ? 0.03 : 0.01),
+            stroke: .primary.opacity(isHovering ? 0.12 : 0.06)
+        )
+        .scaleEffect(isHovering ? 1.01 : 1)
+        .shadow(color: .black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 10 : 5, y: isHovering ? 5 : 2)
+        .overlay {
+            if shouldRenderGlow || playPulse {
+                ZStack {
+                    if shouldRenderGlow {
+                        IntelligenceGlowBorder(cornerRadius: cornerRadius, isAnimating: isGlowActive)
+                            .opacity(glowOpacity)
+                    }
+
+                    if playPulse {
+                        IntelligenceGlowPulse(cornerRadius: cornerRadius) {
+                            playPulse = false
+                        }
+                    }
+                }
+            }
+        }
+        .onHover { hovering in
+            let wasHovering = isHovering
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isHovering = hovering
+            }
+
+            if hovering && appleIntelligenceGlowEnabled && !wasHovering {
+                playPulse = true
+            } else if !hovering {
+                playPulse = false
+            }
+
+            updateGlowState()
+        }
+        .onAppear {
+            updateGlowState(animated: false)
+        }
+        .onChange(of: appleIntelligenceGlowEnabled) { _, enabled in
+            if !enabled {
+                playPulse = false
+            }
+            updateGlowState()
+        }
+        .onDisappear {
+            playPulse = false
+        }
+    }
+
+    private func updateGlowState(animated: Bool = true) {
+        let targetOpacity = isGlowActive ? 1.0 : 0.0
+
+        if animated {
+            withAnimation(.easeInOut(duration: isGlowActive ? 0.18 : 0.32)) {
+                glowOpacity = targetOpacity
+            }
+        } else {
+            glowOpacity = targetOpacity
+        }
     }
 }
 

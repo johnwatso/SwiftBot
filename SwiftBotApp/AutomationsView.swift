@@ -45,7 +45,7 @@ struct AutomationsView: View {
                     pluralNoun: "automations",
                     metricTitle: "Automations",
                     describePrompt: "Describe a new automation",
-                    placeholderExample: "e.g. React with 👀 to messages mentioning eyes",
+                    placeholderExample: "e.g. When someone says they're tired, react with 😴",
                     listSection: "Rules",
                     emptyHint: "No automations yet. Describe one above, or click Add rule to build manually.",
                     addButton: "Add rule",
@@ -120,43 +120,9 @@ struct AutomationsView: View {
 
     private var metricTileRow: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            let rules = rulesInCategory
-            let enabledCount = rules.filter(\.enabled).count
-            let triggerKindCount = Set(rules.map(\.trigger.kind)).count
-            let aiAvailable = app.automationDrafter.isAvailable
-
-            DashboardMetricCard(
-                title: copy.metricTitle,
-                value: "\(rules.count)",
-                subtitle: rules.isEmpty ? "None yet" : "\(rules.count == 1 ? "1 rule" : "\(rules.count) rules")",
-                symbol: copy.headerIcon,
-                color: category == .moderation ? .red : .accentColor
-            )
-            DashboardMetricCard(
-                title: "Enabled",
-                value: "\(enabledCount)",
-                subtitle: rules.isEmpty
-                    ? "—"
-                    : "\(rules.count - enabledCount) disabled",
-                symbol: "checkmark.circle.fill",
-                color: enabledCount > 0 ? .green : .gray
-            )
-            DashboardMetricCard(
-                title: "Trigger Types",
-                value: "\(triggerKindCount)",
-                subtitle: triggerKindCount == 0 ? "—" : "across all rules",
-                symbol: "bolt.fill",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Apple Intelligence",
-                value: aiAvailable ? "Ready" : "Off",
-                subtitle: aiAvailable
-                    ? "On-device drafter"
-                    : (app.automationDrafter.unavailabilityReason ?? "Unavailable"),
-                symbol: aiAvailable ? "sparkles" : "exclamationmark.triangle.fill",
-                color: aiAvailable ? .purple : .orange
-            )
+            ForEach(AutomationDashboardSummary.metrics(app: app, category: category)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -498,5 +464,48 @@ enum AutomationLabels {
         case .kick:       return "Kick"
         case .moveVoice:  return "Move voice"
         }
+    }
+}
+
+enum AutomationDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel, category: Automations.Category) -> [DashboardMetricDescriptor] {
+        let rules = app.automationStore.rules.filter { $0.category == category }
+        let enabledCount = rules.filter(\.enabled).count
+        let triggerKindCount = Set(rules.map(\.trigger.kind)).count
+        let isModeration = category == .moderation
+        let title = isModeration ? "Moderation" : "Automations"
+        let symbol = isModeration ? "shield.lefthalf.filled" : "bolt.badge.automatic.fill"
+        let idPrefix = isModeration ? "moderation" : "actions"
+
+        var metrics = [
+            DashboardMetricDescriptor(
+                id: idPrefix,
+                title: title,
+                value: "\(rules.count)",
+                subtitle: rules.isEmpty ? "None yet" : "\(rules.count == 1 ? "1 rule" : "\(rules.count) rules")",
+                symbol: symbol,
+                color: isModeration ? .red : .accentColor
+            ),
+            DashboardMetricDescriptor(
+                id: "\(idPrefix)-enabled",
+                title: "Enabled",
+                value: "\(enabledCount)",
+                subtitle: rules.isEmpty ? "-" : "\(rules.count - enabledCount) disabled",
+                symbol: "checkmark.circle.fill",
+                color: enabledCount > 0 ? .green : .gray
+            ),
+            DashboardMetricDescriptor(
+                id: "\(idPrefix)-triggers",
+                title: "Trigger Types",
+                value: "\(triggerKindCount)",
+                subtitle: triggerKindCount == 0 ? "-" : "across all rules",
+                symbol: "bolt.fill",
+                color: .blue
+            )
+        ]
+
+        metrics.append(AIBotsDashboardSummary.appleIntelligenceMetric(app: app, id: "\(idPrefix)-apple-intelligence"))
+        return metrics
     }
 }

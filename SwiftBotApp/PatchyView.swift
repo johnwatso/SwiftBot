@@ -96,34 +96,9 @@ struct PatchyView: View {
 
     private var statusRail: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            DashboardMetricCard(
-                title: "Sources",
-                value: "\(monitoredSourceCount)",
-                subtitle: sourceBreakdownSubtitle,
-                symbol: "square.stack.3d.up.fill",
-                color: .orange
-            )
-            DashboardMetricCard(
-                title: "Categories",
-                value: "\(categoryModules.count)",
-                subtitle: categoryBreakdownSubtitle,
-                symbol: "rectangle.3.group.fill",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Active",
-                value: "\(activeMonitoredSourceCount)",
-                subtitle: "Monitored sources",
-                symbol: "waveform.path.ecg",
-                color: .mint
-            )
-            DashboardMetricCard(
-                title: "Failed",
-                value: "\(failedMonitoredSourceCount)",
-                subtitle: lastCycleSubtitle,
-                symbol: "exclamationmark.triangle.fill",
-                color: failedMonitoredSourceCount == 0 ? .gray : .red
-            )
+            ForEach(PatchyDashboardSummary.metrics(app: app)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -599,6 +574,115 @@ private enum PatchyMonitoringCategory: CaseIterable {
         case .gamingPlatforms: return 2
         case .softwareReleases: return 3
         }
+    }
+}
+
+enum PatchyDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        let targets = app.settings.patchy.sourceTargets
+        let monitoredSourceCount = Set(targets.map(sourceIdentityKey)).count
+        let activeMonitoredSourceCount = Set(targets.filter(\.isEnabled).map(sourceIdentityKey)).count
+        let failedMonitoredSourceCount = Set(targets.filter { isFailureStatus($0.lastStatus) }.map(sourceIdentityKey)).count
+        let categories = Dictionary(grouping: targets) { category(for: $0.source) }
+        let categoryCount = categories.keys.count
+        let enabledCategoryCount = categories.values.filter { moduleTargets in
+            moduleTargets.contains(where: \.isEnabled)
+        }.count
+
+        return [
+            DashboardMetricDescriptor(
+                id: "patchy",
+                title: "Patchy",
+                value: app.settings.patchy.monitoringEnabled ? "Monitoring On" : "Monitoring Off",
+                subtitle: "\(activeMonitoredSourceCount)/\(monitoredSourceCount) sources",
+                symbol: "square.and.arrow.down.badge.checkmark",
+                detail: lastCycleSubtitle(app: app, failedCount: failedMonitoredSourceCount),
+                color: .purple
+            ),
+            DashboardMetricDescriptor(
+                id: "patchy-sources",
+                title: "Sources",
+                value: "\(monitoredSourceCount)",
+                subtitle: sourceBreakdownSubtitle(targets: targets),
+                symbol: "square.stack.3d.up.fill",
+                color: .orange
+            ),
+            DashboardMetricDescriptor(
+                id: "patchy-categories",
+                title: "Categories",
+                value: "\(categoryCount)",
+                subtitle: categoryCount == 0 ? "No groups" : "\(enabledCategoryCount) active · \(categoryCount) configured",
+                symbol: "rectangle.3.group.fill",
+                color: .blue
+            ),
+            DashboardMetricDescriptor(
+                id: "patchy-failed",
+                title: "Failed",
+                value: "\(failedMonitoredSourceCount)",
+                subtitle: lastCycleSubtitle(app: app, failedCount: failedMonitoredSourceCount),
+                symbol: "exclamationmark.triangle.fill",
+                color: failedMonitoredSourceCount == 0 ? .gray : .red
+            )
+        ]
+    }
+
+    private static func sourceBreakdownSubtitle(targets: [PatchySourceTarget]) -> String {
+        let counts = Dictionary(grouping: targets) { category(for: $0.source) }
+            .mapValues { Set($0.map(sourceIdentityKey)).count }
+        let parts = PatchyMonitoringCategory.allCases.compactMap { category -> String? in
+            guard let count = counts[category], count > 0 else { return nil }
+            return "\(category.shortTitle) \(count)"
+        }
+        return parts.isEmpty ? "No sources" : parts.joined(separator: "  ")
+    }
+
+    @MainActor
+    private static func lastCycleSubtitle(app: AppModel, failedCount: Int) -> String {
+        if app.patchyIsCycleRunning {
+            return "Running now"
+        }
+        guard let last = app.patchyLastCycleAt else {
+            return failedCount == 0 ? "No failed sources" : "No cycle yet"
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return "Last cycle \(formatter.localizedString(for: last, relativeTo: Date()))"
+    }
+
+    private static func category(for source: PatchySourceKind) -> PatchyMonitoringCategory {
+        switch source {
+        case .nvidia, .amd, .intel:
+            return .drivers
+        case .github:
+            return .github
+        case .steam:
+            return .gamingPlatforms
+        }
+    }
+
+    private static func sourceIdentityKey(for target: PatchySourceTarget) -> String {
+        switch target.source {
+        case .github:
+            let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let branch = target.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return "github:\(repo):\(target.githubWatchAllCommits):\(target.githubBranchMode.rawValue):\(branch)"
+        case .steam:
+            return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
+        default:
+            return target.source.rawValue
+        }
+    }
+
+    private static func isFailureStatus(_ status: String) -> Bool {
+        if status == "Ready" || status == "Never checked" { return false }
+        if status.contains("succeeded") || status.contains("successfully") || status.contains("sent") || status.contains("Sent") { return false }
+        if status.contains("Unchanged") || status.contains("unchanged") { return false }
+        return status.contains("failed")
+            || status.contains("error")
+            || status.contains("not found")
+            || status.contains("cannot")
+            || status.contains("permissions")
     }
 }
 

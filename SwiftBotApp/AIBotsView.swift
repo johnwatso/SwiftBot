@@ -137,35 +137,9 @@ struct AIBotsView: View {
 
     private var metricTileRow: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-            DashboardMetricCard(
-                title: "Primary",
-                value: providerShortName(preferredAIProviderBinding.wrappedValue),
-                subtitle: preferredProviderSubtitle,
-                symbol: "sparkles",
-                color: .accentColor,
-                appleIntelligenceGlowEnabled: false
-            )
-            DashboardMetricCard(
-                title: "Engines",
-                value: "\(enabledPrimaryProviders.count)",
-                subtitle: "\(enabledOnlineEngineCount) online",
-                symbol: "cpu",
-                color: .blue
-            )
-            DashboardMetricCard(
-                title: "Replies",
-                value: app.settings.localAIDMReplyEnabled ? "On" : "Off",
-                subtitle: app.settings.behavior.useAIInGuildChannels ? "DMs and guild channels" : "Direct messages only",
-                symbol: "bubble.left.and.text.bubble.right.fill",
-                color: app.settings.localAIDMReplyEnabled ? .green : .gray
-            )
-            DashboardMetricCard(
-                title: "Memory",
-                value: "\(app.memoryViewModel.totalMessages)",
-                subtitle: "\(app.memoryViewModel.summaries.count) conversations",
-                symbol: "brain.head.profile",
-                color: .indigo
-            )
+            ForEach(AIBotsDashboardSummary.metrics(app: app)) { metric in
+                DashboardMetricCard(metric: metric)
+            }
         }
     }
 
@@ -532,6 +506,128 @@ struct AIBotsView: View {
                 .foregroundStyle(.secondary)
             Text(title)
                 .font(.subheadline.weight(.semibold))
+        }
+    }
+}
+
+enum AIBotsDashboardSummary {
+    @MainActor
+    static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
+        [
+            primaryMetric(app: app, id: "aiBots"),
+            DashboardMetricDescriptor(
+                id: "ai-engines",
+                title: "Engines",
+                value: "\(enabledPrimaryProviders(app: app).count)",
+                subtitle: "\(enabledOnlineEngineCount(app: app)) online",
+                symbol: "cpu",
+                color: .blue
+            ),
+            DashboardMetricDescriptor(
+                id: "ai-replies",
+                title: "Replies",
+                value: app.settings.localAIDMReplyEnabled ? "On" : "Off",
+                subtitle: app.settings.behavior.useAIInGuildChannels ? "DMs and guild channels" : "Direct messages only",
+                symbol: "bubble.left.and.text.bubble.right.fill",
+                color: app.settings.localAIDMReplyEnabled ? .green : .gray
+            ),
+            DashboardMetricDescriptor(
+                id: "ai-memory",
+                title: "Memory",
+                value: "\(app.memoryViewModel.totalMessages)",
+                subtitle: "\(app.memoryViewModel.summaries.count) conversations",
+                symbol: "brain.head.profile",
+                color: .indigo
+            )
+        ]
+    }
+
+    @MainActor
+    static func primaryMetric(app: AppModel, id: String = "aiBots") -> DashboardMetricDescriptor {
+        let provider = resolvedPreferredProvider(app: app)
+        let isOnline = isProviderOnline(provider, app: app)
+        let status = statusLabel(isEnabled: enabledPrimaryProviders(app: app).contains(provider), isOnline: isOnline)
+        return DashboardMetricDescriptor(
+            id: id,
+            title: "AI Bots",
+            value: providerShortName(provider),
+            subtitle: status,
+            symbol: "sparkles",
+            detail: "Guild AI \(app.settings.behavior.useAIInGuildChannels ? "On" : "Off")",
+            color: .purple,
+            appleIntelligenceGlowEnabled: provider == .apple
+        )
+    }
+
+    @MainActor
+    static func appleIntelligenceMetric(app: AppModel, id: String = "apple-intelligence") -> DashboardMetricDescriptor {
+        DashboardMetricDescriptor(
+            id: id,
+            title: "Apple Intelligence",
+            value: app.appleIntelligenceOnline ? "Online" : "Offline",
+            subtitle: app.settings.preferredAIProvider == .apple ? "Primary engine" : "Available engine",
+            symbol: "sparkles",
+            detail: "System-native AI",
+            color: app.appleIntelligenceOnline ? .green : .secondary,
+            appleIntelligenceGlowEnabled: true
+        )
+    }
+
+    @MainActor
+    private static func enabledOnlineEngineCount(app: AppModel) -> Int {
+        [
+            app.appleIntelligenceOnline,
+            app.settings.ollamaEnabled && app.ollamaOnline,
+            app.settings.openAIEnabled && app.openAIOnline
+        ].filter { $0 }.count
+    }
+
+    @MainActor
+    private static func enabledPrimaryProviders(app: AppModel) -> [AIProviderPreference] {
+        var providers: [AIProviderPreference] = [.apple]
+        if app.settings.ollamaEnabled {
+            providers.append(.ollama)
+        }
+        if app.settings.openAIEnabled {
+            providers.append(.openAI)
+        }
+        return providers
+    }
+
+    @MainActor
+    private static func resolvedPreferredProvider(app: AppModel) -> AIProviderPreference {
+        let available = enabledPrimaryProviders(app: app)
+        if available.contains(app.settings.preferredAIProvider) {
+            return app.settings.preferredAIProvider
+        }
+        return available.first ?? .apple
+    }
+
+    @MainActor
+    private static func isProviderOnline(_ provider: AIProviderPreference, app: AppModel) -> Bool {
+        switch provider {
+        case .apple:
+            return app.appleIntelligenceOnline
+        case .ollama:
+            return app.ollamaOnline
+        case .openAI:
+            return app.openAIOnline
+        }
+    }
+
+    private static func statusLabel(isEnabled: Bool, isOnline: Bool) -> String {
+        guard isEnabled else { return "Inactive" }
+        return isOnline ? "Online" : "Offline"
+    }
+
+    private static func providerShortName(_ provider: AIProviderPreference) -> String {
+        switch provider {
+        case .apple:
+            return "Apple"
+        case .ollama:
+            return "Ollama"
+        case .openAI:
+            return "OpenAI"
         }
     }
 }
