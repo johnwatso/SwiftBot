@@ -276,12 +276,11 @@ struct AutomationsView: View {
                 Text(tpl.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(3, reservesSpace: true)
                     .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(12)
-            .frame(width: 200, alignment: .leading)
+            .frame(width: 210, height: 150, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.primary.opacity(0.04))

@@ -939,36 +939,6 @@ extension AppModel {
         return true
     }
 
-    func adminWebActionsSnapshot() -> AdminWebActionsPayload {
-        let serverIDs = connectedServers.keys.sorted {
-            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
-        }
-        let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: connectedServers[$0] ?? $0) }
-
-        let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
-            let channels = (availableTextChannelsByServer[serverID] ?? [])
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
-            return (serverID, channels)
-        })
-        let voiceChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
-            let channels = (availableVoiceChannelsByServer[serverID] ?? [])
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
-            return (serverID, channels)
-        })
-
-        return AdminWebActionsPayload(
-            rules: ruleStore.rules,
-            servers: servers,
-            textChannelsByServer: textChannelsByServer,
-            voiceChannelsByServer: voiceChannelsByServer,
-            builderMetadata: AdminWebBuilderMetadata.generateFromNativeModels(),
-            conditionTypes: ConditionType.allCases.map(\.rawValue),
-            actionTypes: ActionType.allCases.map(\.rawValue)
-        )
-    }
-
     func adminWebPatchySnapshot() -> AdminWebPatchyPayload {
         let serverIDs = connectedServers.keys.sorted {
             (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
@@ -1135,38 +1105,9 @@ extension AppModel {
         return true
     }
 
-    func createAdminWebActionRule() -> Rule? {
-        let serverIDs = connectedServers.keys.sorted {
-            (connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(connectedServers[$1] ?? $1) == .orderedAscending
-        }
-        let serverID = serverIDs.first ?? ""
-        let textChannelID = availableTextChannelsByServer[serverID]?.first?.id ?? ""
-        ruleStore.addNewRule(serverId: serverID, channelId: textChannelID)
-        return ruleStore.rules.last
-    }
-
-    func upsertAdminWebActionRule(_ rule: Rule) -> Bool {
-        if let index = ruleStore.rules.firstIndex(where: { $0.id == rule.id }) {
-            ruleStore.rules[index] = rule
-        } else {
-            ruleStore.rules.append(rule)
-        }
-        ruleStore.scheduleAutoSave()
-        return true
-    }
-
-    func deleteAdminWebActionRule(_ ruleID: UUID) -> Bool {
-        let before = ruleStore.rules.count
-        ruleStore.rules.removeAll { $0.id == ruleID }
-        if before == ruleStore.rules.count {
-            return false
-        }
-        if ruleStore.selectedRuleID == ruleID {
-            ruleStore.selectedRuleID = ruleStore.rules.first?.id
-        }
-        ruleStore.scheduleAutoSave()
-        return true
-    }
+    // createAdminWebActionRule / upsertAdminWebActionRule / deleteAdminWebActionRule
+    // removed — the admin web no longer exposes a rule editor. Authoring lives
+    // in the macOS Automations / Moderation tabs against AutomationStore.
 
     func updatePrefixFromAdmin(_ prefix: String) -> Bool {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1273,9 +1214,9 @@ extension AppModel {
                 }
                 return await MainActor.run { model.remoteRulesSnapshot() }
             },
-            updateRemoteRule: { [weak self] rule in
-                guard let model = self else { return false }
-                return await MainActor.run { model.upsertAdminWebActionRule(rule) }
+            updateRemoteRule: { _ in
+                // Remote rule sync is offline pending a port to AutomationStore.
+                return false
             },
             remoteEventsProvider: { [weak self] in
                 guard let model = self else {
@@ -1362,32 +1303,6 @@ extension AppModel {
             updateCommandEnabled: { [weak self] name, surface, enabled in
                 guard let model = self else { return false }
                 return await MainActor.run { model.updateAdminWebCommandEnabled(name: name, surface: surface, enabled: enabled) }
-            },
-            actionsProvider: { [weak self] in
-                guard let model = self else {
-                    return AdminWebActionsPayload(
-                        rules: [],
-                        servers: [],
-                        textChannelsByServer: [:],
-                        voiceChannelsByServer: [:],
-                        builderMetadata: AdminWebBuilderMetadata.generateFromNativeModels(),
-                        conditionTypes: ConditionType.allCases.map(\.rawValue),
-                        actionTypes: ActionType.allCases.map(\.rawValue)
-                    )
-                }
-                return await MainActor.run { model.adminWebActionsSnapshot() }
-            },
-            createActionRule: { [weak self] in
-                guard let model = self else { return nil }
-                return await MainActor.run { model.createAdminWebActionRule() }
-            },
-            updateActionRule: { [weak self] rule in
-                guard let model = self else { return false }
-                return await MainActor.run { model.upsertAdminWebActionRule(rule) }
-            },
-            deleteActionRule: { [weak self] ruleID in
-                guard let model = self else { return false }
-                return await MainActor.run { model.deleteAdminWebActionRule(ruleID) }
             },
             patchyProvider: { [weak self] in
                 guard let model = self else {
