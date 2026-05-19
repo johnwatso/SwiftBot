@@ -335,6 +335,7 @@ struct BotSettings: Codable, Hashable {
     var cachedBotIdentity = CachedBotIdentity()
     var help = HelpSettings()
     var adminWebUI = AdminWebUISettings()
+    var voice = VoiceSettings()
 
     var swiftMeshSettings: SwiftMeshSettings {
         get {
@@ -423,6 +424,7 @@ struct BotSettings: Codable, Hashable {
         case cachedBotIdentity
         case help
         case adminWebUI
+        case voice
     }
 
     init() {}
@@ -495,6 +497,7 @@ struct BotSettings: Codable, Hashable {
         cachedBotIdentity = try container.decodeIfPresent(CachedBotIdentity.self, forKey: .cachedBotIdentity) ?? CachedBotIdentity()
         help = try container.decodeIfPresent(HelpSettings.self, forKey: .help) ?? HelpSettings()
         adminWebUI = try container.decodeIfPresent(AdminWebUISettings.self, forKey: .adminWebUI) ?? AdminWebUISettings()
+        voice = try container.decodeIfPresent(VoiceSettings.self, forKey: .voice) ?? VoiceSettings()
         remoteMode.normalize()
         remoteAccessToken = remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if remoteAccessToken.isEmpty {
@@ -566,6 +569,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(cachedBotIdentity, forKey: .cachedBotIdentity)
         try container.encode(help, forKey: .help)
         try container.encode(adminWebUI, forKey: .adminWebUI)
+        try container.encode(voice, forKey: .voice)
     }
 }
 

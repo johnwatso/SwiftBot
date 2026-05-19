@@ -1,5 +1,5 @@
 {
-  "originHash" : "b3f0c851e7e9632f41070e64717ded257b0108a713e1a0458838001e51493da4",
+  "originHash" : "bb8f99f61d35a3ba190dd96408627a2c19eae6632a448bea439a02dab24bd73a",
   "pins" : [
     {
       "identity" : "sparkle",
@@ -71,6 +71,15 @@
       "state" : {
         "revision" : "173cc69a058623525a58ae6710e2f5727c663793",
         "version" : "2.36.0"
+      }
+    },
+    {
+      "identity" : "swift-opus",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/alta/swift-opus.git",
+      "state" : {
+        "revision" : "5f0164b8915fb9001265c54413aa0f0efbd3df06",
+        "version" : "0.0.2"
       }
     },
     {

@@ -31,6 +31,9 @@ packages:
   SwiftSoup:
     url: https://github.com/scinfu/SwiftSoup.git
     majorVersion: 2.9.6
+  swift-opus:
+    url: https://github.com/alta/swift-opus.git
+    exactVersion: 0.0.2
 
 targets:
   SwiftBot:
@@ -79,6 +82,8 @@ targets:
         product: NIOSSL
       - package: SwiftSoup
         product: SwiftSoup
+      - package: swift-opus
+        product: Opus
     settings:
       base:
         PRODUCT_NAME: SwiftBot

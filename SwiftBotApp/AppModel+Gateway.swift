@@ -26,6 +26,9 @@ extension AppModel {
             onVoiceStateUpdate: { [weak self] event in
                 await self?.handleVoiceStateUpdateDispatch(event)
             },
+            onVoiceServerUpdate: { [weak self] event in
+                await self?.handleVoiceServerUpdate(event)
+            },
             onReady: { [weak self] event, shouldRegisterSlashCommands in
                 await self?.handleReadyDispatch(event, shouldRegisterSlashCommands: shouldRegisterSlashCommands)
             },
@@ -263,6 +266,11 @@ extension AppModel {
             userID: userId,
             fallbackUsername: username
         )
+
+        // Voice announcer: read configured text channel aloud. This sits
+        // before the bot-message guard because the announcer enforces its
+        // own self-message skip (see `forwardMessageToVoiceAnnouncer`).
+        await forwardMessageToVoiceAnnouncer(event)
 
         // Ignore messages from bots (including this bot) to prevent reply loops.
         if isBot {
@@ -1533,6 +1541,10 @@ extension AppModel {
     }
 
     func handleVoiceStateUpdate(_ event: GatewayVoiceStateUpdateEvent) async {
+        // Voice playback pipeline: capture our own session_id so we can build
+        // a VoiceServerInfo once VOICE_SERVER_UPDATE also arrives.
+        await observeSelfVoiceStateUpdate(event)
+
         let allowPrimarySideEffects = shouldProcessPrimaryGatewayActions
         let map = event.rawMap
         let userId = event.userID

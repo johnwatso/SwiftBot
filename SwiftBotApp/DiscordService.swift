@@ -34,6 +34,14 @@ actor DiscordService {
     private lazy var gatewayConnection = DiscordGatewayConnection(session: session, gatewayURL: gatewayURL)
     private var gatewayCallbacksConfigured = false
 
+    /// Send VOICE_STATE_UPDATE on the main gateway to join (or leave, if
+    /// `channelID == nil`) a voice channel. Used by the Voice tab to drive
+    /// `VoicePlaybackService`.
+    func sendVoiceStateUpdate(guildID: String, channelID: String?) async {
+        guard outputAllowed else { return }
+        await gatewayConnection.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
+    }
+
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]
     typealias ActiveVoiceJoinDateProvider = @Sendable (_ guildId: String, _ userId: String) async -> Date?
     private var historyProvider: HistoryProvider?
