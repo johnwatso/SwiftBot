@@ -39,10 +39,13 @@ struct OnboardingGateView: View {
             VStack(spacing: 32) {
                 // Icon + title (always visible)
                 VStack(spacing: 12) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .frame(width: 80, height: 80)
-                        .accessibilityHidden(true)
+                    if let bird = NSImage(named: "SwiftBird3") {
+                        Image(nsImage: bird)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 88, height: 88)
+                            .accessibilityHidden(true)
+                    }
                     Text("Welcome to SwiftBot")
                         .font(.largeTitle.weight(.bold))
                     Text(stepSubtitle)

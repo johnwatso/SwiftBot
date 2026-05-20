@@ -6,20 +6,78 @@ struct OnboardingAnimatedSymbolBackground: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var animationStart = Date()
 
-    private let symbols = [
-        "book.pages.fill",
-        "square.and.arrow.down.badge.checkmark",
-        "terminal.fill",
-        "waveform.path.ecg",
-        "sparkles",
-        "point.3.connected.trianglepath.dotted",
+    // SF Symbols drawn from the set actually used elsewhere in the app, so
+    // the onboarding backdrop reads as a continuation of SwiftBot's own UI
+    // rather than generic decoration. Mirrors the "use the same icons as the
+    // dashboard" choice the web login makes with its lucide set.
+    private let symbols: [String] = [
         "server.rack",
-        "person.3.sequence",
-        "gearshape.2.fill",
+        "point.3.connected.trianglepath.dotted",
+        "dot.radiowaves.left.and.right",
         "cpu.fill",
+        "terminal.fill",
+        "curlybraces",
+        "hammer.fill",
         "wrench.and.screwdriver.fill",
-        "bolt.horizontal.circle.fill"
+        "bolt.badge.automatic.fill",
+        "sparkles",
+        "waveform.path.ecg",
+        "book.fill",
+        "books.vertical.fill",
+        "person.crop.circle.fill",
+        "person.3.sequence",
+        "play.circle.fill",
+        "film.stack",
+        "text.bubble.fill",
+        "lock.fill",
+        "lock.shield",
+        "checkmark.shield.fill",
+        "checkmark.seal.fill",
+        "link.circle",
+        "shippingbox.circle",
+        "arrow.triangle.2.circlepath",
+        "gearshape.2.fill",
+        "info.circle.fill",
+        "crown.fill",
+        "clock",
+        "magnifyingglass"
     ]
+
+    // Apple system color palette — matches the web login screen's
+    // getAppleIconPalette(). Slightly more saturated variants in dark mode
+    // so the symbols pop through the glass card.
+    private var palette: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color(red: 0.23, green: 0.51, blue: 0.96),  // blue
+                Color(red: 0.39, green: 0.40, blue: 0.95),  // indigo
+                Color(red: 0.66, green: 0.33, blue: 0.97),  // purple
+                Color(red: 0.93, green: 0.28, blue: 0.60),  // pink
+                Color(red: 0.94, green: 0.27, blue: 0.27),  // red
+                Color(red: 0.98, green: 0.45, blue: 0.09),  // orange
+                Color(red: 0.13, green: 0.77, blue: 0.37),  // green
+                Color(red: 0.06, green: 0.72, blue: 0.51),  // mint
+                Color(red: 0.02, green: 0.71, blue: 0.83),  // cyan
+                Color(red: 0.05, green: 0.65, blue: 0.91)   // sky
+            ]
+        }
+        return [
+            Color(red: 0.00, green: 0.48, blue: 1.00),  // systemBlue
+            Color(red: 0.35, green: 0.34, blue: 0.84),  // systemIndigo
+            Color(red: 0.69, green: 0.32, blue: 0.87),  // systemPurple
+            Color(red: 1.00, green: 0.18, blue: 0.33),  // systemPink
+            Color(red: 1.00, green: 0.23, blue: 0.19),  // systemRed
+            Color(red: 1.00, green: 0.58, blue: 0.00),  // systemOrange
+            Color(red: 0.20, green: 0.78, blue: 0.35),  // systemGreen
+            Color(red: 0.00, green: 0.78, blue: 0.75),  // systemMint
+            Color(red: 0.19, green: 0.69, blue: 0.78),  // systemTeal
+            Color(red: 0.20, green: 0.68, blue: 0.90)   // systemCyan
+        ]
+    }
+
+    // Number of floating particles. Tuned to match the dense-but-airy feel
+    // of the web login (150 lucide icons over a viewport).
+    private let particleCount = 110
 
     var body: some View {
         GeometryReader { proxy in
@@ -28,94 +86,103 @@ struct OnboardingAnimatedSymbolBackground: View {
             }
         }
         .clipped()
-        .opacity(colorScheme == .dark ? 0.78 : 0.96)
     }
 
     @ViewBuilder
     private func animatedCanvas(size: CGSize, date: Date) -> some View {
         let width = max(size.width, 1)
         let height = max(size.height, 1)
-        let diagonal = hypot(width, height)
         let elapsed = date.timeIntervalSince(animationStart)
+        let particles = palette
+        let baseOpacity: Double = colorScheme == .dark ? 0.55 : 0.50
+
+        // One resolved symbol per (symbol, color) pair so the Canvas can
+        // draw each particle with its assigned tint without re-rendering.
+        let combos: [SymbolCombo] = symbolColorCombinations()
 
         Canvas { context, _ in
-            let trackWidth = diagonal * 2.2
-            let trackHeight = diagonal * 1.6
-            let rowStep: CGFloat = 108
-            let rows = Int(trackHeight / rowStep) + 3
-            let iconSize: CGFloat = 40
-            let spacing: CGFloat = 50
-            let step = iconSize + spacing
-            let cols = Int(trackWidth / step) + 12
-
-            context.opacity = colorScheme == .dark ? 0.10 : 0.18
-            context.translateBy(x: width / 2, y: height / 2)
-            context.rotate(by: .radians(-.pi / 4))
-
-            var resolvedSymbols: [String: GraphicsContext.ResolvedSymbol] = [:]
-            for symbol in symbols {
-                if let resolved = context.resolveSymbol(id: symbol) {
-                    resolvedSymbols[symbol] = resolved
+            var resolved: [String: GraphicsContext.ResolvedSymbol] = [:]
+            for combo in combos {
+                let id = comboID(symbol: combo.symbol, colorIndex: combo.colorIndex)
+                if let r = context.resolveSymbol(id: id) {
+                    resolved[id] = r
                 }
             }
 
-            for row in 0..<rows {
-                let direction: CGFloat = row.isMultiple(of: 2) ? 1 : -1
-                let speed: CGFloat = 8 + CGFloat(deterministicInt(row, seed: 19, modulus: 6))
-                let y = -trackHeight / 2 + CGFloat(row) * rowStep
-                let rowOffset = deterministicInt(row, seed: 31, modulus: symbols.count)
-                let strideChoices = [5, 7, 11]
-                let stride = strideChoices[deterministicInt(row, seed: 47, modulus: strideChoices.count)]
-                let sequencePeriod = symbols.count / greatestCommonDivisor(stride, symbols.count)
-                let cycleWidth = CGFloat(sequencePeriod) * step
-                var offset = (CGFloat(elapsed) * speed * direction).truncatingRemainder(dividingBy: cycleWidth)
-                if offset < 0 { offset += cycleWidth }
-                for col in -6...cols {
-                    let x = -trackWidth / 2 + CGFloat(col) * step + offset
-                    let symbolIndex = positiveModulo(rowOffset + (col * stride), symbols.count)
-                    let symbolID = symbols[symbolIndex]
-                    if let resolved = resolvedSymbols[symbolID] {
-                        context.draw(resolved, at: CGPoint(x: x, y: y), anchor: .center)
-                    }
+            for index in 0..<particleCount {
+                let xFraction = pseudoRandom(index, seed: 11)
+                let duration = 30.0 + pseudoRandom(index, seed: 23) * 40.0  // 30–70s
+                let phase = pseudoRandom(index, seed: 37) * duration
+                let progress = ((elapsed + phase).truncatingRemainder(dividingBy: duration)) / duration
+                // Travel from just below the viewport (1.10) up to just
+                // above (-0.10), matching the float-up keyframes on web.
+                let y = height * (1.10 - 1.20 * CGFloat(progress))
+                let x = width * CGFloat(xFraction)
+
+                // Fade in for the first 15% and out for the last 15%,
+                // mirroring the web keyframes (15% / 85% opacity stops).
+                let fade: Double
+                if progress < 0.15 {
+                    fade = progress / 0.15
+                } else if progress > 0.85 {
+                    fade = (1.0 - progress) / 0.15
+                } else {
+                    fade = 1.0
                 }
+
+                let symbol = symbols[Int(pseudoRandom(index, seed: 53) * Double(symbols.count)) % symbols.count]
+                let colorIndex = Int(pseudoRandom(index, seed: 71) * Double(particles.count)) % particles.count
+                let rotation = pseudoRandom(index, seed: 89) * 2 * .pi + (.pi * 2 * progress)
+                // Size range mirrors the web login (14–36px).
+                let scale = 0.4 + pseudoRandom(index, seed: 97) * 0.6
+
+                let id = comboID(symbol: symbol, colorIndex: colorIndex)
+                guard let symResolved = resolved[id] else { continue }
+
+                var ctx = context
+                ctx.opacity = baseOpacity * fade
+                ctx.translateBy(x: x, y: y)
+                ctx.rotate(by: .radians(rotation))
+                ctx.scaleBy(x: scale, y: scale)
+                ctx.draw(symResolved, at: .zero, anchor: .center)
             }
         } symbols: {
-            ForEach(symbols, id: \.self) { symbol in
-                Image(systemName: symbol)
-                    .font(.system(size: 40, weight: .semibold))
+            ForEach(combos) { combo in
+                Image(systemName: combo.symbol)
+                    .font(.system(size: 36, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(
-                        colorScheme == .dark
-                            ? .white.opacity(0.42)
-                            : Color(red: 0.12, green: 0.24, blue: 0.37).opacity(0.46)
-                    )
-                    .tag(symbol)
+                    .foregroundStyle(palette[combo.colorIndex])
+                    .tag(comboID(symbol: combo.symbol, colorIndex: combo.colorIndex))
             }
         }
     }
 
-    private func positiveModulo(_ value: Int, _ modulus: Int) -> Int {
-        let m = max(modulus, 1)
-        let r = value % m
-        return r >= 0 ? r : r + m
+    private struct SymbolCombo: Identifiable, Hashable {
+        let symbol: String
+        let colorIndex: Int
+        var id: String { "\(symbol)#\(colorIndex)" }
     }
 
-    private func deterministicInt(_ row: Int, seed: Int, modulus: Int) -> Int {
-        let m = max(modulus, 1)
-        let mixed = (row &* 73) ^ (seed &* 131) ^ (row &* seed &* 17)
-        let r = mixed % m
-        return r >= 0 ? r : r + m
-    }
-
-    private func greatestCommonDivisor(_ a: Int, _ b: Int) -> Int {
-        var x = abs(a)
-        var y = abs(b)
-        while y != 0 {
-            let t = x % y
-            x = y
-            y = t
+    private func symbolColorCombinations() -> [SymbolCombo] {
+        var combos: [SymbolCombo] = []
+        combos.reserveCapacity(symbols.count * palette.count)
+        for symbol in symbols {
+            for colorIndex in 0..<palette.count {
+                combos.append(SymbolCombo(symbol: symbol, colorIndex: colorIndex))
+            }
         }
-        return max(x, 1)
+        return combos
+    }
+
+    private func comboID(symbol: String, colorIndex: Int) -> String {
+        "\(symbol)#\(colorIndex)"
+    }
+
+    /// Deterministic 0..<1 hash. Stable across frames so each particle
+    /// keeps its own column, speed, color, and symbol for the session.
+    private func pseudoRandom(_ index: Int, seed: Int) -> Double {
+        let mixed = UInt64(bitPattern: Int64((index &* 0x9E3779B1) ^ (seed &* 0x85EBCA77) ^ ((index &+ seed) &* 0xC2B2AE3D)))
+        return Double(mixed % 10_000) / 10_000.0
     }
 }
 
