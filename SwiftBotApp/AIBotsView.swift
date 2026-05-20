@@ -136,7 +136,7 @@ struct AIBotsView: View {
     }
 
     private var metricTileRow: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(AIBotsDashboardSummary.metrics(app: app)) { metric in
                 DashboardMetricCard(metric: metric)
             }

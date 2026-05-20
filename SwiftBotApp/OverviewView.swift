@@ -175,15 +175,11 @@ struct OverviewView: View {
         return Double(provider.events.filter { $0.timestamp >= cutoff }.count) / 5.0
     }
 
-    private var queueLoad: Double {
-        min(Double(provider.events.count) / 20.0, 1.0)
-    }
-
     private var operationalHealth: OperationalStatusMetric.State {
         if status == .reconnecting || app.connectionDiagnostics.lastGatewayCloseCode != nil || failedCommandsToday >= 5 {
             return .critical
         }
-        if status == .connecting || queueLoad >= 0.70 || failedCommandsToday > 0 || app.connectionDiagnostics.heartbeatLatencyMs.map({ $0 >= 300 }) == true {
+        if status == .connecting || failedCommandsToday > 0 || app.connectionDiagnostics.heartbeatLatencyMs.map({ $0 >= 300 }) == true {
             return .warning
         }
         if status == .running || settings.clusterMode == .worker {
@@ -201,19 +197,6 @@ struct OverviewView: View {
         }
     }
 
-    private var operationalHealthDetail: String {
-        switch operationalHealth {
-        case .healthy:
-            return "Gateway, workflows, and support services are inside their normal operating band."
-        case .warning:
-            return "SwiftBot is running, but one or more runtime signals should be watched."
-        case .critical:
-            return "A connection, queue, or automation signal needs attention before the bot is fully healthy."
-        case .neutral:
-            return "Start SwiftBot to resume live operations and runtime monitoring."
-        }
-    }
-
     private var lastOperationalSyncDate: Date? {
         [app.lastVoiceStateAt, app.lastClusterStatusSuccessAt, provider.patchyLastCycleAt]
             .compactMap { $0 }
@@ -222,7 +205,6 @@ struct OverviewView: View {
 
     private var operationalStatusMetrics: [OperationalStatusMetric] {
         let latency = app.connectionDiagnostics.heartbeatLatencyMs
-        let queueDepth = provider.events.count
         let memoryText = averageMemoryText
 
         return [
@@ -251,30 +233,6 @@ struct OverviewView: View {
                 state: lastOperationalSyncDate == nil ? .neutral : .healthy
             ),
             OperationalStatusMetric(
-                id: "workflows",
-                title: "Active Workflows",
-                value: "\(enabledActionRuleCount)",
-                detail: "\(rules.count) configured rules",
-                symbol: "wand.and.stars",
-                state: enabledActionRuleCount > 0 ? .healthy : .warning
-            ),
-            OperationalStatusMetric(
-                id: "queue",
-                title: "Queue Health",
-                value: "\(queueDepth)",
-                detail: "\(String(format: "%.1f", eventThroughputPerMinute)) events/min",
-                symbol: "tray.full",
-                state: queueLoad >= 0.90 ? .critical : (queueLoad >= 0.70 ? .warning : .healthy)
-            ),
-            OperationalStatusMetric(
-                id: "ai-provider",
-                title: "AI Provider",
-                value: aiProviderSummary,
-                detail: settings.localAIDMReplyEnabled ? "DM replies on" : "DM replies off",
-                symbol: "sparkles",
-                state: .healthy
-            ),
-            OperationalStatusMetric(
                 id: "memory",
                 title: "Memory",
                 value: memoryText,
@@ -291,20 +249,44 @@ struct OverviewView: View {
                 state: discordConnectivityState
             ),
             OperationalStatusMetric(
-                id: "node-mode",
-                title: "Node Mode",
-                value: currentNodeModeLabel,
-                detail: settings.clusterMode == .standalone ? "Local output enabled" : clusterSnapshot.serverStatusText,
-                symbol: "cpu",
-                state: settings.clusterMode == .standby || settings.clusterMode == .worker ? .warning : .healthy
-            ),
-            OperationalStatusMetric(
                 id: "throughput",
                 title: "Event Throughput",
                 value: String(format: "%.1f/min", eventThroughputPerMinute),
                 detail: "\(provider.events.count) retained runtime events",
                 symbol: "waveform.path.ecg",
                 state: .healthy
+            ),
+            OperationalStatusMetric(
+                id: "rate-limit",
+                title: "Rate Limit",
+                value: app.connectionDiagnostics.rateLimitRemaining.map { "\($0) rem." } ?? "--",
+                detail: app.connectionDiagnostics.rateLimitRemaining == nil
+                    ? "No REST traffic yet"
+                    : "Per-route headroom",
+                symbol: "gauge.with.needle",
+                state: {
+                    guard let rem = app.connectionDiagnostics.rateLimitRemaining else { return .neutral }
+                    if rem == 0 { return .critical }
+                    if rem < 5 { return .warning }
+                    return .healthy
+                }()
+            ),
+            OperationalStatusMetric(
+                id: "intents",
+                title: "Intents",
+                value: {
+                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 { return "Rejected" }
+                    return app.intentsAccepted.map { $0 ? "Accepted" : "Unknown" } ?? "--"
+                }(),
+                detail: app.connectionDiagnostics.lastGatewayCloseCode == 4014
+                    ? "Enable privileged intents in Discord portal"
+                    : "Gateway intent negotiation",
+                symbol: "checklist",
+                state: {
+                    if app.connectionDiagnostics.lastGatewayCloseCode == 4014 { return .critical }
+                    if app.intentsAccepted == true { return .healthy }
+                    return .neutral
+                }()
             )
         ]
     }
@@ -685,8 +667,6 @@ struct OverviewView: View {
 
                 operationalStatusCard
 
-                connectionHealthCard
-
                 HStack(alignment: .top, spacing: 16) {
                     liveActivityCard
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -768,9 +748,7 @@ struct OverviewView: View {
     }
 
     private var metricStrip: some View {
-        LazyVGrid(columns: [
-            GridItem(.adaptive(minimum: 185), spacing: 12)
-        ], spacing: 12) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(orderedVisibleMetricWidgets) { widget in
                 ZStack(alignment: .topTrailing) {
                     DashboardMetricCard(
@@ -820,16 +798,10 @@ struct OverviewView: View {
     private var operationalStatusCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 10) {
-                        liveStatusPulse(color: operationalHealth.color)
-                        Text("Operational Status")
-                            .font(.title3.weight(.bold))
-                    }
-                    Text(operationalHealthDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    liveStatusPulse(color: operationalHealth.color)
+                    Text("Operational Status")
+                        .font(.title3.weight(.bold))
                 }
                 Spacer(minLength: 18)
                 VStack(alignment: .trailing, spacing: 4) {
@@ -1050,157 +1022,6 @@ struct OverviewView: View {
                 }
         }
         .frame(width: 28, height: 28)
-    }
-
-    // MARK: - Connection Health (migrated from former Diagnostics tab)
-
-    private var connectionHealthCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "stethoscope")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("Connection Health")
-                    .font(.headline.weight(.semibold))
-                Spacer()
-                Button {
-                    Task { await app.runTestConnection() }
-                } label: {
-                    Label("Test Connection", systemImage: "bolt.horizontal.circle")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!app.canRunTestConnection || app.status != .running)
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
-                healthIndicator(
-                    label: "Gateway",
-                    value: app.status.rawValue.capitalized,
-                    symbol: "network",
-                    ok: app.status == .running
-                )
-                healthIndicator(
-                    label: "Latency",
-                    value: app.connectionDiagnostics.heartbeatLatencyMs.map { "\($0) ms" } ?? "-",
-                    symbol: "waveform.path.ecg",
-                    ok: app.connectionDiagnostics.heartbeatLatencyMs != nil
-                )
-                healthIndicator(
-                    label: "REST",
-                    value: restHealthLabel,
-                    symbol: "arrow.up.arrow.down.circle",
-                    ok: {
-                        if case .ok = app.connectionDiagnostics.restHealth { return true }
-                        return false
-                    }()
-                )
-                healthIndicator(
-                    label: "Rate Limit",
-                    value: app.connectionDiagnostics.rateLimitRemaining.map { "\($0) rem." } ?? "-",
-                    symbol: "gauge.with.needle",
-                    ok: app.connectionDiagnostics.rateLimitRemaining.map { $0 > 0 } ?? true
-                )
-                healthIndicator(
-                    label: "Permissions",
-                    value: permissionsLabel,
-                    symbol: "lock.shield",
-                    ok: {
-                        if case .ok = app.connectionDiagnostics.restHealth { return true }
-                        return false
-                    }()
-                )
-                let intentsRejected = app.connectionDiagnostics.lastGatewayCloseCode == 4014
-                healthIndicator(
-                    label: "Intents",
-                    value: intentsRejected ? "Rejected (4014)" : (app.intentsAccepted.map { $0 ? "Accepted" : "Unknown" } ?? "-"),
-                    symbol: "checklist",
-                    ok: app.intentsAccepted == true && !intentsRejected
-                )
-            }
-
-            if !app.connectionDiagnostics.lastTestMessage.isEmpty {
-                HStack(spacing: 6) {
-                    Text(app.connectionDiagnostics.lastTestMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                    Spacer()
-                    if let at = app.connectionDiagnostics.lastTestAt {
-                        Text(at, style: .time)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-
-            if case let .error(code, msg) = app.connectionDiagnostics.restHealth, code > 0 {
-                remediationBanner(message: msg)
-            }
-            if let closeCode = app.connectionDiagnostics.lastGatewayCloseCode {
-                remediationBanner(message: app.gatewayCloseRemediationMessage(code: closeCode))
-            }
-            if app.status == .running,
-               let until = app.testConnectionCooldownUntil, !app.canRunTestConnection {
-                Text("Test Connection available in \(max(0, Int(until.timeIntervalSinceNow)))s")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(12)
-        .commandCatalogSurface(cornerRadius: 14)
-    }
-
-    private var restHealthLabel: String {
-        switch app.connectionDiagnostics.restHealth {
-        case .unknown: return "-"
-        case .ok: return "OK"
-        case let .error(code, _): return code > 0 ? "Error \(code)" : "Failed"
-        }
-    }
-
-    private var permissionsLabel: String {
-        switch app.connectionDiagnostics.restHealth {
-        case .unknown: return "-"
-        case .ok: return "OK"
-        case .error(403, _): return "Insufficient"
-        case let .error(code, _): return code > 0 ? "Error \(code)" : "-"
-        }
-    }
-
-    private func healthIndicator(label: String, value: String, symbol: String, ok: Bool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(ok ? Color.green : Color.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value.isEmpty ? "-" : value)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(ok ? .primary : .secondary)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .commandCatalogSurface(cornerRadius: 12)
-    }
-
-    private func remediationBanner(message: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .font(.caption)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(8)
-        .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var discordConnectivityLabel: String {

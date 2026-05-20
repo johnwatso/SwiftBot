@@ -11,7 +11,7 @@ final class InviteLinkTests: XCTestCase {
         if let urlWithSlash = await service.generateInviteURL(clientId: clientId, includeSlashCommands: true) {
             XCTAssertTrue(urlWithSlash.contains("https://discord.com/oauth2/authorize"), "Missing /api/ prefix")
             XCTAssertTrue(urlWithSlash.contains("client_id=123456789"), "Missing client_id")
-            XCTAssertTrue(urlWithSlash.contains("permissions=274877991936"), "Missing permissions")
+            XCTAssertTrue(urlWithSlash.contains("permissions=\(DiscordPermissionCatalog.desiredBitfield)"), "Missing permissions")
             XCTAssertTrue(urlWithSlash.contains("scope=bot+applications.commands"), "Missing bot+applications.commands scope with + separator")
         } else {
             XCTFail("URL generation failed for slash commands")

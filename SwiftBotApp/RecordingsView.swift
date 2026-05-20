@@ -80,7 +80,7 @@ struct RecordingsView: View {
     }
 
     private var librarySummary: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(RecordingsDashboardSummary.metrics(
                 app: app,
                 items: items,

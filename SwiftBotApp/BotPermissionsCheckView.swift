@@ -39,29 +39,46 @@ enum DiscordPermissionCatalog {
         .init(id: "reactions", bit: 6, name: "Add Reactions",
               detail: "React to messages — used by some commands.",
               severity: .recommended),
+        .init(id: "attach", bit: 15, name: "Attach Files",
+              detail: "Send file attachments alongside messages.",
+              severity: .recommended),
+        .init(id: "sendthreads", bit: 38, name: "Send Messages in Threads",
+              detail: "Reply inside threads — without this, the bot can read threads but not respond.",
+              severity: .recommended),
         .init(id: "threads", bit: 34, name: "Manage Threads",
               detail: "Required to archive stale support threads via Sweep.",
               severity: .optional),
         .init(id: "appcmds", bit: 31, name: "Use Application Commands",
               detail: "Lets the bot respond to slash commands.",
               severity: .recommended),
+        .init(id: "moderate", bit: 40, name: "Moderate Members",
+              detail: "Apply Discord timeouts. Used by Moderation actions short of kick/ban.",
+              severity: .recommended),
+        .init(id: "kick", bit: 1, name: "Kick Members",
+              detail: "Remove members from the server. Used by Moderation kick actions.",
+              severity: .optional),
+        .init(id: "ban", bit: 2, name: "Ban Members",
+              detail: "Ban members from the server. Used by Moderation ban actions.",
+              severity: .optional),
         .init(id: "connect", bit: 20, name: "Connect (Voice)",
               detail: "Join voice channels — required for voice features.",
               severity: .optional),
         .init(id: "speak", bit: 21, name: "Speak (Voice)",
               detail: "Transmit audio in voice channels.",
+              severity: .optional),
+        .init(id: "voiceactivity", bit: 25, name: "Use Voice Activity",
+              detail: "Transmit voice continuously without push-to-talk.",
               severity: .optional)
     ]
 
     static let administrator: UInt64 = 1 << 3
 
-    /// Combined bitfield used for re-invite URLs. Includes every essential
-    /// and recommended permission — Discord will merge with whatever the bot
-    /// already has, so requesting the full desired set is safe.
+    /// Combined bitfield used for re-invite URLs. Includes every catalogued
+    /// permission (essential, recommended, and optional) so a single Authorize
+    /// click sets the bot up for every feature SwiftBot supports. The Bot
+    /// Permissions sheet still classifies severities separately for the UI.
     static let desiredBitfield: UInt64 = {
-        all
-            .filter { $0.severity == .essential || $0.severity == .recommended }
-            .reduce(UInt64(0)) { $0 | $1.mask }
+        all.reduce(UInt64(0)) { $0 | $1.mask }
     }()
 }
 
@@ -100,6 +117,8 @@ struct BotPermissionsCheckView: View {
     @State private var botID: String?
     @State private var guilds: [DiscordGuildPermissions] = []
     @State private var expandedGuildID: String?
+    @State private var confirmingForceRejoin: DiscordGuildPermissions?
+    @State private var isForceRejoining: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -129,6 +148,21 @@ struct BotPermissionsCheckView: View {
         .background(.regularMaterial)
         .frame(minWidth: 620, idealWidth: 720, minHeight: 520, idealHeight: 640)
         .task { await runCheck() }
+        .confirmationDialog(
+            "Force rejoin server?",
+            isPresented: Binding(
+                get: { confirmingForceRejoin != nil },
+                set: { if !$0 { confirmingForceRejoin = nil } }
+            ),
+            presenting: confirmingForceRejoin
+        ) { guild in
+            Button("Kick & re-invite", role: .destructive) {
+                Task { await performForceRejoin(for: guild) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { guild in
+            Text("SwiftBot will leave \(guild.name), then Discord will open so you can re-authorise it with the correct permissions. The bot's existing role will be removed.")
+        }
     }
 
     // MARK: Chrome
@@ -306,17 +340,29 @@ struct BotPermissionsCheckView: View {
             }
 
             if !essential.isEmpty || !recommended.isEmpty {
-                HStack {
+                HStack(spacing: 8) {
                     Spacer()
                     Button {
                         openReinviteURL(for: guild)
                     } label: {
-                        Label("Re-invite with correct permissions", systemImage: "arrow.up.forward.square")
+                        Label("Re-invite", systemImage: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .buttonBorderShape(.capsule)
+                    .help("Opens Discord to re-authorise SwiftBot in \(guild.name). Discord may keep the existing role permissions — use Force rejoin if so.")
+                    .disabled(isForceRejoining)
+
+                    Button {
+                        confirmingForceRejoin = guild
+                    } label: {
+                        Label("Force rejoin", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .buttonBorderShape(.capsule)
-                    .help("Opens Discord to re-authorise SwiftBot in #\(guild.name) — the missing permissions will be merged into the bot's role.")
+                    .help("Kicks SwiftBot from \(guild.name), then opens Discord to re-add it with the correct permissions.")
+                    .disabled(isForceRejoining)
                 }
             }
 
@@ -387,34 +433,69 @@ struct BotPermissionsCheckView: View {
 
     // MARK: Re-invite
 
+    @MainActor
+    private func performForceRejoin(for guild: DiscordGuildPermissions) async {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            errorMessage = "No bot token configured."
+            return
+        }
+        isForceRejoining = true
+        defer { isForceRejoining = false }
+
+        do {
+            try await leaveGuild(token: trimmed, guildID: guild.id)
+            // Drop the guild from the local list so the UI reflects reality
+            // while the user completes the OAuth flow in the browser.
+            guilds.removeAll { $0.id == guild.id }
+            if expandedGuildID == guild.id { expandedGuildID = nil }
+            openReinviteURL(for: guild)
+        } catch {
+            errorMessage = "Couldn't remove SwiftBot from \(guild.name): \(error.localizedDescription)"
+        }
+    }
+
+    private func leaveGuild(token: String, guildID: String) async throws {
+        guard let url = URL(string: "https://discord.com/api/v10/users/@me/guilds/\(guildID)") else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid guild ID."
+            ])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "No response from Discord."
+            ])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "BotPermissionsCheck", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Discord returned \(http.statusCode) for leave-guild. \(body)"
+            ])
+        }
+    }
+
     private func openReinviteURL(for guild: DiscordGuildPermissions) {
         guard let botID, !botID.isEmpty else { return }
         var components = URLComponents(string: "https://discord.com/oauth2/authorize")
 
-        // Base invite params (work when "Requires OAuth2 Code Grant" is OFF
-        // in the Discord Developer Portal — the common case).
-        var items: [URLQueryItem] = [
+        // Plain bot-install URL — single screen, user closes the tab when done.
+        // We deliberately skip response_type=code / redirect_uri: mixing them
+        // with the bot-install flow makes Discord show a second "Add a bot to
+        // a server" picker (sometimes losing the guild_id pre-selection), and
+        // the redirect ties the install to a working WebUI which isn't always
+        // configured. The install itself doesn't need a callback — feedback
+        // comes from the Re-check button in this dialog.
+        components?.queryItems = [
             URLQueryItem(name: "client_id", value: botID),
             URLQueryItem(name: "scope", value: "bot applications.commands"),
             URLQueryItem(name: "permissions", value: String(DiscordPermissionCatalog.desiredBitfield)),
             URLQueryItem(name: "guild_id", value: guild.id),
             URLQueryItem(name: "disable_guild_select", value: "true")
         ]
-
-        // If the app has the admin Discord OAuth configured, re-use that
-        // already-registered redirect URI to satisfy "Requires OAuth2 Code
-        // Grant" applications. Discord rejects any redirect_uri that isn't
-        // pre-registered in the Developer Portal, so we MUST reuse one the
-        // user has already added (not invent a new one). Bots without code
-        // grant simply ignore these extra params.
-        let redirectURI = app.adminWebDiscordRedirectURL()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !redirectURI.isEmpty {
-            items.append(URLQueryItem(name: "response_type", value: "code"))
-            items.append(URLQueryItem(name: "redirect_uri", value: redirectURI))
-        }
-
-        components?.queryItems = items
         guard let url = components?.url else { return }
         NSWorkspace.shared.open(url)
     }

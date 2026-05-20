@@ -119,7 +119,7 @@ struct AutomationsView: View {
     // MARK: - Metric tiles
 
     private var metricTileRow: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(AutomationDashboardSummary.metrics(app: app, category: category)) { metric in
                 DashboardMetricCard(metric: metric)
             }

@@ -191,6 +191,7 @@ final class AppModel: ObservableObject {
     /// the Discord voice path is blocked by DAVE).
     let localSpeechPreviewSynthesizer = AVSpeechSynthesizer()
     var uptimeTask: Task<Void, Never>?
+    var connectionHealthTask: Task<Void, Never>?
     var discordCacheSaveTask: Task<Void, Never>?
     var meshSyncTask: Task<Void, Never>?
     let conversationStore = ConversationStore()
@@ -953,6 +954,8 @@ final class AppModel: ObservableObject {
         clusterNodesRefreshTask = nil
         patchyMonitorTask?.cancel()
         patchyMonitorTask = nil
+        connectionHealthTask?.cancel()
+        connectionHealthTask = nil
         uptimeTask?.cancel()
         uptime = nil
         await clearVoicePresence()
@@ -1052,6 +1055,24 @@ final class AppModel: ObservableObject {
                         self.uptime = UptimeInfo(startedAt: startedAt)
                     }
                 }
+            }
+        }
+    }
+
+    /// Periodic connection-health probe. Fires once immediately and then every
+    /// 10 minutes for as long as the bot is running. Replaces the manual
+    /// "Test Connection" button that used to live in the Connection Health
+    /// card on the Overview.
+    func startConnectionHealthMonitor() {
+        connectionHealthTask?.cancel()
+        connectionHealthTask = Task { [weak self] in
+            // Initial probe — small delay so token/identity loading settles.
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            while !Task.isCancelled {
+                guard let self = self else { return }
+                await self.runTestConnection()
+                // 10 minutes between probes.
+                try? await Task.sleep(nanoseconds: 600_000_000_000)
             }
         }
     }

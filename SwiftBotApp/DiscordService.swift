@@ -225,6 +225,13 @@ actor DiscordService {
         let trimmed = clientId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        // Plain bot-install URL. Do NOT append response_type=code/redirect_uri
+        // even if a redirect is configured: combining `scope=bot` with
+        // `response_type=code` flips Discord into a user-OAuth code grant flow
+        // and the bot never actually gets installed. The "Requires OAuth2 Code
+        // Grant" toggle this used to work around is deprecated.
+        _ = codeGrantRedirectURI
+
         var components = URLComponents()
         components.scheme = "https"
         components.host = "discord.com"
@@ -234,20 +241,13 @@ actor DiscordService {
         if includeSlashCommands { scope += " applications.commands" }
         let encodedScope = scope.replacingOccurrences(of: " ", with: "+")
 
-        var query = "client_id=\(trimmed)&permissions=274877991936&scope=\(encodedScope)"
-
-        // If the caller provides a pre-registered redirect URI (typically the
-        // admin Discord OAuth callback), append response_type=code so the
-        // invite works even when the Discord application has "Requires OAuth2
-        // Code Grant" enabled in the Developer Portal. The redirect_uri MUST
-        // be one already registered for this application — Discord rejects
-        // unknown redirects with "Invalid OAuth2 redirect_uri".
-        if let redirect = codeGrantRedirectURI?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !redirect.isEmpty,
-           let encodedRedirect = redirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            query += "&response_type=code&redirect_uri=\(encodedRedirect)"
-        }
-
+        // Pull the permission bitfield from DiscordPermissionCatalog so this
+        // invite path stays in sync with the Bot Permissions sheet. The
+        // previous hardcoded value (274877991936) was stale and silently
+        // omitted Manage Messages, which made every "Open Invite Link" install
+        // the bot without the perm it needs for destructive Sweep actions.
+        let permissions = DiscordPermissionCatalog.desiredBitfield
+        let query = "client_id=\(trimmed)&permissions=\(permissions)&scope=\(encodedScope)"
         components.percentEncodedQuery = query
         return components.url?.absoluteString
     }

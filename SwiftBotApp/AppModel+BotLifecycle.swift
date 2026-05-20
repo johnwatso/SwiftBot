@@ -151,6 +151,7 @@ extension AppModel {
         lastVoiceStateAt = nil
         lastVoiceStateSummary = "-"
         startUptimeTicker()
+        startConnectionHealthMonitor()
 
         let weekly = WeeklySummaryPlugin()
         self.weeklyPlugin = weekly
