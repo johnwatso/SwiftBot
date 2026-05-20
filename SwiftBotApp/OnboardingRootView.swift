@@ -127,12 +127,14 @@ struct OnboardingRootView: View {
                     .frame(width: 112, height: 112)
                     .blur(radius: 4)
 
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 78, height: 78)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .shadow(color: Color.accentColor.opacity(0.22), radius: 18, x: 0, y: 10)
-                    .accessibilityHidden(true)
+                if let bird = NSImage(named: "SwiftBird3") {
+                    Image(nsImage: bird)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 88, height: 88)
+                        .shadow(color: Color.accentColor.opacity(0.22), radius: 18, x: 0, y: 10)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(width: 102, height: 92)
 
