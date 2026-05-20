@@ -95,7 +95,7 @@ struct PatchyView: View {
     // MARK: - Status Rail
 
     private var statusRail: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(PatchyDashboardSummary.metrics(app: app)) { metric in
                 DashboardMetricCard(metric: metric)
             }

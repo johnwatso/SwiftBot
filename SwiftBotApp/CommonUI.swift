@@ -108,6 +108,17 @@ extension View {
     }
 }
 
+/// Shared sizing for any `LazyVGrid` that hosts `DashboardMetricCard`. Keeping
+/// these in one place ensures Overview and the per-feature metric rails render
+/// cards at the same width and spacing.
+enum DashboardMetricGrid {
+    static let minItemWidth: CGFloat = 180
+    static let spacing: CGFloat = 12
+    static var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: minItemWidth), spacing: spacing)]
+    }
+}
+
 struct DashboardMetricCard: View {
     let title: String
     let value: String
@@ -120,7 +131,7 @@ struct DashboardMetricCard: View {
     @State private var glowOpacity = 0.0
     @State private var playPulse = false
 
-    private let cornerRadius: CGFloat = 20
+    private let cornerRadius: CGFloat = 14
 
     init(
         title: String,
@@ -161,12 +172,12 @@ struct DashboardMetricCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(color)
-                    .frame(width: 20, height: 20)
+                    .frame(width: 22, height: 22)
                     .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
 
                 Text(title)
@@ -175,30 +186,29 @@ struct DashboardMetricCard: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 2)
-
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.72)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(subtitle)
-                    .font(.caption2)
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                // Always render the detail row (with a non-breaking space when
+                // empty) so every card has the same intrinsic height. Without
+                // this, LazyVGrid sizes each row to its tallest card and rows
+                // with no detail-having cards visually shrink.
+                Text(detail.isEmpty ? "\u{00A0}" : detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
         .glassCard(
             cornerRadius: cornerRadius,
             tint: .primary.opacity(isHovering ? 0.03 : 0.01),

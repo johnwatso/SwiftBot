@@ -437,7 +437,6 @@ struct SweepSnapshot: Codable {
     var globalPaused: Bool = false
     var recentReports: [SweepRunReport] = []
     var suggestions: [SweepSuggestion] = []
-    var dismissedSuggestionFingerprints: [String] = []
     var lastSuggestionScanAt: Date?
 }
 
@@ -669,12 +668,6 @@ enum SweepSuggestionEngine {
         return botChannelNameHints.contains { lower.contains($0) }
     }
 
-    /// Fingerprint used to remember dismissals so we don't re-suggest the same
-    /// thing on every scan.
-    static func fingerprint(_ suggestion: SweepSuggestion) -> String {
-        "\(suggestion.channelID)#\(suggestion.strategyKind.rawValue)"
-    }
-
     private static func commonPrefix(of strings: [String]) -> String {
         guard let first = strings.first else { return "" }
         var prefix = first
@@ -704,7 +697,6 @@ final class SweepService: ObservableObject {
     @Published private(set) var isScanningSuggestions: Bool = false
     @Published private(set) var lastSuggestionScanAt: Date?
     @Published private(set) var scanProgress: (done: Int, total: Int) = (0, 0)
-    private var dismissedSuggestionFingerprints: Set<String> = []
 
     private let store = SweepStore()
     private var dispatcher: SweepDispatcher = PreviewSweepDispatcher()
@@ -740,7 +732,6 @@ final class SweepService: ObservableObject {
         self.globalPaused = snapshot.globalPaused
         self.suggestions = snapshot.suggestions
         self.lastSuggestionScanAt = snapshot.lastSuggestionScanAt
-        self.dismissedSuggestionFingerprints = Set(snapshot.dismissedSuggestionFingerprints)
         recomputeNextRuns()
         startTickLoop()
     }
@@ -752,7 +743,6 @@ final class SweepService: ObservableObject {
             globalPaused: globalPaused,
             recentReports: recentReports,
             suggestions: suggestions,
-            dismissedSuggestionFingerprints: Array(dismissedSuggestionFingerprints),
             lastSuggestionScanAt: lastSuggestionScanAt
         )
         await store.save(snapshot)
@@ -1073,10 +1063,9 @@ final class SweepService: ObservableObject {
 
     // MARK: Suggestions
 
-    /// Scope of `scanForSuggestions` per call. Caps both the number of channels
-    /// probed and how far back per channel so we stay polite with the Discord API.
-    /// Pagination + inter-channel stagger keep the total request rate low.
-    static let suggestionScanChannelCap: Int = 12
+    /// Scope of `scanForSuggestions` per call. The scan iterates over every
+    /// uncovered channel; the inter-channel stagger and per-channel message
+    /// cap keep the Discord API request rate low.
     static let suggestionScanMessageLimit: Int = 300
     static let suggestionScanInterChannelDelayNanos: UInt64 = 1_500_000_000
 
@@ -1097,9 +1086,7 @@ final class SweepService: ObservableObject {
 
         // Don't re-propose for a channel that already has an enabled rule.
         let covered = Set(policies.filter(\.isEnabled).map(\.channelID))
-        let work = Array(targets
-            .filter { !covered.contains($0.channel.id) }
-            .prefix(Self.suggestionScanChannelCap))
+        let work = targets.filter { !covered.contains($0.channel.id) }
 
         scanProgress = (0, work.count)
 
@@ -1130,8 +1117,6 @@ final class SweepService: ObservableObject {
                 messages: messages
             )
             for var proposal in proposals {
-                let fp = SweepSuggestionEngine.fingerprint(proposal)
-                if dismissedSuggestionFingerprints.contains(fp) { continue }
                 proposal.projection = buildProjection(for: proposal, messages: messages)
                 fresh.append(proposal)
             }
@@ -1176,8 +1161,9 @@ final class SweepService: ObservableObject {
         Task { await persist() }
     }
 
+    /// Dismiss only hides the suggestion from the current list — the next
+    /// scan re-evaluates the channel and may re-propose it.
     func dismissSuggestion(_ suggestion: SweepSuggestion) {
-        dismissedSuggestionFingerprints.insert(SweepSuggestionEngine.fingerprint(suggestion))
         suggestions.removeAll { $0.id == suggestion.id }
         Task { await persist() }
     }
@@ -1672,7 +1658,7 @@ private struct SweepContentView: View {
     // MARK: Metrics
 
     private var metricTileRow: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(SweepDashboardSummary.metrics(service: service)) { metric in
                 DashboardMetricCard(metric: metric)
             }

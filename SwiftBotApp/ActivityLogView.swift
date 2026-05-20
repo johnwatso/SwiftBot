@@ -156,10 +156,6 @@ struct ActivityLogView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 10)
 
-            metricRail
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
-
             Divider().opacity(0.3)
 
             if visibleEntries.isEmpty {
@@ -177,14 +173,6 @@ struct ActivityLogView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Both commands and system log lines will be removed. This cannot be undone.")
-        }
-    }
-
-    private var metricRail: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], spacing: 8) {
-            ForEach(ActivityDashboardSummary.metrics(app: app)) { metric in
-                DashboardMetricCard(metric: metric)
-            }
         }
     }
 

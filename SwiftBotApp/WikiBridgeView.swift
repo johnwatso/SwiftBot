@@ -69,10 +69,7 @@ struct WikiBridgeView: View {
     // MARK: - Metric Rail
 
     private var metricRail: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
-            spacing: 8
-        ) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(WikiBridgeDashboardSummary.metrics(app: app)) { metric in
                 DashboardMetricCard(metric: metric)
             }

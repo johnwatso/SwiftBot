@@ -174,7 +174,7 @@ struct SwiftMeshView: View {
     }
 
     private var metricTileRow: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(SwiftMeshDashboardSummary.metrics(app: app)) { metric in
                 DashboardMetricCard(metric: metric)
             }
@@ -615,8 +615,20 @@ struct ClusterMapView: View {
         case overview
     }
 
+    @EnvironmentObject var app: AppModel
     let nodes: [ClusterNodeStatus]
     var presentation: Presentation = .dashboard
+
+    private func makeIconSelector(for displayName: String) -> (String?) -> Void {
+        { newSymbol in
+            if let symbol = newSymbol {
+                app.settings.clusterNodeIconOverrides[displayName] = symbol
+            } else {
+                app.settings.clusterNodeIconOverrides.removeValue(forKey: displayName)
+            }
+            app.saveSettings()
+        }
+    }
 
     private var leaderCardWidth: CGFloat {
         presentation == .overview ? 150 : 182
@@ -674,15 +686,28 @@ struct ClusterMapView: View {
                         latencyMs: worker.latencyMs
                     )
 
-                    ClusterMapNodeChip(node: worker, presentation: presentation)
-                        .frame(width: workerCardWidth)
-                        .position(workerPosition)
+                    ClusterMapNodeChip(
+                        node: worker,
+                        iconOverride: app.settings.clusterNodeIconOverrides[worker.displayName],
+                        onIconSelect: makeIconSelector(for: worker.displayName),
+                        presentation: presentation
+                    )
+                    .equatable()
+                    .frame(width: workerCardWidth)
+                    .position(workerPosition)
                 }
 
                 if let leader {
-                    ClusterMapNodeChip(node: leader, showLeaderSymbol: true, presentation: presentation)
-                        .frame(width: leaderCardWidth)
-                        .position(layout.leaderPosition)
+                    ClusterMapNodeChip(
+                        node: leader,
+                        iconOverride: app.settings.clusterNodeIconOverrides[leader.displayName],
+                        onIconSelect: makeIconSelector(for: leader.displayName),
+                        showLeaderSymbol: true,
+                        presentation: presentation
+                    )
+                    .equatable()
+                    .frame(width: leaderCardWidth)
+                    .position(layout.leaderPosition)
                 }
             }
             .animation(.easeInOut(duration: 0.22), value: topologyKey)
@@ -770,17 +795,32 @@ private struct ClusterTopologyLayout {
     let workerPositions: [CGPoint]
 }
 
-private struct ClusterMapNodeChip: View {
-    @EnvironmentObject var app: AppModel
+private struct ClusterMapNodeChip: View, Equatable {
     let node: ClusterNodeStatus
+    let iconOverride: String?
+    let onIconSelect: (String?) -> Void
     var showLeaderSymbol: Bool = false
     var presentation: ClusterMapView.Presentation = .dashboard
+
+    // Equality excludes onIconSelect (closures aren't comparable) and any
+    // volatile fields like latency. SwiftUI's `.equatable()` will skip body
+    // re-evaluation whenever the user-visible state hasn't changed, which
+    // prevents the contextMenu from being dismissed by background ticks.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.node.displayName == rhs.node.displayName &&
+        lhs.node.status == rhs.node.status &&
+        lhs.node.role == rhs.node.role &&
+        lhs.node.hardwareModel == rhs.node.hardwareModel &&
+        lhs.iconOverride == rhs.iconOverride &&
+        lhs.showLeaderSymbol == rhs.showLeaderSymbol &&
+        lhs.presentation == rhs.presentation
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: SwiftMeshHardwareSymbols.symbolName(
                 for: node.hardwareModel,
-                override: app.settings.clusterNodeIconOverrides[node.displayName]
+                override: iconOverride
             ))
                 .font(presentation == .overview ? .subheadline : .headline)
                 .foregroundStyle(.secondary)
@@ -821,7 +861,7 @@ private struct ClusterMapNodeChip: View {
         )
         .opacity(node.status == .disconnected ? 0.7 : 1.0)
         .contextMenu {
-            NodeIconContextMenu(nodeName: node.displayName)
+            NodeIconContextMenu(current: iconOverride, onSelect: onIconSelect)
         }
     }
 
@@ -840,9 +880,69 @@ private struct ClusterNodeRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // Stable shell: hosts the contextMenu and excludes volatile data
+            // (latency). SwiftUI skips its body re-eval on cluster ticks so the
+            // "Set Icon" menu stays open while the user navigates it.
+            ClusterNodeRowShell(
+                node: node,
+                iconOverride: app.settings.clusterNodeIconOverrides[node.displayName],
+                onIconSelect: { newSymbol in
+                    if let symbol = newSymbol {
+                        app.settings.clusterNodeIconOverrides[node.displayName] = symbol
+                    } else {
+                        app.settings.clusterNodeIconOverrides.removeValue(forKey: node.displayName)
+                    }
+                    app.saveSettings()
+                }
+            )
+            .equatable()
+
+            Spacer()
+
+            if node.role == .worker, let latency = node.latencyMs {
+                Text("\(Int(latency.rounded())) ms")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .opacity(node.status == .disconnected ? 0.64 : 1.0)
+    }
+}
+
+/// Equatable shell holding the identity-stable part of a Nodes-table row
+/// (icon, name, status badge). The contextMenu attaches here, so cluster-tick
+/// changes to volatile data like latency don't dismiss an open "Set Icon"
+/// menu.
+private struct ClusterNodeRowShell: View, Equatable {
+    let node: ClusterNodeStatus
+    let iconOverride: String?
+    let onIconSelect: (String?) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.node.displayName == rhs.node.displayName &&
+        lhs.node.status == rhs.node.status &&
+        lhs.node.role == rhs.node.role &&
+        lhs.node.hardwareModel == rhs.node.hardwareModel &&
+        lhs.node.hostname == rhs.node.hostname &&
+        lhs.iconOverride == rhs.iconOverride
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
             Image(systemName: SwiftMeshHardwareSymbols.symbolName(
                 for: node.hardwareModel,
-                override: app.settings.clusterNodeIconOverrides[node.displayName]
+                override: iconOverride
             ))
                 .font(.title3)
                 .foregroundStyle(.secondary)
@@ -875,29 +975,9 @@ private struct ClusterNodeRow: View {
                         .lineLimit(1)
                 }
             }
-
-            Spacer()
-
-            if node.role == .worker, let latency = node.latencyMs {
-                Text("\(Int(latency.rounded())) ms")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.02))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
-        .opacity(node.status == .disconnected ? 0.64 : 1.0)
         .contextMenu {
-            NodeIconContextMenu(nodeName: node.displayName)
+            NodeIconContextMenu(current: iconOverride, onSelect: onIconSelect)
         }
     }
 
@@ -911,19 +991,23 @@ private struct ClusterNodeRow: View {
 }
 
 /// Shared "Set Icon" submenu used by both the cluster-map chip and the
-/// Nodes-table row's contextual menu. Writes into
-/// `settings.clusterNodeIconOverrides[nodeName]`, keyed by display name.
+/// Nodes-table row's contextual menu.
+///
+/// Takes static snapshot inputs (`current` + `onSelect`) rather than reading
+/// `@EnvironmentObject` directly. SwiftUI's `.contextMenu` dismisses whenever
+/// its containing view body re-evaluates; observing live state inside the menu
+/// body caused the menu to vanish on every cluster status tick before the user
+/// could click "Set Icon".
+@MainActor
 private struct NodeIconContextMenu: View {
-    @EnvironmentObject var app: AppModel
-    let nodeName: String
+    let current: String?
+    let onSelect: (String?) -> Void
 
     var body: some View {
-        let current = app.settings.clusterNodeIconOverrides[nodeName]
         Menu("Set Icon") {
             ForEach(SwiftMeshNodeIconCatalog.all) { option in
                 Button {
-                    app.settings.clusterNodeIconOverrides[nodeName] = option.symbol
-                    app.saveSettings()
+                    onSelect(option.symbol)
                 } label: {
                     if current == option.symbol {
                         Label(option.label, systemImage: "checkmark")
@@ -935,8 +1019,7 @@ private struct NodeIconContextMenu: View {
         }
         if current != nil {
             Button("Reset Icon to Auto-detect") {
-                app.settings.clusterNodeIconOverrides.removeValue(forKey: nodeName)
-                app.saveSettings()
+                onSelect(nil)
             }
         }
     }
@@ -1543,20 +1626,18 @@ enum SwiftMeshNodeIconCatalog {
         var id: String { symbol }
     }
 
+    // Apple Silicon-capable Macs only. Older Intel-only models
+    // (Xserve, Mac Pro 2013/trash-can, original cheese grater, white MacBook,
+    // 12" Retina MacBook) are deliberately omitted.
     static let all: [Option] = [
         .init(symbol: "laptopcomputer", label: "Laptop"),
         .init(symbol: "macbook", label: "MacBook"),
-        .init(symbol: "macbook.gen1", label: "MacBook (gen 1)"),
-        .init(symbol: "macbook.gen2", label: "MacBook (gen 2)"),
         .init(symbol: "desktopcomputer", label: "Desktop"),
         .init(symbol: "macmini", label: "Mac mini"),
         .init(symbol: "macmini.fill", label: "Mac mini (filled)"),
         .init(symbol: "macstudio", label: "Mac Studio"),
         .init(symbol: "macstudio.fill", label: "Mac Studio (filled)"),
-        .init(symbol: "macpro.gen1", label: "Mac Pro (gen 1)"),
-        .init(symbol: "macpro.gen2", label: "Mac Pro (gen 2)"),
-        .init(symbol: "macpro.gen3", label: "Mac Pro (gen 3)"),
-        .init(symbol: "server.rack", label: "Server rack"),
-        .init(symbol: "xserve", label: "Xserve")
+        .init(symbol: "macpro.gen3", label: "Mac Pro"),
+        .init(symbol: "server.rack", label: "Server rack")
     ]
 }

@@ -225,10 +225,7 @@ struct CommandsView: View {
     // MARK: - Metric Rail
 
     private var metricRail: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 130), spacing: 8)],
-            spacing: 8
-        ) {
+        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             ForEach(CommandsDashboardSummary.metrics(app: app)) { metric in
                 DashboardMetricCard(metric: metric)
             }
@@ -515,30 +512,6 @@ enum CommandsDashboardSummary {
                 symbol: "xmark.octagon.fill",
                 color: failedToday == 0 ? .gray : .red
             ),
-            DashboardMetricDescriptor(
-                id: "commands-utilities",
-                title: "Utilities",
-                value: "\(commands.filter { $0.category == .utilities }.count)",
-                subtitle: "AI & Tools",
-                symbol: "wand.and.stars",
-                color: .purple
-            ),
-            DashboardMetricDescriptor(
-                id: "commands-moderation",
-                title: "Moderation",
-                value: "\(commands.filter { $0.category == .moderation }.count)",
-                subtitle: "Admin",
-                symbol: "shield.lefthalf.filled",
-                color: .orange
-            ),
-            DashboardMetricDescriptor(
-                id: "commands-infra",
-                title: "Infra",
-                value: "\(commands.filter { $0.category == .infrastructure }.count)",
-                subtitle: "Cluster",
-                symbol: "server.rack",
-                color: .cyan
-            )
         ]
     }
 

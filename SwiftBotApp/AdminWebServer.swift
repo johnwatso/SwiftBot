@@ -2077,6 +2077,26 @@ actor AdminWebServer {
     }
 
     private func handleDiscordCallback(request: HTTPRequest) async -> Data {
+        // The bot re-invite flow reuses this redirect URI (Discord requires a
+        // pre-registered one) but returns `guild_id`/`permissions` and no
+        // `state` — the bot is already added by Discord on Authorize, so just
+        // acknowledge it instead of running the user-login path.
+        if let guildID = request.query["guild_id"] {
+            await logger?("Bot re-invite callback for guild \(guildID)")
+            let body = """
+            <!doctype html><html><head><meta charset="utf-8"><title>Bot permissions updated</title>\
+            <style>body{font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:10vh auto;padding:0 1.5rem;color:#222}\
+            h1{font-size:1.4rem}p{line-height:1.5}</style></head><body>\
+            <h1>Bot permissions updated</h1>\
+            <p>SwiftBot's permissions have been refreshed for guild <code>\(guildID)</code>.</p>\
+            <p>You can close this tab and return to the app.</p></body></html>
+            """
+            return httpResponse(
+                status: "200 OK",
+                body: Data(body.utf8),
+                contentType: "text/html; charset=utf-8"
+            )
+        }
         guard let code = request.query["code"], let state = request.query["state"] else {
             return httpResponse(status: "400 Bad Request", body: Data("Missing code or state.".utf8))
         }
