@@ -175,7 +175,6 @@ struct CommandsView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Command settings sync from Primary.")
             }
             metricRail
-            masterControls
             commandCatalog
         }
         .padding(.horizontal, 16)
@@ -230,33 +229,6 @@ struct CommandsView: View {
                 DashboardMetricCard(metric: metric)
             }
         }
-    }
-
-    // MARK: - Master Controls
-
-    private var masterControls: some View {
-        HStack(spacing: 12) {
-            Toggle("Commands", isOn: $app.settings.commandsEnabled)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-            Toggle("Slash", isOn: $app.settings.slashCommandsEnabled)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(!app.settings.commandsEnabled)
-
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
     }
 
     // MARK: - Command Catalog
@@ -443,10 +415,21 @@ private struct CommandRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .glassCard(
+        .dashboardSurface(
             cornerRadius: 12,
-            tint: tint.opacity(isHovering ? 0.08 : 0.04),
-            stroke: tint.opacity(isHovering ? 0.25 : 0.14)
+            fillOpacity: isHovering ? 0.055 : 0.035,
+            strokeOpacity: isHovering ? 0.12 : 0.07,
+            shadowOpacity: isHovering ? 0.035 : 0.015
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(isHovering ? 0.035 : 0.02))
+                .allowsHitTesting(false)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(tint.opacity(isHovering ? 0.20 : 0.12), lineWidth: 1)
+                .allowsHitTesting(false)
         )
         .onHover { hovering in
             withAnimation(.smooth(duration: 0.18)) {

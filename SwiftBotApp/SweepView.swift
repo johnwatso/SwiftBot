@@ -1396,9 +1396,13 @@ private struct SweepContentView: View {
     @State private var previewingPolicyName: String = ""
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 if service.state == .running {
                     activeRunPanel
                 }
@@ -1416,9 +1420,10 @@ private struct SweepContentView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $showingNewPolicySheet) {
             SweepPolicyEditor(
                 policy: SweepPolicy(

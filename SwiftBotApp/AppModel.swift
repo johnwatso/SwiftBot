@@ -1031,7 +1031,7 @@ final class AppModel: ObservableObject {
 
         await service.setOnHeartbeatLatency { [weak self] latencyMs in
             await MainActor.run {
-                self?.connectionDiagnostics.heartbeatLatencyMs = latencyMs
+                self?.connectionDiagnostics.recordHeartbeatLatency(latencyMs)
             }
         }
 

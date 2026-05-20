@@ -32,18 +32,22 @@ struct RecordingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 librarySummary
                 gameLibrarySection
                 recentlyAddedSection
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task { await refresh() }
         .refreshable { await refresh() }
         .sheet(item: $steamIDPresentation) { presentation in

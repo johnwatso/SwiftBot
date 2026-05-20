@@ -301,6 +301,9 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 fetchSteamAppInfo: { _ in
                     (ok: true, embed: ["title": "Steam Game"])
+                },
+                sweepCommand: { _ in
+                    (ok: true, message: "Sweep result")
                 }
             )
         )

@@ -12,9 +12,13 @@ struct VoiceView: View {
     @State private var testText: String = "Hello from SwiftBot."
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 daveBlockedBanner
                 metricTileRow
                 SwiftMeshSection(title: "Connection", symbol: "antenna.radiowaves.left.and.right") {
@@ -31,9 +35,10 @@ struct VoiceView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { syncFromSettings() }
         .onChange(of: app.settings.voice) { _, _ in syncFromSettings() }
     }

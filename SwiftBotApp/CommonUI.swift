@@ -78,9 +78,47 @@ private struct SwiftBotGlassCardModifier: ViewModifier {
     }
 }
 
+private struct SwiftBotDashboardSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let fillOpacity: Double
+    let strokeOpacity: Double
+    let shadowOpacity: Double
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .background(
+                shape
+                    .fill(.primary.opacity(fillOpacity))
+            )
+            .overlay(
+                shape
+                    .strokeBorder(.primary.opacity(strokeOpacity), lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(shadowOpacity), radius: 3, y: 1)
+    }
+}
+
 extension View {
     func glassCard(cornerRadius: CGFloat = 18, tint: Color = .white.opacity(0.10), stroke: Color = .primary.opacity(0.12)) -> some View {
         modifier(SwiftBotGlassCardModifier(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
+    }
+
+    func dashboardSurface(
+        cornerRadius: CGFloat = 14,
+        fillOpacity: Double = 0.035,
+        strokeOpacity: Double = 0.07,
+        shadowOpacity: Double = 0.025
+    ) -> some View {
+        modifier(
+            SwiftBotDashboardSurfaceModifier(
+                cornerRadius: cornerRadius,
+                fillOpacity: fillOpacity,
+                strokeOpacity: strokeOpacity,
+                shadowOpacity: shadowOpacity
+            )
+        )
     }
 
     func commandCatalogSurface(cornerRadius: CGFloat = 16) -> some View {
@@ -209,13 +247,13 @@ struct DashboardMetricCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .glassCard(
+        .dashboardSurface(
             cornerRadius: cornerRadius,
-            tint: .primary.opacity(isHovering ? 0.03 : 0.01),
-            stroke: .primary.opacity(isHovering ? 0.12 : 0.06)
+            fillOpacity: isHovering ? 0.055 : 0.035,
+            strokeOpacity: isHovering ? 0.12 : 0.07,
+            shadowOpacity: isHovering ? 0.045 : 0.02
         )
         .scaleEffect(isHovering ? 1.01 : 1)
-        .shadow(color: .black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 10 : 5, y: isHovering ? 5 : 2)
         .overlay {
             if shouldRenderGlow || playPulse {
                 ZStack {

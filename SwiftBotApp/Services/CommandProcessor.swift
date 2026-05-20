@@ -122,7 +122,7 @@ final class CommandProcessor {
             let embed = renderer.embedOverview(catalog: catalog, aiDescription: aiIntro)
             return await dependencies.sendEmbed(context.channelId, embed)
         case "ping":
-            return await dependencies.send(context.channelId, "🏓 Pong! Gateway latency is currently live via heartbeat ACK.")
+            return await dependencies.send(context.channelId, "🏓 Pong! Gateway heartbeat is currently live via ACK.")
         case "roll":
             guard tokens.count >= 2, let output = dependencies.rollDice(tokens[1]) else {
                 return await unknown(channelId: context.channelId, prefix: config.prefix)

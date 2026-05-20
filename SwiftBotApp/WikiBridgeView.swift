@@ -28,7 +28,6 @@ struct WikiBridgeView: View {
 
             if app.settings.wikiBot.isEnabled {
                 metricRail
-                masterControls
                 sourcesList
             } else {
                 disabledStateContent
@@ -60,9 +59,44 @@ struct WikiBridgeView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
-            ViewSectionHeader(title: "WikiBridge", symbol: "book.pages.fill")
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                ViewSectionHeader(title: "WikiBridge", symbol: "book.pages.fill")
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(app.settings.wikiBot.isEnabled ? Color.green : Color.gray)
+                        .frame(width: 7, height: 7)
+                    Text("Discord wiki lookups from configured sources.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer()
+
+            HStack(spacing: 12) {
+                HStack(spacing: 5) {
+                    Image(systemName: app.settings.wikiBot.isEnabled ? "book.pages.fill" : "book.closed.fill")
+                        .font(.caption.weight(.semibold))
+                    Text(app.settings.wikiBot.isEnabled ? "WIKIBRIDGE ACTIVE" : "WIKIBRIDGE INACTIVE")
+                        .font(.caption.weight(.bold))
+                        .tracking(0.4)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule().fill(app.settings.wikiBot.isEnabled ? Color.green : Color.gray)
+                )
+
+                Button {
+                    editorMode = .create
+                    editorDraft = WikiSourceDraft.makeNew()
+                } label: {
+                    Label("Add Source", systemImage: "plus")
+                }
+                .buttonStyle(GlassActionButtonStyle())
+                .controlSize(.regular)
+            }
         }
     }
 
@@ -74,46 +108,6 @@ struct WikiBridgeView: View {
                 DashboardMetricCard(metric: metric)
             }
         }
-    }
-
-    // MARK: - Master Controls
-
-    private var masterControls: some View {
-        HStack(spacing: 12) {
-            Toggle("WikiBridge", isOn: Binding(
-                get: { app.settings.wikiBot.isEnabled },
-                set: { newValue in
-                    var updated = app.settings
-                    updated.wikiBot.isEnabled = newValue
-                    app.settings = updated
-                    app.saveSettings()
-                }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            Spacer()
-
-            Button {
-                editorMode = .create
-                editorDraft = WikiSourceDraft.makeNew()
-            } label: {
-                Label("Add Source", systemImage: "plus")
-                    .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
     }
 
     // MARK: - Sources List
@@ -237,7 +231,6 @@ private struct WikiSourceCard: View {
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
 
-    @State private var isHovering = false
     @State private var showDeleteConfirm = false
 
     private let tint: Color = .indigo
@@ -334,18 +327,22 @@ private struct WikiSourceCard: View {
             }
         }
         .padding(10)
-        .glassCard(
+        .dashboardSurface(
             cornerRadius: 14,
-            tint: tint.opacity(isHovering ? 0.10 : 0.05),
-            stroke: tint.opacity(isHovering ? 0.28 : 0.16)
+            fillOpacity: 0.035,
+            strokeOpacity: 0.07,
+            shadowOpacity: 0.015
         )
-        .scaleEffect(isHovering ? 1.006 : 1)
-        .shadow(color: tint.opacity(isHovering ? 0.06 : 0.03), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
-        .onHover { hovering in
-            withAnimation(.smooth(duration: 0.18)) {
-                isHovering = hovering
-            }
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint.opacity(0.02))
+                .allowsHitTesting(false)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.12), lineWidth: 1)
+                .allowsHitTesting(false)
+        )
     }
 
     private var lastLookupLabel: String {
