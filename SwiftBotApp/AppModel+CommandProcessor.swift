@@ -176,6 +176,12 @@ extension AppModel {
                 sweepCommand: { [weak self] action in
                     guard let self else { return (ok: false, message: "Sweep is unavailable.") }
                     return await self.handleSweepSlash(action: action)
+                },
+                lookupUserTimeZone: { [weak self] userID in
+                    guard let self else { return nil }
+                    let value = self.settings.userTimezones[userID]?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (value?.isEmpty == false) ? value : nil
                 }
             )
         )

@@ -182,6 +182,20 @@ struct CommandCatalog {
                 isAdminOnly: false
             ),
             CommandEntry(
+                name: "timestamp",
+                aliases: ["ts"],
+                usage: "\(prefix)timestamp <when>",
+                description: "Converts a natural-language time into a Discord <t:...> timestamp.",
+                examples: [
+                    "\(prefix)timestamp 6pm",
+                    "\(prefix)timestamp 6pm friday",
+                    "\(prefix)timestamp 6:15 friday the 13th",
+                    "\(prefix)timestamp in 2 hours"
+                ],
+                category: .general,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "cluster",
                 aliases: ["worker"],
                 usage: "\(prefix)cluster [status | test | probe]",

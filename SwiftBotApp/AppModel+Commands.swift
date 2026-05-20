@@ -32,6 +32,8 @@ extension AppModel {
             return "image"
         case "worker":
             return "cluster"
+        case "ts":
+            return "timestamp"
         default:
             return name.lowercased()
         }

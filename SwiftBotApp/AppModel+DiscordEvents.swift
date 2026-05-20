@@ -274,6 +274,8 @@ extension AppModel {
         availableTextChannelsByServer = snapshot.availableTextChannelsByServer
         availableRolesByServer = snapshot.availableRolesByServer
         knownUsersById = snapshot.usernamesById
+        knownBotUserIds = snapshot.botUserIds
+        knownGuildMemberIds = snapshot.guildMemberIds
         maybeStartFirstSweepScan()
     }
 

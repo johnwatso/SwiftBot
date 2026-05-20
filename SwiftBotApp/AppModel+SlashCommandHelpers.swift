@@ -53,6 +53,9 @@ extension AppModel {
             ["name": "steam", "description": "Search Steam for game info and player counts", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "Game name to search for", "required": true]
             ]],
+            ["name": "timestamp", "description": "Convert a natural-language time into a Discord timestamp", "type": 1, "options": [
+                ["type": 3, "name": "when", "description": "e.g. 6pm, 6pm friday, 6:15 friday the 13th, in 2 hours", "required": true]
+            ]],
             ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "run | preview | pause | resume | status", "required": false, "choices": [
                     ["name": "run", "value": "run"],

@@ -50,6 +50,12 @@ struct CommandsView: View {
     @EnvironmentObject var app: AppModel
     @State private var showSettingsUpdatedToast = false
     @State private var settingsToastTask: Task<Void, Never>?
+    @State private var configuringCommand: ConfiguringCommand?
+
+    private struct ConfiguringCommand: Identifiable, Equatable {
+        let name: String
+        var id: String { name }
+    }
 
     // MARK: - Visual Commands
 
@@ -210,6 +216,21 @@ struct CommandsView: View {
         .onChange(of: app.settings.disabledCommandKeys) { _, _ in
             persistCommandSettings(syncSlash: true)
         }
+        .sheet(item: $configuringCommand) { entry in
+            CommandSettingsSheet(commandName: entry.name) {
+                configuringCommand = nil
+            }
+            .environmentObject(app)
+        }
+    }
+
+    private func configureAction(for command: VisualCommand) -> (() -> Void)? {
+        switch command.name.lowercased() {
+        case "timestamp":
+            return { configuringCommand = ConfiguringCommand(name: "timestamp") }
+        default:
+            return nil
+        }
     }
 
     // MARK: - Header
@@ -245,7 +266,8 @@ struct CommandsView: View {
                             CommandSection(
                                 category: category,
                                 commands: group,
-                                commandEnabledBinding: commandEnabledBinding
+                                commandEnabledBinding: commandEnabledBinding,
+                                configureAction: configureAction
                             )
                         }
                     }
@@ -291,7 +313,7 @@ struct CommandsView: View {
         switch commandName.lowercased() {
         case "help", "ping", "userinfo":
             return .general
-        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki":
+        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp":
             return .utilities
         case "debug", "bugreport", "logabug", "featurerequest", "ignorechannel", "setchannel", "notifystatus":
             return .moderation
@@ -328,6 +350,7 @@ struct CommandsView: View {
         case "wiki": return "books.vertical.fill"
         case "compare": return "square.split.2x1"
         case "meta": return "crown.fill"
+        case "timestamp": return "clock.fill"
         default: return "command"
         }
     }
@@ -339,6 +362,7 @@ private struct CommandSection: View {
     let category: CommandGroup
     let commands: [VisualCommand]
     let commandEnabledBinding: (VisualCommand) -> Binding<Bool>
+    let configureAction: (VisualCommand) -> (() -> Void)?
 
     var body: some View {
         SwiftMeshSection(
@@ -350,7 +374,8 @@ private struct CommandSection: View {
                     CommandRow(
                         command: command,
                         isOn: commandEnabledBinding(command),
-                        tint: category.color
+                        tint: category.color,
+                        configureAction: configureAction(command)
                     )
                 }
             }
@@ -364,6 +389,7 @@ private struct CommandRow: View {
     let command: VisualCommand
     @Binding var isOn: Bool
     let tint: Color
+    let configureAction: (() -> Void)?
 
     @State private var isHovering = false
 
@@ -407,6 +433,18 @@ private struct CommandRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let configureAction {
+                Button(action: configureAction) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 24, height: 24)
+                        .background(tint.opacity(isHovering ? 0.18 : 0.10), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Configure \(command.name)")
+            }
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
