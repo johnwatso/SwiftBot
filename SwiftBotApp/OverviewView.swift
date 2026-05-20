@@ -179,7 +179,9 @@ struct OverviewView: View {
         if status == .reconnecting || app.connectionDiagnostics.lastGatewayCloseCode != nil || failedCommandsToday >= 5 {
             return .critical
         }
-        if status == .connecting || failedCommandsToday > 0 || app.connectionDiagnostics.heartbeatLatencyMs.map({ $0 >= 300 }) == true {
+        if status == .connecting
+            || failedCommandsToday > 0
+            || ConnectionDiagnostics.isGatewayHeartbeatWarning(app.connectionDiagnostics.heartbeatLatencyMs) {
             return .warning
         }
         if status == .running || settings.clusterMode == .worker {
@@ -210,11 +212,13 @@ struct OverviewView: View {
         return [
             OperationalStatusMetric(
                 id: "gateway-latency",
-                title: "Gateway Latency",
+                title: "Gateway Heartbeat",
                 value: latency.map { "\($0) ms" } ?? "--",
                 detail: app.lastGatewayEventName == "-" ? "Awaiting gateway events" : "Last event \(app.lastGatewayEventName)",
                 symbol: "antenna.radiowaves.left.and.right",
-                state: latency.map { $0 >= 300 ? .warning : .healthy } ?? (status == .running ? .warning : .neutral)
+                state: latency.map {
+                    ConnectionDiagnostics.isGatewayHeartbeatWarning($0) ? .warning : .healthy
+                } ?? (status == .running ? .warning : .neutral)
             ),
             OperationalStatusMetric(
                 id: "cluster-role",
@@ -358,12 +362,13 @@ struct OverviewView: View {
             ))
         }
 
-        if let latency = app.connectionDiagnostics.heartbeatLatencyMs, latency >= 300 {
+        if let latency = app.connectionDiagnostics.heartbeatLatencyMs,
+           ConnectionDiagnostics.isGatewayHeartbeatWarning(latency) {
             items.append(AttentionItem(
                 id: "latency",
-                title: "Gateway latency elevated",
-                detail: "\(latency) ms heartbeat latency is above the normal operating band.",
-                severity: latency >= 500 ? .critical : .warning
+                title: "Gateway heartbeat elevated",
+                detail: "\(latency) ms median heartbeat ACK is above the normal operating band.",
+                severity: ConnectionDiagnostics.isGatewayHeartbeatCritical(latency) ? .critical : .warning
             ))
         }
 
@@ -653,9 +658,13 @@ struct OverviewView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                overviewHeader
+        VStack(alignment: .leading, spacing: 12) {
+            overviewHeader
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
                 metricStrip
 
                 if shouldShowSwiftMeshOverviewMap {
@@ -675,9 +684,10 @@ struct OverviewView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             syncDashboardPreferences()
             recordMemorySample()
@@ -823,10 +833,11 @@ struct OverviewView: View {
             }
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+        .dashboardSurface(
+            cornerRadius: 18,
+            fillOpacity: 0.045,
+            strokeOpacity: 0.08,
+            shadowOpacity: 0.025
         )
     }
 
@@ -936,10 +947,11 @@ struct OverviewView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 280, maxHeight: .infinity, alignment: .topLeading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        .dashboardSurface(
+            cornerRadius: 18,
+            fillOpacity: 0.038,
+            strokeOpacity: 0.075,
+            shadowOpacity: 0.02
         )
     }
 
@@ -1265,12 +1277,12 @@ struct OverviewClusterMapCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .accessibilityLabel("SwiftMesh Cluster Map")
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(.white.opacity(0.20), lineWidth: 1)
+        .dashboardSurface(
+            cornerRadius: 18,
+            fillOpacity: 0.045,
+            strokeOpacity: 0.08,
+            shadowOpacity: 0.025
         )
-        .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
         .task(id: provider.settings.clusterMode) {
             guard provider.settings.clusterMode == .leader || provider.settings.clusterMode == .standby else { return }
             await app.pollClusterStatus()
@@ -1311,7 +1323,7 @@ struct DashboardPanel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(14)
-        .glassCard(cornerRadius: 22, tint: .white.opacity(0.10), stroke: .white.opacity(0.20))
+        .dashboardSurface(cornerRadius: 18, fillOpacity: 0.038, strokeOpacity: 0.075, shadowOpacity: 0.02)
     }
 }
 

@@ -1,6 +1,10 @@
 import Foundation
 
 struct ConnectionDiagnostics {
+    static let gatewayHeartbeatWarningThresholdMs = 750
+    static let gatewayHeartbeatCriticalThresholdMs = 1_500
+    private static let heartbeatSampleLimit = 7
+
     enum RESTHealth {
         case unknown
         case ok
@@ -8,12 +12,39 @@ struct ConnectionDiagnostics {
     }
 
     var heartbeatLatencyMs: Int?
+    var heartbeatLatencySamplesMs: [Int] = []
     var restHealth: RESTHealth = .unknown
     var rateLimitRemaining: Int?
     var lastTestAt: Date?
     var lastTestMessage: String = ""
     /// Last non-normal WebSocket close code from Discord (e.g. 4004, 4014). Nil = no abnormal close.
     var lastGatewayCloseCode: Int?
+
+    mutating func recordHeartbeatLatency(_ latencyMs: Int) {
+        heartbeatLatencySamplesMs.append(latencyMs)
+        if heartbeatLatencySamplesMs.count > Self.heartbeatSampleLimit {
+            heartbeatLatencySamplesMs.removeFirst(heartbeatLatencySamplesMs.count - Self.heartbeatSampleLimit)
+        }
+        heartbeatLatencyMs = Self.median(of: heartbeatLatencySamplesMs)
+    }
+
+    static func isGatewayHeartbeatWarning(_ latencyMs: Int?) -> Bool {
+        latencyMs.map { $0 >= gatewayHeartbeatWarningThresholdMs } == true
+    }
+
+    static func isGatewayHeartbeatCritical(_ latencyMs: Int?) -> Bool {
+        latencyMs.map { $0 >= gatewayHeartbeatCriticalThresholdMs } == true
+    }
+
+    private static func median(of samples: [Int]) -> Int? {
+        guard !samples.isEmpty else { return nil }
+        let sorted = samples.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return Int((Double(sorted[middle - 1]) + Double(sorted[middle])) / 2.0)
+        }
+        return sorted[middle]
+    }
 }
 
 struct BinaryHTTPResponse: Sendable {

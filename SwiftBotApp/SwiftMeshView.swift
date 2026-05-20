@@ -11,10 +11,13 @@ struct SwiftMeshView: View {
     private let pollingIntervalNanoseconds: UInt64 = 10_000_000_000
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 // Handover Test panel — Configured Primary only, requires at least
                 // one registered worker or an active test.
                 if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive) {
@@ -84,9 +87,10 @@ struct SwiftMeshView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .confirmationDialog(
             "Promote this node to Primary?",
             isPresented: $showPromoteConfirm,
@@ -660,9 +664,13 @@ struct ClusterMapView: View {
     }
 
     private var topologyKey: String {
+        // Only encode *structural* identity. Including volatile fields like
+        // latency/jobsActive made the `.animation(value:)` fire every second,
+        // which constantly rebuilt the cluster map and dismissed any open
+        // contextMenu before the user could interact with it.
         connectedNodes
             .sorted(by: { $0.id < $1.id })
-            .map { "\($0.id)-\($0.status.rawValue)-\($0.jobsActive)-\($0.latencyMs ?? -1)" }
+            .map { "\($0.id)-\($0.status.rawValue)" }
             .joined(separator: "|")
     }
 
@@ -1634,9 +1642,7 @@ enum SwiftMeshNodeIconCatalog {
         .init(symbol: "macbook", label: "MacBook"),
         .init(symbol: "desktopcomputer", label: "Desktop"),
         .init(symbol: "macmini", label: "Mac mini"),
-        .init(symbol: "macmini.fill", label: "Mac mini (filled)"),
         .init(symbol: "macstudio", label: "Mac Studio"),
-        .init(symbol: "macstudio.fill", label: "Mac Studio (filled)"),
         .init(symbol: "macpro.gen3", label: "Mac Pro"),
         .init(symbol: "server.rack", label: "Server rack")
     ]

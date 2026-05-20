@@ -4698,7 +4698,7 @@
           <div class="analytics-card ${analyticsToneClass(h.state === 'degraded' ? 'danger' : h.state)}" style="padding:8px 9px;">
             <div class="detail">${h.detail || 'Runtime health is nominal.'}</div>
           </div>
-          <div class="analytics-health-row"><span>Gateway Ping</span><strong>${h.websocketLatencyMs == null ? '-' : `${h.websocketLatencyMs} ms`}</strong></div>
+          <div class="analytics-health-row"><span>Gateway Heartbeat</span><strong>${h.websocketLatencyMs == null ? '-' : `${h.websocketLatencyMs} ms`}</strong></div>
           <div class="analytics-health-row"><span>Event Queue</span><strong>${h.eventQueueDepth || 0}/20</strong></div>
           <div class="analytics-health-row"><span>Active Tasks</span><strong>${h.activeTasks || 0}</strong></div>
           <div class="analytics-health-row"><span>Memory</span><strong>${h.memoryText || '-'}</strong></div>

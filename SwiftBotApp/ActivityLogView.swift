@@ -63,7 +63,12 @@ struct ActivityLogView: View {
         var entries: [ActivityEntry] = []
 
         for cmd in app.commandLog {
-            let detailParts = [cmd.user, cmd.server, cmd.channel, cmd.executionRoute]
+            let detailParts = [
+                friendlyUserName(cmd.user),
+                friendlyServerName(cmd.server),
+                friendlyTextChannelName(cmd.channel, server: cmd.server),
+                cmd.executionRoute
+            ]
                 .filter { !$0.isEmpty }
             let rawTitle = cmd.command.isEmpty ? "(empty command)" : cmd.command
             entries.append(
@@ -313,6 +318,86 @@ struct ActivityLogView: View {
         let level = String(describing: entry.level).uppercased()
         let detail = entry.detail.map { " · \($0)" } ?? ""
         return "[\(time)] [\(kind)/\(level)] \(entry.title)\(detail)"
+    }
+
+    private func friendlyUserName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let userID = discordMentionID(from: trimmed, marker: "@"),
+           let displayName = app.knownUsersById[userID],
+           !displayName.isEmpty {
+            return displayName
+        }
+        if let displayName = app.knownUsersById[trimmed], !displayName.isEmpty {
+            return displayName
+        }
+        if looksLikeDiscordID(trimmed) {
+            return "User \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
+    private func friendlyServerName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let serverName = app.connectedServers[trimmed], !serverName.isEmpty {
+            return serverName
+        }
+        if looksLikeDiscordID(trimmed) {
+            return "Server \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
+    private func friendlyTextChannelName(_ raw: String, server: String?) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if trimmed.hasPrefix("#") { return trimmed }
+
+        let channelID = discordMentionID(from: trimmed, marker: "#") ?? trimmed
+        if let serverID = resolvedServerID(from: server),
+           let channel = app.availableTextChannelsByServer[serverID]?.first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+        if let channel = app.availableTextChannelsByServer.values
+            .flatMap({ $0 })
+            .first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+
+        let lower = trimmed.lowercased()
+        if lower == "dm" || lower == "direct message" || trimmed == "-" {
+            return trimmed
+        }
+        if looksLikeDiscordID(channelID) {
+            return "Channel \(channelID.suffix(4))"
+        }
+        return "#\(trimmed)"
+    }
+
+    private func matchesChannel(_ channel: GuildTextChannel, value: String) -> Bool {
+        channel.id == value || channel.name.localizedCaseInsensitiveCompare(value) == .orderedSame
+    }
+
+    private func resolvedServerID(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if app.connectedServers[trimmed] != nil { return trimmed }
+        return app.connectedServers.first { _, name in
+            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }?.key
+    }
+
+    private func discordMentionID(from value: String, marker: Character) -> String? {
+        guard value.first == "<", value.dropFirst().first == marker, value.last == ">" else { return nil }
+        let body = value.dropFirst(2).dropLast()
+        return String(body).trimmingCharacters(in: CharacterSet(charactersIn: "!&"))
+    }
+
+    private func looksLikeDiscordID(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count >= 15 && trimmed.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
     }
 
     /// Parses a `LogStore` line of the form `[<ISO8601>] <text>` back into a

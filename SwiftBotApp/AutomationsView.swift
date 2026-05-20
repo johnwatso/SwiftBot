@@ -69,18 +69,23 @@ struct AutomationsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                 metricTileRow
                 naturalLanguageSection
                 templatesSection
                 rulesListSection
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if !app.automationStore.isLoaded { app.automationStore.load() }
         }

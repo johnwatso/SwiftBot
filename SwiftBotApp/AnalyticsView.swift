@@ -9,6 +9,7 @@ struct AnalyticsView: View {
     @State private var hoveredUserID: String?
 
     private let secondaryCardHeight: CGFloat = 268
+    private let featureCardHeight: CGFloat = 328
 
     private struct RankedInsight: Identifiable {
         let id: String
@@ -63,10 +64,14 @@ struct AnalyticsView: View {
         return formattedDuration(totalSecondsThisWeek / sessionCountThisWeek)
     }
 
-    private var averageConcurrentUsers: String {
+    private var sessionsPerActiveDayText: String {
         let activeDays = max(dailyActivity.filter(\.hasActivity).count, 1)
         let average = Double(sessionCountThisWeek) / Double(activeDays)
         return String(format: "%.1f", average)
+    }
+
+    private var currentVoiceUsersText: String {
+        "\(app.activeVoice.count)"
     }
 
     private var dailyActiveUsersText: String {
@@ -90,7 +95,7 @@ struct AnalyticsView: View {
 
     private var commandUserRanks: [RankedInsight] {
         rankedCounts(
-            values: app.commandLog.map(\.user),
+            values: app.commandLog.map { friendlyUserName($0.user) },
             symbol: "person.text.rectangle",
             color: .teal,
             emptyDetail: "No command users yet"
@@ -99,7 +104,7 @@ struct AnalyticsView: View {
 
     private var channelRanks: [RankedInsight] {
         rankedCounts(
-            values: app.commandLog.map(\.channel).filter { !$0.isEmpty },
+            values: app.commandLog.map { friendlyTextChannelName($0.channel, server: $0.server) }.filter { !$0.isEmpty },
             symbol: "number",
             color: .blue,
             emptyDetail: "No channel activity yet"
@@ -109,7 +114,10 @@ struct AnalyticsView: View {
     private var fastestGrowingChannel: RankedInsight? {
         let recentCutoff = Date().addingTimeInterval(-3600)
         return rankedCounts(
-            values: app.commandLog.filter { $0.time >= recentCutoff }.map(\.channel).filter { !$0.isEmpty },
+            values: app.commandLog
+                .filter { $0.time >= recentCutoff }
+                .map { friendlyTextChannelName($0.channel, server: $0.server) }
+                .filter { !$0.isEmpty },
             symbol: "arrow.up.right",
             color: .green,
             emptyDetail: "No recent growth"
@@ -154,6 +162,10 @@ struct AnalyticsView: View {
         let lower = calendar.date(byAdding: .hour, value: -10, to: first) ?? first
         let upper = calendar.date(byAdding: .hour, value: 10, to: last) ?? last
         return lower...upper
+    }
+
+    private var dailyChartYUpperBound: Int {
+        max(2, snapshot.voice.peakDayCount + max(2, Int(ceil(Double(snapshot.voice.peakDayCount) * 0.25))))
     }
 
     var body: some View {
@@ -302,7 +314,7 @@ struct AnalyticsView: View {
             }
         }
         .padding(11)
-        .glassCard(cornerRadius: 22, tint: .white.opacity(0.07), stroke: .white.opacity(0.18))
+        .dashboardSurface(cornerRadius: 22, fillOpacity: 0.035, strokeOpacity: 0.08, shadowOpacity: 0.018)
     }
 
     private var activityOverview: some View {
@@ -339,9 +351,9 @@ struct AnalyticsView: View {
                         color: .blue
                     )
                     insightTile(
-                        title: "Average Concurrent Users",
-                        value: averageConcurrentUsers,
-                        detail: "\(app.activeVoice.count) currently in voice",
+                        title: "Current Voice Users",
+                        value: currentVoiceUsersText,
+                        detail: "\(sessionsPerActiveDayText) sessions per active day",
                         symbol: "person.3.sequence.fill",
                         color: .green
                     )
@@ -518,13 +530,13 @@ struct AnalyticsView: View {
     }
 
     private var runtimeActivityChart: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text("Voice Activity")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("Last 7 days")
+                Text("Last 7 days · peak \(snapshot.voice.peakDayCount)")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -541,7 +553,7 @@ struct AnalyticsView: View {
                         .interpolationMethod(.monotone)
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [.accentColor.opacity(0.22), .accentColor.opacity(0.025)],
+                                colors: [.accentColor.opacity(0.24), .accentColor.opacity(0.035)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -561,38 +573,44 @@ struct AnalyticsView: View {
                         )
                         .symbolSize(item.count == snapshot.voice.peakDayCount ? 48 : 20)
                         .foregroundStyle(Color.accentColor.opacity(0.82))
+                        .annotation(position: .top, alignment: .center, spacing: 4) {
+                            if hasValue(item.count) {
+                                Text("\(item.count)")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
                     }
 
                     RuleMark(y: .value("Average", averageSessionsPerDay))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .foregroundStyle(.secondary.opacity(0.32))
+                        .foregroundStyle(Color.accentColor.opacity(0.28))
                 }
                 .chartPlotStyle { plot in
                     plot
-                        .background(.black.opacity(0.035))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 6)
+                        .padding(.top, 18)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
                 }
                 .chartXScale(domain: dailyChartDomain)
-                .chartYScale(domain: 0...max(2, Int(ceil(Double(snapshot.voice.peakDayCount) * 1.35)) + 1))
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                            .foregroundStyle(.white.opacity(0.035))
-                        AxisValueLabel(format: .dateTime.weekday(.abbreviated))
+                .chartYScale(domain: -0.45...Double(dailyChartYUpperBound))
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .frame(height: 188)
+                .background(.black.opacity(0.018), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                HStack(spacing: 0) {
+                    ForEach(dailyActivity) { item in
+                        Text(item.date.formatted(.dateTime.weekday(.abbreviated)))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
                     }
                 }
-                .chartYAxis {
-                    AxisMarks { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                            .foregroundStyle(.white.opacity(0.035))
-                        AxisValueLabel()
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 2)
-                .frame(height: 154)
+                .padding(.horizontal, 5)
             }
         }
     }
@@ -623,10 +641,10 @@ struct AnalyticsView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -683,7 +701,7 @@ struct AnalyticsView: View {
                     .background(snapshot.health.state.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     healthRow(
-                        title: "Gateway Ping",
+                        title: "Gateway Heartbeat",
                         value: snapshot.health.websocketLatencyMs.map { "\($0) ms" } ?? "-",
                         progress: latencyProgress,
                         color: latencyColor
@@ -727,7 +745,7 @@ struct AnalyticsView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: secondaryCardHeight, alignment: .top)
+        .frame(height: featureCardHeight, alignment: .top)
     }
 
     private var trendInsightsSection: some View {
@@ -741,7 +759,7 @@ struct AnalyticsView: View {
                         }
 
                         if !deck.supporting.isEmpty {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 6)], spacing: 6) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 ForEach(deck.supporting) { insight in
                                     operationalInsightCard(insight, isFeatured: false)
                                 }
@@ -751,7 +769,7 @@ struct AnalyticsView: View {
                 }
             }
         }
-        .frame(height: secondaryCardHeight, alignment: .top)
+        .frame(height: featureCardHeight, alignment: .top)
     }
 
     private func timelineRow(_ entry: AnalyticsFeedEntry) -> some View {
@@ -799,7 +817,7 @@ struct AnalyticsView: View {
             content()
         }
         .padding(10)
-        .glassCard(cornerRadius: 18, tint: .white.opacity(0.06), stroke: .white.opacity(0.14))
+        .dashboardSurface(cornerRadius: 18, fillOpacity: 0.032, strokeOpacity: 0.075, shadowOpacity: 0.018)
     }
 
     private func cardScrollContent<Content: View>(
@@ -849,10 +867,10 @@ struct AnalyticsView: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(tint.opacity(0.24), lineWidth: 1)
+                .strokeBorder(tint.opacity(0.20), lineWidth: 1)
         )
     }
 
@@ -877,7 +895,11 @@ struct AnalyticsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(Color.primary.opacity(0.030), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(color.opacity(0.14), lineWidth: 1)
+        )
     }
 
     private var peakHourChart: some View {
@@ -923,7 +945,11 @@ struct AnalyticsView: View {
             }
         }
         .padding(9)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(.primary.opacity(0.055), lineWidth: 1)
+        )
     }
 
     private func insightTile(title: String, value: String, detail: String, symbol: String, color: Color) -> some View {
@@ -950,7 +976,11 @@ struct AnalyticsView: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(color.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(color.opacity(0.14), lineWidth: 1)
+        )
     }
 
     private func rankedList(title: String, rows: [RankedInsight]) -> some View {
@@ -991,12 +1021,16 @@ struct AnalyticsView: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
         }
         .padding(8)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.020), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(.primary.opacity(0.045), lineWidth: 1)
+        )
     }
 
     private func healthRow(title: String, value: String, progress: Double?, color: Color) -> some View {
@@ -1060,12 +1094,12 @@ struct AnalyticsView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background(
-            (hoveredUserID == user.id ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)),
+            AnyShapeStyle(Color.primary.opacity(hoveredUserID == user.id ? 0.050 : 0.028)),
             in: RoundedRectangle(cornerRadius: 11, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(rank == 1 ? Color.accentColor.opacity(0.18) : .white.opacity(0.06), lineWidth: 1)
+                .strokeBorder(rank == 1 ? Color.accentColor.opacity(0.18) : .primary.opacity(0.055), lineWidth: 1)
         )
         .onHover { isHovering in
             hoveredUserID = isHovering ? user.id : nil
@@ -1170,7 +1204,7 @@ struct AnalyticsView: View {
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: isFeatured ? 13 : 10, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.primary.opacity(isFeatured ? 0.034 : 0.026))
                 LinearGradient(
                     colors: [
                         insight.tone.fillColor.opacity(isFeatured ? 0.18 : 0.14),
@@ -1216,14 +1250,15 @@ struct AnalyticsView: View {
 
     private var latencyProgress: Double? {
         guard let latency = snapshot.health.websocketLatencyMs else { return nil }
-        return min(Double(latency) / 500.0, 1.0)
+        return min(Double(latency) / Double(ConnectionDiagnostics.gatewayHeartbeatCriticalThresholdMs), 1.0)
     }
 
     private var latencyColor: Color {
         guard let latency = snapshot.health.websocketLatencyMs else { return .secondary }
-        if latency < 150 { return .green }
-        if latency < 300 { return .yellow }
-        return .orange
+        if ConnectionDiagnostics.isGatewayHeartbeatCritical(latency) { return .red }
+        if ConnectionDiagnostics.isGatewayHeartbeatWarning(latency) { return .orange }
+        if latency >= 500 { return .yellow }
+        return .green
     }
 
     private var relativeUpdateText: String {
@@ -1285,6 +1320,74 @@ struct AnalyticsView: View {
             return String(first)
         }
         return trimmed
+    }
+
+    private func friendlyUserName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let userID = discordMentionID(from: trimmed, marker: "@"),
+           let displayName = app.knownUsersById[userID],
+           !displayName.isEmpty {
+            return displayName
+        }
+        if let displayName = app.knownUsersById[trimmed], !displayName.isEmpty {
+            return displayName
+        }
+        if looksLikeDiscordID(trimmed) {
+            return "User \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
+    private func friendlyTextChannelName(_ raw: String, server: String?) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if trimmed.hasPrefix("#") { return trimmed }
+
+        let channelID = discordMentionID(from: trimmed, marker: "#") ?? trimmed
+        if let serverID = resolvedServerID(from: server),
+           let channel = app.availableTextChannelsByServer[serverID]?.first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+        if let channel = app.availableTextChannelsByServer.values
+            .flatMap({ $0 })
+            .first(where: { matchesChannel($0, value: channelID) }) {
+            return "#\(channel.name)"
+        }
+
+        let lower = trimmed.lowercased()
+        if lower == "dm" || lower == "direct message" || trimmed == "-" {
+            return trimmed
+        }
+        if looksLikeDiscordID(channelID) {
+            return "Channel \(channelID.suffix(4))"
+        }
+        return "#\(trimmed)"
+    }
+
+    private func matchesChannel(_ channel: GuildTextChannel, value: String) -> Bool {
+        channel.id == value || channel.name.localizedCaseInsensitiveCompare(value) == .orderedSame
+    }
+
+    private func resolvedServerID(from raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if app.connectedServers[trimmed] != nil { return trimmed }
+        return app.connectedServers.first { _, name in
+            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }?.key
+    }
+
+    private func discordMentionID(from value: String, marker: Character) -> String? {
+        guard value.first == "<", value.dropFirst().first == marker, value.last == ">" else { return nil }
+        let body = value.dropFirst(2).dropLast()
+        return String(body).trimmingCharacters(in: CharacterSet(charactersIn: "!&"))
+    }
+
+    private func looksLikeDiscordID(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count >= 15 && trimmed.unicodeScalars.allSatisfy { CharacterSet.decimalDigits.contains($0) }
     }
 
     private func rankedCounts(values: [String], symbol: String, color: Color, emptyDetail: String) -> [RankedInsight] {
@@ -1677,6 +1780,19 @@ private enum AnalyticsAggregator {
         return AnalyticsSnapshot(generatedAt: now, voice: voice, system: system, health: health, feed: feed)
     }
 
+    @MainActor
+    private static func friendlyUserName(_ raw: String, app: AppModel) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if let displayName = app.knownUsersById[trimmed], !displayName.isEmpty {
+            return displayName
+        }
+        if trimmed.count >= 15 && trimmed.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }) {
+            return "User \(trimmed.suffix(4))"
+        }
+        return trimmed
+    }
+
     private static func deterministicMostActiveDay(from dailyActivity: [(date: Date, count: Int)]) -> String {
         let activeDays = dailyActivity
             .filter { $0.count >= 1 }
@@ -1700,10 +1816,13 @@ private enum AnalyticsAggregator {
         if status == .reconnecting {
             return .recovering
         }
-        if latencyMs.map({ $0 >= 500 }) == true || queueLoad >= 0.90 || failedCommandsToday >= 5 {
+        if ConnectionDiagnostics.isGatewayHeartbeatCritical(latencyMs) || queueLoad >= 0.90 || failedCommandsToday >= 5 {
             return .degraded
         }
-        if latencyMs.map({ $0 >= 300 }) == true || queueLoad >= 0.70 || automationFailures > 0 || failedCommandsToday > 0 {
+        if ConnectionDiagnostics.isGatewayHeartbeatWarning(latencyMs)
+            || queueLoad >= 0.70
+            || automationFailures > 0
+            || failedCommandsToday > 0 {
             return .warning
         }
         return .healthy
@@ -1728,7 +1847,7 @@ private enum AnalyticsAggregator {
                 id: "command-\(command.id)",
                 timestamp: command.time,
                 title: command.ok ? "Command executed" : "Command failed",
-                detail: "\(command.user) ran \(command.command)",
+                detail: "\(friendlyUserName(command.user, app: app)) ran \(command.command)",
                 category: .command
             )
         }
@@ -2143,13 +2262,14 @@ private enum OperationalInsightsEngine {
     }
 
     private static func anomalyInsight(_ context: OperationalInsightContext) -> OperationalInsight? {
-        if let latency = context.health.websocketLatencyMs, latency >= 300 {
+        if let latency = context.health.websocketLatencyMs,
+           ConnectionDiagnostics.isGatewayHeartbeatWarning(latency) {
             return OperationalInsight(
                 id: "anomaly-latency",
-                title: "Latency elevated",
-                body: "Gateway latency is holding at \(latency) ms, above the normal operating band.",
+                title: "Gateway heartbeat elevated",
+                body: "Gateway heartbeat is holding at \(latency) ms, above the normal operating band.",
                 symbol: "waveform.path.badge.exclamationmark",
-                tone: latency >= 500 ? .error : .warning,
+                tone: ConnectionDiagnostics.isGatewayHeartbeatCritical(latency) ? .error : .warning,
                 weight: latency,
                 note: context.health.state.detail
             )

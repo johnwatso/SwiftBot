@@ -50,32 +50,14 @@ struct UnifiedRootView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        HStack(spacing: 0) {
+        ZStack(alignment: .leading) {
+            detailView
+                .padding(.leading, 292)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             DashboardSidebar(selection: $selection)
                 .frame(width: 280)
-
-            Group {
-                switch selection {
-                case .overview:
-                    OverviewView(onOpenSwiftMesh: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selection = .swiftMesh
-                        }
-                    })
-                case .patchy: PatchyView()
-                case .automations: AutomationsView()
-                case .moderation: ModerationView()
-                case .commands: CommandsView()
-                case .activity: ActivityLogView()
-                case .wikiBridge: WikiBridgeView()
-                case .aiBots: AIBotsView()
-                case .recordings: RecordingsView()
-                case .analytics: AnalyticsView()
-                case .swiftMesh: SwiftMeshView()
-                case .sweep: SweepView()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .zIndex(1)
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
@@ -85,6 +67,29 @@ struct UnifiedRootView: View {
                     .padding(.top, 14)
                     .padding(.trailing, 18)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selection {
+        case .overview:
+            OverviewView(onOpenSwiftMesh: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selection = .swiftMesh
+                }
+            })
+        case .patchy: PatchyView()
+        case .automations: AutomationsView()
+        case .moderation: ModerationView()
+        case .commands: CommandsView()
+        case .activity: ActivityLogView()
+        case .wikiBridge: WikiBridgeView()
+        case .aiBots: AIBotsView()
+        case .recordings: RecordingsView()
+        case .analytics: AnalyticsView()
+        case .swiftMesh: SwiftMeshView()
+        case .sweep: SweepView()
         }
     }
 }
@@ -125,96 +130,49 @@ struct DashboardSidebar: View {
         ZStack {
             SwiftBotSidebarMaterialBackground()
 
-            VStack(spacing: 12) {
-                DashboardSidebarHeader(
-                    avatarURL: app.botAvatarURL,
-                    botUsername: app.resolvedBotUsername,
-                    statusText: app.primaryServiceStatusText,
-                    isOnline: app.primaryServiceIsOnline,
-                    clusterMode: app.clusterSnapshot.mode.rawValue,
-                    clusterIcon: clusterIcon
-                )
-                .padding(.horizontal, 10)
-                .padding(.top, 44)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SidebarSection(title: "Dashboard") {
-                            SidebarRow(
-                                item: .overview,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                        }
-
-                        SidebarSection(title: "Workflows") {
-                            SidebarRow(
-                                item: .commands,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .automations,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .moderation,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                        }
-
-                        SidebarSection(title: "Services") {
-                            SidebarRow(
-                                item: .patchy,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .sweep,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .wikiBridge,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .recordings,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace,
-                                count: app.recentMediaCount24h
-                            )
-                        }
-
-                        SidebarSection(title: "System") {
-                            SidebarRow(
-                                item: .aiBots,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .analytics,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .activity,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                            SidebarRow(
-                                item: .swiftMesh,
-                                selection: $selection,
-                                selectionHighlightNamespace: selectionHighlightNamespace
-                            )
-                        }
+            VStack(spacing: 0) {
+                List {
+                    Section {
+                        DashboardSidebarHeader(
+                            avatarURL: app.botAvatarURL,
+                            botUsername: app.resolvedBotUsername,
+                            statusText: app.primaryServiceStatusText,
+                            isOnline: app.primaryServiceIsOnline,
+                            clusterMode: app.clusterSnapshot.mode.rawValue,
+                            clusterIcon: clusterIcon
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                        .listRowBackground(Color.clear)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
+
+                    Section("Dashboard") {
+                        sidebarListRow(.overview)
+                    }
+
+                    Section("Workflows") {
+                        sidebarListRow(.commands)
+                        sidebarListRow(.automations)
+                        sidebarListRow(.moderation)
+                    }
+
+                    Section("Services") {
+                        sidebarListRow(.patchy)
+                        sidebarListRow(.sweep)
+                        sidebarListRow(.wikiBridge)
+                        sidebarListRow(.recordings, count: app.recentMediaCount24h)
+                    }
+
+                    Section("System") {
+                        sidebarListRow(.aiBots)
+                        sidebarListRow(.analytics)
+                        sidebarListRow(.activity)
+                        sidebarListRow(.swiftMesh)
+                    }
                 }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .padding(.top, 34)
 
                 Group {
                     if !isPrimaryServiceRunning {
@@ -239,7 +197,7 @@ struct DashboardSidebar: View {
                 .controlSize(.large)
                 .buttonBorderShape(.capsule)
                 .padding(.horizontal, 10)
-                .padding(.bottom, 12)
+                .padding(.vertical, 12)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -247,9 +205,52 @@ struct DashboardSidebar: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+        )
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 12)
+        .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 2)
         .padding(.leading, 8)
         .padding(.trailing, 4)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func sidebarListRow(_ item: SidebarItem, count: Int? = nil) -> some View {
+        HStack(spacing: 8) {
+            Label(item.rawValue, systemImage: item.icon)
+                .labelStyle(.titleAndIcon)
+            Spacer(minLength: 0)
+            if let count, count > 0 {
+                Text("\(count)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+            }
+        }
+        .font(.system(size: 14, weight: selection == item ? .semibold : .regular))
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if selection == item {
+                SidebarSelectionHighlight()
+                    .matchedGeometryEffect(id: "sidebarSelectionHighlight", in: selectionHighlightNamespace)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                selection = item
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+        .listRowBackground(Color.clear)
     }
 
     private var isPrimaryServiceRunning: Bool {
@@ -528,19 +529,26 @@ private struct SwiftBotSidebarMaterialBackground: View {
 
     var body: some View {
         ZStack {
-            SwiftBotVisualEffectMaterialView(material: .sidebar)
+            SwiftBotVisualEffectMaterialView(material: .sidebar, blendingMode: .behindWindow)
 
             Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
-                .opacity(colorScheme == .dark ? 0.25 : 0.35)
+                .opacity(colorScheme == .dark ? 0.22 : 0.30)
 
             LinearGradient(
                 colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.05 : 0.12),
+                    Color.white.opacity(colorScheme == .dark ? 0.08 : 0.16),
                     Color.clear
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+
+            HStack {
+                Spacer()
+                Rectangle()
+                    .fill(.primary.opacity(colorScheme == .dark ? 0.08 : 0.06))
+                    .frame(width: 1)
+            }
         }
     }
 }

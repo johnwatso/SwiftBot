@@ -420,10 +420,13 @@ extension AppModel {
         if status == .reconnecting {
             return ("recovering", "Gateway is reconnecting or stabilizing after disruption.")
         }
-        if latencyMs.map({ $0 >= 500 }) == true || queueLoad >= 0.90 || failedCommandsToday >= 5 {
+        if ConnectionDiagnostics.isGatewayHeartbeatCritical(latencyMs) || queueLoad >= 0.90 || failedCommandsToday >= 5 {
             return ("degraded", "Latency, queue, or failures indicate degraded operation.")
         }
-        if latencyMs.map({ $0 >= 300 }) == true || queueLoad >= 0.70 || automationFailures > 0 || failedCommandsToday > 0 {
+        if ConnectionDiagnostics.isGatewayHeartbeatWarning(latencyMs)
+            || queueLoad >= 0.70
+            || automationFailures > 0
+            || failedCommandsToday > 0 {
             return ("warning", "One operational signal is elevated and worth watching.")
         }
         return ("healthy", "Gateway, queue, and automation signals are nominal.")

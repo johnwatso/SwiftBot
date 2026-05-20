@@ -144,6 +144,7 @@
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
 		A19AE8F43B9B8CFB90BE7638 /* Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440472C1541FD0866542066B /* Automations.swift */; };
 		A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */; };
+		A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */; };
 		AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
 		AB311B611EAF20CED07A34FD /* BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C883C3445CFB25BE95819B5 /* BotStateModels.swift */; };
 		AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */; };
@@ -221,6 +222,7 @@
 		1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebOAuthTests.swift; sourceTree = "<group>"; };
 		1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NVIDIAService.swift; sourceTree = "<group>"; };
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
+		1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionDiagnosticsTests.swift; sourceTree = "<group>"; };
 		1F85AB8F509718DB2F217253 /* ClusterSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterSettingsTests.swift; sourceTree = "<group>"; };
 		20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
 		216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
@@ -557,6 +559,7 @@
 				DC995D5DD1A67363B7BD7FAA /* ClusterSecurityTests.swift */,
 				1F85AB8F509718DB2F217253 /* ClusterSettingsTests.swift */,
 				AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */,
+				1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */,
 				8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */,
 				9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */,
 				2C8FA234EDBAE756493F5CF9 /* DiscordGuildRESTClientTests.swift */,
@@ -999,6 +1002,7 @@
 				90A5AD4EDB92E31FEE9C2707 /* ClusterSecurityTests.swift in Sources */,
 				104A917CA018BB5341E26C7D /* ClusterSettingsTests.swift in Sources */,
 				145D84D6516814F33DF25F40 /* CommandProcessorTests.swift in Sources */,
+				A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */,
 				7AEEABF5EE4F1E8741511E4D /* DMTimeoutTests.swift in Sources */,
 				D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */,
 				749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */,

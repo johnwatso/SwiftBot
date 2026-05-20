@@ -16,10 +16,13 @@ struct AIBotsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 if app.isFailoverManagedNode {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill")
@@ -36,13 +39,14 @@ struct AIBotsView: View {
                 MemoryOverviewView(viewModel: app.memoryViewModel)
                 configurationCard
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
             .padding(.horizontal, 16)
-            .padding(.top, 12)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity)
+            }
         }
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .bottomTrailing) {
             if hasUnsavedChanges && !app.isFailoverManagedNode {
                 StickySaveButton(label: "Save AI Settings", systemImage: "square.and.arrow.down.fill") {
