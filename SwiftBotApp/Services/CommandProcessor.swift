@@ -60,6 +60,7 @@ final class CommandProcessor {
         var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
         var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
         var sweepCommand: (String) async -> (ok: Bool, message: String)
+        var lookupUserTimeZone: (String) -> String?
     }
 
     private let dependencies: Dependencies
@@ -193,6 +194,14 @@ final class CommandProcessor {
             return await dependencies.send(
                 context.channelId,
                 "Couldn't fetch meta data right now. Source: https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds"
+            )
+        case "timestamp", "ts":
+            let input = tokens.dropFirst().joined(separator: " ")
+            let userID = dependencies.authorId(context.raw)
+            let savedTZ = userID.flatMap { dependencies.lookupUserTimeZone($0) }
+            return await dependencies.send(
+                context.channelId,
+                Self.timestampReply(for: input, savedTimeZoneID: savedTZ)
             )
         default:
             if let resolvedWikiCommand = dependencies.resolveWikiCommand(command) {
@@ -455,6 +464,41 @@ final class CommandProcessor {
                 description: "Couldn't fetch meta data right now.\nSource: https://skycoach.gg/blog/the-finals/articles/the-finals-best-builds",
                 color: 15_790_767
             )
+        case "timestamp":
+            let input = Self.slashOptionString(named: "when", in: data) ?? ""
+            let userID = dependencies.authorId(context.rawLikeMessage)
+            let savedTZ = userID.flatMap { dependencies.lookupUserTimeZone($0) }
+            let resolvedTZ = savedTZ.flatMap { TimeZone(identifier: $0) } ?? .current
+            switch DiscordTimestampParser.parse(input, timeZone: resolvedTZ) {
+            case .failure(let error):
+                return embed(title: "Timestamp", description: "❌ \(error.description)", color: 15_790_767)
+            case .success(let parsed):
+                let defaultCode = DiscordTimestampFormatter.code(for: parsed.date, style: .longDateTime)
+                let relativeCode = DiscordTimestampFormatter.code(for: parsed.date, style: .relative)
+                let allFormats = DiscordTimestampFormatter.allFormats(for: parsed.date)
+                let table = allFormats.map { entry in
+                    "**\(entry.style.label)** — \(entry.code) → `\(entry.code)`"
+                }.joined(separator: "\n")
+                let tzNote: String
+                if savedTZ != nil {
+                    tzNote = "🕓 Interpreted in your saved zone: `\(resolvedTZ.identifier)`."
+                } else {
+                    tzNote = "⚠️ No saved timezone — used server zone `\(resolvedTZ.identifier)`. Ask the operator to set yours in SwiftBot."
+                }
+                let description = """
+                Parsed as **\(parsed.summary)**
+                \(tzNote)
+
+                Preview: \(defaultCode) (\(relativeCode))
+
+                ```
+                \(defaultCode)
+                ```
+
+                \(table)
+                """
+                return embed(title: "Discord Timestamp", description: description)
+            }
         default:
             if let resolved = dependencies.resolveWikiCommand(command) {
                 let query = Self.slashOptionString(named: "query", in: data) ?? ""
@@ -506,6 +550,30 @@ final class CommandProcessor {
             }
         }
         return nil
+    }
+
+    static func timestampReply(for input: String, savedTimeZoneID: String?) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "🕰️ Usage: `!timestamp <when>` — e.g. `6pm`, `6pm friday`, `6:15 friday the 13th`, `in 2 hours`."
+        }
+        let resolvedTZ = savedTimeZoneID.flatMap { TimeZone(identifier: $0) } ?? .current
+        switch DiscordTimestampParser.parse(trimmed, timeZone: resolvedTZ) {
+        case .failure(let error):
+            return "❌ \(error.description)"
+        case .success(let parsed):
+            let defaultCode = DiscordTimestampFormatter.code(for: parsed.date, style: .longDateTime)
+            let relativeCode = DiscordTimestampFormatter.code(for: parsed.date, style: .relative)
+            let zoneNote = savedTimeZoneID == nil
+                ? "⚠️ Server zone `\(resolvedTZ.identifier)` — ask the operator to save yours."
+                : "🕓 Zone: `\(resolvedTZ.identifier)`"
+            return """
+            🕰️ **\(parsed.summary)**
+            \(zoneNote)
+            Preview: \(defaultCode) (\(relativeCode))
+            Copy: `\(defaultCode)`
+            """
+        }
     }
 
     private static func parseMusicInput(_ raw: String) -> (query: String?, title: String?, artist: String?) {

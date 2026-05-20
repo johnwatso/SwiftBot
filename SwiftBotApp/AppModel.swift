@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     @Published var availableRolesByServer: [String: [GuildRole]] = [:]
     @Published var knownUsersById: [String: String] = [:]
+    @Published var knownBotUserIds: Set<String> = []
+    @Published var knownGuildMemberIds: Set<String> = []
     @Published var gatewayEventCount = 0
     @Published var voiceStateEventCount = 0
     @Published var readyEventCount = 0

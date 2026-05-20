@@ -314,6 +314,10 @@ struct BotSettings: Codable, Hashable {
     var openAIImageMonthlyLimitPerUser: Int = 5
     var openAIImageMonthlyHardCap: Int = 100
     var openAIImageUsageByUserMonth: [String: Int] = [:]
+    /// Per-Discord-user IANA timezone identifier (e.g. "America/New_York")
+    /// used to interpret natural-language times in `/timestamp`.
+    /// Missing entries fall back to the bot host's `TimeZone.current`.
+    var userTimezones: [String: String] = [:]
     var devFeaturesEnabled: Bool = false
     var bugAutoFixEnabled: Bool = false
     var bugAutoFixTriggerEmoji: String = "🤖"
