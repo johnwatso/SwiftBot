@@ -807,13 +807,19 @@ actor AdminWebServer {
     }
 
     func stop() async {
+        // Only log if something was actually running. Otherwise reconfigure /
+        // settings-save flows that call `stop()` defensively spam the log with
+        // "Admin Web UI stopped" lines even when the server was never up.
+        let wasRunning = (listener != nil) || (nioChannel != nil)
         listener?.cancel()
         listener = nil
         await stopNIOServer()
         activeTransportUsesTLS = false
         activePublicBaseURL = resolvedPublicBaseURL(usingTLS: false)
         pendingStates.removeAll()
-        await logger?("Admin Web UI stopped")
+        if wasRunning {
+            await logger?("Admin Web UI stopped")
+        }
     }
 
     func restartListener() async -> RuntimeState {

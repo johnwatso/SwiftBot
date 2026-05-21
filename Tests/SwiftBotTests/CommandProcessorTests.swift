@@ -304,7 +304,8 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 sweepCommand: { _ in
                     (ok: true, message: "Sweep result")
-                }
+                },
+                lookupUserTimeZone: { _ in nil }
             )
         )
     }

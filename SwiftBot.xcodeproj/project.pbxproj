@@ -170,6 +170,7 @@
 		C73139C0B46A9ACEEF9C5177 /* ClusterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322D9081CEE7191A61086D90 /* ClusterModels.swift */; };
 		C73223597C2FE00574A04193 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9386EDF3092943C62265C4E /* ReleaseNotes.swift */; };
 		CB267C81149E545799E3E0E4 /* LocalBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */; };
+		D0205E4563EB915CACC68B3C /* AppleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11651EB1C6E340FA16C637E3 /* AppleService.swift */; };
 		D0BD0C4A6BCCA656A7DAD7C0 /* DiscordAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8628E15DC3B8851771756598 /* DiscordAIServiceTests.swift */; };
 		D3B17047D7B3AA1B551A1CE9 /* PlaylistImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81F94237D5160F78441D7B80 /* PlaylistImportService.swift */; };
 		D78CB841C27860D437A41E36 /* RemoteBotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031F4D5F167A067542123F0C /* RemoteBotProvider.swift */; };
@@ -183,6 +184,7 @@
 		EAD5F845E53CE031B3C7D2C7 /* SwiftMinerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B2E521D4ABF13B19C9005F /* SwiftMinerClient.swift */; };
 		EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8964B98159AC25452C4423DF /* SwiftBot.icon */; };
 		EBF4ED30124502DB72B90F79 /* EmbedFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726607C6AA014293B0C7794D /* EmbedFormatter.swift */; };
+		EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */; };
 		EE1D37D9128E8C74FD1B37CC /* SwiftMinerDMThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30594CFC06F0AC68516A696 /* SwiftMinerDMThemeTests.swift */; };
 		F18225F9C4A1405093180E0D /* AppModel+AI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A275B86FF1816EF5115B7E84 /* AppModel+AI.swift */; };
 		F266903914FB55C141F347D5 /* SwiftMeshSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 818A90855EE5E88B16695E30 /* SwiftMeshSetupView.swift */; };
@@ -217,6 +219,7 @@
 		09A613E717FA199F6B39B864 /* SwiftMinerDMTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMTheme.swift; sourceTree = "<group>"; };
 		0C62599CD5D11338B087201C /* MusicLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLookupService.swift; sourceTree = "<group>"; };
 		0D7E1662299F69697912A63E /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
+		11651EB1C6E340FA16C637E3 /* AppleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleService.swift; sourceTree = "<group>"; };
 		15DCEE4759A584388ABAC846 /* DiscordMessageRESTClientDMTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordMessageRESTClientDMTests.swift; sourceTree = "<group>"; };
 		16A231217B6994B4D911F345 /* VoicePlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackService.swift; sourceTree = "<group>"; };
 		16E6BEFD3FAD135FEA5C5BDD /* AppModel+Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Automations.swift"; sourceTree = "<group>"; };
@@ -263,6 +266,7 @@
 		497A71EBDE92BC874E86B34F /* SwiftMinerDMStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMStyle.swift; sourceTree = "<group>"; };
 		4AB32D13A6D673323296304C /* AdminWebServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebServer.swift; sourceTree = "<group>"; };
 		4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMeshView.swift; sourceTree = "<group>"; };
+		4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshFailoverIntegrationTests.swift; sourceTree = "<group>"; };
 		4C5788F384AF1C5CEC1A7137 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		4D7439BDA54C341126F5A30C /* SwiftMinerDMSenderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMSenderTests.swift; sourceTree = "<group>"; };
 		4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterCoordinator.swift; sourceTree = "<group>"; };
@@ -539,6 +543,7 @@
 			isa = PBXGroup;
 			children = (
 				C87A43A58BBA036A9646BCAC /* AMDService.swift */,
+				11651EB1C6E340FA16C637E3 /* AppleService.swift */,
 				DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */,
 				7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */,
 				726607C6AA014293B0C7794D /* EmbedFormatter.swift */,
@@ -574,6 +579,7 @@
 				3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */,
 				91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */,
 				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
+				4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */,
 				E1C61277F888422928536026 /* MeshFailoverTests.swift */,
 				DDBE5EBDA57392AC43CCE370 /* MeshSyncTests.swift */,
 				ADDBE745C4836C8F28F219B2 /* PatchyValidationTests.swift */,
@@ -868,6 +874,7 @@
 				3A84CA8872264B04238C0992 /* AppModelTypes.swift in Sources */,
 				85D9B6AB4ABEC13E674EB521 /* AppSharedTypes.swift in Sources */,
 				63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */,
+				D0205E4563EB915CACC68B3C /* AppleService.swift in Sources */,
 				835AE021B9037B1CA2CF6085 /* AutomationDrafter.swift in Sources */,
 				1942335191C02E2314C528E0 /* AutomationEngine.swift in Sources */,
 				F43FB976BAE0B5AFD14E5F9D /* AutomationExamples.swift in Sources */,
@@ -1020,6 +1027,7 @@
 				C0DDE65E5C04789A09133D38 /* HelpEngineTests.swift in Sources */,
 				BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */,
 				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
+				EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */,
 				0684186AD516210645A6083C /* MeshFailoverTests.swift in Sources */,
 				2782AC6744E0B9AC94CE141D /* MeshSyncTests.swift in Sources */,
 				F3448FDDAE9DF8344C392F3D /* PatchyValidationTests.swift in Sources */,

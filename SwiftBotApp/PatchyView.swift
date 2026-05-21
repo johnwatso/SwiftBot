@@ -42,9 +42,49 @@ struct PatchyView: View {
                         app.updatePatchyTarget(updated.toTarget())
                     }
                     editorDraft = nil
-                }
+                },
+                disabledSources: disabledSourcesForEditor(currentDraft: editorDraft),
+                disabledAppleProducts: disabledAppleProductsForEditor(currentDraft: editorDraft)
             )
         }
+    }
+
+    private func disabledSourcesForEditor(currentDraft: PatchyTargetDraft?) -> Set<PatchySourceKind> {
+        let driverKinds: Set<PatchySourceKind> = [.nvidia, .amd, .intel]
+        var inUse = Set(app.settings.patchy.sourceTargets.map(\.source)).intersection(driverKinds)
+
+        // Hide Apple from the kind picker only if every product is already taken.
+        let appleProductsInUse = Set(
+            app.settings.patchy.sourceTargets
+                .filter { $0.source == .apple }
+                .map(\.appleProduct)
+        )
+        if appleProductsInUse.count >= PatchyAppleProduct.allCases.count {
+            inUse.insert(.apple)
+        }
+
+        if editorMode == .edit, let current = currentDraft {
+            if driverKinds.contains(current.source) {
+                return inUse.subtracting([current.source])
+            }
+            if current.source == .apple {
+                // The current Apple draft's product is "available" by definition; keep Apple visible.
+                return inUse.subtracting([.apple])
+            }
+        }
+        return inUse
+    }
+
+    private func disabledAppleProductsForEditor(currentDraft: PatchyTargetDraft?) -> Set<PatchyAppleProduct> {
+        var inUse = Set(
+            app.settings.patchy.sourceTargets
+                .filter { $0.source == .apple }
+                .map(\.appleProduct)
+        )
+        if editorMode == .edit, let current = currentDraft, current.source == .apple {
+            inUse.remove(current.appleProduct)
+        }
+        return inUse
     }
 
     // MARK: - Header
@@ -82,7 +122,14 @@ struct PatchyView: View {
 
                 Button {
                     editorMode = .create
-                    editorDraft = PatchyTargetDraft.makeNew(defaultServer: sortedServerIDs().first, app: app)
+                    let disabled = disabledSourcesForEditor(currentDraft: nil)
+                    let disabledApple = disabledAppleProductsForEditor(currentDraft: nil)
+                    editorDraft = PatchyTargetDraft.makeNew(
+                        defaultServer: sortedServerIDs().first,
+                        app: app,
+                        disabledSources: disabled,
+                        disabledAppleProducts: disabledApple
+                    )
                 } label: {
                     Label("Add Target", systemImage: "plus")
                 }
@@ -316,6 +363,8 @@ struct PatchyView: View {
             return .github
         case .steam:
             return .gamingPlatforms
+        case .apple:
+            return .softwareReleases
         }
     }
 
@@ -350,6 +399,9 @@ struct PatchyView: View {
                 ? "commits · \(githubBranchLabel(for: target))"
                 : "releases"
             return repo.isEmpty ? "GitHub" : "GitHub • \(repo) (\(suffix))"
+        case .apple:
+            let suffix = target.appleIncludeBetas ? "Releases + Betas" : "Releases"
+            return "Apple • \(target.appleProduct.rawValue) (\(suffix))"
         default:
             return target.source.rawValue
         }
@@ -367,6 +419,8 @@ struct PatchyView: View {
             let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !repo.isEmpty else { return "Repository" }
             return repo.split(separator: "/").last.map(String.init) ?? repo
+        case .apple:
+            return target.appleProduct.rawValue
         default:
             return target.source.rawValue.replacingOccurrences(of: " Arc", with: "")
         }
@@ -380,6 +434,8 @@ struct PatchyView: View {
             return "github:\(repo):\(target.githubWatchAllCommits):\(target.githubBranchMode.rawValue):\(branch)"
         case .steam:
             return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
+        case .apple:
+            return "apple:\(target.appleProduct.rawValue)"
         default:
             return target.source.rawValue
         }
@@ -390,6 +446,7 @@ struct PatchyView: View {
         case .amd: return "a.circle.fill"
         case .nvidia: return "n.square.fill"
         case .intel: return "i.circle.fill"
+        case .apple: return "applelogo"
         case .steam: return "gamecontroller.fill"
         case .github: return "chevron.left.forwardslash.chevron.right"
         }
@@ -658,6 +715,8 @@ enum PatchyDashboardSummary {
             return .github
         case .steam:
             return .gamingPlatforms
+        case .apple:
+            return .softwareReleases
         }
     }
 
@@ -669,6 +728,8 @@ enum PatchyDashboardSummary {
             return "github:\(repo):\(target.githubWatchAllCommits):\(target.githubBranchMode.rawValue):\(branch)"
         case .steam:
             return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
+        case .apple:
+            return "apple:\(target.appleProduct.rawValue)"
         default:
             return target.source.rawValue
         }
@@ -917,7 +978,9 @@ private struct PatchTargetCard: View {
             return target.githubWatchAllCommits ? "Commit activity" : "Release monitoring"
         case .steam:
             return "Platform updates"
-        default:
+        case .apple:
+            return target.appleIncludeBetas ? "Releases + betas" : "Stable releases"
+        case .nvidia, .amd, .intel:
             return "Driver monitoring"
         }
     }
@@ -980,6 +1043,7 @@ private struct PatchTargetCard: View {
         case .amd: return "a.circle.fill"
         case .nvidia: return "n.square.fill"
         case .intel: return "i.circle.fill"
+        case .apple: return "applelogo"
         case .steam: return "gamecontroller.fill"
         case .github: return "chevron.left.forwardslash.chevron.right"
         }
@@ -1106,6 +1170,8 @@ private struct PatchyTargetDraft: Identifiable {
     var githubBranch: String
     var githubWatchAllCommits: Bool
     var githubBranchMode: PatchyGitHubBranchMode
+    var appleProduct: PatchyAppleProduct
+    var appleIncludeBetas: Bool
     var pollingIntervalMinutes: Int
     var embedColorHex: String
     var summarizeWithAppleIntelligence: Bool
@@ -1125,6 +1191,8 @@ private struct PatchyTargetDraft: Identifiable {
         githubBranch = target.githubBranch
         githubWatchAllCommits = target.githubWatchAllCommits
         githubBranchMode = target.githubBranchMode
+        appleProduct = target.appleProduct
+        appleIncludeBetas = target.appleIncludeBetas
         pollingIntervalMinutes = target.pollingIntervalMinutes
         embedColorHex = target.embedColorHex
         summarizeWithAppleIntelligence = target.summarizeWithAppleIntelligence
@@ -1137,10 +1205,19 @@ private struct PatchyTargetDraft: Identifiable {
     }
 
     @MainActor
-    static func makeNew(defaultServer: String?, app: AppModel) -> PatchyTargetDraft {
+    static func makeNew(
+        defaultServer: String?,
+        app: AppModel,
+        disabledSources: Set<PatchySourceKind> = [],
+        disabledAppleProducts: Set<PatchyAppleProduct> = []
+    ) -> PatchyTargetDraft {
         let server = defaultServer ?? ""
         let channel = app.availableTextChannelsByServer[server]?.first?.id ?? ""
+        let firstAvailable = PatchySourceKind.allCases.first { !disabledSources.contains($0) } ?? .nvidia
+        let appleProduct = PatchyAppleProduct.allCases.first { !disabledAppleProducts.contains($0) } ?? .macOS
         return PatchyTargetDraft(target: PatchySourceTarget(
+            source: firstAvailable,
+            appleProduct: appleProduct,
             serverId: server,
             channelId: channel
         ))
@@ -1156,6 +1233,8 @@ private struct PatchyTargetDraft: Identifiable {
             githubBranch: githubBranch,
             githubWatchAllCommits: githubWatchAllCommits,
             githubBranchMode: githubBranchMode,
+            appleProduct: appleProduct,
+            appleIncludeBetas: appleIncludeBetas,
             pollingIntervalMinutes: pollingIntervalMinutes,
             embedColorHex: PatchyEmbedAccent.resolvedHex(embedColorHex, for: source),
             summarizeWithAppleIntelligence: summarizeWithAppleIntelligence,
@@ -1179,6 +1258,20 @@ private struct PatchyTargetEditorSheet: View {
     let rolesByServer: [String: [GuildRole]]
     let onCancel: () -> Void
     let onSave: (PatchyTargetDraft) -> Void
+    let disabledSources: Set<PatchySourceKind>
+    let disabledAppleProducts: Set<PatchyAppleProduct>
+
+    private var availableSources: [PatchySourceKind] {
+        PatchySourceKind.allCases.filter { kind in
+            kind == draft.source || !disabledSources.contains(kind)
+        }
+    }
+
+    private var availableAppleProducts: [PatchyAppleProduct] {
+        PatchyAppleProduct.allCases.filter { product in
+            product == draft.appleProduct || !disabledAppleProducts.contains(product)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1211,7 +1304,7 @@ private struct PatchyTargetEditorSheet: View {
                     PatchyEditorSection(title: "General", systemImage: "scope") {
                         PatchyEditorRow(title: "Source") {
                             Picker("Source", selection: $draft.source) {
-                                ForEach(PatchySourceKind.allCases) { source in
+                                ForEach(availableSources) { source in
                                     Text(source.rawValue).tag(source)
                                 }
                             }
@@ -1332,6 +1425,24 @@ private struct PatchyTargetEditorSheet: View {
     @ViewBuilder
     private var sourceSettingsSection: some View {
         switch draft.source {
+        case .apple:
+            PatchyEditorSection(title: "Apple Settings", systemImage: "applelogo") {
+                PatchyEditorRow(title: "Product", detail: "Which Apple platform's releases this target watches.") {
+                    Picker("Product", selection: $draft.appleProduct) {
+                        ForEach(availableAppleProducts) { product in
+                            Text(product.rawValue).tag(product)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                PatchyEditorRow(title: "Include Betas", detail: "Post developer betas and release candidates alongside stable releases.") {
+                    Toggle("", isOn: $draft.appleIncludeBetas)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+            }
         case .steam:
             PatchyEditorSection(title: "Steam Settings", systemImage: "gamecontroller") {
                 PatchyEditorRow(title: "App ID", detail: "Steam app identifier used for platform update checks.") {

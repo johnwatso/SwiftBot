@@ -110,6 +110,20 @@ final class MeshSyncTests: XCTestCase {
         XCTAssertFalse(more3)
     }
 
+    func testRecordsSinceUsesSortedCursorPositionNotLexicographicID() async {
+        let store = ConversationStore()
+        let scope = makeScope()
+        let base = Date()
+
+        await store.append(scope: scope, messageID: "z-last-lexically", userID: "u1", content: "first", timestamp: base, role: .user)
+        await store.append(scope: scope, messageID: "a-after-cursor", userID: "u1", content: "second", timestamp: base.addingTimeInterval(1), role: .user)
+
+        let (records, hasMore) = await store.recordsSince(fromRecordID: "z-last-lexically", limit: 500)
+
+        XCTAssertEqual(records.map(\.id), ["a-after-cursor"])
+        XCTAssertFalse(hasMore)
+    }
+
     // MARK: - Test 2: Duplicate delivery is a no-op
 
     func testDuplicateAppendIsNoop() async {
@@ -214,5 +228,17 @@ final class MeshSyncTests: XCTestCase {
         XCTAssertEqual(cursors["Worker-1"]?.leaderTerm, 2, "Cursor must be advanced to the new leader term")
 
         await fulfillment(of: [cursorExpectation], timeout: 2.0)
+    }
+
+    func testReplicationCursorDoesNotMoveBackwardWithinSameTerm() async {
+        let leader = await makeLeader(port: 39206)
+
+        await leader.updateReplicationCursor(for: "Failover", lastSentRecordID: "m-200", term: 4)
+        await leader.updateReplicationCursor(for: "Failover", lastSentRecordID: "m-100", term: 4)
+        await leader.updateReplicationCursor(for: "Failover", lastSentRecordID: nil, term: 4)
+
+        let cursor = await leader.currentReplicationCursor(for: "Failover")
+        XCTAssertEqual(cursor?.leaderTerm, 4)
+        XCTAssertEqual(cursor?.lastSentRecordID, "m-200")
     }
 }

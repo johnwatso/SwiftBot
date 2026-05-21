@@ -177,6 +177,10 @@ extension AppModel {
     func pullConfigFilesFromLeader() async {
         guard settings.clusterMode == .standby || settings.clusterMode == .worker else { return }
         guard let data = await cluster.fetchConfigFiles() else { return }
+        await applyMeshSyncedConfigFiles(data, sourceDescription: "pulled")
+    }
+
+    func applyMeshSyncedConfigFiles(_ data: Data, sourceDescription: String) async {
         let imported = await store.importMeshSyncedFiles(
             data,
             excludingFileNames: Set([
@@ -186,7 +190,7 @@ extension AppModel {
         )
         guard imported > 0 else { return }
 
-        logs.append("SwiftMesh: pulled \(imported) config file(s) from Primary")
+        logs.append("SwiftMesh: \(sourceDescription) \(imported) config file(s) from Primary")
         await reloadSyncedConfigFromDisk()
     }
 
@@ -390,18 +394,31 @@ extension AppModel {
 
     private func ensureLocalStandbyNodePresent(in nodes: [ClusterNodeStatus]) -> [ClusterNodeStatus] {
         guard settings.clusterMode == .standby else { return nodes }
-        guard let localWorker = fallbackClusterNodes().first(where: { $0.role == .worker }) else {
+        guard let localWorker = fallbackClusterNodes().first(where: { $0.role != .leader }) else {
             return nodes
         }
 
-        let hasLocal = nodes.contains { node in
-            guard node.role == .worker else { return false }
+        // Match on the non-leader entry that represents *us* in the leader's
+        // payload. The leader doesn't know our hardware/cpu/mem (it just
+        // emits an `unreachableWorkerNode` stub), so when we find ourselves
+        // we *replace* the impoverished entry with our local-rich one,
+        // preserving the leader-observed latency.
+        let matchIndex = nodes.firstIndex { node in
+            guard node.role != .leader else { return false }
             if node.displayName.caseInsensitiveCompare(localWorker.displayName) == .orderedSame {
                 return true
             }
             return node.hostname.caseInsensitiveCompare(localWorker.hostname) == .orderedSame
         }
-        guard !hasLocal else { return nodes }
+
+        if let idx = matchIndex {
+            var merged = nodes
+            var enriched = localWorker
+            // Keep the leader's observed latency if we have nothing better locally.
+            if enriched.latencyMs == nil { enriched.latencyMs = nodes[idx].latencyMs }
+            merged[idx] = enriched
+            return merged
+        }
 
         var merged = nodes
         merged.append(localWorker)
@@ -433,7 +450,13 @@ extension AppModel {
             ? (Host.current().localizedName ?? "SwiftBot Node")
             : settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let hostname = ProcessInfo.processInfo.hostName
-        let role: ClusterNodeRole = settings.clusterMode == .leader ? .leader : .worker
+        let role: ClusterNodeRole = {
+            switch settings.clusterMode {
+            case .leader:  return .leader
+            case .standby: return .standby
+            default:       return .worker
+            }
+        }()
         let uptime = max(0, Date().timeIntervalSince(launchedAt))
         let hardwareInfo = HardwareInfo.current()
         var nodes: [ClusterNodeStatus] = [
