@@ -68,17 +68,25 @@ More walkthroughs live in [docs/help/](docs/help/).
 
 ## Application Areas
 
-| Area | Purpose |
-| --- | --- |
-| Overview | Bot status, activity, and runtime state |
-| Voice / Actions | Rule builder for voice, message, and member-join automation |
-| Commands / Command Log | Command controls and recent command activity |
-| WikiBridge | External knowledge sources and dynamic command setup |
-| Patchy | Driver, platform, and Steam update monitoring |
-| AI Bots | Apple Intelligence, Ollama, and OpenAI configuration |
-| Diagnostics | Gateway, REST, permissions, intents, and health checks |
-| SwiftMesh | Primary, standby, failover, and mesh diagnostics |
-| Logs / Settings | Token management, runtime logs, updates, and app configuration |
+**Dashboard**
+- **Overview** — bot status, recent activity, and high-level runtime state
+
+**Workflows**
+- **Commands** — slash command controls, channel routing, and moderation command toggles
+- **Automations** — rule builder for voice, message, and member-join events
+- **Moderation** — server moderation rules and enforcement
+
+**Services**
+- **Patchy** — driver, platform, and Steam update monitoring
+- **Sweep** — channel cleanup and message housekeeping
+- **WikiBridge** — external knowledge sources and dynamic command setup
+- **Recordings** — captured media from the last 24h
+
+**System**
+- **AI Bots** — Apple Intelligence, Ollama, and OpenAI configuration
+- **Analytics** — usage metrics and engagement insights
+- **Activity** — runtime logs and event history
+- **SwiftMesh** — primary/standby coordination, failover, and cluster diagnostics
 
 ## Storage
 
