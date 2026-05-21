@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/readme/app-icon.png" width="120" alt="SwiftBot icon">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/app-icon-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/app-icon-light.png">
+    <img src="assets/readme/app-icon-light.png" width="120" alt="SwiftBot icon">
+  </picture>
 </p>
 
 <h1 align="center">SwiftBot - Native macOS Discord Bot Dashboard</h1>
@@ -67,13 +71,21 @@ SwiftBot brings those pieces together in one place. It is intended to make the b
 ### App Preview
 
 <p align="center">
-  <img src="assets/readme/ui-preview.png" alt="SwiftBot dashboard preview">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/ui-preview-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/ui-preview-light.png">
+    <img src="assets/readme/ui-preview-light.png" alt="SwiftBot dashboard preview">
+  </picture>
 </p>
 
 ### Web UI Preview
 
 <p align="center">
-  <img src="assets/readme/webui-preview.png" alt="SwiftBot web UI preview">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/webui-preview-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme/webui-preview-light.png">
+    <img src="assets/readme/webui-preview-light.png" alt="SwiftBot web UI preview">
+  </picture>
 </p>
 
 ## How It Works
