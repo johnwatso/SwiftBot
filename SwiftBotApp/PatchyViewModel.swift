@@ -27,6 +27,11 @@ enum PatchyRuntime {
             return AMDUpdateSource()
         case .intel:
             return IntelUpdateSource()
+        case .apple:
+            return AppleReleasesUpdateSource(
+                product: target.appleProduct,
+                includeBetas: target.appleIncludeBetas
+            )
         case .steam:
             let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !appID.isEmpty else {

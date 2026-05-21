@@ -235,15 +235,26 @@ actor ConversationStore {
     }
 
     func allRecordsSorted() -> [MemoryRecord] {
-        allMessages().sorted { $0.timestamp < $1.timestamp }
+        allMessages().sorted {
+            if $0.timestamp != $1.timestamp { return $0.timestamp < $1.timestamp }
+            return $0.id < $1.id
+        }
     }
 
     func recordsSince(fromRecordID: String?, limit: Int) -> (records: [MemoryRecord], hasMore: Bool) {
+        let limit = max(0, limit)
+        guard limit > 0 else { return ([], !allMessages().isEmpty) }
         let all = allRecordsSorted()
-        guard let fromRecordID else {
+        guard let fromRecordID, !fromRecordID.isEmpty else {
             return (Array(all.prefix(limit)), all.count > limit)
         }
-        guard let startIndex = all.firstIndex(where: { $0.id > fromRecordID }) else {
+
+        guard let cursorIndex = all.firstIndex(where: { $0.id == fromRecordID }) else {
+            return ([], false)
+        }
+
+        let startIndex = all.index(after: cursorIndex)
+        guard startIndex < all.endIndex else {
             return ([], false)
         }
         let remaining = Array(all[startIndex...])

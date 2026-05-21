@@ -634,6 +634,21 @@ struct ClusterMapView: View {
         }
     }
 
+    /// Returns a forget closure only when the row is safe to evict —
+    /// disconnected, and not the local node (forgetting yourself just causes
+    /// the entry to reappear on the next localNodeStatus tick).
+    private func makeForgetAction(for node: ClusterNodeStatus) -> (() -> Void)? {
+        guard node.status == .disconnected else { return nil }
+        let localName = app.settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !localName.isEmpty, node.displayName.caseInsensitiveCompare(localName) == .orderedSame {
+            return nil
+        }
+        let displayName = node.displayName
+        return {
+            Task { await app.forgetClusterNode(displayName: displayName) }
+        }
+    }
+
     private var leaderCardWidth: CGFloat {
         presentation == .overview ? 150 : 182
     }
@@ -698,6 +713,7 @@ struct ClusterMapView: View {
                         node: worker,
                         iconOverride: app.settings.clusterNodeIconOverrides[worker.displayName],
                         onIconSelect: makeIconSelector(for: worker.displayName),
+                        onForget: makeForgetAction(for: worker),
                         presentation: presentation
                     )
                     .equatable()
@@ -710,6 +726,7 @@ struct ClusterMapView: View {
                         node: leader,
                         iconOverride: app.settings.clusterNodeIconOverrides[leader.displayName],
                         onIconSelect: makeIconSelector(for: leader.displayName),
+                        onForget: makeForgetAction(for: leader),
                         showLeaderSymbol: true,
                         presentation: presentation
                     )
@@ -807,6 +824,10 @@ private struct ClusterMapNodeChip: View, Equatable {
     let node: ClusterNodeStatus
     let iconOverride: String?
     let onIconSelect: (String?) -> Void
+    /// Non-nil iff the parent decides the node is forgettable (disconnected
+    /// and not the local node). Closures aren't comparable so we surface
+    /// presence via a sibling `canForget` flag inside `==`.
+    var onForget: (() -> Void)? = nil
     var showLeaderSymbol: Bool = false
     var presentation: ClusterMapView.Presentation = .dashboard
 
@@ -820,6 +841,7 @@ private struct ClusterMapNodeChip: View, Equatable {
         lhs.node.role == rhs.node.role &&
         lhs.node.hardwareModel == rhs.node.hardwareModel &&
         lhs.iconOverride == rhs.iconOverride &&
+        (lhs.onForget != nil) == (rhs.onForget != nil) &&
         lhs.showLeaderSymbol == rhs.showLeaderSymbol &&
         lhs.presentation == rhs.presentation
     }
@@ -870,6 +892,12 @@ private struct ClusterMapNodeChip: View, Equatable {
         .opacity(node.status == .disconnected ? 0.7 : 1.0)
         .contextMenu {
             NodeIconContextMenu(current: iconOverride, onSelect: onIconSelect)
+            if let onForget {
+                Divider()
+                Button(role: .destructive, action: onForget) {
+                    Label("Forget Node", systemImage: "trash")
+                }
+            }
         }
     }
 
@@ -886,6 +914,23 @@ private struct ClusterNodeRow: View {
     @EnvironmentObject var app: AppModel
     let node: ClusterNodeStatus
 
+    /// Mirrors `ClusterMapView.makeForgetAction` — Forget is only offered for
+    /// disconnected, non-self entries. Closures are captured by value so the
+    /// row shell's Equatable shortcut can detect "Forget is/isn't available"
+    /// without comparing closure identity.
+    private var forgetAction: (() -> Void)? {
+        guard node.status == .disconnected else { return nil }
+        let localName = app.settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !localName.isEmpty, node.displayName.caseInsensitiveCompare(localName) == .orderedSame {
+            return nil
+        }
+        let displayName = node.displayName
+        let appRef = app
+        return {
+            Task { await appRef.forgetClusterNode(displayName: displayName) }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             // Stable shell: hosts the contextMenu and excludes volatile data
@@ -901,13 +946,14 @@ private struct ClusterNodeRow: View {
                         app.settings.clusterNodeIconOverrides.removeValue(forKey: node.displayName)
                     }
                     app.saveSettings()
-                }
+                },
+                onForget: forgetAction
             )
             .equatable()
 
             Spacer()
 
-            if node.role == .worker, let latency = node.latencyMs {
+            if node.role != .leader, let latency = node.latencyMs {
                 Text("\(Int(latency.rounded())) ms")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -936,6 +982,7 @@ private struct ClusterNodeRowShell: View, Equatable {
     let node: ClusterNodeStatus
     let iconOverride: String?
     let onIconSelect: (String?) -> Void
+    var onForget: (() -> Void)? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.node.displayName == rhs.node.displayName &&
@@ -943,7 +990,8 @@ private struct ClusterNodeRowShell: View, Equatable {
         lhs.node.role == rhs.node.role &&
         lhs.node.hardwareModel == rhs.node.hardwareModel &&
         lhs.node.hostname == rhs.node.hostname &&
-        lhs.iconOverride == rhs.iconOverride
+        lhs.iconOverride == rhs.iconOverride &&
+        (lhs.onForget != nil) == (rhs.onForget != nil)
     }
 
     var body: some View {
@@ -986,6 +1034,12 @@ private struct ClusterNodeRowShell: View, Equatable {
         }
         .contextMenu {
             NodeIconContextMenu(current: iconOverride, onSelect: onIconSelect)
+            if let onForget {
+                Divider()
+                Button(role: .destructive, action: onForget) {
+                    Label("Forget Node", systemImage: "trash")
+                }
+            }
         }
     }
 
@@ -1146,7 +1200,10 @@ struct StaticConnectionView: View {
         if status == .disconnected { return .disconnected }
         if status == .degraded { return .highLatency }
         if let latencyMs, latencyMs >= 140 { return .highLatency }
-        if activeJobs <= 0 { return .idle }
+        // A healthy link is green even when there are no active jobs — the icon
+        // reflects connection health, not job activity. (Previously dropped to
+        // a grey "idle" state, which made the only-healthy path look ambiguous
+        // compared to other status indicators in the UI.)
         return .healthy
     }
 
@@ -1316,10 +1373,10 @@ struct PromoteToPrimaryPanel: View {
     private var handoverDetailText: some View {
         if let endsAt = snapshot.handoverTestEndsAt {
             HStack(spacing: 0) {
-                Text(snapshot.mode == .leader 
+                Text(snapshot.mode == .leader
                      ? "Test active. Demoting in "
                      : "Primary has demoted. Reclaiming in ")
-                Text(endsAt, style: .timer)
+                HandoverCountdownText(endsAt: endsAt)
                 Text(".")
             }
             .font(.caption)
@@ -1452,7 +1509,7 @@ struct HandoverTestPanel: View {
         if let endsAt = app.clusterSnapshot.handoverTestEndsAt, app.clusterSnapshot.isHandoverTestActive {
             HStack(spacing: 0) {
                 Text("Failover has control. Reclaiming automatically in ")
-                Text(endsAt, style: .timer)
+                HandoverCountdownText(endsAt: endsAt)
                 Text(".")
             }
             .font(.caption)
@@ -1646,4 +1703,23 @@ enum SwiftMeshNodeIconCatalog {
         .init(symbol: "macpro.gen3", label: "Mac Pro"),
         .init(symbol: "server.rack", label: "Server rack")
     ]
+}
+
+/// Countdown timer used while a Handover Test is running. SwiftUI's
+/// `Text(date, style: .timer)` counts up after the deadline passes, which made
+/// the UI read "elapsed" instead of "0" once the test window expired. The
+/// `timerInterval`/`pauseTime` initialiser stops at zero. We also clamp the
+/// interval so a deadline already in the past renders as "00:00" instead of
+/// crashing on an invalid range.
+private struct HandoverCountdownText: View {
+    let endsAt: Date
+
+    var body: some View {
+        let now = Date()
+        if endsAt > now {
+            Text(timerInterval: now...endsAt, pauseTime: endsAt, countsDown: true)
+        } else {
+            Text("00:00")
+        }
+    }
 }

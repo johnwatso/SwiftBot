@@ -59,6 +59,17 @@ extension ClusterCoordinator {
         ]
     }
 
+    /// Inserts a fake registered-worker entry without going through the real
+    /// /cluster/register handshake. Used by integration-style failover tests
+    /// that need the leader to push to a peer at a known address.
+    func testInjectRegisteredWorker(nodeName: String, baseURL: String, listenPort: Int) {
+        injectRegisteredWorkerForTesting(
+            nodeName: nodeName,
+            baseURL: baseURL,
+            listenPort: listenPort
+        )
+    }
+
     /// Injects a list of DiscoveredPeer values into the discovery table, applying the same
     /// deterministic collision rule as handleDiscoveryResults (lexicographically smallest baseURL
     /// wins when two entries share the same nodeName).

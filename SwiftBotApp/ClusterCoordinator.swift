@@ -138,6 +138,11 @@ actor ClusterCoordinator {
     /// Fires when the original Primary successfully reclaims at the end of a
     /// Handover Test. Used by AppModel to persist a "last passed" timestamp.
     private var onHandoverTestPassed: (@Sendable () async -> Void)?
+    /// Fires for each meaningful step of a Handover Test on the local node
+    /// (whichever role it currently plays — origin Primary or target Failover).
+    /// AppModel wires this into the Activity Log so the user can watch the
+    /// drill progress step-by-step under the SwiftMesh filter.
+    private var onHandoverTestStep: (@Sendable (String) async -> Void)?
     /// Returns the Primary's currently-configured Discord token, if any.
     /// Used by the Primary to serve `/v1/mesh/discord-token` requests so a
     /// Standby can pull the token after registering.
@@ -145,12 +150,14 @@ actor ClusterCoordinator {
     /// Fires on the Standby side when a fresh Discord token has been pulled
     /// from the Primary. AppModel persists it via the Keychain-backed path.
     private var onDiscordTokenFetched: (@Sendable (String) async -> Void)?
+    private var onLeaderRegistrationSyncNeeded: (@Sendable (String) async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
     // Phase 3: primary stores the last polled state for each follower, keyed
     // by node baseURL. Published into ClusterSnapshot on each refresh.
     private var followerStates: [String: FollowerStateSummary] = [:]
     private var followerStatePollTask: Task<Void, Never>?
     private let followerStatePollIntervalNanoseconds: UInt64 = 4_000_000_000
+    private var initialSyncCompletedLeaderBaseURL: String?
     var snapshot = ClusterSnapshot()
 
     func configureHandlers(
@@ -209,6 +216,21 @@ actor ClusterCoordinator {
         self.onHandoverTestPassed = handler
     }
 
+    /// Wires a per-step observer for the Handover Test. AppModel forwards each
+    /// step to the Activity Log so the SwiftMesh filter shows the full drill
+    /// in real time instead of just "started" / "completed".
+    func setHandoverTestStepHandler(_ handler: @escaping @Sendable (String) async -> Void) {
+        self.onHandoverTestStep = handler
+    }
+
+    /// Helper used by both the origin-Primary and Failover-target sides to
+    /// emit a step event. Centralised so we can also stamp a `[step N/M]`
+    /// prefix consistently and never forget to await.
+    private func emitHandoverStep(_ stage: Int, of total: Int, _ message: String) async {
+        let line = "step \(stage)/\(total) — \(message)"
+        await onHandoverTestStep?(line)
+    }
+
     /// Wires the Primary-side Discord-token provider.
     func setDiscordTokenProvider(_ provider: @escaping @Sendable () async -> String?) {
         self.discordTokenProvider = provider
@@ -217,6 +239,13 @@ actor ClusterCoordinator {
     /// Wires the Standby-side handler invoked when a pulled token arrives.
     func setDiscordTokenFetchedHandler(_ handler: @escaping @Sendable (String) async -> Void) {
         self.onDiscordTokenFetched = handler
+    }
+
+    /// Fires once after the first successful registration with a given Primary.
+    /// AppModel uses this to pull an immediate tail resync instead of waiting
+    /// for the next scheduled Primary push.
+    func setLeaderRegistrationSyncHandler(_ handler: @escaping @Sendable (String) async -> Void) {
+        self.onLeaderRegistrationSyncNeeded = handler
     }
 
     /// Phase 3: AppModel provides a closure that builds the local node's
@@ -285,6 +314,7 @@ actor ClusterCoordinator {
 
         // STEP 1: Demote self to standby FIRST so the Failover can promote
         // without creating a split-brain.
+        await emitHandoverStep(1, of: 5, "Demoting self to Standby so \(target.nodeName) can promote without split-brain")
         await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: target.baseURL)
         meshLogger.notice("Handover test: demoted self; asking \(target.nodeName, privacy: .public) to take over for \(durationSeconds, privacy: .public)s")
 
@@ -293,6 +323,7 @@ actor ClusterCoordinator {
         snapshot.isHandoverTestActive = true
         snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
         await publishSnapshot()
+        await emitHandoverStep(2, of: 5, "Watchdog armed (\(durationSeconds + graceSeconds)s) — will force-reclaim if \(target.nodeName) goes silent")
         
         handoverTestTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(durationSeconds + graceSeconds) * 1_000_000_000)
@@ -308,7 +339,9 @@ actor ClusterCoordinator {
             snapshot.isHandoverTestActive = false
             snapshot.handoverTestEndsAt = nil
             await publishSnapshot()
+            await emitHandoverStep(4, of: 5, "Watchdog fired — \(target.nodeName) never signalled back; force-reclaiming Primary")
             await promoteToLeader()
+            await emitHandoverStep(5, of: 5, "Reclaim complete after watchdog timeout")
             await onHandoverTestPassed?()
             handoverTestTask = nil
         }
@@ -330,10 +363,13 @@ actor ClusterCoordinator {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                await emitHandoverStep(3, of: 5, "\(target.nodeName) refused begin signal (HTTP \(code))")
                 return "Handover test: Failover refused (HTTP \(code))."
             }
+            await emitHandoverStep(3, of: 5, "Begin signal accepted by \(target.nodeName); awaiting reclaim signal")
             return "Handover test started. \(target.nodeName) will take over for \(durationSeconds)s; auto-reclaim on completion or after \(durationSeconds + graceSeconds)s timeout."
         } catch {
+            await emitHandoverStep(3, of: 5, "Could not reach \(target.nodeName) — \(error.localizedDescription)")
             return "Handover test: could not reach \(target.nodeName) — \(error.localizedDescription)"
         }
     }
@@ -365,6 +401,7 @@ actor ClusterCoordinator {
         snapshot.isHandoverTestActive = true
         snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(duration + 1))
         await publishSnapshot()
+        await emitHandoverStep(1, of: 4, "Begin signal received from \(origin); promoting to temporary Primary in 1s")
 
         handoverTestTask = Task {
             do {
@@ -376,6 +413,7 @@ actor ClusterCoordinator {
                 return
             }
             await promoteToLeader()
+            await emitHandoverStep(2, of: 4, "Promoted to temporary Primary; holding role for \(duration)s")
             do {
                 try await Task.sleep(nanoseconds: UInt64(duration) * 1_000_000_000)
             } catch {
@@ -384,15 +422,17 @@ actor ClusterCoordinator {
                 snapshot.handoverTestEndsAt = nil
                 return
             }
+            await emitHandoverStep(3, of: 4, "Test window elapsed; signalling \(origin) to reclaim")
             await broadcastHandoverTestEnd(originPrimaryNodeName: origin, originPrimaryBaseURL: originBaseURL, duration: duration)
-            
+
             // Fix split-brain: temporary primary must demote self back to standby
             // now that its window has elapsed.
             meshLogger.notice("Handover test window elapsed; demoting back to Standby")
             snapshot.isHandoverTestActive = false
             snapshot.handoverTestEndsAt = nil
             await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: originBaseURL)
-            
+            await emitHandoverStep(4, of: 4, "Demoted back to Standby")
+
             handoverTestTask = nil
         }
 
@@ -454,7 +494,9 @@ actor ClusterCoordinator {
         snapshot.isHandoverTestActive = false
         snapshot.handoverTestEndsAt = nil
         await publishSnapshot()
+        await emitHandoverStep(4, of: 5, "End signal received from Failover — reclaiming Primary")
         await promoteToLeader()
+        await emitHandoverStep(5, of: 5, "Reclaim complete — handover test passed end-to-end")
         handoverTestTask?.cancel()
         handoverTestTask = nil
         await onHandoverTestPassed?()
@@ -513,6 +555,20 @@ actor ClusterCoordinator {
         }
     }
 
+    #if DEBUG
+    /// Test-only: insert a fake registered worker so failover/split-brain tests
+    /// can drive the real push path without going through /cluster/register.
+    func injectRegisteredWorkerForTesting(nodeName: String, baseURL: String, listenPort: Int) {
+        let key = baseURL.lowercased()
+        registeredWorkers[key] = RegisteredWorker(
+            nodeName: nodeName,
+            baseURL: baseURL,
+            listenPort: listenPort,
+            lastSeen: Date()
+        )
+    }
+    #endif
+
     func applyRestoredCursors(_ cursors: [String: ReplicationCursor]) {
         // Only restore cursors from the current or newer term to avoid stale replay.
         for (nodeName, cursor) in cursors where cursor.leaderTerm >= leaderTerm {
@@ -521,6 +577,40 @@ actor ClusterCoordinator {
     }
 
     /// Returns (nodeName, baseURL) pairs for all currently registered workers/nodes.
+    /// Evict a node from both the live registration table and the sticky
+    /// `everKnownWorkers` cache so it no longer appears in the SwiftMesh
+    /// cluster map. The node will reappear on its next successful
+    /// `/cluster/register` call — this is "forget for now", not a permanent
+    /// ban. Returns true if any entries were removed.
+    @discardableResult
+    func forgetNode(matching displayName: String) async -> Bool {
+        let normalized = displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+
+        let stickyKeys = everKnownWorkers.compactMap { (key, worker) -> String? in
+            worker.nodeName.lowercased() == normalized ? key : nil
+        }
+        let liveKeys = registeredWorkers.compactMap { (key, worker) -> String? in
+            worker.nodeName.lowercased() == normalized ? key : nil
+        }
+        for key in stickyKeys { everKnownWorkers.removeValue(forKey: key) }
+        for key in liveKeys { registeredWorkers.removeValue(forKey: key) }
+
+        // Also drop any follower-state snapshot keyed by the same baseURL so
+        // the GUI's Follower Activity panel doesn't keep a ghost row.
+        for key in stickyKeys + liveKeys {
+            followerStates.removeValue(forKey: key.lowercased())
+        }
+        snapshot.followerStates = followerStates
+
+        let removed = !stickyKeys.isEmpty || !liveKeys.isEmpty
+        if removed {
+            meshLogger.notice("Forgot cluster node \(displayName, privacy: .public) — removed from registration cache and sticky map")
+            await publishSnapshot()
+        }
+        return removed
+    }
+
     func registeredNodeInfo() -> [(nodeName: String, baseURL: String)] {
         registeredWorkers.values.map { ($0.nodeName, $0.baseURL) }
     }
@@ -542,8 +632,20 @@ actor ClusterCoordinator {
     }
 
     func updateReplicationCursor(for nodeName: String, lastSentRecordID: String?, term: Int) async {
-        if let existing = replicationCursors[nodeName], existing.leaderTerm > term {
-            return
+        if let existing = replicationCursors[nodeName] {
+            if existing.leaderTerm > term {
+                return
+            }
+            if existing.leaderTerm == term {
+                switch (existing.lastSentRecordID, lastSentRecordID) {
+                case let (existingID?, newID?):
+                    guard newID > existingID else { return }
+                case (_?, nil):
+                    return
+                default:
+                    break
+                }
+            }
         }
         replicationCursors[nodeName] = ReplicationCursor(leaderTerm: term, lastSentRecordID: lastSentRecordID, updatedAt: Date())
         await onCursorsChanged?(replicationCursors)
@@ -569,8 +671,12 @@ actor ClusterCoordinator {
             : nodeName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.listenPort = listenPort
         self.leaderPort = resolvedLeaderPort
+        let previousLeaderAddress = self.leaderAddress
         self.leaderAddress = normalizedBaseURL(leaderAddress, defaultPort: resolvedLeaderPort) ?? leaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sharedSecret = sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if previousLeaderAddress.lowercased() != self.leaderAddress.lowercased() {
+            initialSyncCompletedLeaderBaseURL = nil
+        }
         
         if handoverTestTask == nil {
             self.mode = await startupReconciledMode(requestedMode: mode)
@@ -1945,6 +2051,7 @@ actor ClusterCoordinator {
             // token; the helper is a no-op otherwise. Failure is silent —
             // the next registration cycle (every ~4s) will retry.
             await pullDiscordTokenFromLeaderIfNeeded(leaderBaseURL: leaderBaseURL)
+            await runInitialSyncAfterRegistrationIfNeeded(leaderBaseURL: leaderBaseURL)
         } catch {
             snapshot.workerState = .failed
             snapshot.workerStatusText = "Primary unavailable"
@@ -1955,6 +2062,13 @@ actor ClusterCoordinator {
             }
             await publishSnapshot()
         }
+    }
+
+    private func runInitialSyncAfterRegistrationIfNeeded(leaderBaseURL: String) async {
+        let key = leaderBaseURL.lowercased()
+        guard initialSyncCompletedLeaderBaseURL != key else { return }
+        initialSyncCompletedLeaderBaseURL = key
+        await onLeaderRegistrationSyncNeeded?(leaderBaseURL)
     }
 
     private func handleWorkerRegistration(_ body: Data, remoteHost: String?) async -> Data {
@@ -2450,7 +2564,12 @@ actor ClusterCoordinator {
 
     private func localNodeStatus() -> ClusterNodeStatus {
         let hostname = ProcessInfo.processInfo.hostName
-        let role: ClusterNodeRole = mode == .leader ? .leader : .worker
+        let role: ClusterNodeRole
+        switch mode {
+        case .leader:   role = .leader
+        case .standby:  role = .standby
+        default:        role = .worker
+        }
         let uptime = max(0, Date().timeIntervalSince(startedAt))
         let status = snapshot.serverState.nodeHealthStatus
 
@@ -2473,12 +2592,20 @@ actor ClusterCoordinator {
 
     private func unreachableWorkerNode(worker: RegisteredWorker, status: ClusterNodeHealthStatus = .disconnected) -> ClusterNodeStatus {
         let host = URL(string: worker.baseURL)?.host ?? worker.nodeName
+        // If we have a fresh follower-state report from this peer, surface its
+        // runtime role (standby vs worker) instead of always emitting `.worker`.
+        // Without this, a registered Standby would show up as "worker" in the
+        // Primary-side cluster table even though we know better.
+        let followerRole: ClusterNodeRole = {
+            guard let state = followerStates[worker.baseURL.lowercased()] else { return .worker }
+            return state.mode.caseInsensitiveCompare("standby") == .orderedSame ? .standby : .worker
+        }()
 
         return ClusterNodeStatus(
-            id: "worker-\(host.lowercased())-\(worker.listenPort)",
+            id: "\(followerRole.rawValue)-\(host.lowercased())-\(worker.listenPort)",
             hostname: host,
             displayName: worker.nodeName,
-            role: .worker,
+            role: followerRole,
             hardwareModel: "Unknown",
             cpu: 0,
             mem: 0,
@@ -2649,6 +2776,7 @@ actor ClusterCoordinator {
 
         leaderTerm = payload.term
         leaderAddress = payload.leaderAddress
+        initialSyncCompletedLeaderBaseURL = nil
         snapshot.leaderTerm = leaderTerm
         snapshot.leaderAddress = leaderAddress
         snapshot.diagnostics = "Primary changed to \(payload.leaderNodeName) at \(payload.leaderAddress) (term \(leaderTerm))"

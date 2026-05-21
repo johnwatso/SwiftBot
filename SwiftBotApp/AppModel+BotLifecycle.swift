@@ -76,6 +76,28 @@ extension AppModel {
         }
     }
 
+    /// Removes a node from the SwiftMesh cluster map and persisted icon-override
+    /// table. Invoked from the contextual menu on a disconnected node. The node
+    /// will reappear if it re-registers later — this is a "forget for now"
+    /// action, not a permanent block.
+    func forgetClusterNode(displayName: String) async {
+        let removed = await cluster.forgetNode(matching: displayName)
+        await MainActor.run {
+            // Drop the persisted icon override too so we don't leak the entry.
+            if settings.clusterNodeIconOverrides.removeValue(forKey: displayName) != nil {
+                saveSettings()
+            }
+            // Optimistically prune the local cluster-nodes list so the row
+            // vanishes immediately; the next /cluster/status poll will be
+            // authoritative.
+            clusterNodes.removeAll { $0.displayName.caseInsensitiveCompare(displayName) == .orderedSame }
+            lastGoodClusterNodes.removeAll { $0.displayName.caseInsensitiveCompare(displayName) == .orderedSame }
+            if removed {
+                logs.append("[INFO] SwiftMesh: forgot node \(displayName)")
+            }
+        }
+    }
+
     /// Phase 4: user-initiated promote from the SwiftMesh GUI. Forwards to
     /// the coordinator, which skips the death-confirmation probe and runs
     /// the standard promotion path. Discord output is enabled by

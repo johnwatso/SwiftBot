@@ -139,7 +139,11 @@ extension AppModel {
             await replaceVoicePresence(remoteActiveVoice)
         }
         if payload.configFilesChanged, settings.clusterMode == .standby {
-            await pullConfigFilesFromLeader()
+            if let configFiles = payload.configFiles {
+                await applyMeshSyncedConfigFiles(configFiles, sourceDescription: "received")
+            } else {
+                await pullConfigFilesFromLeader()
+            }
         }
         if !payload.conversations.isEmpty {
             logs.append("SwiftMesh: merged \(payload.conversations.count) record(s) (term \(payload.leaderTerm))")

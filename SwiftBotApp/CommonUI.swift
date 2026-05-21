@@ -157,6 +157,58 @@ enum DashboardMetricGrid {
     }
 }
 
+private struct DashboardMetricGlowPreference {
+    let bounds: Anchor<CGRect>
+    let cornerRadius: CGFloat
+    let glowOpacity: Double
+    let isAnimating: Bool
+    let showsPulse: Bool
+}
+
+private struct DashboardMetricGlowPreferenceKey: PreferenceKey {
+    static var defaultValue: [DashboardMetricGlowPreference] = []
+
+    static func reduce(value: inout [DashboardMetricGlowPreference], nextValue: () -> [DashboardMetricGlowPreference]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+private struct DashboardMetricGlowLayerModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlayPreferenceValue(DashboardMetricGlowPreferenceKey.self) { preferences in
+            GeometryReader { proxy in
+                ZStack {
+                    ForEach(Array(preferences.enumerated()), id: \.offset) { _, preference in
+                        let rect = proxy[preference.bounds]
+
+                        ZStack {
+                            IntelligenceGlowBorder(
+                                cornerRadius: preference.cornerRadius,
+                                isAnimating: preference.isAnimating
+                            )
+                            .opacity(preference.glowOpacity)
+
+                            if preference.showsPulse {
+                                IntelligenceGlowPulse(cornerRadius: preference.cornerRadius) {}
+                            }
+                        }
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+extension View {
+    func dashboardMetricGlowLayer() -> some View {
+        modifier(DashboardMetricGlowLayerModifier())
+    }
+}
+
 struct DashboardMetricCard: View {
     let title: String
     let value: String
@@ -168,6 +220,7 @@ struct DashboardMetricCard: View {
     @State private var isHovering = false
     @State private var glowOpacity = 0.0
     @State private var playPulse = false
+    @State private var pulseTask: Task<Void, Never>?
 
     private let cornerRadius: CGFloat = 14
 
@@ -249,36 +302,30 @@ struct DashboardMetricCard: View {
         .padding(12)
         .dashboardSurface(
             cornerRadius: cornerRadius,
-            fillOpacity: isHovering ? 0.055 : 0.035,
-            strokeOpacity: isHovering ? 0.12 : 0.07,
-            shadowOpacity: isHovering ? 0.045 : 0.02
+            fillOpacity: 0.035,
+            strokeOpacity: 0.07,
+            shadowOpacity: 0.02
         )
-        .scaleEffect(isHovering ? 1.01 : 1)
-        .overlay {
-            if shouldRenderGlow || playPulse {
-                ZStack {
-                    if shouldRenderGlow {
-                        IntelligenceGlowBorder(cornerRadius: cornerRadius, isAnimating: isGlowActive)
-                            .opacity(glowOpacity)
-                    }
-
-                    if playPulse {
-                        IntelligenceGlowPulse(cornerRadius: cornerRadius) {
-                            playPulse = false
-                        }
-                    }
-                }
-            }
+        .anchorPreference(key: DashboardMetricGlowPreferenceKey.self, value: .bounds) { bounds in
+            guard shouldRenderGlow || playPulse else { return [] }
+            return [
+                DashboardMetricGlowPreference(
+                    bounds: bounds,
+                    cornerRadius: cornerRadius,
+                    glowOpacity: glowOpacity,
+                    isAnimating: isGlowActive,
+                    showsPulse: playPulse
+                )
+            ]
         }
         .onHover { hovering in
             let wasHovering = isHovering
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isHovering = hovering
-            }
+            isHovering = hovering
 
             if hovering && appleIntelligenceGlowEnabled && !wasHovering {
-                playPulse = true
+                startGlowPulse()
             } else if !hovering {
+                pulseTask?.cancel()
                 playPulse = false
             }
 
@@ -289,12 +336,27 @@ struct DashboardMetricCard: View {
         }
         .onChange(of: appleIntelligenceGlowEnabled) { _, enabled in
             if !enabled {
+                pulseTask?.cancel()
                 playPulse = false
             }
             updateGlowState()
         }
         .onDisappear {
+            pulseTask?.cancel()
             playPulse = false
+        }
+    }
+
+    private func startGlowPulse() {
+        pulseTask?.cancel()
+        playPulse = true
+        pulseTask = Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                playPulse = false
+                pulseTask = nil
+            }
         }
     }
 

@@ -61,6 +61,7 @@ struct UnifiedRootView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(SwiftBotGlassBackground())
+        .dashboardMetricGlowLayer()
         .overlay(alignment: .topTrailing) {
             if app.isBetaBuild {
                 BetaBadgeView()

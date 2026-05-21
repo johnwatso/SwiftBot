@@ -78,6 +78,34 @@ public struct IntelUpdateSource: UpdateSource, Sendable {
     }
 }
 
+/// Apple developer releases update source — filters the Apple releases RSS by product.
+struct AppleReleasesUpdateSource: UpdateSource, Sendable {
+    let product: PatchyAppleProduct
+    let includeBetas: Bool
+    let sourceKey: String
+    private let service: AppleService
+
+    init(product: PatchyAppleProduct, includeBetas: Bool, service: AppleService = AppleService()) {
+        self.product = product
+        self.includeBetas = includeBetas
+        let channel = "\(product.rawValue)/\(includeBetas ? "beta" : "stable")"
+        self.sourceKey = CacheKeyBuilder.build(vendor: "apple", channel: channel)
+        self.service = service
+    }
+
+    func fetchLatest() async throws -> any UpdateItem {
+        let info = try await service.fetchLatestRelease(product: product, includeBetas: includeBetas)
+        return DriverUpdateItem(
+            sourceKey: sourceKey,
+            identifier: info.releaseIdentifier,
+            version: info.releaseNotes.version,
+            releaseNotes: info.releaseNotes,
+            embedJSON: info.embedJSON,
+            rawDebug: info.rawDebug
+        )
+    }
+}
+
 /// GitHub repository update source — watches latest release or latest commit on a branch.
 public struct GitHubUpdateSource: UpdateSource, Sendable {
     public let owner: String

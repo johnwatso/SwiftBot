@@ -6,6 +6,7 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     case nvidia = "NVIDIA"
     case amd = "AMD"
     case intel = "Intel Arc"
+    case apple = "Apple"
     case steam = "Steam"
     case github = "GitHub"
 
@@ -19,6 +20,8 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
             return PatchyAccentColor(name: "AMD Radeon", hex: "#ED1C24")
         case .intel:
             return PatchyAccentColor(name: "Intel Arc", hex: "#0071C5")
+        case .apple:
+            return PatchyAccentColor(name: "Apple Silver", hex: "#A2AAAD")
         case .steam:
             return PatchyAccentColor(name: "Cobalt", hex: "#2563EB")
         case .github:
@@ -28,10 +31,37 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
 
     var supportsCustomAccentColor: Bool {
         switch self {
-        case .github, .steam:
+        case .github, .steam, .apple:
             return true
         case .nvidia, .amd, .intel:
             return false
+        }
+    }
+}
+
+enum PatchyAppleProduct: String, Codable, CaseIterable, Identifiable {
+    case macOS = "macOS"
+    case iOS = "iOS"
+    case iPadOS = "iPadOS"
+    case tvOS = "tvOS"
+    case watchOS = "watchOS"
+    case visionOS = "visionOS"
+    case xcode = "Xcode"
+    case safari = "Safari"
+
+    var id: String { rawValue }
+
+    /// Tokens used to match the product against the Apple releases RSS feed item title.
+    var matchTokens: [String] {
+        switch self {
+        case .macOS: return ["macOS"]
+        case .iOS: return ["iOS"]
+        case .iPadOS: return ["iPadOS"]
+        case .tvOS: return ["tvOS"]
+        case .watchOS: return ["watchOS"]
+        case .visionOS: return ["visionOS"]
+        case .xcode: return ["Xcode"]
+        case .safari: return ["Safari"]
         }
     }
 }
@@ -62,6 +92,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var githubBranch: String = ""
     var githubWatchAllCommits: Bool = false
     var githubBranchMode: PatchyGitHubBranchMode = .main
+    var appleProduct: PatchyAppleProduct = .macOS
+    var appleIncludeBetas: Bool = false
     var pollingIntervalMinutes: Int = 60
     var embedColorHex: String = ""
     var summarizeWithAppleIntelligence: Bool = false
@@ -75,6 +107,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, isEnabled, source, steamAppID
         case githubRepo, githubBranch, githubWatchAllCommits, githubBranchMode
+        case appleProduct, appleIncludeBetas
         case pollingIntervalMinutes, embedColorHex, summarizeWithAppleIntelligence
         case summarizeFixesWithAppleIntelligence
         case serverId, channelId, roleIDs
@@ -90,6 +123,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubBranch: String = "",
         githubWatchAllCommits: Bool = false,
         githubBranchMode: PatchyGitHubBranchMode = .main,
+        appleProduct: PatchyAppleProduct = .macOS,
+        appleIncludeBetas: Bool = false,
         pollingIntervalMinutes: Int = 60,
         embedColorHex: String = "",
         summarizeWithAppleIntelligence: Bool = false,
@@ -108,6 +143,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         self.githubBranch = githubBranch
         self.githubWatchAllCommits = githubWatchAllCommits
         self.githubBranchMode = githubBranchMode
+        self.appleProduct = appleProduct
+        self.appleIncludeBetas = appleIncludeBetas
         self.pollingIntervalMinutes = pollingIntervalMinutes
         self.embedColorHex = embedColorHex
         self.summarizeWithAppleIntelligence = summarizeWithAppleIntelligence
@@ -130,6 +167,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubWatchAllCommits = try c.decodeIfPresent(Bool.self, forKey: .githubWatchAllCommits) ?? false
         let legacyHasSpecificBranch = !githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         githubBranchMode = try c.decodeIfPresent(PatchyGitHubBranchMode.self, forKey: .githubBranchMode) ?? (legacyHasSpecificBranch ? .specific : .main)
+        appleProduct = try c.decodeIfPresent(PatchyAppleProduct.self, forKey: .appleProduct) ?? .macOS
+        appleIncludeBetas = try c.decodeIfPresent(Bool.self, forKey: .appleIncludeBetas) ?? false
         pollingIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .pollingIntervalMinutes) ?? PatchyEmbedAccent.defaultPollingIntervalMinutes(for: source)
         embedColorHex = try c.decodeIfPresent(String.self, forKey: .embedColorHex) ?? ""
         summarizeWithAppleIntelligence = try c.decodeIfPresent(Bool.self, forKey: .summarizeWithAppleIntelligence)
@@ -153,6 +192,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         try c.encode(githubBranch, forKey: .githubBranch)
         try c.encode(githubWatchAllCommits, forKey: .githubWatchAllCommits)
         try c.encode(githubBranchMode, forKey: .githubBranchMode)
+        try c.encode(appleProduct, forKey: .appleProduct)
+        try c.encode(appleIncludeBetas, forKey: .appleIncludeBetas)
         try c.encode(pollingIntervalMinutes, forKey: .pollingIntervalMinutes)
         try c.encode(embedColorHex, forKey: .embedColorHex)
         try c.encode(summarizeWithAppleIntelligence, forKey: .summarizeWithAppleIntelligence)
@@ -194,7 +235,11 @@ enum PatchyEmbedAccent {
     }
 
     static func defaultPollingIntervalMinutes(for source: PatchySourceKind) -> Int {
-        source == .github ? 5 : 60
+        switch source {
+        case .github: return 5
+        case .apple: return 120
+        default: return 60
+        }
     }
 
     static func resolvedHex(_ hex: String, for source: PatchySourceKind) -> String {
@@ -429,6 +474,7 @@ struct MeshSyncPayload: Codable, Sendable {
     let voiceLog: [VoiceEventLogEntry]?
     let activeVoice: [VoiceMemberPresence]?
     let configFilesChanged: Bool
+    let configFiles: Data?
     let leaderTerm: Int
     /// ID of the last record in this batch — standby stores as its new cursor.
     let cursorRecordID: String?
@@ -445,6 +491,7 @@ struct MeshSyncPayload: Codable, Sendable {
         voiceLog: [VoiceEventLogEntry]? = nil,
         activeVoice: [VoiceMemberPresence]? = nil,
         configFilesChanged: Bool = false,
+        configFiles: Data? = nil,
         leaderTerm: Int,
         cursorRecordID: String? = nil,
         hasMore: Bool = false,
@@ -456,6 +503,7 @@ struct MeshSyncPayload: Codable, Sendable {
         self.voiceLog = voiceLog
         self.activeVoice = activeVoice
         self.configFilesChanged = configFilesChanged
+        self.configFiles = configFiles
         self.leaderTerm = leaderTerm
         self.cursorRecordID = cursorRecordID
         self.hasMore = hasMore
@@ -558,6 +606,7 @@ enum ClusterJobRoute: String {
 enum ClusterNodeRole: String, Codable, Hashable {
     case leader
     case worker
+    case standby
 
     var displayName: String {
         rawValue.capitalized

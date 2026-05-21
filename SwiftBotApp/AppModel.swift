@@ -673,6 +673,15 @@ final class AppModel: ObservableObject {
                     self.saveSettings()
                 }
             }
+            await cluster.setLeaderRegistrationSyncHandler { [weak self] _ in
+                guard let self else { return }
+                await MainActor.run {
+                    self.logs.append("[INFO] SwiftMesh registered with Primary — pulling immediate failover sync.")
+                }
+                await self.pullConfigFilesFromLeader()
+                await self.pullWikiCacheFromLeader()
+                await self.requestResyncFromLeader(fromRecordID: await MainActor.run { self.localLastMergedRecordID })
+            }
             await cluster.setHandoverTestPassedHandler { [weak self] in
                 guard let self else { return }
                 await MainActor.run {
@@ -680,6 +689,16 @@ final class AppModel: ObservableObject {
                     self.settings.clusterLastHandoverTestOK = true
                     self.logs.append("[OK] SwiftMesh handover test completed end-to-end.")
                     self.saveSettings()
+                }
+            }
+            // Per-step trace of the handover drill. Each event lands in the
+            // Activity Log under the SwiftMesh filter (any line containing
+            // "SwiftMesh" / "Primary" / "Standby" auto-categorises as mesh —
+            // see ActivityCategory.infer).
+            await cluster.setHandoverTestStepHandler { [weak self] step in
+                guard let self else { return }
+                await MainActor.run {
+                    self.logs.append("[INFO] SwiftMesh handover test: \(step)")
                 }
             }
             await cluster.setDemotionHandler { [weak self] in
@@ -869,9 +888,16 @@ final class AppModel: ObservableObject {
     func notifyConfigFilesChangedIfLeader() async {
         guard settings.clusterMode == .leader else { return }
         let currentTerm = await cluster.currentLeaderTerm()
+        let configFiles = await store.exportMeshSyncedFiles(
+            excludingFileNames: Set([
+                SwiftBotStorage.swiftMeshConfigFileName,
+                SwiftBotStorage.clusterStateFileName
+            ])
+        )
         let payload = MeshSyncPayload(
             conversations: [],
             configFilesChanged: true,
+            configFiles: configFiles,
             leaderTerm: currentTerm
         )
         await cluster.pushSyncPayloadToNodes(payload)
