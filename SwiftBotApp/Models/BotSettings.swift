@@ -305,8 +305,8 @@ struct BotSettings: Codable, Hashable {
     var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
     var localAIModel: String = "local-model"
     var ollamaBaseURL: String = "http://localhost:11434"
-    var ollamaEnabled: Bool = true
-    var openAIEnabled: Bool = true
+    var ollamaEnabled: Bool = false
+    var openAIEnabled: Bool = false
     var openAIAPIKey: String = ""
     var openAIModel: String = "gpt-4o-mini"
     var openAIImageGenerationEnabled: Bool = true
@@ -333,6 +333,7 @@ struct BotSettings: Codable, Hashable {
     var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
     var behavior = BotBehaviorSettings()
+    var welcomeFlow = WelcomeFlowSettings()
     var wikiBot = WikiBotSettings()
     var patchy = PatchySettings()
     var swiftMiner = SwiftMinerSettings()
@@ -422,6 +423,7 @@ struct BotSettings: Codable, Hashable {
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
+        case welcomeFlow
         case wikiBot
         case patchy
         case swiftMiner
@@ -471,8 +473,8 @@ struct BotSettings: Codable, Hashable {
         localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
         localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
-        ollamaEnabled = try container.decodeIfPresent(Bool.self, forKey: .ollamaEnabled) ?? true
-        openAIEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIEnabled) ?? true
+        ollamaEnabled = try container.decodeIfPresent(Bool.self, forKey: .ollamaEnabled) ?? false
+        openAIEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIEnabled) ?? false
         openAIAPIKey = try container.decodeIfPresent(String.self, forKey: .openAIAPIKey) ?? ""
         openAIModel = try container.decodeIfPresent(String.self, forKey: .openAIModel) ?? "gpt-4o-mini"
         openAIImageGenerationEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIImageGenerationEnabled) ?? true
@@ -495,6 +497,8 @@ struct BotSettings: Codable, Hashable {
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
+        welcomeFlow = try container.decodeIfPresent(WelcomeFlowSettings.self, forKey: .welcomeFlow)
+            ?? WelcomeFlowSettings(legacyBehavior: behavior)
         wikiBot = try container.decodeIfPresent(WikiBotSettings.self, forKey: .wikiBot) ?? WikiBotSettings()
         patchy = try container.decodeIfPresent(PatchySettings.self, forKey: .patchy) ?? PatchySettings()
         swiftMiner = try container.decodeIfPresent(SwiftMinerSettings.self, forKey: .swiftMiner) ?? SwiftMinerSettings()
@@ -567,6 +571,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)
+        try container.encode(welcomeFlow, forKey: .welcomeFlow)
         try container.encode(wikiBot, forKey: .wikiBot)
         try container.encode(patchy, forKey: .patchy)
         try container.encode(swiftMiner, forKey: .swiftMiner)
@@ -758,7 +763,7 @@ struct BotBehaviorSettings: Codable, Hashable {
     var allowDMs: Bool = false
     var useAIInGuildChannels: Bool = true
 
-    // Member join welcome (P0.5)
+    // Legacy member join welcome fields. New UI/runtime uses WelcomeFlowSettings.
     var memberJoinWelcomeEnabled: Bool = false
     var memberJoinWelcomeChannelId: String = ""
     var memberJoinWelcomeTemplate: String = "👋 Welcome {username} to **{server}**!"
@@ -766,6 +771,163 @@ struct BotBehaviorSettings: Codable, Hashable {
     // Voice activity log — global fallback channel when no per-guild channel is set (P0.5)
     var voiceActivityLogEnabled: Bool = false
     var voiceActivityLogChannelId: String = ""
+}
+
+enum WelcomeFlowMessageFormat: String, Codable, Hashable, CaseIterable, Identifiable {
+    case plainText
+    case embed
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .plainText: return "Plain Text"
+        case .embed: return "Embed"
+        }
+    }
+}
+
+/// What to do when a joining member's account is younger than `minAccountAgeDays`.
+enum WelcomeFlowAccountAgeAction: String, Codable, Hashable, CaseIterable, Identifiable {
+    /// Silently skip all welcome handling (no message, no DM, no roles).
+    case skipWelcome
+    /// Send a notice to the configured mod-alert channel and skip welcome handling.
+    case alertModerators
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .skipWelcome: return "Skip silently"
+        case .alertModerators: return "Alert moderators"
+        }
+    }
+}
+
+struct WelcomeFlowSettings: Codable, Hashable {
+    var publicWelcomeEnabled: Bool = false
+    var publicChannelId: String = ""
+    var publicMessageFormat: WelcomeFlowMessageFormat = .plainText
+    var publicMessageTemplate: String = "👋 Welcome {username} to **{server}**!"
+    /// Optional pool of message templates. When non-empty, one is picked at random per join.
+    /// Falls back to `publicMessageTemplate` when empty.
+    var publicMessageTemplatePool: [String] = []
+    var publicEmbedTitleTemplate: String = "Welcome to {server}"
+    var publicEmbedFooterTemplate: String = "Member #{memberCount}"
+    var publicEmbedColor: Int = 5_793_266
+    /// When true, the embed includes the joining member's avatar as a thumbnail.
+    var publicEmbedShowAvatar: Bool = true
+    /// When true, the embed includes a "{username} joined" author line with the avatar icon.
+    var publicEmbedShowAuthor: Bool = false
+    var dmWelcomeEnabled: Bool = false
+    var dmMessageTemplate: String = """
+    Welcome to {server}, {username}! Glad to have you here.
+    """
+    /// When true, a public fallback line is posted in the welcome channel when the DM is blocked.
+    var dmFallbackToChannelEnabled: Bool = true
+    var dmFallbackTemplate: String = "👋 {userMention} — I tried to send you a welcome DM but your DMs are closed."
+    var autoRoleEnabled: Bool = false
+    var autoRoleId: String = ""
+    var nextStepRules: [WelcomeFlowRule] = []
+    var burstThreshold: Int = 10
+    /// When true, members flagged as bots by Discord are ignored entirely.
+    var skipBots: Bool = true
+    /// Minimum account age in days. 0 disables the gate.
+    var minAccountAgeDays: Int = 0
+    var accountAgeAction: WelcomeFlowAccountAgeAction = .skipWelcome
+    /// Channel used for "low-age account" alerts when `accountAgeAction == .alertModerators`.
+    var modAlertChannelId: String = ""
+
+    // MARK: Goodbye
+    var goodbyeEnabled: Bool = false
+    var goodbyeChannelId: String = ""
+    var goodbyeMessageFormat: WelcomeFlowMessageFormat = .plainText
+    var goodbyeMessageTemplate: String = "👋 {username} just left **{server}**."
+    var goodbyeEmbedTitleTemplate: String = "Goodbye from {server}"
+    var goodbyeEmbedFooterTemplate: String = "{memberCount} members remaining"
+    var goodbyeEmbedColor: Int = 14_633_293
+
+    var hasGoodbyeMessage: Bool {
+        let hasBody = !goodbyeMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasTitle = !goodbyeEmbedTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return goodbyeEnabled &&
+            !goodbyeChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            (goodbyeMessageFormat == .plainText ? hasBody : (hasBody || hasTitle))
+    }
+
+    var hasPublicWelcome: Bool {
+        let hasMessageBody = !publicMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasEmbedTitle = !publicEmbedTitleTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return publicWelcomeEnabled &&
+            !publicChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            (publicMessageFormat == .plainText ? hasMessageBody : (hasMessageBody || hasEmbedTitle))
+    }
+
+    var hasDMWelcome: Bool {
+        dmWelcomeEnabled &&
+            !dmMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasAutoRole: Bool {
+        !activeNextStepRules.isEmpty
+    }
+
+    var handlesMemberJoin: Bool {
+        hasPublicWelcome || hasDMWelcome || hasAutoRole
+    }
+
+    var activeNextStepRules: [WelcomeFlowRule] {
+        let configuredRules = nextStepRules.filter(\.isRunnable)
+        if !configuredRules.isEmpty {
+            return configuredRules
+        }
+        guard autoRoleEnabled, !autoRoleId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return [
+            WelcomeFlowRule(
+                name: "Auto Role",
+                inviteCode: "",
+                roleId: autoRoleId,
+                isEnabled: true
+            )
+        ]
+    }
+
+    init() {}
+
+    init(legacyBehavior: BotBehaviorSettings) {
+        publicWelcomeEnabled = legacyBehavior.memberJoinWelcomeEnabled
+        publicChannelId = legacyBehavior.memberJoinWelcomeChannelId
+        publicMessageTemplate = legacyBehavior.memberJoinWelcomeTemplate
+    }
+}
+
+struct WelcomeFlowRule: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var name: String = "New Rule"
+    var inviteCode: String = ""
+    var roleId: String = ""
+    var isEnabled: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+
+    var isRunnable: Bool {
+        isEnabled &&
+            !roleId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var inviteLabel: String {
+        let trimmed = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Any invite" : "discord.gg/\(trimmed)"
+    }
+
+    func matches(inviteCode detectedCode: String?) -> Bool {
+        let expected = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expected.isEmpty else { return true }
+        guard let detectedCode else { return false }
+        return expected.caseInsensitiveCompare(detectedCode.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
 }
 
 struct WikiCommand: Codable, Hashable, Identifiable {

@@ -81,6 +81,7 @@ struct UnifiedRootView: View {
                 }
             })
         case .patchy: PatchyView()
+        case .welcomeFlow: WelcomeFlowView()
         case .automations: AutomationsView()
         case .moderation: ModerationView()
         case .commands: CommandsView()
@@ -153,6 +154,7 @@ struct DashboardSidebar: View {
 
                     Section("Workflows") {
                         sidebarListRow(.commands)
+                        sidebarListRow(.welcomeFlow)
                         sidebarListRow(.automations)
                         sidebarListRow(.moderation)
                     }

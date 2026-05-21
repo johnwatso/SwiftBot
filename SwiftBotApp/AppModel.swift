@@ -118,6 +118,7 @@ final class AppModel: ObservableObject {
 
     let store = ConfigStore()
     let analyticsRuntimeStore = AnalyticsRuntimeStore()
+    let welcomeFlowService = WelcomeFlowService()
     let swiftMeshConfigStore = SwiftMeshConfigStore()
     let mediaLibraryConfigStore = MediaLibraryConfigStore()
     let discordCacheStore = DiscordCacheStore()
@@ -200,12 +201,6 @@ final class AppModel: ObservableObject {
     /// Tracks the last MemoryRecord ID the standby successfully merged from the leader.
     var localLastMergedRecordID: String?
     var lastCommandTimeByUserId: [String: Date] = [:]
-    /// Dedupe cache for GUILD_MEMBER_ADD: keyed by "guildId:userId", 10s window. Capped at 500 entries.
-    var recentMemberJoins: [String: Date] = [:]
-    /// Approximate member count per guild, seeded from GUILD_CREATE and incremented on GUILD_MEMBER_ADD.
-    var guildMemberCounts: [String: Int] = [:]
-    /// Burst-guard: recent join timestamps per guild (keyed by guildId). Used to detect member raids.
-    var guildJoinTimestamps: [String: [Date]] = [:]
     let commandCooldown: TimeInterval = 3.0
     let maxMediaClipDurationSeconds: Double = 15 * 60
     let aiMemoryStopwords: Set<String> = [

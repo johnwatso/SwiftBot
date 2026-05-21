@@ -5,76 +5,98 @@ extension AppModel {
 
     // MARK: - Discord Event Handlers
 
-    func handleMemberJoin(_ event: GatewayMemberJoinEvent) async {
-        // Legacy settings path still active for backward compatibility.
-        // New config: use a "Member Joined" trigger rule in Actions instead.
-        let legacyEnabled = settings.behavior.memberJoinWelcomeEnabled &&
-            !settings.behavior.memberJoinWelcomeChannelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasRules = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .memberJoined }
-        guard legacyEnabled || hasRules else { return }
-
-        let now = Date()
-        let guildId = event.guildID
-        let userId = event.userID
-
-        // Increment member count for this guild (best-effort; sourced from GUILD_CREATE).
-        let memberCount = (guildMemberCounts[guildId] ?? 0) + 1
-        guildMemberCounts[guildId] = memberCount
-
-        // Burst-guard: track join timestamps per guild; cap array to 50 entries.
-        var timestamps = guildJoinTimestamps[guildId] ?? []
-        timestamps = timestamps.filter { now.timeIntervalSince($0) < 5 }
-        timestamps.append(now)
-        if timestamps.count > 50 { timestamps = Array(timestamps.suffix(50)) }
-        guildJoinTimestamps[guildId] = timestamps
-
-        let burstThreshold = 10
-        if timestamps.count > burstThreshold {
-            // Raid-safe: summarize instead of individual welcome.
-            if timestamps.count == burstThreshold + 1 {
-                // Post once at the threshold crossing, not on every subsequent join.
-                let channelId = settings.behavior.memberJoinWelcomeChannelId
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let serverName = connectedServers[guildId] ?? "the server"
-                _ = await send(channelId, "👥 Multiple members joined \(serverName) — welcome everyone!")
-                logs.append("Member join burst detected in \(guildId); switched to summary mode.")
+    /// Shared sender that knows how to serialize a WelcomeFlowService.PublicMessage
+    /// (plain text OR an embed with optional thumbnail/author) into a Discord payload.
+    private func sendWelcomeFlowMessage(
+        channelId: String,
+        message: WelcomeFlowService.PublicMessage,
+        action: String
+    ) async -> Bool {
+        if let embed = message.embed {
+            var embedDict: [String: Any] = [
+                "title": embed.title,
+                "description": embed.description,
+                "color": embed.color,
+                "footer": ["text": embed.footer]
+            ]
+            if let thumb = embed.thumbnailURL, !thumb.isEmpty {
+                embedDict["thumbnail"] = ["url": thumb]
             }
-            return
+            if let authorName = embed.authorName, !authorName.isEmpty {
+                var author: [String: Any] = ["name": authorName]
+                if let icon = embed.authorIconURL, !icon.isEmpty {
+                    author["icon_url"] = icon
+                }
+                embedDict["author"] = author
+            }
+            var payload: [String: Any] = ["embeds": [embedDict]]
+            if let content = message.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                payload["content"] = content
+            }
+            return await sendPayload(channelId: channelId, payload: payload, action: action)
         }
+        guard let content = message.content else { return false }
+        return await send(channelId, content)
+    }
 
-        // Dedupe: skip if same user joined this guild within 10 seconds.
-        let dedupeKey = "\(guildId):\(userId)"
-        if let last = recentMemberJoins[dedupeKey], now.timeIntervalSince(last) < 10 { return }
-        recentMemberJoins[dedupeKey] = now
-        // Bounded cleanup: cap at 500 entries, remove entries older than 60s.
-        if recentMemberJoins.count > 500 {
-            let pruned = recentMemberJoins.filter { now.timeIntervalSince($0.value) < 60 }
-            recentMemberJoins = Dictionary(uniqueKeysWithValues: Array(pruned.prefix(500)))
+    func handleMemberJoin(_ event: GatewayMemberJoinEvent) async {
+        let hasRules = automationStore.rules.contains {
+            $0.enabled && $0.trigger.kind == .memberJoined
         }
+        guard settings.welcomeFlow.handlesMemberJoin || hasRules else { return }
 
-        // Template sanitization: neutralize @everyone and @here to prevent mass-ping abuse.
-        let safeUsername = event.rawUsername
-            .replacingOccurrences(of: "@everyone", with: "@​everyone")
-            .replacingOccurrences(of: "@here", with: "@​here")
+        let result = await welcomeFlowService.handleMemberJoin(
+            event,
+            settings: settings.welcomeFlow,
+            serverName: connectedServers[event.guildID] ?? "the server",
+            sendPublicMessage: { [weak self] channelId, message in
+                guard let self else { return false }
+                return await self.sendWelcomeFlowMessage(
+                    channelId: channelId,
+                    message: message,
+                    action: "sendWelcomeEmbed"
+                )
+            },
+            sendDirectMessage: { [weak self] userId, content in
+                guard let self else { return }
+                try await self.service.sendDM(userId: userId, content: content)
+            },
+            grantRole: { [weak self] guildId, userId, roleId in
+                guard let self else { return }
+                let token = self.settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !token.isEmpty else {
+                    throw NSError(
+                        domain: "SwiftBot.WelcomeFlow",
+                        code: 401,
+                        userInfo: [NSLocalizedDescriptionKey: "Discord token is not available."]
+                    )
+                }
+                try await self.service.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
+            },
+            fetchInvites: { [weak self] guildId in
+                guard let self else { return nil }
+                let token = self.settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !token.isEmpty else { return nil }
+                do {
+                    return try await self.service.fetchGuildInvites(guildId: guildId, token: token)
+                } catch {
+                    self.logs.append("Welcome Flow: invite lookup unavailable for \(guildId): \(error.localizedDescription)")
+                    return nil
+                }
+            },
+            log: { [weak self] message in
+                self?.logs.append(message)
+            }
+        )
 
-        let serverName = connectedServers[guildId] ?? "the server"
-        let message = settings.behavior.memberJoinWelcomeTemplate
-            .replacingOccurrences(of: "{username}", with: safeUsername)
-            .replacingOccurrences(of: "{server}", with: serverName)
-            .replacingOccurrences(of: "{memberCount}", with: "\(memberCount)")
-
-        if legacyEnabled {
-            let channelId = settings.behavior.memberJoinWelcomeChannelId
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            _ = await send(channelId, message)
-        }
+        guard !result.isDuplicate, !result.isBurstSuppressed else { return }
 
         // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
         let ruleEvent = VoiceRuleEvent(
             kind: .memberJoin,
-            guildId: guildId,
-            userId: userId,
-            username: safeUsername,
+            guildId: event.guildID,
+            userId: event.userID,
+            username: result.safeUsername,
             channelId: "",
             fromChannelId: nil,
             toChannelId: nil,
@@ -87,8 +109,8 @@ extension AppModel {
             mediaNodeName: nil,
             triggerMessageId: nil,
             triggerChannelId: nil,
-            triggerGuildId: guildId,
-            triggerUserId: userId,
+            triggerGuildId: event.guildID,
+            triggerUserId: event.userID,
             isDirectMessage: false,
             authorIsBot: nil,
             joinedAt: event.joinedAt
@@ -96,8 +118,12 @@ extension AppModel {
         await fireAutomations(for: ruleEvent)
 
         // Log username only — no internal IDs or metadata.
-        addEvent(ActivityEvent(timestamp: now, kind: .info, message: "👋 \(safeUsername) joined \(serverName)"))
-        logs.append("Member join welcome sent for \(safeUsername) in \(serverName)")
+        addEvent(ActivityEvent(
+            timestamp: result.handledAt,
+            kind: .info,
+            message: "👋 \(result.safeUsername) joined \(result.serverName)"
+        ))
+        logs.append("Member join handled for \(result.safeUsername) in \(result.serverName)")
     }
 
     func handleMemberLeave(_ event: GatewayMemberLeaveEvent) async {
@@ -105,9 +131,26 @@ extension AppModel {
         let guildId = event.guildID
         let userId = event.userID
 
-        // Best-effort member count decrement
-        if let count = guildMemberCounts[guildId] {
-            guildMemberCounts[guildId] = max(0, count - 1)
+        welcomeFlowService.decrementMemberCount(guildID: guildId)
+
+        // Goodbye message (best-effort, fires before automation rules so the post precedes any rule reactions).
+        if settings.welcomeFlow.hasGoodbyeMessage {
+            await welcomeFlowService.handleGoodbye(
+                event,
+                settings: settings.welcomeFlow,
+                serverName: connectedServers[guildId] ?? "the server",
+                sendPublicMessage: { [weak self] channelId, message in
+                    guard let self else { return false }
+                    return await self.sendWelcomeFlowMessage(
+                        channelId: channelId,
+                        message: message,
+                        action: "sendGoodbyeEmbed"
+                    )
+                },
+                log: { [weak self] message in
+                    self?.logs.append(message)
+                }
+            )
         }
 
         let username = event.username
@@ -145,7 +188,16 @@ extension AppModel {
     func handleGuildCreate(_ event: GatewayGuildCreateEvent) async {
         guildCreateEventCount += 1
         if let memberCount = event.memberCount {
-            guildMemberCounts[event.guildID] = memberCount
+            welcomeFlowService.seedMemberCount(guildID: event.guildID, count: memberCount)
+        }
+        if !settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            do {
+                let invites = try await service.fetchGuildInvites(guildId: event.guildID, token: settings.token)
+                welcomeFlowService.seedInvites(guildID: event.guildID, invites: invites)
+            } catch {
+                let guildName = event.guildName ?? event.guildID
+                logs.append("Welcome Flow: invite tracking unavailable for \(guildName): \(error.localizedDescription)")
+            }
         }
 
         await discordCache.upsertGuild(id: event.guildID, name: event.guildName)
@@ -317,4 +369,39 @@ extension AppModel {
         }
     }
 
+    // MARK: - Welcome Flow test send
+
+    /// Posts a synthetic welcome message to the configured channel using the current settings.
+    /// Returns whether the send succeeded. Used by the UI "Send Test" button.
+    @discardableResult
+    func sendWelcomeFlowTestMessage() async -> Bool {
+        let testServer: String
+        if !settings.welcomeFlow.publicChannelId.isEmpty,
+           let guildId = availableTextChannelsByServer
+               .first(where: { $0.value.contains(where: { $0.id == settings.welcomeFlow.publicChannelId }) })?
+               .key {
+            testServer = connectedServers[guildId] ?? "your server"
+        } else {
+            testServer = connectedServers.values.first ?? "your server"
+        }
+        let identityID = botUserId ?? "0"
+        let identityName = botUsername.isEmpty ? "SwiftBot" : botUsername
+        return await welcomeFlowService.sendTestWelcome(
+            settings: settings.welcomeFlow,
+            serverName: testServer,
+            testUserID: identityID,
+            testUsername: identityName,
+            sendPublicMessage: { [weak self] channelId, message in
+                guard let self else { return false }
+                return await self.sendWelcomeFlowMessage(
+                    channelId: channelId,
+                    message: message,
+                    action: "sendWelcomeTest"
+                )
+            },
+            log: { [weak self] message in
+                self?.logs.append(message)
+            }
+        )
+    }
 }

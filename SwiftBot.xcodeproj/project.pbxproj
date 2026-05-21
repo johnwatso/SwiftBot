@@ -37,6 +37,7 @@
 		2019E7B6F12AB1E58C097C9B /* WikiSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5935F83A4161478DCD1AD04 /* WikiSyncTests.swift */; };
 		21F0F51F5739E8BA2E0E6978 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A84E95FDE31E5E752C2E2F /* Persistence.swift */; };
 		22701BDB9191BD43BFA13BD7 /* SwiftMeshView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BD24A98DC57DF430081B255 /* SwiftMeshView.swift */; };
+		235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */; };
 		26001C9AFAE18FF56EA4BCDD /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = 6BEFF4EF2D66A493DAF66DDA /* SwiftASN1 */; };
 		2782AC6744E0B9AC94CE141D /* MeshSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBE5EBDA57392AC43CCE370 /* MeshSyncTests.swift */; };
 		27EBD03F4CDFA5B4F8A76F38 /* DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */; };
@@ -132,6 +133,7 @@
 		916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = 7C4E3B85871C475A7A8D53DE /* AppIcon.png */; };
 		91FF3FB5CA902BC308D4B6F2 /* CommandsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */; };
 		93345A02DC6C82784C231830 /* BotPermissionsCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */; };
+		938BE1CD6AF288A18E317AF5 /* WelcomeFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23DF474F0D2F1311617094 /* WelcomeFlowView.swift */; };
 		93A851A6FD066BDF9D74AFAD /* BuiltInUpdateSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1FE5FBB68C0886CB6760F7 /* BuiltInUpdateSources.swift */; };
 		9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 1C81108D7CF200AA2750ED17 /* NIOSSL */; };
 		973C625E6A1463378BE7190D /* SwiftMinerDMFrequencyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E40E1A97020F354A369FB65 /* SwiftMinerDMFrequencyGate.swift */; };
@@ -144,6 +146,7 @@
 		A03E7AB8F0B643B3271F1968 /* SwiftMinerDMEmbedBuilders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A7F34F7FFB7E1B2BD1C889 /* SwiftMinerDMEmbedBuilders.swift */; };
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
 		A19AE8F43B9B8CFB90BE7638 /* Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440472C1541FD0866542066B /* Automations.swift */; };
+		A463269B72381B592011FA78 /* WelcomeFlowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */; };
 		A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */; };
 		A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */; };
 		AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
@@ -281,12 +284,14 @@
 		5E8A9E44693B2BF8DA450D85 /* StandaloneSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandaloneSetupView.swift; sourceTree = "<group>"; };
 		60C5B2A942D33772E9E9C8E9 /* VoiceGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGatewayConnection.swift; sourceTree = "<group>"; };
 		625DB0CE520199209A20F7FC /* MeshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCrypto.swift; sourceTree = "<group>"; };
+		6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeFlowService.swift; sourceTree = "<group>"; };
 		67FE597F87B994AB862A6AD1 /* VoiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettings.swift; sourceTree = "<group>"; };
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManagerTests.swift; sourceTree = "<group>"; };
 		6A7A4945675389627AFBFB2F /* admin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = admin; path = SwiftBotApp/Resources/admin; sourceTree = SOURCE_ROOT; };
 		6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
 		6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSessionStore.swift; sourceTree = "<group>"; };
+		6E23DF474F0D2F1311617094 /* WelcomeFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeFlowView.swift; sourceTree = "<group>"; };
 		6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppOutputGuardTests.swift; sourceTree = "<group>"; };
 		6E828B8B55D1AEB575FE26E5 /* AppModel+VoicePresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+VoicePresence.swift"; sourceTree = "<group>"; };
 		6E857AB706540A5A69F2DEC0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -392,6 +397,7 @@
 		F114D5560F6CD84DD630744F /* RTPPacketBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTPPacketBuilder.swift; sourceTree = "<group>"; };
 		F2118093E0861D32DA075036 /* AppSharedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSharedTypes.swift; sourceTree = "<group>"; };
 		F4024E7F93A1C1B1CBAE9326 /* VoiceAnnouncementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAnnouncementService.swift; sourceTree = "<group>"; };
+		F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeFlowServiceTests.swift; sourceTree = "<group>"; };
 		F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMStateTests.swift; sourceTree = "<group>"; };
 		F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+DiscordEvents.swift"; sourceTree = "<group>"; };
 		F6CA49D19240EC6B6DB7C08C /* EventBus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBus.swift; sourceTree = "<group>"; };
@@ -499,6 +505,7 @@
 				D9EF313F98CF6D82252C41D5 /* VariableAutocompleteField.swift */,
 				3617EE72A6A0D23A2FB2BFE0 /* VoiceView.swift */,
 				8FC29827C8F3269A4F23E561 /* WebUIPreferencesView.swift */,
+				6E23DF474F0D2F1311617094 /* WelcomeFlowView.swift */,
 				9C8B9FF78E7B196891AF7A7F /* WikiBridgeView.swift */,
 			);
 			path = SwiftBotApp;
@@ -588,6 +595,7 @@
 				F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */,
 				C30594CFC06F0AC68516A696 /* SwiftMinerDMThemeTests.swift */,
 				216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */,
+				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
 				C5935F83A4161478DCD1AD04 /* WikiSyncTests.swift */,
 			);
@@ -685,6 +693,7 @@
 				6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */,
 				97466782EAB305E42E2C8AF9 /* VoiceTTSSource.swift */,
 				D8230D2B16B9C4526C3BC049 /* VoiceUDPTransport.swift */,
+				6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */,
 				40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */,
 			);
 			path = Services;
@@ -994,6 +1003,8 @@
 				1EEE0B97DD58DED68B7EBDBF /* VoiceUDPTransport.swift in Sources */,
 				591002A179F04E930433FF81 /* VoiceView.swift in Sources */,
 				889466FAF399CB465ED1C45B /* WebUIPreferencesView.swift in Sources */,
+				A463269B72381B592011FA78 /* WelcomeFlowService.swift in Sources */,
+				938BE1CD6AF288A18E317AF5 /* WelcomeFlowView.swift in Sources */,
 				831BDE04FBF99D4CD415BD88 /* WikiBridgeView.swift in Sources */,
 				126B88FAE40D80657EB4FE78 /* WikiLookupService.swift in Sources */,
 			);
@@ -1036,6 +1047,7 @@
 				BD64632310BA8934F5467656 /* SwiftMinerDMStateTests.swift in Sources */,
 				EE1D37D9128E8C74FD1B37CC /* SwiftMinerDMThemeTests.swift in Sources */,
 				A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */,
+				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
 				B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */,
 				2019E7B6F12AB1E58C097C9B /* WikiSyncTests.swift in Sources */,
 			);
