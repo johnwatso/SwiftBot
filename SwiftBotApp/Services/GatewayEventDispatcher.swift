@@ -62,6 +62,12 @@ struct GatewayMemberJoinEvent: Sendable {
     let userID: String
     let rawUsername: String
     let joinedAt: Date?
+    /// True when Discord flags the joining user as a bot account.
+    var isBot: Bool = false
+    /// User avatar hash (used to build the CDN URL for thumbnails). nil when the user has no avatar set.
+    var avatarHash: String?
+    /// User discriminator (legacy "#1234"). Used as a fallback for the default-avatar URL.
+    var discriminator: String?
 }
 
 struct GatewayMemberLeaveEvent: Sendable {
@@ -336,11 +342,24 @@ actor GatewayEventDispatcher {
             joinedAt = nil
         }
 
+        let isBot: Bool
+        if case let .bool(flag)? = user["bot"] {
+            isBot = flag
+        } else {
+            isBot = false
+        }
+
+        let avatarHash = stringValue(for: "avatar", in: user)
+        let discriminator = stringValue(for: "discriminator", in: user)
+
         return GatewayMemberJoinEvent(
             guildID: guildID,
             userID: userID,
             rawUsername: rawUsername,
-            joinedAt: joinedAt
+            joinedAt: joinedAt,
+            isBot: isBot,
+            avatarHash: avatarHash,
+            discriminator: discriminator
         )
     }
 

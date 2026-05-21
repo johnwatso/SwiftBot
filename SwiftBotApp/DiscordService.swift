@@ -866,6 +866,10 @@ actor DiscordService {
         try await guildRESTClient.addRole(guildId: guildId, userId: userId, roleId: roleId, token: token)
     }
 
+    func fetchGuildInvites(guildId: String, token: String) async throws -> [WelcomeFlowService.InviteSnapshot] {
+        try await guildRESTClient.fetchGuildInvites(guildID: guildId, token: token)
+    }
+
     func removeRole(guildId: String, userId: String, roleId: String, token: String) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: removeRole blocked — outputAllowed is false (node is not Primary).")

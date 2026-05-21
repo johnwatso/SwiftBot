@@ -131,14 +131,14 @@ enum PromptComposer {
     }
 }
 
-/// A simple helper for interacting with the macOS Keychain.
+// A simple helper for interacting with the macOS Keychain.
 
 // MARK: - Navigation Models
-
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case patchy = "Patchy"
+    case welcomeFlow = "Welcome Flow"
     case automations = "Automations"
     case moderation = "Moderation"
     case commands = "Commands"
@@ -156,6 +156,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "square.grid.2x2.fill"
         case .patchy: return "square.and.arrow.down.badge.checkmark.fill"
+        case .welcomeFlow: return "person.crop.circle.badge.plus"
         case .automations: return "bolt.badge.automatic.fill"
         case .moderation: return "shield.lefthalf.filled"
         case .commands: return "terminal.fill"
@@ -417,4 +418,3 @@ enum DiscordPermission: String, CaseIterable, Codable, Hashable {
         }
     }
 }
-

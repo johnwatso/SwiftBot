@@ -14,6 +14,43 @@ struct DiscordGuildRESTClient {
         self.restBase = restBase
     }
 
+    func fetchGuildInvites(guildID: String, token: String) async throws -> [WelcomeFlowService.InviteSnapshot] {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !trimmedToken.isEmpty else { return [] }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(trimmedGuildID)/invites"))
+        req.httpMethod = "GET"
+        req.timeoutInterval = 10
+        req.setValue("Bot \(trimmedToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(
+                domain: "DiscordService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch guild invites"]
+            )
+        }
+
+        guard let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        return array.compactMap { item in
+            guard let code = item["code"] as? String, !code.isEmpty else { return nil }
+            let channel = item["channel"] as? [String: Any]
+            let inviter = item["inviter"] as? [String: Any]
+            return WelcomeFlowService.InviteSnapshot(
+                code: code,
+                channelID: channel?["id"] as? String,
+                channelName: channel?["name"] as? String,
+                inviterID: inviter?["id"] as? String,
+                uses: item["uses"] as? Int ?? 0
+            )
+        }
+    }
+
     func fetchGuildOwnerID(guildID: String, token: String) async -> String? {
         let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
