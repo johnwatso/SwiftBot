@@ -1,6 +1,7 @@
 import XCTest
 @testable import SwiftBot
 
+@MainActor
 final class CommandProcessorTests: XCTestCase {
     func testPrefixHelpRendersEmbedOverview() async {
         let recorder = CommandRecorder()
@@ -17,10 +18,12 @@ final class CommandProcessorTests: XCTestCase {
         )
 
         XCTAssertTrue(ok)
-        let embeds = await recorder.sentEmbeds()
-        XCTAssertEqual(embeds.count, 1)
-        XCTAssertEqual(embeds.first?.channelId, "channel-1")
-        XCTAssertEqual(embeds.first?.embed["title"] as? String, "SwiftBot Commands")
+        let count = await recorder.embedsCount
+        let channelId = await recorder.firstEmbedChannelId
+        let title = await recorder.firstEmbedTitle
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(channelId, "channel-1")
+        XCTAssertEqual(title, "SwiftBot Commands")
     }
 
     func testSlashHelpDelegatesToPrefixHelpEvenWhenPrefixCommandsDisabled() async {
@@ -44,9 +47,10 @@ final class CommandProcessorTests: XCTestCase {
         )
 
         XCTAssertEqual(response.embeds?.first?["title"] as? String, "Help")
-        let embeds = await recorder.sentEmbeds()
-        XCTAssertEqual(embeds.count, 1)
-        XCTAssertEqual(embeds.first?.embed["title"] as? String, "SwiftBot Commands")
+        let count = await recorder.embedsCount
+        let title = await recorder.firstEmbedTitle
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(title, "SwiftBot Commands")
     }
 
     func testDisabledPrefixCommandReturnsDisabledMessage() async {
@@ -238,7 +242,8 @@ final class CommandProcessorTests: XCTestCase {
                     return true
                 },
                 sendEmbed: { channelId, embed in
-                    await recorder.recordEmbed(channelId: channelId, embed: embed)
+                    nonisolated(unsafe) let safeEmbed = embed
+                    await recorder.recordEmbed(channelId: channelId, embed: safeEmbed)
                     return true
                 },
                 generateHelpReply: { _, _ in nil },
@@ -345,6 +350,11 @@ private actor CommandRecorder {
     func sentEmbeds() -> [(channelId: String, embed: [String: Any])] {
         embeds
     }
+
+    // Sendable-friendly accessors for tests under Swift 6 strict concurrency.
+    var embedsCount: Int { embeds.count }
+    var firstEmbedChannelId: String? { embeds.first?.channelId }
+    var firstEmbedTitle: String? { embeds.first?.embed["title"] as? String }
 
     func wikiLookups() -> [(command: String, source: String, query: String, channelId: String)] {
         lookups

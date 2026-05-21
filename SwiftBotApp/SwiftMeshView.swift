@@ -709,11 +709,13 @@ struct ClusterMapView: View {
                         latencyMs: worker.latencyMs
                     )
 
+                    let workerForget = makeForgetAction(for: worker)
                     ClusterMapNodeChip(
                         node: worker,
                         iconOverride: app.settings.clusterNodeIconOverrides[worker.displayName],
                         onIconSelect: makeIconSelector(for: worker.displayName),
-                        onForget: makeForgetAction(for: worker),
+                        canForget: workerForget != nil,
+                        onForget: workerForget,
                         presentation: presentation
                     )
                     .equatable()
@@ -722,11 +724,13 @@ struct ClusterMapView: View {
                 }
 
                 if let leader {
+                    let leaderForget = makeForgetAction(for: leader)
                     ClusterMapNodeChip(
                         node: leader,
                         iconOverride: app.settings.clusterNodeIconOverrides[leader.displayName],
                         onIconSelect: makeIconSelector(for: leader.displayName),
-                        onForget: makeForgetAction(for: leader),
+                        canForget: leaderForget != nil,
+                        onForget: leaderForget,
                         showLeaderSymbol: true,
                         presentation: presentation
                     )
@@ -820,10 +824,12 @@ private struct ClusterTopologyLayout {
     let workerPositions: [CGPoint]
 }
 
+@MainActor
 private struct ClusterMapNodeChip: View, Equatable {
     let node: ClusterNodeStatus
     let iconOverride: String?
     let onIconSelect: (String?) -> Void
+    var canForget: Bool = false
     /// Non-nil iff the parent decides the node is forgettable (disconnected
     /// and not the local node). Closures aren't comparable so we surface
     /// presence via a sibling `canForget` flag inside `==`.
@@ -835,13 +841,13 @@ private struct ClusterMapNodeChip: View, Equatable {
     // volatile fields like latency. SwiftUI's `.equatable()` will skip body
     // re-evaluation whenever the user-visible state hasn't changed, which
     // prevents the contextMenu from being dismissed by background ticks.
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.node.displayName == rhs.node.displayName &&
         lhs.node.status == rhs.node.status &&
         lhs.node.role == rhs.node.role &&
         lhs.node.hardwareModel == rhs.node.hardwareModel &&
         lhs.iconOverride == rhs.iconOverride &&
-        (lhs.onForget != nil) == (rhs.onForget != nil) &&
+        lhs.canForget == rhs.canForget &&
         lhs.showLeaderSymbol == rhs.showLeaderSymbol &&
         lhs.presentation == rhs.presentation
     }
@@ -936,6 +942,7 @@ private struct ClusterNodeRow: View {
             // Stable shell: hosts the contextMenu and excludes volatile data
             // (latency). SwiftUI skips its body re-eval on cluster ticks so the
             // "Set Icon" menu stays open while the user navigates it.
+            let forgetActionRef = forgetAction
             ClusterNodeRowShell(
                 node: node,
                 iconOverride: app.settings.clusterNodeIconOverrides[node.displayName],
@@ -947,7 +954,8 @@ private struct ClusterNodeRow: View {
                     }
                     app.saveSettings()
                 },
-                onForget: forgetAction
+                canForget: forgetActionRef != nil,
+                onForget: forgetActionRef
             )
             .equatable()
 
@@ -978,20 +986,22 @@ private struct ClusterNodeRow: View {
 /// (icon, name, status badge). The contextMenu attaches here, so cluster-tick
 /// changes to volatile data like latency don't dismiss an open "Set Icon"
 /// menu.
+@MainActor
 private struct ClusterNodeRowShell: View, Equatable {
     let node: ClusterNodeStatus
     let iconOverride: String?
     let onIconSelect: (String?) -> Void
+    var canForget: Bool = false
     var onForget: (() -> Void)? = nil
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.node.displayName == rhs.node.displayName &&
         lhs.node.status == rhs.node.status &&
         lhs.node.role == rhs.node.role &&
         lhs.node.hardwareModel == rhs.node.hardwareModel &&
         lhs.node.hostname == rhs.node.hostname &&
         lhs.iconOverride == rhs.iconOverride &&
-        (lhs.onForget != nil) == (rhs.onForget != nil)
+        lhs.canForget == rhs.canForget
     }
 
     var body: some View {

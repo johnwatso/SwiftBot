@@ -67,26 +67,26 @@ actor DiscordService {
         self.wikiLookupService = wikiLookupService ?? WikiLookupService(session: session)
     }
 
-    var onPayload: ((GatewayPayload) async -> Void)?
-    var onConnectionState: ((BotStatus) async -> Void)?
+    var onPayload: (@Sendable (GatewayPayload) async -> Void)?
+    var onConnectionState: (@Sendable (BotStatus) async -> Void)?
     /// Called each time a heartbeat ACK (op 11) is received; value is round-trip ms.
-    var onHeartbeatLatency: ((Int) async -> Void)?
+    var onHeartbeatLatency: (@Sendable (Int) async -> Void)?
     /// Called when the WebSocket closes with a non-normal code; value is the close code integer.
-    var onGatewayClose: ((Int) async -> Void)?
+    var onGatewayClose: (@Sendable (Int) async -> Void)?
 
-    func setOnPayload(_ handler: @escaping (GatewayPayload) async -> Void) {
+    func setOnPayload(_ handler: @escaping @Sendable (GatewayPayload) async -> Void) {
         onPayload = handler
     }
 
-    func setOnConnectionState(_ handler: @escaping (BotStatus) async -> Void) {
+    func setOnConnectionState(_ handler: @escaping @Sendable (BotStatus) async -> Void) {
         onConnectionState = handler
     }
 
-    func setOnHeartbeatLatency(_ handler: @escaping (Int) async -> Void) {
+    func setOnHeartbeatLatency(_ handler: @escaping @Sendable (Int) async -> Void) {
         onHeartbeatLatency = handler
     }
 
-    func setOnGatewayClose(_ handler: @escaping (Int) async -> Void) {
+    func setOnGatewayClose(_ handler: @escaping @Sendable (Int) async -> Void) {
         onGatewayClose = handler
     }
 
@@ -265,9 +265,10 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
+        nonisolated(unsafe) let safeCommands = commands
         try await interactionRESTClient.registerGlobalApplicationCommands(
             applicationID: applicationID,
-            commands: commands,
+            commands: safeCommands,
             token: token
         )
     }
@@ -278,10 +279,11 @@ actor DiscordService {
         commands: [[String: Any]],
         token: String
     ) async throws {
+        nonisolated(unsafe) let safeCommands = commands
         try await interactionRESTClient.registerGuildApplicationCommands(
             applicationID: applicationID,
             guildID: guildID,
-            commands: commands,
+            commands: safeCommands,
             token: token
         )
     }
@@ -295,10 +297,11 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: respondToInteraction blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
+        nonisolated(unsafe) let safePayload = payload
         try await interactionRESTClient.respondToInteraction(
             interactionID: interactionID,
             interactionToken: interactionToken,
-            payload: payload
+            payload: safePayload
         )
     }
 
@@ -319,10 +322,11 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        nonisolated(unsafe) let safePayload = payload
         try await interactionRESTClient.editOriginalInteractionResponse(
             applicationID: applicationID,
             interactionToken: interactionToken,
-            payload: payload
+            payload: safePayload
         )
     }
 
@@ -340,7 +344,8 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        return try await messageRESTClient.sendMessage(channelId: channelId, payload: payload, token: token)
+        nonisolated(unsafe) let safePayload = payload
+        return try await messageRESTClient.sendMessage(channelId: channelId, payload: safePayload, token: token)
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
@@ -356,7 +361,8 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payload: payload, token: token)
+        nonisolated(unsafe) let safePayload = payload
+        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payload: safePayload, token: token)
     }
 
     func fetchChannel(channelId: String, token: String) async throws -> [String: DiscordJSON] {
@@ -794,13 +800,13 @@ actor DiscordService {
         try await deleteMessage(channelId: channelId, messageId: messageId, token: token)
     }
 
-    private static let sweepTimestampWithFraction: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let sweepTimestampWithFraction: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    private static let sweepTimestampNoFraction: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let sweepTimestampNoFraction: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f

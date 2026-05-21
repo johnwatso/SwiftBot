@@ -45,7 +45,11 @@ final class MeshFailoverTests: XCTestCase {
     }
 
     func testTermPersistedOnPromotion() async {
-        var persistedTerm: Int = 0
+        actor TermBox {
+            var value = 0
+            func set(_ v: Int) { value = v }
+        }
+        let persistedTerm = TermBox()
         let coordinator = ClusterCoordinator()
         await coordinator.applySettings(
             mode: .standby,
@@ -56,7 +60,7 @@ final class MeshFailoverTests: XCTestCase {
             leaderTerm: 2
         )
         await coordinator.setTermChangedHandler { newTerm in
-            persistedTerm = newTerm
+            await persistedTerm.set(newTerm)
         }
 
         for _ in 0..<3 {
@@ -65,9 +69,10 @@ final class MeshFailoverTests: XCTestCase {
 
         let mode = await coordinator.testCurrentMode()
         let term = await coordinator.testCurrentLeaderTerm()
+        let persisted = await persistedTerm.value
         XCTAssertEqual(mode, .leader)
-        XCTAssertEqual(term, 3)          // 2 + 1
-        XCTAssertEqual(persistedTerm, 3) // callback fired with new term
+        XCTAssertEqual(term, 3)        // 2 + 1
+        XCTAssertEqual(persisted, 3)   // callback fired with new term
     }
 
     // MARK: - Forced Failover Drill

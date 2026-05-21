@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Gateway Payload
 
-struct GatewayPayload: Codable {
+struct GatewayPayload: Codable, Sendable {
     let op: Int
     let d: DiscordJSON?
     let s: Int?
@@ -11,7 +11,7 @@ struct GatewayPayload: Codable {
 
 // MARK: - Discord JSON
 
-enum DiscordJSON: Codable, Equatable {
+enum DiscordJSON: Codable, Equatable, Sendable {
     case string(String)
     case int(Int)
     case double(Double)
@@ -60,7 +60,7 @@ enum DiscordJSON: Codable, Equatable {
 
 // MARK: - Voice Rule Event
 
-struct VoiceRuleEvent {
+struct VoiceRuleEvent: Sendable {
     enum Kind {
         case join
         case leave

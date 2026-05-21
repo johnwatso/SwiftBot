@@ -114,8 +114,8 @@ final class DiscordMessageRESTClientDMTests: XCTestCase {
 }
 
 private final class MockURLProtocol: URLProtocol {
-    private static var lock = NSLock()
-    private static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    nonisolated(unsafe) private static var lock = NSLock()
+    nonisolated(unsafe) private static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     static func setHandler(_ handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)) {
         lock.lock()

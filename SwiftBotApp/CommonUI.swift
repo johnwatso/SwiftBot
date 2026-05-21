@@ -166,7 +166,7 @@ private struct DashboardMetricGlowPreference {
 }
 
 private struct DashboardMetricGlowPreferenceKey: PreferenceKey {
-    static var defaultValue: [DashboardMetricGlowPreference] = []
+    static let defaultValue: [DashboardMetricGlowPreference] = []
 
     static func reduce(value: inout [DashboardMetricGlowPreference], nextValue: () -> [DashboardMetricGlowPreference]) {
         value.append(contentsOf: nextValue())

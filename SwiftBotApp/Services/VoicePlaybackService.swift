@@ -29,13 +29,13 @@ actor VoicePlaybackService {
     private var negotiatedMode: VoiceEncryptionMode?
     private var readyContinuation: CheckedContinuation<Void, Error>?
 
-    private var onStatusChange: ((Status) async -> Void)?
+    private var onStatusChange: (@Sendable (Status) async -> Void)?
 
     init(session: URLSession = .shared) {
         self.session = session
     }
 
-    func setOnStatusChange(_ handler: @escaping (Status) async -> Void) {
+    func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
         onStatusChange = handler
     }
 

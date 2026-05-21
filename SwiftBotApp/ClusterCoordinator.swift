@@ -2704,7 +2704,8 @@ actor ClusterCoordinator {
             + Double(vmStats.inactive_count)
             + Double(vmStats.wire_count)
             + Double(vmStats.compressor_page_count)
-        let usedBytes = usedPages * Double(vm_kernel_page_size)
+        let pageSize = getpagesize()
+        let usedBytes = usedPages * Double(pageSize)
         let totalBytes = Double(ProcessInfo.processInfo.physicalMemory)
         guard totalBytes > 0 else { return 0 }
         return min(100, max(0, (usedBytes / totalBytes) * 100))

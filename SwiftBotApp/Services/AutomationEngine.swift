@@ -13,21 +13,21 @@ actor AutomationEngine {
     /// All Discord side-effects flow through this struct so the engine can be
     /// constructed in tests with stubs. Mirrors the surface of the old
     /// RuleExecutionService.Dependencies.
-    struct Dependencies {
-        let sendMessage: (_ channelId: String, _ content: String, _ token: String) async throws -> Void
-        let sendPayloadMessage: (_ channelId: String, _ payload: [String: Any], _ token: String) async throws -> Void
-        let sendDM: (_ userId: String, _ content: String) async throws -> Void
-        let addReaction: (_ channelId: String, _ messageId: String, _ emoji: String, _ token: String) async throws -> Void
-        let deleteMessage: (_ channelId: String, _ messageId: String, _ token: String) async throws -> Void
-        let addRole: (_ guildId: String, _ userId: String, _ roleId: String, _ token: String) async throws -> Void
-        let removeRole: (_ guildId: String, _ userId: String, _ roleId: String, _ token: String) async throws -> Void
-        let timeoutMember: (_ guildId: String, _ userId: String, _ seconds: Int, _ token: String) async throws -> Void
-        let kickMember: (_ guildId: String, _ userId: String, _ reason: String, _ token: String) async throws -> Void
-        let moveMember: (_ guildId: String, _ userId: String, _ channelId: String, _ token: String) async throws -> Void
-        let sendWebhook: (_ url: String, _ content: String) async throws -> Void
-        let resolveChannelName: (_ guildId: String, _ channelId: String) async -> String
-        let resolveGuildName: (_ guildId: String) async -> String?
-        let log: (_ message: String) -> Void
+    struct Dependencies: Sendable {
+        let sendMessage: @Sendable (_ channelId: String, _ content: String, _ token: String) async throws -> Void
+        let sendPayloadMessage: @Sendable (_ channelId: String, _ payload: [String: Any], _ token: String) async throws -> Void
+        let sendDM: @Sendable (_ userId: String, _ content: String) async throws -> Void
+        let addReaction: @Sendable (_ channelId: String, _ messageId: String, _ emoji: String, _ token: String) async throws -> Void
+        let deleteMessage: @Sendable (_ channelId: String, _ messageId: String, _ token: String) async throws -> Void
+        let addRole: @Sendable (_ guildId: String, _ userId: String, _ roleId: String, _ token: String) async throws -> Void
+        let removeRole: @Sendable (_ guildId: String, _ userId: String, _ roleId: String, _ token: String) async throws -> Void
+        let timeoutMember: @Sendable (_ guildId: String, _ userId: String, _ seconds: Int, _ token: String) async throws -> Void
+        let kickMember: @Sendable (_ guildId: String, _ userId: String, _ reason: String, _ token: String) async throws -> Void
+        let moveMember: @Sendable (_ guildId: String, _ userId: String, _ channelId: String, _ token: String) async throws -> Void
+        let sendWebhook: @Sendable (_ url: String, _ content: String) async throws -> Void
+        let resolveChannelName: @Sendable (_ guildId: String, _ channelId: String) async -> String
+        let resolveGuildName: @Sendable (_ guildId: String) async -> String?
+        let log: @Sendable (_ message: String) -> Void
     }
 
     private let aiService: DiscordAIService

@@ -2593,7 +2593,7 @@ actor AdminWebServer {
     }
 }
 
-private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
+private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
     typealias OutboundOut = ByteBuffer
 
@@ -2639,15 +2639,19 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler {
         buffer = frame.remainder
         let clientRequestedClose = frame.connectionClose
 
+        nonisolated(unsafe) let unsafeContext = context
+        let eventLoop = context.eventLoop
         processorTask = Task { [weak self] in
             guard let self else { return }
             let response = await self.processor(requestData)
             let serverRequestedClose = Self.responseRequestsClose(response)
-            self.writeResponse(
-                response,
-                context: context,
-                closeAfterWrite: clientRequestedClose || serverRequestedClose
-            )
+            eventLoop.execute {
+                self.writeResponse(
+                    response,
+                    context: unsafeContext,
+                    closeAfterWrite: clientRequestedClose || serverRequestedClose
+                )
+            }
         }
     }
 

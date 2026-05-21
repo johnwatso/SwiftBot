@@ -88,7 +88,7 @@ targets:
       base:
         PRODUCT_NAME: SwiftBot
         PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftbot
-        SWIFT_VERSION: "5.9"
+        SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
         ARCHS: arm64
@@ -160,7 +160,7 @@ targets:
       base:
         PRODUCT_NAME: SwiftBotTests
         PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftbot.tests
-        SWIFT_VERSION: "5.9"
+        SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
         ARCHS: arm64
@@ -183,7 +183,7 @@ targets:
       base:
         PRODUCT_NAME: SparklePublisher
         PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftbot.sparklepublisher
-        SWIFT_VERSION: "5.9"
+        SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SDKROOT: macosx
         ARCHS: arm64
