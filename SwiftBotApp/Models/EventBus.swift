@@ -3,11 +3,11 @@ import Foundation
 // MARK: - EventBus System
 
 /// A marker protocol for events that can be published and subscribed through `EventBus`.
-protocol Event {}
+protocol Event: Sendable {}
 
 /// A token representing a subscription to an event.
 /// Use this token to unsubscribe from the event.
-struct SubscriptionToken: Hashable, Identifiable {
+struct SubscriptionToken: Hashable, Identifiable, Sendable {
     let id: UUID
     init() {
         self.id = UUID()
@@ -15,11 +15,11 @@ struct SubscriptionToken: Hashable, Identifiable {
 }
 
 /// A thread-safe event bus supporting typed publish/subscribe with async handlers.
-final class EventBus {
+final class EventBus: Sendable {
     private actor Storage {
-        private var subscribers: [ObjectIdentifier: [SubscriptionToken: (Any) async -> Void]] = [:]
+        private var subscribers: [ObjectIdentifier: [SubscriptionToken: @Sendable (Any) async -> Void]] = [:]
 
-        func add(type: ObjectIdentifier, token: SubscriptionToken, handler: @escaping (Any) async -> Void) {
+        func add(type: ObjectIdentifier, token: SubscriptionToken, handler: @escaping @Sendable (Any) async -> Void) {
             if subscribers[type] != nil {
                 subscribers[type]![token] = handler
             } else {
@@ -38,7 +38,7 @@ final class EventBus {
             }
         }
 
-        func snapshotHandlers(for type: ObjectIdentifier) -> [(Any) async -> Void] {
+        func snapshotHandlers(for type: ObjectIdentifier) -> [@Sendable (Any) async -> Void] {
             guard let dict = subscribers[type] else { return [] }
             return Array(dict.values)
         }
@@ -48,9 +48,9 @@ final class EventBus {
 
     /// Subscribes to events of the specified type.
     @discardableResult
-    func subscribe<E: Event>(_ type: E.Type, handler: @escaping (E) async -> Void) async -> SubscriptionToken {
+    func subscribe<E: Event>(_ type: E.Type, handler: @escaping @Sendable (E) async -> Void) async -> SubscriptionToken {
         let token = SubscriptionToken()
-        let wrappedHandler: (Any) async -> Void = { anyEvent in
+        let wrappedHandler: @Sendable (Any) async -> Void = { anyEvent in
             guard let event = anyEvent as? E else { return }
             await handler(event)
         }

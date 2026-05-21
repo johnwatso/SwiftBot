@@ -2,9 +2,11 @@ import AVFoundation
 import Foundation
 import OSLog
 
+extension AVAudioBuffer: @unchecked Sendable {}
+
 /// Produces 48 kHz stereo Float32 PCM buffers from `AVSpeechSynthesizer`,
 /// suitable for feeding straight into `VoicePlaybackService.speak(pcm:)`.
-final class VoiceTTSSource {
+final class VoiceTTSSource: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.tts")
 
     /// The Opus pipeline's input format: 48 kHz stereo interleaved Float32.
@@ -158,14 +160,17 @@ private final class SynthesisCollector {
             throw VoicePipelineError.audioFormatUnsupported
         }
 
-        var sourceConsumed = false
+        final class ConversionState: @unchecked Sendable {
+            var sourceConsumed = false
+        }
+        let state = ConversionState()
         var conversionError: NSError?
         let status = converter.convert(to: output, error: &conversionError) { _, status in
-            if sourceConsumed {
+            if state.sourceConsumed {
                 status.pointee = .endOfStream
                 return nil
             }
-            sourceConsumed = true
+            state.sourceConsumed = true
             status.pointee = .haveData
             return source
         }

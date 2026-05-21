@@ -48,12 +48,19 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         func hasEventBeenSent(_ signature: String) -> Bool {
             sentSignatures.contains(signature)
         }
+
+        // Sendable accessors for tests (the embed dictionaries themselves
+        // are non-Sendable, so they can't cross the actor boundary directly).
+        var sentEmbedsCount: Int { sentEmbeds.count }
+        var sentEmbedsIsEmpty: Bool { sentEmbeds.isEmpty }
+        var firstSentUserId: String? { sentEmbeds.first?.userId }
     }
 
     private func makeSender(spy: Spy) -> SwiftMinerDMSender {
         SwiftMinerDMSender(dependencies: .init(
             sendDMEmbed: { userId, embed in
-                await spy.recordSend(userId: userId, embed: embed)
+                nonisolated(unsafe) let safeEmbed = embed
+                await spy.recordSend(userId: userId, embed: safeEmbed)
             },
             discordNameForUserId: { userId in
                 await spy.discordNames[userId]
@@ -99,9 +106,10 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 1)
-        XCTAssertEqual(sent.first?.userId, "user-1")
+        let sentCount = await spy.sentEmbedsCount
+        let firstUserId = await spy.firstSentUserId
+        XCTAssertEqual(sentCount, 1)
+        XCTAssertEqual(firstUserId, "user-1")
     }
 
     func testSendFailureReturnsFalse() async {
@@ -136,8 +144,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 3, "Should send welcome, discord linked, then setup")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 3, "Should send welcome, discord linked, then setup")
         let welcomed = await spy.welcomedUserIds
         XCTAssertTrue(welcomed.contains("user-1"))
     }
@@ -150,8 +158,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 3, "Should send welcome, discord linked, then linked")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 3, "Should send welcome, discord linked, then linked")
     }
 
     func testSecondSetupDoesNotRepeatWelcome() async {
@@ -163,8 +171,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 1, "Should only send setup, no duplicate welcome")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 1, "Should only send setup, no duplicate welcome")
     }
 
     func testReauthDoesNotSendWelcome() async {
@@ -175,8 +183,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 1)
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 1)
         let welcomed = await spy.welcomedUserIds
         XCTAssertFalse(welcomed.contains("user-1"))
     }
@@ -189,8 +197,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok = await sender.send(request: request, discordUserId: "user-1")
 
         XCTAssertTrue(ok)
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 1, "Debug should not trigger welcome prepend")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 1, "Debug should not trigger welcome prepend")
     }
 
     // MARK: - Onboarding State Transitions
@@ -276,8 +284,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let ok2 = await sender.send(request: request, discordUserId: "user-1")
         XCTAssertTrue(ok2)
 
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 1, "Duplicate event should be deduped")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 1, "Duplicate event should be deduped")
     }
 
     func testDifferentEventIdsAreNotDeduped() async {
@@ -290,8 +298,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         _ = await sender.send(request: request1, discordUserId: "user-1")
         _ = await sender.send(request: request2, discordUserId: "user-1")
 
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 2, "Different event IDs should not be deduped")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 2, "Different event IDs should not be deduped")
     }
 
     func testDebugModeDoesNotDedup() async {
@@ -302,8 +310,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         _ = await sender.send(request: request, discordUserId: "user-1")
         _ = await sender.send(request: request, discordUserId: "user-1")
 
-        let sent = await spy.sentEmbeds
-        XCTAssertEqual(sent.count, 2, "Debug mode should not dedup")
+        let sentCount = await spy.sentEmbedsCount
+        XCTAssertEqual(sentCount, 2, "Debug mode should not dedup")
     }
 
     // MARK: - Preview (No Side Effects)
@@ -315,8 +323,8 @@ final class SwiftMinerDMSenderTests: XCTestCase {
         let embed = await sender.preview(request: .init(messageType: .dropClaimed), discordUserId: "user-1")
 
         XCTAssertFalse(embed.isEmpty)
-        let sent = await spy.sentEmbeds
-        XCTAssertTrue(sent.isEmpty, "Preview should never call sendDMEmbed")
+        let sentIsEmpty = await spy.sentEmbedsIsEmpty
+        XCTAssertTrue(sentIsEmpty, "Preview should never call sendDMEmbed")
     }
 
     func testPreviewDoesNotMutateState() async {

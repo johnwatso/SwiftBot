@@ -1100,7 +1100,7 @@
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -1117,7 +1117,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.sparklepublisher;
 				PRODUCT_NAME = SparklePublisher;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -1137,7 +1137,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.tests;
 				PRODUCT_NAME = SwiftBotTests;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SwiftBot.app/Contents/MacOS/SwiftBot";
 			};
 			name = Debug;
@@ -1155,7 +1155,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.sparklepublisher;
 				PRODUCT_NAME = SparklePublisher;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -1175,7 +1175,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot.tests;
 				PRODUCT_NAME = SwiftBotTests;
 				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SwiftBot.app/Contents/MacOS/SwiftBot";
 			};
 			name = Release;
@@ -1284,7 +1284,7 @@
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};

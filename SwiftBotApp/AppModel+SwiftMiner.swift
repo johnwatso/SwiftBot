@@ -104,7 +104,8 @@ extension AppModel {
         SwiftMinerDMSender(dependencies: .init(
                 sendDMEmbed: { [weak self] userId, embed in
                     guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
-                    try await self.service.sendDMEmbed(userId: userId, embed: embed)
+                    nonisolated(unsafe) let safeEmbed = embed
+                    try await self.service.sendDMEmbed(userId: userId, embed: safeEmbed)
                 },
                 discordNameForUserId: { [weak self] userId in
                     guard let self else { return nil }

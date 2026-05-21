@@ -4,12 +4,14 @@ import SwiftUI
 // Shared utilities extracted from the legacy RuleEngineModels.swift.
 // These are not rule-specific and remain in active use across the app.
 
+@MainActor
 protocol BotPlugin {
     var name: String { get }
     func register(on bus: EventBus) async
     func unregister(from bus: EventBus) async
 }
 
+@MainActor
 final class PluginManager {
     private var plugins: [BotPlugin] = []
     private let bus: EventBus
@@ -27,6 +29,7 @@ final class PluginManager {
     }
 }
 
+@MainActor
 final class WeeklySummaryPlugin: BotPlugin {
     let name = "WeeklySummary"
 
@@ -43,7 +46,9 @@ final class WeeklySummaryPlugin: BotPlugin {
 
         let leftToken = await bus.subscribe(VoiceLeft.self) { [weak self] event in
             guard let self = self else { return }
-            self.voiceDurations[event.userId, default: 0] += max(0, event.durationSeconds)
+            Task { @MainActor in
+                self.voiceDurations[event.userId, default: 0] += max(0, event.durationSeconds)
+            }
         }
         tokens.append(leftToken)
     }

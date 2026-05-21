@@ -19,7 +19,8 @@ extension AppModel {
         guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: action, log: { logs.append($0) }) else {
             throw NSError(domain: "AppModel", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked by ActionDispatcher"])
         }
-        return try await service.sendMessage(channelId: channelId, payload: payload, token: settings.token)
+        nonisolated(unsafe) let safePayload = payload
+        return try await service.sendMessage(channelId: channelId, payload: safePayload, token: settings.token)
     }
 
     private func performOutputRequest<T>(
@@ -196,8 +197,9 @@ extension AppModel {
     }
 
     func editMessagePayload(channelId: String, messageId: String, payload: [String: Any]) async -> Bool {
-        await performOutputAction(action: "editMessage") {
-            try await service.editMessage(channelId: channelId, messageId: messageId, payload: payload, token: settings.token)
+        nonisolated(unsafe) let safePayload = payload
+        return await performOutputAction(action: "editMessage") {
+            try await service.editMessage(channelId: channelId, messageId: messageId, payload: safePayload, token: settings.token)
         }
     }
 

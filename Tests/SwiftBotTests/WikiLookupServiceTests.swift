@@ -145,7 +145,7 @@ final class WikiLookupServiceTests: XCTestCase {
 
 private final class MockURLProtocol: URLProtocol {
     private static let lock = NSLock()
-    private static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    nonisolated(unsafe) private static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     static func setHandler(_ newHandler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)) {
         lock.lock()

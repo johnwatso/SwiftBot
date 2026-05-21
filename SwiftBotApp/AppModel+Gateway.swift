@@ -12,7 +12,7 @@ extension AppModel {
         GatewayEventDispatcher(
             onEventReceived: { [weak self] eventName in
                 guard let self else { return }
-                self.recordGatewayEvent(named: eventName)
+                await self.recordGatewayEvent(named: eventName)
             },
             onMessageCreate: { [weak self] event in
                 await self?.handleMessageCreate(event)
@@ -514,7 +514,7 @@ extension AppModel {
             guard let applicationID = botUserId, !applicationID.isEmpty else { return }
             guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "editOriginalInteractionResponse", log: { logs.append($0) }) else { return }
             do {
-                var payload: [String: Any] = [:]
+                nonisolated(unsafe) var payload: [String: Any] = [:]
                 if let content = response.content {
                     payload["content"] = String(content.prefix(1900))
                 }
@@ -1406,14 +1406,14 @@ extension AppModel {
         // Commands that should also work in user DMs with the bot. Registered globally with
         // `contexts: [0, 1]` (GUILD + BOT_DM) instead of per-guild.
         let dmEnabledCommandNames: Set<String> = ["miner"]
-        let dmEnabledCommands: [[String: Any]] = allCommands
+        nonisolated(unsafe) let dmEnabledCommands: [[String: Any]] = allCommands
             .filter { ($0["name"] as? String).map { dmEnabledCommandNames.contains($0) } ?? false }
             .map { cmd in
                 var enriched = cmd
                 enriched["contexts"] = [0, 1] // GUILD, BOT_DM
                 return enriched
             }
-        let guildOnlyCommands = allCommands
+        nonisolated(unsafe) let guildOnlyCommands = allCommands
             .filter { !(($0["name"] as? String).map { dmEnabledCommandNames.contains($0) } ?? false) }
 
         let now = Date()

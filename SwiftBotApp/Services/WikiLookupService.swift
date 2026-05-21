@@ -844,9 +844,11 @@ actor WikiLookupService {
             return FinalsWikiLookupResult(title: title, extract: extract, url: resolvedURL.absoluteString)
         }
 
-        let title = cleanedSoupText((try? document.select("h1#firstHeading, h1.page-header__title, h1").first()?.text()) ?? "")
+        let headingText = (try? document.select("h1#firstHeading, h1.page-header__title, h1").first()?.text()) ?? ""
+        let docTitle = (try? document.title()) ?? ""
+        let title = cleanedSoupText(headingText)
             .nonEmpty
-            ?? cleanedSoupText((try? document.title()) ?? "")
+            ?? cleanedSoupText(docTitle)
                 .replacingOccurrences(of: " - THE FINALS Wiki", with: "")
                 .replacingOccurrences(of: " | Fandom", with: "")
                 .nonEmpty

@@ -17,7 +17,7 @@ extension AppModel {
         let service = VoicePlaybackService()
         voicePlaybackServiceStorage = service
         Task { [weak self] in
-            await service.setOnStatusChange { status in
+            await service.setOnStatusChange { [weak self] status in
                 await self?.handleVoicePlaybackStatus(status)
             }
         }

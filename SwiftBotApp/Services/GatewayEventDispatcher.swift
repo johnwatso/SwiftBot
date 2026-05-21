@@ -17,7 +17,7 @@ struct GatewayReadyEvent: Sendable {
     let guilds: [GatewayReadyGuild]
 }
 
-struct GatewayGuildCreateEvent {
+struct GatewayGuildCreateEvent: Sendable {
     let guildID: String
     let guildName: String?
     let memberCount: Int?
@@ -35,7 +35,7 @@ struct GatewayGuildDeleteEvent: Sendable {
     let guildID: String
 }
 
-struct GatewayMessageCreateEvent {
+struct GatewayMessageCreateEvent: Sendable {
     let rawMap: [String: DiscordJSON]
     let content: String
     let author: [String: DiscordJSON]
@@ -48,7 +48,7 @@ struct GatewayMessageCreateEvent {
     let avatarHash: String?
 }
 
-struct GatewayInteractionCreateEvent {
+struct GatewayInteractionCreateEvent: Sendable {
     let interactionID: String
     let interactionToken: String
     let interactionType: Int
@@ -70,7 +70,7 @@ struct GatewayMemberLeaveEvent: Sendable {
     let username: String
 }
 
-struct GatewayVoiceStateUpdateEvent {
+struct GatewayVoiceStateUpdateEvent: Sendable {
     let rawMap: [String: DiscordJSON]
     let guildID: String
     let userID: String
@@ -84,18 +84,18 @@ struct GatewayVoiceServerUpdateEvent: Sendable {
 }
 
 actor GatewayEventDispatcher {
-    typealias EventRecorder = (String) async -> Void
-    typealias MessageCreateHandler = (GatewayMessageCreateEvent) async -> Void
-    typealias PayloadHandler = (DiscordJSON?) async -> Void
-    typealias VoiceStateUpdateHandler = (GatewayVoiceStateUpdateEvent) async -> Void
-    typealias VoiceServerUpdateHandler = (GatewayVoiceServerUpdateEvent) async -> Void
-    typealias ReadyHandler = (GatewayReadyEvent, Bool) async -> Void
-    typealias GuildCreateHandler = (GatewayGuildCreateEvent) async -> Void
-    typealias ChannelCreateHandler = (GatewayChannelCreateEvent) async -> Void
-    typealias GuildDeleteHandler = (GatewayGuildDeleteEvent) async -> Void
-    typealias InteractionCreateHandler = (GatewayInteractionCreateEvent) async -> Void
-    typealias MemberJoinHandler = (GatewayMemberJoinEvent) async -> Void
-    typealias MemberLeaveHandler = (GatewayMemberLeaveEvent) async -> Void
+    typealias EventRecorder = @Sendable (String) async -> Void
+    typealias MessageCreateHandler = @Sendable (GatewayMessageCreateEvent) async -> Void
+    typealias PayloadHandler = @Sendable (DiscordJSON?) async -> Void
+    typealias VoiceStateUpdateHandler = @Sendable (GatewayVoiceStateUpdateEvent) async -> Void
+    typealias VoiceServerUpdateHandler = @Sendable (GatewayVoiceServerUpdateEvent) async -> Void
+    typealias ReadyHandler = @Sendable (GatewayReadyEvent, Bool) async -> Void
+    typealias GuildCreateHandler = @Sendable (GatewayGuildCreateEvent) async -> Void
+    typealias ChannelCreateHandler = @Sendable (GatewayChannelCreateEvent) async -> Void
+    typealias GuildDeleteHandler = @Sendable (GatewayGuildDeleteEvent) async -> Void
+    typealias InteractionCreateHandler = @Sendable (GatewayInteractionCreateEvent) async -> Void
+    typealias MemberJoinHandler = @Sendable (GatewayMemberJoinEvent) async -> Void
+    typealias MemberLeaveHandler = @Sendable (GatewayMemberLeaveEvent) async -> Void
 
     private let onEventReceived: EventRecorder
     private let onMessageCreate: MessageCreateHandler

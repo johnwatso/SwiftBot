@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class CommandProcessor {
     typealias ResolvedWikiCommand = (source: WikiSource, command: WikiCommand)
 

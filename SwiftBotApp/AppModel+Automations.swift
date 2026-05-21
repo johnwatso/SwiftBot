@@ -55,7 +55,8 @@ extension AppModel {
                 try await self?.service.sendMessage(channelId: c, content: m, token: t)
             },
             sendPayloadMessage: { [weak self] c, p, t in
-                _ = try await self?.service.sendMessage(channelId: c, payload: p, token: t)
+                nonisolated(unsafe) let safeP = p
+                _ = try await self?.service.sendMessage(channelId: c, payload: safeP, token: t)
             },
             sendDM: { [weak self] u, c in
                 try await self?.service.sendDM(userId: u, content: c)
