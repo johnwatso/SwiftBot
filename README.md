@@ -58,24 +58,13 @@ It can run as a single local bot or as part of a SwiftMesh setup where a primary
 - SwiftMesh primary/standby failover
 - Keychain-stored tokens, cached Discord metadata, Sparkle auto-updates
 
-## Install
+## Setup
 
-Download the latest release from [GitHub Releases](https://github.com/johnwatso/SwiftBot/releases), move `SwiftBot.app` to `/Applications`, launch it, and complete Discord bot onboarding. Future updates ship in-app via Sparkle.
-
-## Discord Bot Setup
-
-SwiftBot requires a Discord application with a bot user. In the [Discord Developer Portal](https://discord.com/developers/applications), create an application, add a bot, copy the token, and enable all three Privileged Gateway Intents (Server Members, Message Content, Presence). Paste the token into SwiftBot during onboarding — it will validate the token and generate the invite URL.
-
-➡️ **[Bot Setup Guide](docs/help/BOT_SETUP.md)** — token, intents, OAuth, redirect URIs, troubleshooting.
-➡️ **[Web UI Setup Guide](docs/help/WEB_UI_SETUP.md)** — local-only vs public access (Cloudflare Tunnel, reverse proxy).
+- ➡️ **[Install Guide](docs/help/INSTALL.md)** — download, install, requirements, updates.
+- ➡️ **[Bot Setup Guide](docs/help/BOT_SETUP.md)** — Discord application, token, intents, OAuth, troubleshooting.
+- ➡️ **[Web UI Setup Guide](docs/help/WEB_UI_SETUP.md)** — local-only vs public access (Cloudflare Tunnel, reverse proxy).
 
 More walkthroughs live in [docs/help/](docs/help/).
-
-## Requirements
-
-- macOS 26+
-- Discord bot application and token
-- Internet access
 
 ## Application Areas
 
