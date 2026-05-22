@@ -23,7 +23,7 @@ struct OnboardingAnimatedSymbolBackground: View {
         "sparkles",
         "waveform.path.ecg",
         "book.fill",
-        "books.vertical.fill",
+        "rectangle.and.text.magnifyingglass",
         "person.crop.circle.fill",
         "person.3.sequence",
         "play.circle.fill",

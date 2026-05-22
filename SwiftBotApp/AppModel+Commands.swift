@@ -349,7 +349,7 @@ extension AppModel {
         return display.joined(separator: ", ")
     }
 
-    /// Builds the full CommandCatalog including all enabled WikiBridge commands.
+    /// Builds the full CommandCatalog including all enabled Lookup commands.
     func buildFullHelpCatalog(prefix: String) -> CommandCatalog {
         var wikiCmds: [WikiCommandInfo] = []
         for source in orderedEnabledWikiSources() {
@@ -1993,7 +1993,7 @@ extension AppModel {
             "Commands Run: \(stats.commandsRun)",
             "Errors: \(stats.errors)",
             "AI Provider: \(aiProvider)",
-            "WikiBridge: \(wikiEnabled)",
+            "Lookup: \(wikiEnabled)",
             "Patchy Monitoring: \(patchyEnabled)",
             "Action Rules: \(activeRules)/\(ruleStore.rules.count)",
             "SwiftMesh Connected Nodes: \(connectedNodes.count)/\(clusterNodes.count)",
@@ -2063,7 +2063,7 @@ extension AppModel {
             ],
             [
                 "name": "Features",
-                "value": "AI: `\(aiProvider)`\nWikiBridge: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nRules: `\(activeRules)/\(ruleStore.rules.count)`",
+                "value": "AI: `\(aiProvider)`\nLookup: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nRules: `\(activeRules)/\(ruleStore.rules.count)`",
                 "inline": true
             ],
             [
@@ -2565,7 +2565,7 @@ extension AppModel {
         }
 
         guard let resolved = resolveWikiSourceAndQuery(defaultSource: source, query: trimmedQuery) else {
-            return await send(channelId, "⚠️ No WikiBridge sources are enabled. Add or enable a source in WikiBridge settings.")
+            return await send(channelId, "⚠️ No Lookup sources are enabled. Add or enable a source in Lookup settings.")
         }
 
         let resolvedSource = resolved.source
@@ -2590,14 +2590,12 @@ extension AppModel {
         persistSettingsQuietly()
         await wikiContextCache.store(sourceName: resolvedSource.name, query: sourceQuery, result: result)
 
-        let body = formattedWikiResponse(source: resolvedSource, result: result)
-        if resolvedSource.formatting.useEmbeds {
-            let embedSent = await sendWikiEmbed(channelId: channelId, source: resolvedSource, result: result)
-            if embedSent {
-                return true
-            }
+        let embedSent = await sendWikiEmbed(channelId: channelId, source: resolvedSource, result: result)
+        if embedSent {
+            return true
         }
 
+        let body = formattedWikiResponse(source: resolvedSource, result: result)
         return await send(channelId, body)
     }
 
@@ -2671,12 +2669,16 @@ extension AppModel {
             result.extract,
             limit: formatting.compactMode ? 220 : 420
         )
+        let fieldLines = result.fields
+            .filter { wikiShouldShowEmbedField($0.name, source: source) }
+            .prefix(8)
+            .map { "**\($0.name):** \($0.value)" }
+        if !fieldLines.isEmpty {
+            let summaryBlock = summary.isEmpty ? "" : "\(summary)\n"
+            return "📘 **\(result.title)**\nSource: \(source.name)\n\(summaryBlock)\(fieldLines.joined(separator: "\n"))\n\(result.url)"
+        }
         if summary.isEmpty {
             return "📘 **\(result.title)**\nSource: \(source.name)\n\(result.url)"
-        }
-        let fieldLines = result.fields.prefix(8).map { "**\($0.name):** \($0.value)" }
-        if !fieldLines.isEmpty {
-            return "📘 **\(result.title)**\nSource: \(source.name)\n\(summary)\n\(fieldLines.joined(separator: "\n"))\n\(result.url)"
         }
         if formatting.compactMode {
             return "📘 **\(result.title)** • \(source.name)\n\(summary)\n\(result.url)"
@@ -2685,8 +2687,16 @@ extension AppModel {
     }
 
     func sendWikiEmbed(channelId: String, source: WikiSource, result: FinalsWikiLookupResult) async -> Bool {
+        let embed = wikiEmbed(source: source, result: result)
+        let payload: [String: Any] = [
+            "embeds": [embed]
+        ]
+        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(embed)")
+    }
+
+    func wikiEmbed(source: WikiSource, result: FinalsWikiLookupResult) -> [String: Any] {
         if source.formatting.includeStatBlocks, let stats = result.weaponStats {
-            return await sendWeaponStatsEmbed(channelId: channelId, source: source, result: result, stats: stats)
+            return weaponStatsEmbed(source: source, result: result, stats: stats)
         }
 
         let summary = summarizedWikiExtract(
@@ -2697,7 +2707,7 @@ extension AppModel {
         var embed: [String: Any] = [
             "title": result.title,
             "url": result.url,
-            "footer": ["text": source.name]
+            "footer": ["text": wikiEmbedFooterText(source: source)]
         ]
         if !summary.isEmpty {
             embed["description"] = summary
@@ -2706,8 +2716,9 @@ extension AppModel {
             embed["thumbnail"] = ["url": imageURL]
         }
 
-        var fields = result.fields.prefix(18).map { field -> [String: Any] in
-            [
+        var fields = result.fields.prefix(18).compactMap { field -> [String: Any]? in
+            guard wikiShouldShowEmbedField(field.name, source: source) else { return nil }
+            return [
                 "name": field.name,
                 "value": field.value,
                 "inline": field.inline
@@ -2716,6 +2727,7 @@ extension AppModel {
         if source.formatting.includeStatBlocks, let stats = result.weaponStats {
             func appendField(_ name: String, _ value: String?) {
                 guard let value, !value.isEmpty else { return }
+                guard wikiShouldShowEmbedField(name, source: source) else { return }
                 fields.append([
                     "name": name,
                     "value": value,
@@ -2737,10 +2749,7 @@ extension AppModel {
             embed["fields"] = Array(fields.prefix(25))
         }
 
-        let payload: [String: Any] = [
-            "embeds": [embed]
-        ]
-        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(embed)")
+        return embed
     }
 
     func sendWeaponStatsEmbed(
@@ -2749,11 +2758,23 @@ extension AppModel {
         result: FinalsWikiLookupResult,
         stats: FinalsWeaponStats
     ) async -> Bool {
+        let embed = weaponStatsEmbed(source: source, result: result, stats: stats)
+        let payload: [String: Any] = [
+            "embeds": [embed]
+        ]
+        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(weapon-stats)")
+    }
+
+    func weaponStatsEmbed(
+        source: WikiSource,
+        result: FinalsWikiLookupResult,
+        stats: FinalsWeaponStats
+    ) -> [String: Any] {
         var embed: [String: Any] = [
             "title": wikiWeaponTitle(result: result, stats: stats),
             "url": result.url,
             "color": 0x1B2838,
-            "footer": ["text": source.name]
+            "footer": ["text": wikiEmbedFooterText(source: source)]
         ]
 
         if let imageURL = result.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !imageURL.isEmpty {
@@ -2764,6 +2785,7 @@ extension AppModel {
 
         func appendInline(_ name: String, _ value: String?) {
             guard let value = wikiDisplayValue(value) else { return }
+            guard wikiShouldShowEmbedField(name, source: source) else { return }
             fields.append([
                 "name": name,
                 "value": value,
@@ -2791,10 +2813,24 @@ extension AppModel {
             embed["fields"] = Array(fields.prefix(25))
         }
 
-        let payload: [String: Any] = [
-            "embeds": [embed]
-        ]
-        return await sendPayload(channelId: channelId, payload: payload, action: "sendMessage(weapon-stats)")
+        return embed
+    }
+
+    func wikiShouldShowEmbedField(_ name: String, source: WikiSource) -> Bool {
+        let normalized = normalizedWikiEmbedFieldName(name)
+        guard !normalized.isEmpty else { return false }
+        return !source.formatting.hiddenEmbedFields.contains(normalized)
+    }
+
+    func normalizedWikiEmbedFieldName(_ raw: String) -> String {
+        raw
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]"#, with: "", options: .regularExpression)
+    }
+
+    private func wikiEmbedFooterText(source: WikiSource) -> String {
+        let scope = source.searchScope.trimmingCharacters(in: .whitespacesAndNewlines)
+        return scope.isEmpty ? source.name : "\(source.name) • \(scope)"
     }
 
     func formattedWeaponStats(

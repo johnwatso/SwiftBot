@@ -87,9 +87,9 @@ final class HelpEngineTests: XCTestCase {
 
         let embed = renderer.embedOverview(catalog: catalog)
         let fields = embed["fields"] as? [[String: Any]] ?? []
-        let wikiField = fields.first { ($0["name"] as? String) == "WikiBridge" }
+        let wikiField = fields.first { ($0["name"] as? String) == "Lookup" }
         let value = wikiField?["value"] as? String ?? ""
-        XCTAssertTrue(value.contains("Configured wikis:"))
+        XCTAssertTrue(value.contains("Configured sources:"))
         XCTAssertTrue(value.contains("THE FINALS Wiki"))
         XCTAssertTrue(value.contains("Destiny Wiki"))
     }

@@ -209,7 +209,7 @@ final class CommandProcessor {
                 guard config.wikiEnabled else {
                     return await dependencies.send(
                         context.channelId,
-                        "📘 WikiBridge is disabled. Enable it from the WikiBridge page."
+                        "📘 Lookup is disabled. Enable it from the Lookup page."
                     )
                 }
                 let query = tokens.dropFirst().joined(separator: " ")
@@ -387,19 +387,6 @@ final class CommandProcessor {
                 return (content: nil, embeds: [embed])
             }
             return embed(title: "Steam", description: "Could not find info for \"\(query)\".", color: 15_790_767)
-        case "wiki":
-            let query = Self.slashOptionString(named: "query", in: data) ?? ""
-            guard config.wikiEnabled else {
-                return embed(title: "WikiBridge", description: "WikiBridge is disabled.", color: 15_790_767)
-            }
-            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return embed(title: "WikiBridge", description: "Usage: `/wiki query:<text>`", color: 15_790_767)
-            }
-            guard let resolved = dependencies.resolveWikiCommand("wiki") ?? dependencies.defaultWikiCommand() else {
-                return embed(title: "WikiBridge", description: "No enabled wiki source/command found.", color: 15_790_767)
-            }
-            let ok = await dependencies.performWikiLookup(resolved.command, resolved.source, query, context.channelId)
-            return statusEmbed(title: "WikiBridge Lookup", ok: ok)
         case "compare":
             let left = Self.slashOptionString(named: "weapon_a", in: data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let right = Self.slashOptionString(named: "weapon_b", in: data)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -504,13 +491,13 @@ final class CommandProcessor {
             if let resolved = dependencies.resolveWikiCommand(command) {
                 let query = Self.slashOptionString(named: "query", in: data) ?? ""
                 guard config.wikiEnabled else {
-                    return embed(title: "WikiBridge", description: "WikiBridge is disabled.", color: 15_790_767)
+                    return embed(title: "Lookup", description: "Lookup is disabled.", color: 15_790_767)
                 }
                 guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    return embed(title: "WikiBridge", description: "Usage: `/\(command) query:<text>`", color: 15_790_767)
+                    return embed(title: "Lookup", description: "Usage: `/\(command) query:<text>`", color: 15_790_767)
                 }
                 let ok = await dependencies.performWikiLookup(resolved.command, resolved.source, query, context.channelId)
-                return statusEmbed(title: "WikiBridge Lookup", ok: ok)
+                return statusEmbed(title: "Lookup", ok: ok)
             }
             return embed(title: "Slash Command", description: "Unknown slash command.", color: 15_790_767)
         }

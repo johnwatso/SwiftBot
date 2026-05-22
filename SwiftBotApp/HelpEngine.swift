@@ -7,7 +7,7 @@ enum CommandCategory: String, CaseIterable {
     case fun        = "Fun"
     case moderation = "Server"
     case cluster    = "SwiftMesh"
-    case wiki       = "WikiBridge"
+    case wiki       = "Lookup"
 }
 
 struct CommandEntry {
@@ -272,7 +272,7 @@ struct HelpRenderer {
                 .map { "`\($0.name)` — \($0.description)" }
                 .joined(separator: "\n")
             if category == .wiki, !catalog.configuredWikiSources.isEmpty {
-                value += "\n\nConfigured wikis: " + catalog.configuredWikiSources.joined(separator: ", ")
+                value += "\n\nConfigured sources: " + catalog.configuredWikiSources.joined(separator: ", ")
             }
             fields.append(["name": category.rawValue, "value": value, "inline": false])
         }
@@ -314,7 +314,7 @@ struct HelpRenderer {
             guard let cmds = grouped[category], !cmds.isEmpty else { continue }
             var list = cmds.map { "`\($0.name)` — \($0.description)" }.joined(separator: "\n")
             if category == .wiki, !catalog.configuredWikiSources.isEmpty {
-                list += "\nConfigured wikis: " + catalog.configuredWikiSources.joined(separator: ", ")
+                list += "\nConfigured sources: " + catalog.configuredWikiSources.joined(separator: ", ")
             }
             lines.append("**\(category.rawValue)**\n\(list)")
         }

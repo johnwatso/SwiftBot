@@ -165,7 +165,7 @@ extension AppModel {
                 subtitle: "last 24 hours"
             ),
             AdminWebMetricPayload(
-                title: "WikiBridge Status",
+                title: "Lookup Status",
                 value: settings.wikiBot.isEnabled ? "Enabled" : "Disabled",
                 subtitle: "\(enabledWikiSourceCount) sources"
             ),

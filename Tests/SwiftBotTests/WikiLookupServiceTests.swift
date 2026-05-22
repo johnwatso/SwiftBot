@@ -103,6 +103,160 @@ final class WikiLookupServiceTests: XCTestCase {
         XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Magazine", value: "36")) == true)
     }
 
+    func testLookupWikiUsesParseAPIWhenFandomPageHidesInfoboxFields() async throws {
+        MockURLProtocol.setHandler { request in
+            guard let url = request.url else {
+                throw NSError(domain: "WikiLookupServiceTests", code: 1)
+            }
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let items = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+            if url.path == "/wiki/MP5" {
+                let html = """
+                <html>
+                  <head><link rel="canonical" href="https://callofduty.fandom.com/wiki/MP5"></head>
+                  <body><h1>MP5</h1></body>
+                </html>
+                """
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(html.utf8)
+                )
+            }
+
+            if items["action"] == "parse" {
+                let html = """
+                <div class="mw-parser-output">
+                  <p>The MP5 is a submachine gun featured in several Call of Duty games.</p>
+                  <aside class="portable-infobox">
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Weapon Class</h3>
+                      <div class="pi-data-value">Submachine Gun</div>
+                    </section>
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Magazine Size</h3>
+                      <div class="pi-data-value">30 rounds<br><i>40 with attachments</i></div>
+                    </section>
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Damage</h3>
+                      <div class="pi-data-value">32-23</div>
+                    </section>
+                  </aside>
+                </div>
+                """
+                let object: [String: Any] = [
+                    "parse": [
+                        "title": "MP5",
+                        "displaytitle": "MP5",
+                        "text": ["*": html]
+                    ]
+                ]
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    try JSONSerialization.data(withJSONObject: object)
+                )
+            }
+
+            throw NSError(domain: "WikiLookupServiceTests", code: 2)
+        }
+
+        let service = WikiLookupService(session: makeSession())
+        let source = WikiSource(name: "Call of Duty Wiki", baseURL: "https://callofduty.fandom.com", apiPath: "/api.php")
+
+        let result = await service.lookupWiki(query: "MP5", source: source)
+
+        XCTAssertEqual(result?.title, "MP5")
+        XCTAssertEqual(result?.extract, "The MP5 is a submachine gun featured in several Call of Duty games.")
+        XCTAssertEqual(result?.pageType, "weapon")
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Weapon Class", value: "Submachine Gun")) == true)
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Magazine Size", value: "30 rounds 40 with attachments")) == true)
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Damage", value: "32-23")) == true)
+    }
+
+    func testLookupWikiScopesBroadFandomPageToPreferredGameSection() async throws {
+        MockURLProtocol.setHandler { request in
+            guard let url = request.url else {
+                throw NSError(domain: "WikiLookupServiceTests", code: 1)
+            }
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let items = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+            if url.path == "/wiki/MP5" {
+                let html = """
+                <html>
+                  <head><link rel="canonical" href="https://callofduty.fandom.com/wiki/MP5"></head>
+                  <body><h1>MP5</h1></body>
+                </html>
+                """
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data(html.utf8)
+                )
+            }
+
+            if items["action"] == "parse" {
+                let html = """
+                <div class="mw-parser-output">
+                  <h2>Call of Duty 4: Modern Warfare</h2>
+                  <p>Older MP5 tuning.</p>
+                  <aside class="portable-infobox">
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Damage</h3>
+                      <div class="pi-data-value">40-20</div>
+                    </section>
+                  </aside>
+                  <h2>Call of Duty: Modern Warfare</h2>
+                  <p>The Modern Warfare MP5 is a close-range SMG.</p>
+                  <aside class="portable-infobox">
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Weapon Class</h3>
+                      <div class="pi-data-value">Submachine Gun</div>
+                    </section>
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Damage</h3>
+                      <div class="pi-data-value">34-19</div>
+                    </section>
+                    <section class="pi-item pi-data">
+                      <h3 class="pi-data-label">Magazine Size</h3>
+                      <div class="pi-data-value">30 rounds</div>
+                    </section>
+                  </aside>
+                </div>
+                """
+                let object: [String: Any] = [
+                    "parse": [
+                        "title": "MP5",
+                        "displaytitle": "MP5",
+                        "text": ["*": html]
+                    ]
+                ]
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    try JSONSerialization.data(withJSONObject: object)
+                )
+            }
+
+            throw NSError(domain: "WikiLookupServiceTests", code: 2)
+        }
+
+        let service = WikiLookupService(session: makeSession())
+        let source = WikiSource(
+            name: "Call of Duty Wiki",
+            baseURL: "https://callofduty.fandom.com",
+            apiPath: "/api.php",
+            searchScope: "MW2019"
+        )
+
+        let result = await service.lookupWiki(query: "MP5", source: source)
+
+        XCTAssertEqual(result?.title, "MP5")
+        XCTAssertEqual(result?.extract, "The Modern Warfare MP5 is a close-range SMG.")
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Weapon Class", value: "Submachine Gun")) == true)
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Damage", value: "34-19")) == true)
+        XCTAssertTrue(result?.fields.contains(WikiResultField(name: "Magazine Size", value: "30 rounds")) == true)
+        XCTAssertFalse(result?.fields.contains(WikiResultField(name: "Damage", value: "40-20")) == true)
+    }
+
     func testFetchFinalsMetaFromSkycoachParsesSections() async {
         MockURLProtocol.setHandler { request in
             let html = """

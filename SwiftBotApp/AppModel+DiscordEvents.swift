@@ -194,6 +194,7 @@ extension AppModel {
             do {
                 let invites = try await service.fetchGuildInvites(guildId: event.guildID, token: settings.token)
                 welcomeFlowService.seedInvites(guildID: event.guildID, invites: invites)
+                welcomeFlowInvitesByServer[event.guildID] = invites.sortedForWelcomeFlowDisplay()
             } catch {
                 let guildName = event.guildName ?? event.guildID
                 logs.append("Welcome Flow: invite tracking unavailable for \(guildName): \(error.localizedDescription)")
@@ -331,6 +332,26 @@ extension AppModel {
         maybeStartFirstSweepScan()
     }
 
+    @discardableResult
+    func refreshWelcomeFlowInvites(guildID: String) async -> Bool {
+        let trimmedGuildID = guildID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = settings.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGuildID.isEmpty, !token.isEmpty else { return false }
+
+        do {
+            let invites = try await service.fetchGuildInvites(guildId: trimmedGuildID, token: token)
+            welcomeFlowService.seedInvites(guildID: trimmedGuildID, invites: invites)
+            welcomeFlowInvitesByServer[trimmedGuildID] = invites.sortedForWelcomeFlowDisplay()
+            let guildName = connectedServers[trimmedGuildID] ?? trimmedGuildID
+            logs.append("Welcome Flow: refreshed \(invites.count) invite\(invites.count == 1 ? "" : "s") for \(guildName).")
+            return true
+        } catch {
+            let guildName = connectedServers[trimmedGuildID] ?? trimmedGuildID
+            logs.append("Welcome Flow: invite refresh unavailable for \(guildName): \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// Kick off a one-time retroactive Sweep suggestion scan the first time
     /// channels are available. Subsequent scans are user-initiated.
     private func maybeStartFirstSweepScan() {
@@ -403,5 +424,19 @@ extension AppModel {
                 self?.logs.append(message)
             }
         )
+    }
+}
+
+private extension Array where Element == WelcomeFlowService.InviteSnapshot {
+    func sortedForWelcomeFlowDisplay() -> [WelcomeFlowService.InviteSnapshot] {
+        sorted { lhs, rhs in
+            let lhsChannel = lhs.channelName ?? ""
+            let rhsChannel = rhs.channelName ?? ""
+            let channelOrder = lhsChannel.localizedCaseInsensitiveCompare(rhsChannel)
+            if channelOrder != .orderedSame {
+                return channelOrder == .orderedAscending
+            }
+            return lhs.code.localizedCaseInsensitiveCompare(rhs.code) == .orderedAscending
+        }
     }
 }
