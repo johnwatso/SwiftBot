@@ -77,20 +77,11 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(messages.first?.content, "⛔ `/ping` is disabled in command settings.")
     }
 
-    func testSlashWikiFallsBackToDefaultEnabledCommand() async {
+    func testSlashWikiIsNotBuiltInLookupCommand() async {
         let recorder = CommandRecorder()
         let processor = makeProcessor(
             recorder: recorder,
-            resolveWikiCommand: { _ in nil },
-            defaultWikiCommand: {
-                (
-                    source: WikiSource(
-                        name: "THE FINALS",
-                        commands: [WikiCommand(trigger: "/wiki", description: "Lookup")]
-                    ),
-                    command: WikiCommand(trigger: "/wiki", description: "Lookup")
-                )
-            }
+            resolveWikiCommand: { _ in nil }
         )
 
         let response = await processor.executeSlashCommand(
@@ -106,11 +97,9 @@ final class CommandProcessorTests: XCTestCase {
             context: .init(channelId: "channel-1", username: "Taylor", rawLikeMessage: [:])
         )
 
-        XCTAssertEqual(response.embeds?.first?["title"] as? String, "WikiBridge Lookup")
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Slash Command")
         let lookups = await recorder.wikiLookups()
-        XCTAssertEqual(lookups.count, 1)
-        XCTAssertEqual(lookups.first?.query, "AKM")
-        XCTAssertEqual(lookups.first?.channelId, "channel-1")
+        XCTAssertEqual(lookups.count, 0)
     }
 
     func testDynamicWikiSlashCommandRoutesConfiguredCommand() async {
@@ -138,7 +127,7 @@ final class CommandProcessorTests: XCTestCase {
             context: .init(channelId: "channel-1", username: "Taylor", rawLikeMessage: [:])
         )
 
-        XCTAssertEqual(response.embeds?.first?["title"] as? String, "WikiBridge Lookup")
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Lookup")
         let lookups = await recorder.wikiLookups()
         XCTAssertEqual(lookups.count, 1)
         XCTAssertEqual(lookups.first?.command, "/thefinals")
@@ -196,6 +185,58 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(picks.first?.userId, "user-9")
     }
 
+    func testFormattedWikiResponseIncludesDetectedFieldsWithoutSummary() {
+        let app = AppModel()
+        let source = WikiSource(
+            name: "Call of Duty Wiki",
+            baseURL: "https://callofduty.fandom.com",
+            formatting: WikiFormatting(includeStatBlocks: true, useEmbeds: true, compactMode: false)
+        )
+        let result = FinalsWikiLookupResult(
+            title: "MP5",
+            extract: "",
+            url: "https://callofduty.fandom.com/wiki/MP5",
+            fields: [
+                WikiResultField(name: "Weapon Class", value: "Submachine Gun"),
+                WikiResultField(name: "Magazine Size", value: "30 rounds")
+            ]
+        )
+
+        let response = app.formattedWikiResponse(source: source, result: result)
+
+        XCTAssertTrue(response.contains("**Weapon Class:** Submachine Gun"))
+        XCTAssertTrue(response.contains("**Magazine Size:** 30 rounds"))
+        XCTAssertTrue(response.contains("https://callofduty.fandom.com/wiki/MP5"))
+    }
+
+    func testWikiEmbedHidesSourceConfiguredFields() {
+        let app = AppModel()
+        let source = WikiSource(
+            name: "Call of Duty Wiki",
+            baseURL: "https://callofduty.fandom.com",
+            formatting: WikiFormatting(
+                includeStatBlocks: true,
+                useEmbeds: true,
+                compactMode: false,
+                hiddenEmbedFields: ["magazinesize"]
+            )
+        )
+        let result = FinalsWikiLookupResult(
+            title: "MP5",
+            extract: "",
+            url: "https://callofduty.fandom.com/wiki/MP5",
+            fields: [
+                WikiResultField(name: "Weapon Class", value: "Submachine Gun"),
+                WikiResultField(name: "Magazine Size", value: "30 rounds")
+            ]
+        )
+
+        let embed = app.wikiEmbed(source: source, result: result)
+        let fields = embed["fields"] as? [[String: Any]]
+
+        XCTAssertEqual(fields?.compactMap { $0["name"] as? String }, ["Weapon Class"])
+    }
+
     private func makeProcessor(
         recorder: CommandRecorder,
         configuration: CommandProcessor.RuntimeConfiguration = .init(
@@ -208,9 +249,9 @@ final class CommandProcessorTests: XCTestCase {
         ),
         isCommandEnabled: @escaping (String, String) -> Bool = { _, _ in true },
         resolveWikiCommand: @escaping (String) -> CommandProcessor.ResolvedWikiCommand? = { name in
-            if name == "wiki" {
-                let command = WikiCommand(trigger: "/wiki", description: "Lookup")
-                let source = WikiSource(name: "Primary Wiki", commands: [command])
+            if name == "finals" {
+                let command = WikiCommand(trigger: "/finals", description: "Lookup")
+                let source = WikiSource(name: "THE FINALS Wiki", commands: [command])
                 return (source: source, command: command)
             }
             return nil

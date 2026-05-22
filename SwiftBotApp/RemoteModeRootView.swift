@@ -425,7 +425,7 @@ struct RemoteModeRootView: View {
                     ) {
                         Text("Monthly Image Limit Per User: \(settingsDraft.openAIImageMonthlyLimitPerUser)")
                     }
-                    Toggle("Enable WikiBridge", isOn: $settingsDraft.wikiBridgeEnabled)
+                    Toggle("Enable Lookup", isOn: $settingsDraft.wikiBridgeEnabled)
                     Toggle("Enable Patchy Monitoring", isOn: $settingsDraft.patchyMonitoringEnabled)
                 }
 

@@ -1,10 +1,38 @@
 import SwiftUI
 
 struct WelcomeFlowView: View {
+    enum Tab: String, CaseIterable, Identifiable {
+        case greeting, dm, safety, goodbye, nextSteps
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .greeting: return "Greeting"
+            case .dm: return "DM"
+            case .safety: return "Safety"
+            case .goodbye: return "Goodbye"
+            case .nextSteps: return "Next Steps"
+            }
+        }
+        var symbol: String {
+            switch self {
+            case .greeting: return "person.crop.circle.badge.plus"
+            case .dm: return "envelope.fill"
+            case .safety: return "shield.lefthalf.filled"
+            case .goodbye: return "door.left.hand.open"
+            case .nextSteps: return "map.fill"
+            }
+        }
+    }
+
     @EnvironmentObject private var app: AppModel
+    @AppStorage("swiftbot.welcomeFlow.selectedTab") private var selectedTab: Tab = .greeting
     @State private var selectedGuildID: String = ""
     @State private var testSendInFlight: Bool = false
     @State private var testSendFeedback: String?
+    @State private var showPreviewSheet: Bool = false
+    @State private var inviteRefreshInFlight: Bool = false
+    @State private var inviteRefreshFeedback: String?
+    @Namespace private var formatSelectorNamespace
 
     private func bindFlow<Value>(_ keyPath: WritableKeyPath<WelcomeFlowSettings, Value>) -> Binding<Value> {
         Binding(
@@ -129,26 +157,22 @@ struct WelcomeFlowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    metrics
-                    greetingSection
-                    dmSection
-                    safetySection
-                    goodbyeSection
-                    previewSection
-                    roadmapSection
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                metrics
+                tabbedCard
             }
+            .frame(maxWidth: 880, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: $showPreviewSheet) {
+            previewSheet
+        }
         .onAppear(perform: syncSelectedGuild)
         .onChange(of: app.settings.welcomeFlow.publicChannelId) { _, _ in
             syncSelectedGuild()
@@ -159,15 +183,103 @@ struct WelcomeFlowView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text("Welcome Flow")
                 .font(.title2.weight(.bold))
-            Spacer()
             Label(app.settings.welcomeFlow.handlesMemberJoin ? "Active" : "Paused",
                   systemImage: app.settings.welcomeFlow.handlesMemberJoin ? "checkmark.circle.fill" : "pause.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(app.settings.welcomeFlow.handlesMemberJoin ? .green : .secondary)
+            if !app.settings.welcomeFlow.activeNextStepRules.isEmpty {
+                Label("\(app.settings.welcomeFlow.activeNextStepRules.count) invite rules",
+                      systemImage: "person.badge.shield.checkmark.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
+            }
+            Spacer()
+            Button {
+                showPreviewSheet = true
+            } label: {
+                Label("Preview", systemImage: "text.bubble")
+            }
+            .buttonStyle(WelcomeFlowGlassButtonStyle())
         }
+    }
+
+    private var tabbedCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            tabBar
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+            Divider()
+                .opacity(0.5)
+            activeSection
+                .padding(.horizontal, 18)
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+    }
+
+    @ViewBuilder
+    private var activeSection: some View {
+        Group {
+            switch selectedTab {
+            case .greeting: greetingSection
+            case .dm: dmSection
+            case .safety: safetySection
+            case .goodbye: goodbyeSection
+            case .nextSteps: roadmapSection
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.995)))
+        .id(selectedTab)
+        .animation(.easeInOut(duration: 0.16), value: selectedTab)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 2) {
+            ForEach(Tab.allCases) { tab in
+                tabPill(tab)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func tabPill(_ tab: Tab) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                selectedTab = tab
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: tab.symbol)
+                    .font(.caption2.weight(.semibold))
+                Text(tab.title)
+                    .font(.caption.weight(.medium))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .foregroundStyle(isSelected ? Color.white : .secondary)
+            .background(
+                Capsule().fill(isSelected ? Color.accentColor : Color.clear)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var metrics: some View {
@@ -193,19 +305,35 @@ struct WelcomeFlowView: View {
                 symbol: "number",
                 color: .blue
             )
-            DashboardMetricCard(
-                title: "Next Step",
-                value: "\(app.settings.welcomeFlow.activeNextStepRules.count)",
-                subtitle: "invite rule(s)",
-                symbol: "person.badge.shield.checkmark.fill",
-                color: app.settings.welcomeFlow.hasAutoRole ? .purple : .secondary
-            )
         }
     }
 
+    private var previewSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Preview")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button("Done") { showPreviewSheet = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if app.settings.welcomeFlow.publicMessageFormat == .embed {
+                        previewEmbed(label: selectedChannelName)
+                    } else {
+                        previewBubble(label: selectedChannelName, message: previewMessage)
+                    }
+                    previewBubble(label: "Direct Message", message: dmPreviewMessage)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 460, height: 420)
+    }
+
     private var greetingSection: some View {
-        SwiftMeshSection(title: "Greeting", symbol: "person.crop.circle.badge.plus") {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
                 Toggle(isOn: welcomeEnabled) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Send a welcome message")
@@ -223,20 +351,14 @@ struct WelcomeFlowView: View {
                     pickerField(label: "Server", selection: $selectedGuildID, options: serverOptions) { newValue in
                         let channels = app.availableTextChannelsByServer[newValue] ?? []
                         if !channels.contains(where: { $0.id == app.settings.welcomeFlow.publicChannelId }) {
-                            app.settings.welcomeFlow.publicChannelId = channels.first?.id ?? ""
+                            app.settings.welcomeFlow.publicChannelId = defaultWelcomeChannelID(for: newValue) ?? channels.first?.id ?? ""
                             saveSettingsAfterViewUpdate()
                         }
                     }
                     pickerField(label: "Channel", selection: selectedChannelID, options: textChannelOptions) { _ in }
                 }
 
-                Picker("Message style", selection: publicMessageFormat) {
-                    ForEach(WelcomeFlowMessageFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
+                messageFormatSelector("Message style", selection: publicMessageFormat)
 
                 if app.settings.welcomeFlow.publicMessageFormat == .embed {
                     HStack(alignment: .top, spacing: 14) {
@@ -288,8 +410,7 @@ struct WelcomeFlowView: View {
                             Label("Send Test", systemImage: "paperplane.fill")
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(WelcomeFlowGlassButtonStyle(tint: .accentColor))
                     .disabled(testSendInFlight || !app.settings.welcomeFlow.hasPublicWelcome)
                     if let feedback = testSendFeedback {
                         Text(feedback)
@@ -299,11 +420,10 @@ struct WelcomeFlowView: View {
                     Spacer(minLength: 0)
                 }
             }
-        }
     }
 
     private var rotationPoolEditor: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("RANDOM TEMPLATES")
                     .font(.caption2.weight(.semibold))
@@ -311,31 +431,49 @@ struct WelcomeFlowView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    var pool = app.settings.welcomeFlow.publicMessageTemplatePool
-                    pool.append("")
-                    app.settings.welcomeFlow.publicMessageTemplatePool = pool
-                    saveSettingsAfterViewUpdate()
+                    addPoolEntry()
                 } label: {
-                    Label("Add", systemImage: "plus")
+                    Label("Add Template", systemImage: "plus")
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                .buttonStyle(WelcomeFlowGlassButtonStyle(compact: true))
             }
             if app.settings.welcomeFlow.publicMessageTemplatePool.isEmpty {
-                Text("Optional — when set, a random template is picked per join.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text("No random templates yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        addPoolEntry()
+                    } label: {
+                        Label("Create Template", systemImage: "plus")
+                    }
+                    .buttonStyle(WelcomeFlowGlassButtonStyle(tint: .accentColor, compact: true))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
             } else {
                 ForEach(Array(app.settings.welcomeFlow.publicMessageTemplatePool.enumerated()), id: \.offset) { idx, _ in
                     HStack(spacing: 6) {
-                        TextField("Template", text: poolBinding(at: idx))
-                            .textFieldStyle(.roundedBorder)
+                        TextField("Random welcome template", text: poolBinding(at: idx), axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .lineLimit(1...4)
+                            .padding(9)
+                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                            )
                         Button(role: .destructive) {
                             removePoolEntry(at: idx)
                         } label: {
-                            Image(systemName: "minus.circle")
+                            Image(systemName: "trash")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(WelcomeFlowIconButtonStyle(tint: .red))
                     }
                 }
             }
@@ -354,6 +492,15 @@ struct WelcomeFlowView: View {
                 saveSettingsAfterViewUpdate()
             }
         )
+    }
+
+    private func addPoolEntry() {
+        var pool = app.settings.welcomeFlow.publicMessageTemplatePool
+        let template = app.settings.welcomeFlow.publicMessageTemplate
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        pool.append(template.isEmpty ? "👋 Welcome {username} to **{server}**!" : template)
+        app.settings.welcomeFlow.publicMessageTemplatePool = pool
+        saveSettingsAfterViewUpdate()
     }
 
     private func removePoolEntry(at index: Int) {
@@ -376,8 +523,7 @@ struct WelcomeFlowView: View {
     }
 
     private var dmSection: some View {
-        SwiftMeshSection(title: "Welcome DM", symbol: "envelope.fill") {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
                 Toggle(isOn: dmEnabled) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Send a private welcome")
@@ -427,12 +573,10 @@ struct WelcomeFlowView: View {
 
                 variableRow
             }
-        }
     }
 
     private var safetySection: some View {
-        SwiftMeshSection(title: "Safety", symbol: "shield.lefthalf.filled") {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
                 Toggle(isOn: bindFlow(\.skipBots)) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Skip bot accounts")
@@ -487,12 +631,10 @@ struct WelcomeFlowView: View {
                     ) { _ in }
                 }
             }
-        }
     }
 
     private var goodbyeSection: some View {
-        SwiftMeshSection(title: "Goodbye", symbol: "door.left.hand.open") {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
                 Toggle(isOn: bindFlow(\.goodbyeEnabled)) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Send a goodbye message")
@@ -510,13 +652,7 @@ struct WelcomeFlowView: View {
                     options: textChannelOptions
                 ) { _ in }
 
-                Picker("Message style", selection: bindFlow(\.goodbyeMessageFormat)) {
-                    ForEach(WelcomeFlowMessageFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
+                messageFormatSelector("Message style", selection: bindFlow(\.goodbyeMessageFormat))
 
                 if app.settings.welcomeFlow.goodbyeMessageFormat == .embed {
                     HStack(alignment: .top, spacing: 14) {
@@ -553,20 +689,6 @@ struct WelcomeFlowView: View {
 
                 variableRow
             }
-        }
-    }
-
-    private var previewSection: some View {
-        SwiftMeshSection(title: "Preview", symbol: "text.bubble.fill") {
-            VStack(alignment: .leading, spacing: 10) {
-                if app.settings.welcomeFlow.publicMessageFormat == .embed {
-                    previewEmbed(label: selectedChannelName)
-                } else {
-                    previewBubble(label: selectedChannelName, message: previewMessage)
-                }
-                previewBubble(label: "Direct Message", message: dmPreviewMessage)
-            }
-        }
     }
 
     private func previewBubble(label: String, message: String) -> some View {
@@ -619,20 +741,28 @@ struct WelcomeFlowView: View {
     }
 
     private var roadmapSection: some View {
-        SwiftMeshSection(title: "Next Steps", symbol: "map.fill") {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Text("Rules")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                     Button {
+                        refreshInvites()
+                    } label: {
+                        if inviteRefreshInFlight {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Refresh Invites", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .buttonStyle(WelcomeFlowGlassButtonStyle(compact: true))
+                    .disabled(inviteRefreshInFlight || selectedGuildID.isEmpty)
+                    Button {
                         addWelcomeRule()
                     } label: {
                         Label("New Rule", systemImage: "plus")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .buttonBorderShape(.capsule)
+                    .buttonStyle(WelcomeFlowGlassButtonStyle(tint: .accentColor, compact: true))
                 }
 
                 if app.settings.welcomeFlow.nextStepRules.isEmpty {
@@ -642,8 +772,10 @@ struct WelcomeFlowView: View {
                         ForEach(app.settings.welcomeFlow.nextStepRules) { rule in
                             WelcomeFlowRuleRow(
                                 rule: binding(forRuleID: rule.id),
+                                inviteSnapshots: inviteSnapshots,
                                 roleOptions: roleOptions,
                                 roleName: roleName(for: rule.roleId),
+                                onInviteSelected: { applyWelcomeChannel(forInviteCode: $0) },
                                 onSave: saveSettingsAfterViewUpdate,
                                 onDelete: { deleteWelcomeRule(rule.id) }
                             )
@@ -651,11 +783,16 @@ struct WelcomeFlowView: View {
                     }
                 }
 
+                if let inviteRefreshFeedback {
+                    Text(inviteRefreshFeedback)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Text("Invite-specific rules use Discord invite use counts. SwiftBot needs Manage Server to read invites; if Discord cannot resolve the invite, only Any invite rules run.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
     }
 
     private var variableRow: some View {
@@ -695,6 +832,10 @@ struct WelcomeFlowView: View {
         return options
     }
 
+    private var inviteSnapshots: [WelcomeFlowService.InviteSnapshot] {
+        app.welcomeFlowInvitesByServer[selectedGuildID] ?? []
+    }
+
     private func roleName(for roleID: String) -> String {
         guard !roleID.isEmpty else { return "No role selected" }
         return app.availableRolesByServer.values
@@ -729,6 +870,71 @@ struct WelcomeFlowView: View {
     private func deleteWelcomeRule(_ id: UUID) {
         app.settings.welcomeFlow.nextStepRules.removeAll { $0.id == id }
         saveSettingsAfterViewUpdate()
+    }
+
+    private func refreshInvites() {
+        guard !inviteRefreshInFlight, !selectedGuildID.isEmpty else { return }
+        inviteRefreshInFlight = true
+        inviteRefreshFeedback = nil
+        Task { @MainActor in
+            let success = await app.refreshWelcomeFlowInvites(guildID: selectedGuildID)
+            let count = inviteSnapshots.count
+            let defaultedChannel = success ? applyDefaultWelcomeChannelFromInvites() : nil
+            if let defaultedChannel {
+                inviteRefreshFeedback = "Loaded \(count) invite\(count == 1 ? "" : "s") and set welcome channel to #\(defaultedChannel.name)."
+            } else {
+                inviteRefreshFeedback = success
+                    ? "Loaded \(count) invite\(count == 1 ? "" : "s") from Discord."
+                    : "Could not load invites. Check Manage Server permission."
+            }
+            inviteRefreshInFlight = false
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            inviteRefreshFeedback = nil
+        }
+    }
+
+    private func defaultWelcomeChannelID(for guildID: String) -> String? {
+        let channels = app.availableTextChannelsByServer[guildID] ?? []
+        let channelIDs = Set(channels.map(\.id))
+        return (app.welcomeFlowInvitesByServer[guildID] ?? [])
+            .first { invite in
+                guard let channelID = invite.channelID else { return false }
+                return channelIDs.contains(channelID)
+            }?
+            .channelID
+    }
+
+    @discardableResult
+    private func applyDefaultWelcomeChannelFromInvites() -> GuildTextChannel? {
+        guard let channelID = defaultWelcomeChannelID(for: selectedGuildID) else { return nil }
+        return setWelcomeChannelIfNeeded(channelID)
+    }
+
+    @discardableResult
+    private func applyWelcomeChannel(forInviteCode inviteCode: String) -> GuildTextChannel? {
+        let trimmed = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let channelID = inviteSnapshots.first(where: {
+                  $0.code.caseInsensitiveCompare(trimmed) == .orderedSame
+              })?.channelID
+        else {
+            return nil
+        }
+        return setWelcomeChannelIfNeeded(channelID)
+    }
+
+    @discardableResult
+    private func setWelcomeChannelIfNeeded(_ channelID: String) -> GuildTextChannel? {
+        let channels = app.availableTextChannelsByServer[selectedGuildID] ?? []
+        guard let channel = channels.first(where: { $0.id == channelID }) else { return nil }
+
+        let currentChannelID = app.settings.welcomeFlow.publicChannelId
+        let currentIsValidForSelectedGuild = channels.contains { $0.id == currentChannelID }
+        guard currentChannelID.isEmpty || !currentIsValidForSelectedGuild else { return nil }
+
+        app.settings.welcomeFlow.publicChannelId = channelID
+        saveSettingsAfterViewUpdate()
+        return channel
     }
 
     /// id-keyed binding to a rule. Safe across deletes: if the rule has been
@@ -804,6 +1010,60 @@ struct WelcomeFlowView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private func messageFormatSelector(
+        _ label: String,
+        selection: Binding<WelcomeFlowMessageFormat>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.semibold))
+                .tracking(0.6)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                ForEach(WelcomeFlowMessageFormat.allCases) { format in
+                    let isSelected = selection.wrappedValue == format
+                    Button {
+                        withAnimation(.smooth(duration: 0.18)) {
+                            selection.wrappedValue = format
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: format == .plainText ? "text.alignleft" : "rectangle.fill")
+                                .font(.caption.weight(.semibold))
+                            Text(format.displayName)
+                                .font(.caption.weight(.semibold))
+                        }
+                        .frame(minWidth: 112)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(isSelected ? Color.primary : .secondary)
+                        .background {
+                            if isSelected {
+                                Capsule(style: .continuous)
+                                    .fill(.thinMaterial)
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .fill(Color.accentColor.opacity(0.16))
+                                    )
+                                    .matchedGeometryEffect(id: "welcomeFlowFormatSelection", in: formatSelectorNamespace)
+                            }
+                        }
+                        .contentShape(Capsule(style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .help(format.displayName)
+                }
+            }
+            .padding(3)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
 }
 
 private struct WelcomeFlowPickerOption: Identifiable, Hashable {
@@ -811,10 +1071,55 @@ private struct WelcomeFlowPickerOption: Identifiable, Hashable {
     let label: String
 }
 
+private struct WelcomeFlowGlassButtonStyle: ButtonStyle {
+    var tint: Color = .primary
+    var compact: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, compact ? 10 : 12)
+            .padding(.vertical, compact ? 5 : 7)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(configuration.isPressed ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(tint.opacity(configuration.isPressed ? 0.22 : 0.12), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.01 : 0.035), radius: 4, y: 2)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
+
+private struct WelcomeFlowIconButtonStyle: ButtonStyle {
+    var tint: Color = .primary
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 26, height: 26)
+            .background(
+                Circle()
+                    .fill(configuration.isPressed ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial))
+            )
+            .overlay(
+                Circle()
+                    .strokeBorder(tint.opacity(configuration.isPressed ? 0.22 : 0.10), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+    }
+}
+
 private struct WelcomeFlowRuleRow: View {
     @Binding var rule: WelcomeFlowRule
+    let inviteSnapshots: [WelcomeFlowService.InviteSnapshot]
     let roleOptions: [WelcomeFlowPickerOption]
     let roleName: String
+    let onInviteSelected: (String) -> Void
     let onSave: () -> Void
     let onDelete: () -> Void
 
@@ -839,19 +1144,29 @@ private struct WelcomeFlowRuleRow: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(WelcomeFlowIconButtonStyle(tint: .red))
                 .help("Delete rule")
             }
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("INVITE CODE")
+                    Text("INVITE")
                         .font(.caption2.weight(.semibold))
                         .tracking(0.6)
                         .foregroundStyle(.secondary)
-                    TextField("Any invite", text: binding(\.inviteCode))
-                        .textFieldStyle(.roundedBorder)
-                        .help("Use just the code, e.g. dabois. Leave empty to match any invite.")
+                    Picker("", selection: inviteCodeBinding) {
+                        Text("Any invite").tag("")
+                        if !rule.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           !inviteSnapshots.contains(where: { $0.code.caseInsensitiveCompare(rule.inviteCode) == .orderedSame }) {
+                            Text("Custom: \(rule.inviteCode)").tag(rule.inviteCode)
+                        }
+                        ForEach(inviteSnapshots, id: \.code) { invite in
+                            Text(inviteLabel(invite)).tag(invite.code)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .help("Choose a Discord invite SwiftBot can see, or leave as Any invite.")
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -897,5 +1212,26 @@ private struct WelcomeFlowRuleRow: View {
                 onSave()
             }
         )
+    }
+
+    private var inviteCodeBinding: Binding<String> {
+        Binding(
+            get: { rule.inviteCode },
+            set: { newValue in
+                rule.inviteCode = newValue
+                rule.updatedAt = Date()
+                onInviteSelected(newValue)
+                onSave()
+            }
+        )
+    }
+
+    private func inviteLabel(_ invite: WelcomeFlowService.InviteSnapshot) -> String {
+        let channel = invite.channelName
+            .map { "#\($0)" }
+            ?? invite.channelID.map { "Channel \($0.suffix(4))" }
+            ?? "Unknown channel"
+        let uses = invite.uses == 1 ? "1 use" : "\(invite.uses) uses"
+        return "\(channel) - discord.gg/\(invite.code) - \(uses)"
     }
 }

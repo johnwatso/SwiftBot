@@ -596,7 +596,7 @@ enum ActivityCategory: String, CaseIterable {
         case .mesh: return "point.3.connected.trianglepath.dotted"
         case .patchy: return "square.and.arrow.down.badge.checkmark"
         case .ai: return "sparkles"
-        case .wiki: return "book.pages.fill"
+        case .wiki: return "rectangle.and.text.magnifyingglass"
         case .swiftMiner: return "pickaxe"
         case .system: return "info.circle.fill"
         }
@@ -632,7 +632,7 @@ enum ActivityCategory: String, CaseIterable {
         case .mesh: return "SwiftMesh"
         case .patchy: return "Patchy"
         case .ai: return "AI"
-        case .wiki: return "WikiBridge"
+        case .wiki: return "Lookup"
         case .swiftMiner: return "SwiftMiner"
         case .system: return "System"
         }
@@ -646,7 +646,7 @@ enum ActivityCategory: String, CaseIterable {
         case .mesh: return "SwiftMesh failover, replication, leader election, follower state."
         case .patchy: return "Patchy update sources — GPU/Steam/GitHub release notifications."
         case .ai: return "AI bot replies, model selection, provider routing."
-        case .wiki: return "WikiBridge lookups and Finals wiki queries."
+        case .wiki: return "Gaming stat lookups and Finals wiki queries."
         case .swiftMiner: return "SwiftMiner DM relays and pairing state."
         case .system: return "Anything else — generic app log lines."
         }

@@ -204,14 +204,7 @@ struct DashboardSidebar: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
-        )
+        .overlay(SidebarGlassEdgeOverlay(cornerRadius: 18))
         .compositingGroup()
         .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 12)
         .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 2)
@@ -349,6 +342,41 @@ private struct SidebarSelectionHighlight: View {
                     .strokeBorder(.primary.opacity(strokeOpacity), lineWidth: 1)
             )
             .shadow(color: .black.opacity(controlActiveState == .active ? 0.06 : 0), radius: 4, y: 2)
+    }
+}
+
+private struct SidebarGlassEdgeOverlay: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let cornerRadius: CGFloat
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        shape
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(colorScheme == .dark ? 0.26 : 0.55),
+                        Color.white.opacity(colorScheme == .dark ? 0.11 : 0.28),
+                        Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            .overlay(
+                shape
+                    .inset(by: 1)
+                    .strokeBorder(.white.opacity(colorScheme == .dark ? 0.045 : 0.16), lineWidth: 1)
+            )
+            .overlay(
+                shape
+                    .strokeBorder(.black.opacity(colorScheme == .dark ? 0.18 : 0.05), lineWidth: 0.5)
+                    .blendMode(.multiply)
+            )
     }
 }
 
@@ -535,11 +563,11 @@ private struct SwiftBotSidebarMaterialBackground: View {
             SwiftBotVisualEffectMaterialView(material: .sidebar, blendingMode: .behindWindow)
 
             Color(nsColor: colorScheme == .dark ? .black : .windowBackgroundColor)
-                .opacity(colorScheme == .dark ? 0.22 : 0.30)
+                .opacity(colorScheme == .dark ? 0.20 : 0.28)
 
             LinearGradient(
                 colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.08 : 0.16),
+                    Color.white.opacity(colorScheme == .dark ? 0.07 : 0.15),
                     Color.clear
                 ],
                 startPoint: .topLeading,

@@ -44,7 +44,6 @@ extension AppModel {
                 ["type": 3, "name": "name", "description": "Optional thread name", "required": false],
                 ["type": 4, "name": "limit", "description": "Max tracks to import (1-100)", "required": false]
             ]],
-            ["name": "wiki", "description": "Query WikiBridge", "type": 1, "options": [["type": 3, "name": "query", "description": "Your wiki query", "required": true]]],
             ["name": "compare", "description": "Compare two THE FINALS weapons", "type": 1, "options": [
                 ["type": 3, "name": "weapon_a", "description": "First weapon", "required": true],
                 ["type": 3, "name": "weapon_b", "description": "Second weapon", "required": true]

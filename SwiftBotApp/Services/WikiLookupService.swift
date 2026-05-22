@@ -500,6 +500,7 @@ actor WikiLookupService {
     private func lookupGenericMediaWiki(query: String, source: WikiSource) async -> FinalsWikiLookupResult? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return nil }
+        let searchScope = source.searchScope.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             let baseURL = normalizedWikiBaseURL(from: source.baseURL),
             let apiURL = mediaWikiAPIURL(baseURL: baseURL, apiPath: source.apiPath)
@@ -507,14 +508,32 @@ actor WikiLookupService {
             return nil
         }
 
-        if let direct = await fetchGenericWikiPage(baseURL: baseURL, query: trimmedQuery) {
+        if let direct = await fetchGenericWikiPage(baseURL: baseURL, query: trimmedQuery, searchScope: searchScope) {
+            if direct.fields.isEmpty,
+               let parsed = await fetchMediaWikiParsedPage(title: direct.title, apiURL: apiURL, baseURL: baseURL, searchScope: searchScope),
+               !parsed.fields.isEmpty {
+                return parsed
+            }
             return direct
         }
 
-        guard let title = await searchMediaWikiTitle(query: trimmedQuery, apiURL: apiURL) else {
+        var title = await searchMediaWikiTitle(query: scopedSearchQuery(query: trimmedQuery, scope: searchScope), apiURL: apiURL)
+        if title == nil {
+            title = await searchMediaWikiTitle(query: trimmedQuery, apiURL: apiURL)
+        }
+        guard let title else {
             return nil
         }
+        if let parsed = await fetchMediaWikiParsedPage(title: title, apiURL: apiURL, baseURL: baseURL, searchScope: searchScope) {
+            return parsed
+        }
         return await fetchMediaWikiSummary(title: title, apiURL: apiURL, baseURL: baseURL)
+    }
+
+    private func scopedSearchQuery(query: String, scope: String) -> String {
+        let trimmedScope = scope.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedScope.isEmpty else { return query }
+        return "\(query) \(trimmedScope)"
     }
 
     private func normalizedWikiBaseURL(from raw: String) -> URL? {
@@ -593,7 +612,50 @@ actor WikiLookupService {
         }
     }
 
-    private func fetchGenericWikiPage(baseURL: URL, query: String) async -> FinalsWikiLookupResult? {
+    private func fetchMediaWikiParsedPage(
+        title: String,
+        apiURL: URL,
+        baseURL: URL,
+        searchScope: String = ""
+    ) async -> FinalsWikiLookupResult? {
+        var components = URLComponents(url: apiURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "parse"),
+            URLQueryItem(name: "page", value: title),
+            URLQueryItem(name: "prop", value: "text|displaytitle"),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "origin", value: "*")
+        ]
+        guard let url = components?.url else { return nil }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            let decoded = try JSONDecoder().decode(MediaWikiParseResponse.self, from: data)
+            guard let parsed = decoded.parse, !parsed.text.html.isEmpty else { return nil }
+
+            let pageTitle = stripHTML(parsed.displayTitle ?? parsed.title)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let slug = (pageTitle.isEmpty ? title : pageTitle)
+                .replacingOccurrences(of: " ", with: "_")
+                .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+            let pageURL = baseURL.appendingPathComponent("wiki/\(slug)")
+            return parseWikiHTMLPage(
+                html: parsed.text.html,
+                pageURL: pageURL,
+                fallbackTitle: pageTitle.isEmpty ? title : pageTitle,
+                searchScope: searchScope
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchGenericWikiPage(baseURL: URL, query: String, searchScope: String = "") async -> FinalsWikiLookupResult? {
         let slug = query
             .replacingOccurrences(of: " ", with: "_")
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
@@ -609,7 +671,7 @@ actor WikiLookupService {
                   (200..<300).contains(http.statusCode),
                   let html = String(data: data, encoding: .utf8) else { return nil }
 
-            return parseWikiHTMLPage(html: html, pageURL: pageURL, fallbackTitle: query)
+            return parseWikiHTMLPage(html: html, pageURL: pageURL, fallbackTitle: query, searchScope: searchScope)
         } catch {
             return nil
         }
@@ -834,7 +896,12 @@ actor WikiLookupService {
         return true
     }
 
-    private func parseWikiHTMLPage(html: String, pageURL: URL, fallbackTitle: String?) -> FinalsWikiLookupResult {
+    private func parseWikiHTMLPage(
+        html: String,
+        pageURL: URL,
+        fallbackTitle: String?,
+        searchScope: String = ""
+    ) -> FinalsWikiLookupResult {
         guard let document = try? SwiftSoup.parse(html, pageURL.absoluteString) else {
             let title = extractHTMLTitle(from: html)
                 ?? fallbackTitle
@@ -843,6 +910,8 @@ actor WikiLookupService {
             let resolvedURL = extractCanonicalWikiPageURL(from: html) ?? pageURL
             return FinalsWikiLookupResult(title: title, extract: extract, url: resolvedURL.absoluteString)
         }
+        let scopedDocument = scopedMediaWikiDocument(from: document, scope: searchScope, baseURL: pageURL)
+        let contentRoot: Element = scopedDocument ?? document
 
         let headingText = (try? document.select("h1#firstHeading, h1.page-header__title, h1").first()?.text()) ?? ""
         let docTitle = (try? document.title()) ?? ""
@@ -863,30 +932,37 @@ actor WikiLookupService {
         ) ?? pageURL.absoluteString
 
         let summary = firstMeaningfulSoupText(
-            in: document,
+            in: contentRoot,
             selectors: [
                 ".mw-parser-output > p",
                 "#mw-content-text p",
                 ".page-content p",
                 "main p",
-                "article p"
+                "article p",
+                "body > p",
+                "p"
             ],
             minimumLength: 40
         )
 
         let imageURL = firstSoupAttribute(
-            in: document,
+            in: contentRoot,
             selector: "meta[property=og:image], meta[name=twitter:image]",
             attributes: ["content"],
             baseURL: pageURL
         ) ?? firstSoupAttribute(
-            in: document,
+            in: contentRoot,
             selector: ".portable-infobox img, .infobox img, figure img, a.image img, .mw-parser-output img",
             attributes: ["src", "data-src"],
             baseURL: pageURL
+        ) ?? firstSoupAttribute(
+            in: document,
+            selector: "meta[property=og:image], meta[name=twitter:image]",
+            attributes: ["content"],
+            baseURL: pageURL
         )
 
-        let fields = extractSoupFields(from: document)
+        let fields = extractSoupFields(from: contentRoot)
         let pageType = inferredPageType(from: fields, title: title)
 
         return FinalsWikiLookupResult(
@@ -900,7 +976,99 @@ actor WikiLookupService {
         )
     }
 
-    private func firstMeaningfulSoupText(in document: Document, selectors: [String], minimumLength: Int) -> String {
+    private func scopedMediaWikiDocument(from document: Document, scope: String, baseURL: URL) -> Document? {
+        let normalizedScopes = normalizedScopeCandidates(scope)
+        guard !normalizedScopes.isEmpty else { return nil }
+        guard let headings = try? document.select(".mw-parser-output h2, .mw-parser-output h3, h2, h3") else {
+            return nil
+        }
+
+        for heading in headings.array() {
+            let headingText = cleanedSoupText((try? heading.text()) ?? "")
+            let normalizedHeading = normalizedScopeText(headingText)
+            guard normalizedScopes.contains(where: { scopeMatchesHeading(scope: $0, heading: normalizedHeading) }) else {
+                continue
+            }
+
+            let headingLevel = headingTagLevel(heading.tagName())
+            var fragments: [String] = []
+            var current: Element? = heading
+
+            while let element = current {
+                if element !== heading,
+                   let level = headingTagLevel(element.tagName()),
+                   let headingLevel,
+                   level <= headingLevel {
+                    break
+                }
+                if let outerHTML = try? element.outerHtml() {
+                    fragments.append(outerHTML)
+                }
+                current = try? element.nextElementSibling()
+            }
+
+            guard !fragments.isEmpty,
+                  let scoped = try? SwiftSoup.parseBodyFragment(fragments.joined(separator: "\n"), baseURL.absoluteString) else {
+                continue
+            }
+            return scoped
+        }
+        return nil
+    }
+
+    private func scopeMatchesHeading(scope: String, heading: String) -> Bool {
+        guard !scope.isEmpty, !heading.isEmpty else { return false }
+        if scope == "modernwarfare",
+           heading.contains("modernwarfare"),
+           heading.rangeOfCharacter(from: .decimalDigits) != nil,
+           !heading.contains("2019") {
+            return false
+        }
+        return heading.contains(scope) || scope.contains(heading)
+    }
+
+    private func normalizedScopeCandidates(_ scope: String) -> [String] {
+        let raw = scope.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return [] }
+
+        var values: [String] = [raw]
+        let lower = raw.lowercased()
+        if lower.contains("mw2019") || lower.contains("mw 2019") {
+            values.append("Modern Warfare")
+            values.append("Call of Duty Modern Warfare")
+        }
+        if lower.contains("modern warfare") {
+            values.append(raw.replacingOccurrences(of: #"(?i)\b20\d{2}\b"#, with: "", options: .regularExpression))
+        }
+
+        var seen: Set<String> = []
+        return values.compactMap { value in
+            let normalized = normalizedScopeText(value)
+            guard !normalized.isEmpty, seen.insert(normalized).inserted else { return nil }
+            return normalized
+        }
+    }
+
+    private func normalizedScopeText(_ text: String) -> String {
+        text
+            .lowercased()
+            .replacingOccurrences(of: "callofduty", with: "")
+            .replacingOccurrences(of: #"[^a-z0-9]"#, with: "", options: .regularExpression)
+    }
+
+    private func headingTagLevel(_ tagName: String) -> Int? {
+        switch tagName.lowercased() {
+        case "h1": return 1
+        case "h2": return 2
+        case "h3": return 3
+        case "h4": return 4
+        case "h5": return 5
+        case "h6": return 6
+        default: return nil
+        }
+    }
+
+    private func firstMeaningfulSoupText(in document: Element, selectors: [String], minimumLength: Int) -> String {
         for selector in selectors {
             guard let elements = try? document.select(selector) else { continue }
             for element in elements.array() {
@@ -916,7 +1084,7 @@ actor WikiLookupService {
     }
 
     private func firstSoupAttribute(
-        in document: Document,
+        in document: Element,
         selector: String,
         attributes: [String],
         baseURL: URL
@@ -934,7 +1102,7 @@ actor WikiLookupService {
         return nil
     }
 
-    private func extractSoupFields(from document: Document) -> [WikiResultField] {
+    private func extractSoupFields(from document: Element) -> [WikiResultField] {
         var fields: [WikiResultField] = []
         var seen: Set<String> = []
 
@@ -1604,5 +1772,29 @@ private struct MediaWikiPageResponse: Decodable {
 
     struct ImageInfo: Decodable {
         let source: String?
+    }
+}
+
+private struct MediaWikiParseResponse: Decodable {
+    let parse: ParsedPage?
+
+    struct ParsedPage: Decodable {
+        let title: String
+        let displayTitle: String?
+        let text: ParsedText
+
+        private enum CodingKeys: String, CodingKey {
+            case title
+            case displayTitle = "displaytitle"
+            case text
+        }
+    }
+
+    struct ParsedText: Decodable {
+        let html: String
+
+        private enum CodingKeys: String, CodingKey {
+            case html = "*"
+        }
     }
 }

@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published var availableVoiceChannelsByServer: [String: [GuildVoiceChannel]] = [:]
     @Published var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     @Published var availableRolesByServer: [String: [GuildRole]] = [:]
+    @Published var welcomeFlowInvitesByServer: [String: [WelcomeFlowService.InviteSnapshot]] = [:]
     @Published var knownUsersById: [String: String] = [:]
     @Published var knownBotUserIds: Set<String> = []
     @Published var knownGuildMemberIds: Set<String> = []

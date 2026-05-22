@@ -3499,8 +3499,8 @@
                 <span class="nav-text">Patchy</span>
               </button>
               <button class="nav-link" data-view="wikibridge" type="button">
-                <span class="nav-icon"><i class="lucide" data-lucide="book-open"></i></span>
-                <span class="nav-text">WikiBridge</span>
+                <span class="nav-icon"><i class="lucide" data-lucide="scan-search"></i></span>
+                <span class="nav-text">Lookup</span>
               </button>
             </div>
 
@@ -3685,7 +3685,7 @@
 
         <section id="wikibridgeView" class="view hidden">
           <div class="section-sticky">
-            <div class="section-mini-title"><i class="lucide" data-lucide="book-open"></i> WikiBridge</div>
+            <div class="section-mini-title"><i class="lucide" data-lucide="scan-search"></i> Lookup</div>
           </div>
           <div class="wiki-shell">
             <section id="wikiTop" class="wiki-top glass"></section>
@@ -3998,6 +3998,7 @@
         'hand.wave.fill': 'hand',
         'bell.badge.fill': 'bell-ring',
         'book.pages.fill': 'book-open',
+        'rectangle.and.text.magnifyingglass': 'scan-search',
         'square.grid.2x2.fill': 'layout-grid',
         'square.and.arrow.down.badge.checkmark': 'shield-check',
         'terminal.fill': 'terminal',
@@ -4982,7 +4983,7 @@
 
     async function loadWikiBridge() {
       const response = await fetch('/api/wikibridge');
-      if (!response.ok) throw new Error('WikiBridge unavailable');
+      if (!response.ok) throw new Error('Lookup unavailable');
       const data = await response.json();
       wikiBridgeData = data;
       return data;
@@ -6748,7 +6749,7 @@
 
       top.innerHTML = `
         <div class="commands-toggle-card">
-          <span class="label">WikiBridge</span>
+          <span class="label">Lookup</span>
           <span class="value">${wikiBridgeData.enabled ? 'Enabled' : 'Disabled'}</span>
           <label class="switch"><input id="wikiEnabled" type="checkbox" ${wikiBridgeData.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
@@ -6803,7 +6804,7 @@
             <button class="mini-btn wiki-delete" type="button"><i class="lucide" data-lucide="trash-2"></i> Delete</button>
           </div>
         </article>
-      `).join('') || `<div class="placeholder">No WikiBridge sources configured.</div>`;
+      `).join('') || `<div class="placeholder">No Lookup sources configured.</div>`;
 
       sourcesNode.querySelectorAll('[data-wiki-id]').forEach(card => {
         const sourceID = card.dataset.wikiId;
@@ -6898,9 +6899,9 @@
 
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="server"></i> Services</div>
-          <div class="setting-row"><div class="left"><div class="title">Enable WikiBridge</div><div class="desc">Allow wiki lookups and source routing.</div></div><label class="switch"><input id="setWikiEnabled" type="checkbox" ${cfg.wikiBridge.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable Lookup</div><div class="desc">Allow gaming stat lookups and source routing.</div></div><label class="switch"><input id="setWikiEnabled" type="checkbox" ${cfg.wikiBridge.enabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Enable Patchy Monitoring</div><div class="desc">Run scheduled Patchy update checks.</div></div><label class="switch"><input id="setPatchyEnabled" type="checkbox" ${cfg.patchy.monitoringEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="info-row"><span class="label">Wiki Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
+          <div class="info-row"><span class="label">Lookup Sources</span><span class="value">${cfg.wikiBridge.enabledSources}/${cfg.wikiBridge.totalSources}</span></div>
           <div class="info-row"><span class="label">Patchy Targets</span><span class="value">${cfg.patchy.enabledTargets}/${cfg.patchy.totalTargets}</span></div>
         </section>
       `;
@@ -8050,10 +8051,10 @@
         eventsTitle: 'Recent Commands'
       },
       wikibridge: {
-        title: 'WikiBridge',
-        icon: 'book-open',
-        copy: 'WikiBridge status and source controls.',
-        primaryTitle: 'WikiBridge',
+        title: 'Lookup',
+        icon: 'scan-search',
+        copy: 'Gaming stat lookup status and source controls.',
+        primaryTitle: 'Lookup',
         secondaryTitle: 'Source Status',
         eventsTitle: 'Recent Commands'
       },
@@ -8212,7 +8213,7 @@
           break;
         case 'wikibridge':
           primaryRows = [
-            { label: 'WikiBridge', value: config.wikiBridge.enabled ? 'Enabled' : 'Disabled' },
+            { label: 'Lookup', value: config.wikiBridge.enabled ? 'Enabled' : 'Disabled' },
             { label: 'Sources', value: `${config.wikiBridge.enabledSources}/${config.wikiBridge.totalSources}` }
           ];
           secondaryRows = [
@@ -8334,7 +8335,7 @@
         controls.querySelector('#cfgPatchyEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ patchyMonitoringEnabled: e.target.checked }));
       } else if (view === 'wikibridge') {
         controls.innerHTML = `
-          <div class="control-row"><span class="control-label">Enable WikiBridge</span><input id="cfgWikiEnabled" type="checkbox" ${config.wikiBridge.enabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable Lookup</span><input id="cfgWikiEnabled" type="checkbox" ${config.wikiBridge.enabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgWikiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ wikiBridgeEnabled: e.target.checked }));
@@ -8488,7 +8489,7 @@
         actions.classList.add('hidden');
         section.classList.add('hidden');
         renderWikiBridgeView();
-        if (mobileSubtitle) mobileSubtitle.textContent = 'WikiBridge';
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Lookup';
         setMessage('', '');
       } else if (view === 'settings') {
         overview.classList.add('hidden');

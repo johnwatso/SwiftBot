@@ -932,7 +932,7 @@ struct WelcomeFlowRule: Codable, Identifiable, Hashable {
 
 struct WikiCommand: Codable, Hashable, Identifiable {
     var id = UUID()
-    var trigger: String = "/wiki"
+    var trigger: String = "/lookup"
     var endpoint: String = "search"
     var description: String = ""
     var enabled: Bool = true
@@ -947,7 +947,7 @@ struct WikiCommand: Codable, Hashable, Identifiable {
 
     init(
         id: UUID = UUID(),
-        trigger: String = "/wiki",
+        trigger: String = "/lookup",
         endpoint: String = "search",
         description: String = "",
         enabled: Bool = true
@@ -962,7 +962,7 @@ struct WikiCommand: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? "/wiki"
+        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? "/lookup"
         endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? "search"
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
@@ -971,8 +971,36 @@ struct WikiCommand: Codable, Hashable, Identifiable {
 
 struct WikiFormatting: Codable, Hashable {
     var includeStatBlocks: Bool = true
-    var useEmbeds: Bool = false
+    var useEmbeds: Bool = true
     var compactMode: Bool = false
+    var hiddenEmbedFields: Set<String> = []
+
+    init(
+        includeStatBlocks: Bool = true,
+        useEmbeds: Bool = true,
+        compactMode: Bool = false,
+        hiddenEmbedFields: Set<String> = []
+    ) {
+        self.includeStatBlocks = includeStatBlocks
+        self.useEmbeds = useEmbeds
+        self.compactMode = compactMode
+        self.hiddenEmbedFields = hiddenEmbedFields
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case includeStatBlocks
+        case useEmbeds
+        case compactMode
+        case hiddenEmbedFields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        includeStatBlocks = try container.decodeIfPresent(Bool.self, forKey: .includeStatBlocks) ?? true
+        useEmbeds = try container.decodeIfPresent(Bool.self, forKey: .useEmbeds) ?? true
+        compactMode = try container.decodeIfPresent(Bool.self, forKey: .compactMode) ?? false
+        hiddenEmbedFields = try container.decodeIfPresent(Set<String>.self, forKey: .hiddenEmbedFields) ?? []
+    }
 }
 
 struct WikiParsingRule: Codable, Hashable, Identifiable {
@@ -986,6 +1014,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
     var name: String = "Wiki Source"
     var baseURL: String = "https://example.fandom.com"
     var apiPath: String = "/api.php"
+    var searchScope: String = ""
     var enabled: Bool = true
     var isPrimary: Bool = false
     var commands: [WikiCommand] = []
@@ -999,6 +1028,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         name: String = "Wiki Source",
         baseURL: String = "https://example.fandom.com",
         apiPath: String = "/api.php",
+        searchScope: String = "",
         enabled: Bool = true,
         isPrimary: Bool = false,
         commands: [WikiCommand] = [],
@@ -1011,6 +1041,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         self.name = name
         self.baseURL = baseURL
         self.apiPath = apiPath
+        self.searchScope = searchScope
         self.enabled = enabled
         self.isPrimary = isPrimary
         self.commands = commands
@@ -1026,13 +1057,11 @@ struct WikiSource: Codable, Hashable, Identifiable {
             name: "THE FINALS Wiki",
             baseURL: "https://www.thefinals.wiki",
             apiPath: "/api.php",
+            searchScope: "",
             enabled: true,
             isPrimary: true,
             commands: [
-                WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true),
-                WikiCommand(trigger: "/weapon", endpoint: "weaponPage", description: "Lookup weapon stats", enabled: true),
-                WikiCommand(trigger: "/thefinals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true),
-                WikiCommand(trigger: "/finals", endpoint: "search", description: "Search THE FINALS wiki", enabled: true)
+                WikiCommand(trigger: "/finals", endpoint: "search", description: "Search THE FINALS stats", enabled: true)
             ],
             formatting: WikiFormatting(
                 includeStatBlocks: true,
@@ -1050,20 +1079,21 @@ struct WikiSource: Codable, Hashable, Identifiable {
     static func genericTemplate() -> WikiSource {
         WikiSource(
             id: UUID(),
-            name: "New Wiki",
-            baseURL: "https://example.fandom.com",
+            name: "New Game Wiki",
+            baseURL: "",
             apiPath: "/api.php",
+            searchScope: "",
             enabled: true,
             isPrimary: false,
-            commands: [
-                WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true)
-            ],
+            commands: [],
             formatting: WikiFormatting(
-                includeStatBlocks: false,
-                useEmbeds: false,
+                includeStatBlocks: true,
+                useEmbeds: true,
                 compactMode: false
             ),
-            parsingRules: [],
+            parsingRules: [
+                WikiParsingRule(pageType: "weapon", templateName: "Weapon")
+            ],
             lastLookupAt: nil,
             lastStatus: "Ready"
         )
@@ -1074,6 +1104,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         case name
         case baseURL
         case apiPath
+        case searchScope
         case enabled
         case isPrimary
         case commands
@@ -1091,6 +1122,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Wiki Source"
         baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "https://example.fandom.com"
         apiPath = try container.decodeIfPresent(String.self, forKey: .apiPath) ?? "/api.php"
+        searchScope = try container.decodeIfPresent(String.self, forKey: .searchScope) ?? ""
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
             ?? (try container.decodeIfPresent(Bool.self, forKey: .isEnabled))
             ?? true
@@ -1108,6 +1140,7 @@ struct WikiSource: Codable, Hashable, Identifiable {
         try container.encode(name, forKey: .name)
         try container.encode(baseURL, forKey: .baseURL)
         try container.encode(apiPath, forKey: .apiPath)
+        try container.encode(searchScope, forKey: .searchScope)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(isPrimary, forKey: .isPrimary)
         try container.encode(commands, forKey: .commands)
@@ -1208,11 +1241,14 @@ struct WikiBotSettings: Codable, Hashable {
             updated.name = source.name.trimmingCharacters(in: .whitespacesAndNewlines)
             updated.baseURL = source.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             updated.apiPath = source.apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
-            updated.commands = source.commands.map { command in
+            updated.searchScope = source.searchScope.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.commands = source.commands.compactMap { command in
                 var normalized = command
                 normalized.trigger = Self.slashCommandTrigger(command.trigger)
                 normalized.endpoint = command.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
                 normalized.description = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = Self.normalizedCommandTrigger(normalized.trigger)
+                guard !["wiki", "weapon"].contains(key) else { return nil }
                 return normalized
             }
             updated.parsingRules = source.parsingRules.map { rule in
@@ -1231,18 +1267,15 @@ struct WikiBotSettings: Codable, Hashable {
                 updated.apiPath = "/api.php"
             }
             if updated.commands.isEmpty {
-                updated.commands = [WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: true)]
-            }
-            if updated.baseURL.lowercased().contains("thefinals.wiki"),
-               !updated.commands.contains(where: { Self.normalizedCommandTrigger($0.trigger) == "thefinals" }) {
-                updated.commands.append(
+                let trigger = Self.defaultCommandTrigger(for: updated)
+                updated.commands = [
                     WikiCommand(
-                        trigger: "/thefinals",
+                        trigger: trigger,
                         endpoint: "search",
-                        description: "Search THE FINALS wiki",
+                        description: "Search \(updated.name) stats",
                         enabled: true
                     )
-                )
+                ]
             }
             if updated.baseURL.lowercased().contains("thefinals.wiki") {
                 updated.formatting.includeStatBlocks = true
@@ -1311,6 +1344,27 @@ struct WikiBotSettings: Codable, Hashable {
         return normalized.isEmpty ? "" : "/\(normalized)"
     }
 
+    private static func defaultCommandTrigger(for source: WikiSource) -> String {
+        let hostSlug: String? = URL(string: source.baseURL)?
+            .host?
+            .lowercased()
+            .split(separator: ".")
+            .map(String.init)
+            .drop(while: { $0 == "www" })
+            .first { !["fandom", "com", "wiki"].contains($0) }
+
+        let base = source.baseURL.lowercased().contains("thefinals.wiki")
+            ? "finals"
+            : (hostSlug ?? source.name)
+        let slug = base
+            .replacingOccurrences(of: " Wiki", with: "")
+            .replacingOccurrences(of: "THE ", with: "")
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return "/\(slug.isEmpty ? "lookup" : String(slug.prefix(32)))"
+    }
+
     private static func sourcesFromLegacyTargets(
         _ legacyTargets: [LegacyWikiBridgeSourceTarget],
         allowFinalsCommand: Bool,
@@ -1352,14 +1406,13 @@ struct WikiBotSettings: Codable, Hashable {
                 name: legacy.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Wiki Source",
                 baseURL: legacy.baseURL?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "https://example.fandom.com",
                 apiPath: legacy.apiPath?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "/api.php",
+                searchScope: "",
                 enabled: legacy.isEnabled ?? true,
                 isPrimary: false,
-                commands: [
-                    WikiCommand(trigger: "/wiki", endpoint: "search", description: "Search wiki pages", enabled: allowWikiAlias)
-                ],
+                commands: [],
                 formatting: WikiFormatting(
                     includeStatBlocks: false,
-                    useEmbeds: false,
+                    useEmbeds: true,
                     compactMode: false
                 ),
                 parsingRules: [],

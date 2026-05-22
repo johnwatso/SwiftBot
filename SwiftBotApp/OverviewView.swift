@@ -527,8 +527,8 @@ struct OverviewView: View {
             ),
             MetricWidgetGroup(
                 id: "wikiBridge",
-                title: "WikiBridge",
-                symbol: "book.pages.fill",
+                title: "Lookup",
+                symbol: "rectangle.and.text.magnifyingglass",
                 widgets: WikiBridgeDashboardSummary.metrics(app: app)
             ),
             MetricWidgetGroup(
