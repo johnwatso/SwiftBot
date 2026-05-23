@@ -1239,6 +1239,8 @@ actor AdminWebServer {
             return serveAsset(named: "SwiftBird", ext: "png")
         case ("GET", "/assets/SwiftBird3.png"):
             return serveAsset(named: "SwiftBird3", ext: "png")
+        case ("GET", "/assets/lucide.min.js"):
+            return serveAsset(named: "lucide.min", ext: "js")
         case ("GET", let path) where path.hasPrefix("/assets/games/"):
             let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
             let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
@@ -2254,8 +2256,6 @@ actor AdminWebServer {
         if let scriptNonce {
             scriptSrc += " 'nonce-\(scriptNonce)'"
         }
-        // Lucide icons are loaded from unpkg.com (pinned version).
-        scriptSrc += " https://unpkg.com"
         let parts = [
             "default-src 'self'",
             "script-src \(scriptSrc)",
@@ -2274,19 +2274,31 @@ actor AdminWebServer {
     }
 
     private func serveAsset(named name: String, ext: String, subdirectories: [String] = []) -> Data {
-        let baseDirectories = ["Resources", "admin", "Resources/admin"]
+        let baseDirectories = ["Resources", "admin", "Resources/admin", "Resources/admin/assets"]
         let candidates: [(Bundle, String)] = (subdirectories + baseDirectories).map { (.main, $0) }
+
+        let contentType: String = {
+            switch ext.lowercased() {
+            case "png": return "image/png"
+            case "jpg", "jpeg": return "image/jpeg"
+            case "gif": return "image/gif"
+            case "js": return "application/javascript"
+            case "css": return "text/css"
+            case "html": return "text/html"
+            default: return "application/octet-stream"
+            }
+        }()
 
         for (bundle, subdirectory) in candidates {
             if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory),
                let data = try? Data(contentsOf: url) {
-                return httpResponse(status: "200 OK", body: data, contentType: "image/png")
+                return httpResponse(status: "200 OK", body: data, contentType: contentType)
             }
         }
 
         if let url = Bundle.main.url(forResource: name, withExtension: ext),
            let data = try? Data(contentsOf: url) {
-            return httpResponse(status: "200 OK", body: data, contentType: "image/png")
+            return httpResponse(status: "200 OK", body: data, contentType: contentType)
         }
 
         return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
