@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Security Audit Hardening, Audit Logging, and Welcome Flow v2 - Release Notes</title>
+  <title>SwiftBot 1.20 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
+      background:
+        radial-gradient(circle at top left, rgba(88, 101, 242, 0.12), transparent 32rem),
+        linear-gradient(135deg, #f7fbff 0%, #f4f7fb 46%, #f7f2ff 100%);
       color: #0f1720;
     }
     main {
@@ -20,33 +22,146 @@
       border-radius: 22px;
       background: rgba(255, 255, 255, 0.86);
       box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.12);
     }
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    .meta { margin: 0 0 10px; color: #52606d; font-size: 14px; }
+    .intro { margin: 0 0 24px; color: #384454; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.42);
+      border-left: 5px solid var(--accent, #5865f2);
+    }
+    section.security { --accent: #eb459e; }
+    section.mesh { --accent: #5865f2; }
+    section.ui { --accent: #fee75c; }
+    section.automation { --accent: #57f287; }
+    section.core { --accent: #9fb0c2; }
+    section.docs { --accent: #1c8c73; }
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 4px;
+      color: var(--accent, #5865f2);
+      font-size: 18px;
+    }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #5865f2) 15%, transparent);
+      font-size: 16px;
+    }
+    .summary { margin: 0 0 12px; color: #52606d; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
     a { color: #5865f2; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(88, 101, 242, 0.10), transparent 32rem),
+          linear-gradient(135deg, #081019 0%, #101520 52%, #171427 100%);
+        color: #edf2f7;
+      }
       main {
         background: rgba(15, 23, 32, 0.88);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
       .meta { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .summary { color: #9fb0c2; }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Security Audit Hardening, Audit Logging, and Welcome Flow v2</h1>
-    <p class="meta">Version 1.20</p>
-    <p>A comprehensive security and management overhaul following a detailed audit of the Admin Web Server. This release hardens the bot's web interface against common attack vectors and introduces new tools for tracking administrative activity.</p>
-<p><strong>Security Hardening:</strong><br>- Enforce mandatory Discord MFA for Web UI login.<br>- Implement failure-window rate limiting and lockout for login and bearer token attempts.<br>- Migrate session persistence from UserDefaults to secure macOS Keychain storage.<br>- Reduce session TTL to 24 hours and implement User-Agent session binding.<br>- Replace static media tokens with short-lived, HMAC-signed access tokens.<br>- Implement constant-time string comparisons for all credential and token validations.<br>- Enforce modern security headers (HSTS, X-Frame-Options, X-Content-Type-Options).</p>
-<p><strong>Features & Management:</strong><br>- Implement a structured Audit Log for tracking authentication, configuration, and moderation events.<br>- Redesign the Activity Log with unified filtering for Audit, Gateway, System, and Mesh categories.<br>- Complete refactor of Welcome Flow (v2) with rich embed support and invite tracking.<br>- Refactor WikiBridge into the more versatile Lookup service.<br>- Add support for local timezones and dynamic timestamp formatting in command processing.</p>
-<p><strong>Core Improvements:</strong><br>- Full migration to Swift 6.0 with strict concurrency checking.<br>- Refresh onboarding animations and unify dashboard metric grids.<br>- Improved cluster coordination and connection diagnostics.</p>
-<p>Co-Authored-By: Gemini CLI 0.42.0 &lt;noreply@google.com&gt;</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/70708719f96860f785b88302f3d13540c7438466">7070871</a></p>
+    <h1>SwiftBot 1.20</h1>
+    <p class="meta">Version 1.20 · Build 2026052301</p>
+    <p class="intro">The most significant update to SwiftBot yet. Version 1.20 introduces a massive security overhaul, hardened clustering with SwiftMesh, a powerful new Sweep subsystem for server health, and a complete migration to Swift 6.</p>
+
+    <section class="security">
+      <h2><span class="badge" aria-hidden="true">🛡️</span> Security & Auditing</h2>
+      <p class="summary">Advanced protection for your bot and transparency for your team.</p>
+      <ul>
+        <li><strong>Mandatory Discord MFA:</strong> Web UI login now requires Multi-Factor Authentication to be enabled on your Discord account.</li>
+        <li><strong>Structured Audit Log:</strong> A new persistent log for tracking authentication, configuration changes, and moderation actions.</li>
+        <li><strong>Keychain Session Storage:</strong> All administrative sessions are now stored in the secure macOS Keychain, encrypted at rest.</li>
+        <li><strong>Rate Limiting & Lockout:</strong> Hardened against brute-force attacks with failure-window lockouts for both local and bearer logins.</li>
+        <li><strong>Secure Media Tokens:</strong> Recording and stream playback now use short-lived, HMAC-signed tokens instead of persistent session cookies.</li>
+        <li><strong>Session Binding:</strong> Sessions are bound to the browser's User-Agent to mitigate session hijacking.</li>
+        <li><strong>Modern Headers:</strong> Enforced HSTS, X-Frame-Options (DENY), and CSP-aligned security headers across the admin web server.</li>
+      </ul>
+    </section>
+
+    <section class="mesh">
+      <h2><span class="badge" aria-hidden="true">🕸️</span> SwiftMesh & Clustering</h2>
+      <p class="summary">Bulletproof high-availability for enterprise bot deployments.</p>
+      <ul>
+        <li><strong>AES-GCM Encryption:</strong> All SwiftMesh traffic between nodes is now encrypted using AES-GCM keyed off your shared secret.</li>
+        <li><strong>Hardened Failover:</strong> Added split-brain protection, confirmed-retry logic, and cursor preservation during leader handovers.</li>
+        <li><strong>Auto-Reclaim:</strong> Configured Primary nodes can now automatically reclaim leadership once they recover from an outage.</li>
+        <li><strong>Cluster Map Overhaul:</strong> A compact, high-fidelity cluster map in the Overview tab with custom node-icon overrides and live latency tracking.</li>
+        <li><strong>Handover Testing:</strong> New connection diagnostic tools and handover simulation to verify your cluster's resilience.</li>
+      </ul>
+    </section>
+
+    <section class="automation">
+      <h2><span class="badge" aria-hidden="true">🧹</span> Sweep & Automations</h2>
+      <p class="summary">Keeping your server healthy and your workflows automated.</p>
+      <ul>
+        <li><strong>Sweep Subsystem:</strong> A new background engine that retroactively scans your server for missing permissions, inactive roles, and security misconfigurations.</li>
+        <li><strong>Dry-Run Previews:</strong> See exactly what a Sweep policy or automation rule will do before it applies changes.</li>
+        <li><strong>Welcome Flow v2:</strong> A complete refactor of the member join/leave service with support for rich embeds, invite tracking, and account age gating.</li>
+        <li><strong>New /steam Command:</strong> Direct integration with the Steam Store for game lookups and metadata embedding.</li>
+        <li><strong>Lookup Service:</strong> WikiBridge has been expanded into a unified Lookup engine for Wikipedia, Steam, and GitHub.</li>
+      </ul>
+    </section>
+
+    <section class="ui">
+      <h2><span class="badge" aria-hidden="true">✨</span> UI & Experience</h2>
+      <p class="summary">Redesigned from the ground up for performance and clarity.</p>
+      <ul>
+        <li><strong>Unified Activity Log:</strong> Merged Command Log and System Logs into a single, high-performance view with smart filtering for Gateway, Audit, and Mesh events.</li>
+        <li><strong>Premium Login Experience:</strong> A completely redesigned, Apple-inspired login screen for the Web UI with high-density background animations.</li>
+        <li><strong>Lucide Icon Migration:</strong> Replaced legacy icon sets with modern, consistent Lucide icons across both native and web interfaces.</li>
+        <li><strong>Variable Autocomplete:</strong> Intelligent autocomplete for template variables in the Web UI automation editor.</li>
+        <li><strong>Metric Grid:</strong> Redesigned dashboard cards with clearer trends and balanced layouts.</li>
+      </ul>
+    </section>
+
+    <section class="core">
+      <h2><span class="badge" aria-hidden="true">⚙️</span> Core Infrastructure</h2>
+      <p class="summary">The foundation for the next generation of SwiftBot.</p>
+      <ul>
+        <li><strong>Swift 6.0 Migration:</strong> The entire codebase now leverages strict concurrency checking for maximum stability and performance.</li>
+        <li><strong>Voice Overhaul:</strong> Comprehensive updates to Opus encoding and UDP transport for improved TTS and playback reliability.</li>
+        <li><strong>Recording Playback:</strong> Significant performance improvements to the recording playback and streaming engine.</li>
+        <li><strong>Timezone Support:</strong> Native support for local timezones and dynamic timestamp formatting in all command responses.</li>
+      </ul>
+    </section>
+
+    <section class="docs">
+      <h2><span class="badge" aria-hidden="true">📖</span> Documentation</h2>
+      <p class="summary">Helping you get the most out of SwiftBot.</p>
+      <ul>
+        <li><strong>Bot Setup Guide:</strong> A comprehensive walkthrough covering tokens, intents, OAuth, and invites.</li>
+        <li><strong>Web UI Setup Guide:</strong> Detailed instructions for local exposure, including a dedicated Cloudflare Tunnel guide.</li>
+      </ul>
+    </section>
   </main>
 </body>
 </html>
