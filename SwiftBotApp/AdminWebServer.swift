@@ -545,6 +545,11 @@ actor AdminWebServer {
         var peerIP: String? = nil
     }
 
+    private enum Role: String, Codable {
+        case admin
+        case viewer
+    }
+
     private struct Session: Codable {
         let id: String
         let userID: String
@@ -557,6 +562,7 @@ actor AdminWebServer {
         // Hex SHA256 of the User-Agent header captured at login. Empty if no UA was
         // sent (e.g. native Remote clients) — in that case binding is not enforced.
         var userAgentHash: String? = nil
+        var role: Role = .admin
     }
 
     private struct PendingState {
@@ -1215,6 +1221,11 @@ actor AdminWebServer {
         return 0
     }
 
+    private func requireRole(_ role: Role, session: Session) -> Bool {
+        if session.role == .admin { return true }
+        return session.role == role
+    }
+
     private func process(_ requestData: Data, peerIP: String? = nil) async -> Data {
         guard var request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data("Invalid request".utf8))
@@ -1372,6 +1383,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             return jsonResponse([
                 "id": session.userID,
                 "username": session.username,
@@ -1383,6 +1397,9 @@ actor AdminWebServer {
         case ("GET", "/api/media/access-token"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             let minted = mintMediaAccessToken(sessionID: session.id)
             return jsonResponse([
@@ -1407,6 +1424,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1423,6 +1443,9 @@ actor AdminWebServer {
         case ("POST", "/api/config"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1447,6 +1470,9 @@ actor AdminWebServer {
         case ("POST", "/api/commands/toggle"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1477,6 +1503,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1491,6 +1520,9 @@ actor AdminWebServer {
         case ("POST", "/api/automations/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1507,6 +1539,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1521,6 +1556,9 @@ actor AdminWebServer {
         case ("POST", "/api/automations/draft"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1546,6 +1584,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1569,6 +1610,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1583,6 +1627,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1594,6 +1641,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1604,6 +1654,9 @@ actor AdminWebServer {
         case ("POST", "/api/patchy/target/upsert"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1619,6 +1672,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1632,6 +1688,9 @@ actor AdminWebServer {
         case ("POST", "/api/patchy/target/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1647,6 +1706,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1660,6 +1722,9 @@ actor AdminWebServer {
         case ("POST", "/api/patchy/target/pull"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1683,6 +1748,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1696,6 +1764,9 @@ actor AdminWebServer {
         case ("POST", "/api/sweep/policy/update"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1711,6 +1782,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1724,6 +1798,9 @@ actor AdminWebServer {
         case ("POST", "/api/sweep/policy/toggle"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1739,6 +1816,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1752,6 +1832,9 @@ actor AdminWebServer {
         case ("POST", "/api/sweep/policy/preview"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1767,6 +1850,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1781,6 +1867,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1791,6 +1880,9 @@ actor AdminWebServer {
         case ("POST", "/api/sweep/suggestions/apply"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1805,6 +1897,9 @@ actor AdminWebServer {
         case ("POST", "/api/sweep/suggestions/dismiss"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1851,6 +1946,9 @@ actor AdminWebServer {
         case ("POST", "/api/media/playback"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1935,6 +2033,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1948,6 +2049,9 @@ actor AdminWebServer {
         case ("POST", "/api/media/export/multiview"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -1963,6 +2067,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1977,6 +2084,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -1987,6 +2097,9 @@ actor AdminWebServer {
         case ("POST", "/api/wikibridge/source/upsert"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -2002,6 +2115,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -2015,6 +2131,9 @@ actor AdminWebServer {
         case ("POST", "/api/wikibridge/source/primary"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -2030,6 +2149,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -2043,6 +2165,9 @@ actor AdminWebServer {
         case ("POST", "/api/wikibridge/source/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -2058,6 +2183,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -2069,6 +2197,9 @@ actor AdminWebServer {
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
             }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
@@ -2079,6 +2210,9 @@ actor AdminWebServer {
         case ("POST", "/api/swiftmesh/refresh"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
             }
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
@@ -2499,7 +2633,8 @@ actor AdminWebServer {
                 avatar: user.avatar,
                 csrfToken: randomToken(),
                 expiresAt: Date().addingTimeInterval(sessionTTL),
-                userAgentHash: userAgentHash(for: request)
+                userAgentHash: userAgentHash(for: request),
+                role: .admin
             )
             sessions[session.id] = session
             persistSessions()
@@ -2550,10 +2685,14 @@ actor AdminWebServer {
             "globalName": session.globalName ?? "",
             "discriminator": session.discriminator ?? "",
             "avatar": session.avatar ?? "",
-            "permissions": ["admin"],
+            "permissions": [session.role.rawValue],
             "sessionToken": session.id,
             "expiresAt": ISO8601DateFormatter().string(from: session.expiresAt)
         ])
+    }
+
+    private func forbiddenResponse() -> Data {
+        jsonResponse(["error": "forbidden", "message": "You do not have permission to perform this action."], status: "403 Forbidden")
     }
 
     private func handleAuthOptions() async -> Data {
@@ -2999,6 +3138,7 @@ actor AdminWebServer {
         globalName: String?,
         discriminator: String?,
         avatar: String?,
+        role: Role = .admin,
         userAgentHash: String? = nil
     ) -> Session {
         Session(
@@ -3010,7 +3150,8 @@ actor AdminWebServer {
             avatar: avatar,
             csrfToken: randomToken(),
             expiresAt: Date().addingTimeInterval(sessionTTL),
-            userAgentHash: userAgentHash
+            userAgentHash: userAgentHash,
+            role: role
         )
     }
 
