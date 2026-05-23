@@ -1255,7 +1255,6 @@ extension AppModel {
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
-            remoteAccessToken: settings.remoteAccessToken,
             devFeaturesEnabled: settings.devFeaturesEnabled
         )
 
@@ -1707,6 +1706,32 @@ extension AppModel {
                 await MainActor.run { model.logs.append(message) }
             }
         )
+        await adminWebServer.setAuditLogger { [weak self] source, actor, action, detail, level in
+            guard let model = self else { return }
+            let parsedSource: AuditLogEntry.Source = {
+                switch source {
+                case "Web Auth": return .webAuth
+                case "Web Config": return .webConfig
+                case "Moderation": return .moderation
+                default: return .bot
+                }
+            }()
+            let parsedLevel: AuditLogEntry.Level = {
+                switch level {
+                case "ok": return .ok
+                case "warning": return .warning
+                case "error": return .error
+                default: return .info
+                }
+            }()
+            model.recordAudit(
+                source: parsedSource,
+                actor: actor,
+                action: action,
+                detail: detail,
+                level: parsedLevel
+            )
+        }
         adminWebResolvedBaseURL = runtimeState.publicBaseURL
         updateAdminWebCertificateRenewalTask()
         await updateAdminWebPublicAccessRuntime()

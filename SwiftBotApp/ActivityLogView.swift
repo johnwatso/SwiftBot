@@ -16,6 +16,7 @@ struct ActivityLogView: View {
         case command
         case system
         case mesh
+        case audit
     }
 
     enum ActivityLevel {
@@ -24,8 +25,10 @@ struct ActivityLogView: View {
 
     enum ActivityFilter: String, CaseIterable, Identifiable {
         case commands = "Commands"
+        case gateway = "Gateway"
         case system = "System"
         case mesh = "Mesh"
+        case audit = "Audit"
         case errors = "Errors"
         case warnings = "Warnings"
 
@@ -33,8 +36,10 @@ struct ActivityLogView: View {
         var symbol: String {
             switch self {
             case .commands: return "terminal"
+            case .gateway: return "message.fill"
             case .system: return "doc.text"
             case .mesh: return "point.3.connected.trianglepath.dotted"
+            case .audit: return "lock.shield"
             case .errors: return "xmark.octagon"
             case .warnings: return "exclamationmark.triangle"
             }
@@ -42,8 +47,10 @@ struct ActivityLogView: View {
         var color: Color {
             switch self {
             case .commands: return .blue
+            case .gateway: return ActivityCategory.discordBlurple
             case .system: return .gray
             case .mesh: return .cyan
+            case .audit: return .purple
             case .errors: return .red
             case .warnings: return .yellow
             }
@@ -78,6 +85,29 @@ struct ActivityLogView: View {
                     kind: .command,
                     level: cmd.ok ? .ok : .error,
                     title: Self.stripMarkers(rawTitle),
+                    detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
+                )
+            )
+        }
+
+        for audit in app.auditLog {
+            let level: ActivityLevel = {
+                switch audit.level {
+                case .ok: return .ok
+                case .warning: return .warning
+                case .error: return .error
+                case .info: return .info
+                }
+            }()
+            let titleParts = ["[\(audit.source.rawValue)]", audit.action]
+            let detailParts = [audit.actor, audit.detail ?? ""].filter { !$0.isEmpty }
+            entries.append(
+                ActivityEntry(
+                    id: "audit-\(audit.id.uuidString)",
+                    time: audit.time,
+                    kind: .audit,
+                    level: level,
+                    title: titleParts.joined(separator: " "),
                     detail: detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
                 )
             )
@@ -121,11 +151,18 @@ struct ActivityLogView: View {
             if entry.level == .error && selectedFilters.contains(.errors) { return true }
             if entry.level == .warning && selectedFilters.contains(.warnings) { return true }
             return selectedFilters.contains(.mesh)
+        case .audit:
+            if entry.level == .error && selectedFilters.contains(.errors) { return true }
+            if entry.level == .warning && selectedFilters.contains(.warnings) { return true }
+            return selectedFilters.contains(.audit)
         case .system:
+            // Gateway-categorized system rows route to the Gateway chip.
+            let isGatewayRow = ActivityCategory.infer(from: entry) == .gateway
+            let bucketChip: ActivityFilter = isGatewayRow ? .gateway : .system
             switch entry.level {
-            case .error: return selectedFilters.contains(.errors) || selectedFilters.contains(.system)
-            case .warning: return selectedFilters.contains(.warnings) || selectedFilters.contains(.system)
-            case .info, .ok: return selectedFilters.contains(.system)
+            case .error: return selectedFilters.contains(.errors) || selectedFilters.contains(bucketChip)
+            case .warning: return selectedFilters.contains(.warnings) || selectedFilters.contains(bucketChip)
+            case .info, .ok: return selectedFilters.contains(bucketChip)
             }
         }
     }
@@ -151,7 +188,7 @@ struct ActivityLogView: View {
                 }
                 .disabled(visibleEntries.isEmpty)
                 Button("Clear") { showClearConfirm = true }
-                    .disabled(app.commandLog.isEmpty && app.logs.lines.isEmpty)
+                    .disabled(app.commandLog.isEmpty && app.logs.lines.isEmpty && app.auditLog.isEmpty)
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
@@ -174,6 +211,7 @@ struct ActivityLogView: View {
             Button("Clear", role: .destructive) {
                 app.logs.clear()
                 app.commandLog.removeAll()
+                app.auditLog.removeAll()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -282,6 +320,9 @@ struct ActivityLogView: View {
     }
 
     private var entryList: some View {
+        // Entries are sorted newest-first. Anchoring the scroll to the top edge
+        // keeps the most recent row visible when new entries arrive, instead of
+        // letting the list bump down and hide the new row off-screen.
         List(visibleEntries) { entry in
             ActivityRow(entry: entry)
                 .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
@@ -291,6 +332,7 @@ struct ActivityLogView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .defaultScrollAnchor(.top)
     }
 
     private var emptyState: some View {
@@ -548,7 +590,7 @@ private struct ActivityRow: View {
             Spacer(minLength: 12)
 
             Text(entry.time, style: .time)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.caption)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
@@ -586,18 +628,20 @@ enum ActivityCategory: String, CaseIterable {
     case ai
     case wiki
     case swiftMiner
+    case audit
     case system
 
     var symbol: String {
         switch self {
-        case .command: return "bubble.left.fill"
-        case .gateway: return "bubble.left.and.bubble.right.fill"
+        case .command: return "terminal"
+        case .gateway: return "message.fill"
         case .voice: return "person.3.sequence"
         case .mesh: return "point.3.connected.trianglepath.dotted"
         case .patchy: return "square.and.arrow.down.badge.checkmark"
         case .ai: return "sparkles"
         case .wiki: return "rectangle.and.text.magnifyingglass"
-        case .swiftMiner: return "pickaxe"
+        case .swiftMiner: return "hammer.fill"
+        case .audit: return "lock.shield"
         case .system: return "info.circle.fill"
         }
     }
@@ -613,12 +657,13 @@ enum ActivityCategory: String, CaseIterable {
         case .ai: return .purple
         case .wiki: return .brown
         case .swiftMiner: return .mint
+        case .audit: return .purple
         case .system: return .secondary
         }
     }
 
     /// Discord's brand blurple. Pulled from the official press kit (#5865F2).
-    private static let discordBlurple: Color = Color(
+    static let discordBlurple: Color = Color(
         red: 88.0 / 255.0,
         green: 101.0 / 255.0,
         blue: 242.0 / 255.0
@@ -634,6 +679,7 @@ enum ActivityCategory: String, CaseIterable {
         case .ai: return "AI"
         case .wiki: return "Lookup"
         case .swiftMiner: return "SwiftMiner"
+        case .audit: return "Audit"
         case .system: return "System"
         }
     }
@@ -648,12 +694,14 @@ enum ActivityCategory: String, CaseIterable {
         case .ai: return "AI bot replies, model selection, provider routing."
         case .wiki: return "Gaming stat lookups and Finals wiki queries."
         case .swiftMiner: return "SwiftMiner DM relays and pairing state."
+        case .audit: return "Security and admin events — logins, config changes, moderation actions."
         case .system: return "Anything else — generic app log lines."
         }
     }
 
     static func infer(from entry: ActivityLogView.ActivityEntry) -> ActivityCategory {
         if entry.kind == .command { return .command }
+        if entry.kind == .audit { return .audit }
         let text = ((entry.title) + " " + (entry.detail ?? "")).lowercased()
 
         // Order matters: pick the first hit. Specific topics before generic ones.
@@ -681,28 +729,40 @@ private struct ActivityFilterHelpPopover: View {
                 Text("Filters")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                Text("Toggle which event types appear in the log. Errors and warnings can also be filtered independently of their topic.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 filterRow(symbol: "terminal", color: .blue, title: "Commands",
                           description: "Discord slash- and prefix-commands executed by the bot.")
-                filterRow(symbol: "doc.text", color: .gray, title: "System",
-                          description: "Plain app log lines (info-level). Excludes errors and warnings.")
+                filterRow(symbol: "message.fill", color: ActivityCategory.discordBlurple, title: "Gateway",
+                          description: "Discord gateway events — connect, reconnect, intent rejection, heartbeats.")
                 filterRow(symbol: "point.3.connected.trianglepath.dotted", color: .cyan, title: "Mesh",
                           description: "SwiftMesh cluster events — promotion, demotion, sync, handover.")
+                filterRow(symbol: "lock.shield", color: .purple, title: "Audit",
+                          description: "Security and admin events — logins, config changes, moderation actions.")
+                filterRow(symbol: "doc.text", color: .gray, title: "System",
+                          description: "Anything else — generic app log lines.")
                 filterRow(symbol: "xmark.octagon.fill", color: .red, title: "Errors",
-                          description: "Anything that failed — command errors, gateway errors, REST errors.")
+                          description: "Anything that failed, regardless of topic.")
                 filterRow(symbol: "exclamationmark.triangle.fill", color: .yellow, title: "Warnings",
                           description: "Non-fatal warnings — rate-limit nudges, mesh health misses, etc.")
             }
 
             Divider()
 
+            // Categories that are inferred from log content but don't have their
+            // own filter chip — surfaced here so users can recognise the row icon.
+            let unfilteredCategories: [ActivityCategory] = [.voice, .patchy, .ai, .wiki, .swiftMiner]
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Row icons")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text("Errors and warnings always use the alert icon. Otherwise, the row icon reflects the inferred topic.:")
+                Text("Rows under the System filter pick up these icons based on their content:")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                ForEach(ActivityCategory.allCases.filter { $0 != .command }, id: \.self) { cat in
+                ForEach(unfilteredCategories, id: \.self) { cat in
                     filterRow(symbol: cat.symbol, color: cat.color, title: cat.displayName, description: cat.description)
                 }
             }

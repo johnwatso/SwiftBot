@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Darwin
+import CryptoKit
 import NIOCore
 import NIOPosix
 @preconcurrency import NIOSSL
@@ -14,7 +15,8 @@ import NIOPosix
 //
 // Authentication supports both:
 // - Cookie-based: swiftbot_admin_session (for browser WebUI)
-// - Bearer token: Authorization: Bearer <session-id> (for remote clients)
+// - Bearer token: Authorization: Bearer <session-id> (issued via Discord OAuth
+//   to the desktop Remote client; not a long-lived shared secret)
 
 struct AdminWebStatusPayload: Codable {
     let botStatus: String
@@ -531,7 +533,6 @@ actor AdminWebServer {
         var localAuthPassword: String
         var redirectPath: String
         var allowedUserIDs: [String]
-        var remoteAccessToken: String
         var devFeaturesEnabled: Bool
     }
 
@@ -552,6 +553,9 @@ actor AdminWebServer {
         let avatar: String?
         let csrfToken: String
         let expiresAt: Date
+        // Hex SHA256 of the User-Agent header captured at login. Empty if no UA was
+        // sent (e.g. native Remote clients) — in that case binding is not enforced.
+        var userAgentHash: String? = nil
     }
 
     private struct PendingState {
@@ -566,6 +570,7 @@ actor AdminWebServer {
         let globalName: String?
         let discriminator: String?
         let avatar: String?
+        let mfaEnabled: Bool
     }
 
     private struct DiscordGuildSummary {
@@ -598,7 +603,6 @@ actor AdminWebServer {
         localAuthPassword: "",
         redirectPath: "/auth/discord/callback",
         allowedUserIDs: [],
-        remoteAccessToken: "",
         devFeaturesEnabled: false
     )
     private var listener: NWListener?
@@ -674,24 +678,31 @@ actor AdminWebServer {
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var swiftMinerPairedProvider: (@Sendable () async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
+    /// Emits a structured audit event. (source, actor, action, detail, level).
+    /// Hooked up by AppModel to feed the unified Activity Log.
+    private var auditLogger: (@Sendable (String, String, String, String?, String) -> Void)?
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
     private let stateTTL: TimeInterval = 600
     private let sessionTTL: TimeInterval = 24 * 60 * 60
     private let sessionsDefaultsKey = "swiftbot.admin.web.sessions"
     private let sessionsKeychainAccount = "swiftbot.admin.web.sessions"
+    private let signingKeyKeychainAccount = "swiftbot.admin.web.signing-key"
     private let maxHTTPRequestSize = 1_024 * 1_024
+    private let mediaAccessTokenTTL: TimeInterval = 5 * 60
+    private let maxConcurrentConnections = 128
+    private let requestReadTimeout: TimeInterval = 15
+    private var activeConnectionCount = 0
+    private var cachedSigningKey: SymmetricKey?
 
     private struct RateLimitBucket {
         var failures: [Date] = []
         var lockedUntil: Date?
     }
     private var localLoginAttempts: [String: RateLimitBucket] = [:]
-    private var remoteBearerAttempts = RateLimitBucket()
     private let loginFailureWindow: TimeInterval = 5 * 60
     private let loginFailureThreshold = 5
     private let loginLockoutDuration: TimeInterval = 15 * 60
-    private let remoteBearerFailureThreshold = 10
 
     func configure(
         config: Configuration,
@@ -894,7 +905,11 @@ actor AdminWebServer {
                 try await startTLSServer(httpsConfiguration)
                 return
             } catch {
-                await logger?("Admin Web UI TLS failed: \(error.localizedDescription). Falling back to HTTP.")
+                // HTTPS was explicitly configured but the cert/key couldn't be loaded.
+                // Falling back to HTTP would silently leak the admin cookie + credentials
+                // on what the operator thought was a TLS-protected endpoint, so refuse.
+                await logger?("Admin Web UI TLS failed: \(error.localizedDescription). Refusing to fall back to HTTP — fix the certificate paths and restart.")
+                return
             }
         }
 
@@ -1039,10 +1054,24 @@ actor AdminWebServer {
     private func handleConnection(_ connection: NWConnection) async {
         defer {
             connection.cancel()
+            Task { await self.releaseConnectionSlot() }
+        }
+
+        guard await acquireConnectionSlot() else {
+            let response = httpResponse(
+                status: "503 Service Unavailable",
+                body: Data("{\"error\":\"server_busy\"}".utf8),
+                contentType: "application/json; charset=utf-8",
+                headers: ["Retry-After": "5"]
+            )
+            try? await send(response, over: connection)
+            return
         }
 
         do {
-            let requestData = try await receiveHTTPRequest(from: connection)
+            let requestData = try await withReadTimeout {
+                try await self.receiveHTTPRequest(from: connection)
+            }
             let response = await process(requestData)
             try await send(response, over: connection)
         } catch {
@@ -1052,6 +1081,29 @@ actor AdminWebServer {
                 contentType: "application/json; charset=utf-8"
             )
             try? await send(response, over: connection)
+        }
+    }
+
+    private func acquireConnectionSlot() async -> Bool {
+        if activeConnectionCount >= maxConcurrentConnections { return false }
+        activeConnectionCount += 1
+        return true
+    }
+
+    private func releaseConnectionSlot() {
+        if activeConnectionCount > 0 { activeConnectionCount -= 1 }
+    }
+
+    private func withReadTimeout<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask { [requestReadTimeout] in
+                try await Task.sleep(nanoseconds: UInt64(requestReadTimeout * 1_000_000_000))
+                throw NSError(domain: "AdminWebServer", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request read timed out"])
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
@@ -1283,6 +1335,15 @@ actor AdminWebServer {
                 "avatar": session.avatar ?? "",
                 "csrfToken": session.csrfToken
             ])
+        case ("GET", "/api/media/access-token"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            let minted = mintMediaAccessToken(sessionID: session.id)
+            return jsonResponse([
+                "token": minted.token,
+                "expiresAt": ISO8601DateFormatter().string(from: minted.expiresAt)
+            ])
         case ("GET", "/api/settings"):
             guard authenticatedSession(for: request) != nil else {
                 return unauthorizedResponse()
@@ -1312,6 +1373,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "invalid_prefix"], status: "400 Bad Request")
             }
             await logger?("Admin Web UI updated command prefix")
+            audit(source: "Web Config", actor: actorLabel(session), action: "Updated command prefix", detail: prefix)
             return jsonResponse(["ok": true])
         case ("POST", "/api/config"):
             guard let session = authenticatedSession(for: request) else {
@@ -1327,6 +1389,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
             }
             await logger?("Admin Web UI updated configuration")
+            audit(source: "Web Config", actor: actorLabel(session), action: "Updated configuration")
             return jsonResponse(["ok": true])
         case ("GET", "/api/commands"):
             guard authenticatedSession(for: request) != nil else {
@@ -1350,6 +1413,7 @@ actor AdminWebServer {
                 return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
             }
             await logger?("Admin Web UI toggled command \(patch.surface):\(patch.name) -> \(patch.enabled)")
+            audit(source: "Web Config", actor: actorLabel(session), action: patch.enabled ? "Enabled command" : "Disabled command", detail: "\(patch.surface):\(patch.name)")
             return jsonResponse(["ok": true])
         // /api/actions/* (legacy block-builder rule endpoints) retired; the
         // current automations + moderation surfaces live under /api/automations.
@@ -1954,6 +2018,7 @@ actor AdminWebServer {
             }
             _ = await startBot?()
             await logger?("Admin Web UI requested bot start")
+            audit(source: "Web Config", actor: actorLabel(session), action: "Started bot", level: "ok")
             return jsonResponse(["ok": true])
         case ("POST", "/api/bot/stop"):
             guard let session = authenticatedSession(for: request) else {
@@ -1964,6 +2029,7 @@ actor AdminWebServer {
             }
             _ = await stopBot?()
             await logger?("Admin Web UI requested bot stop")
+            audit(source: "Web Config", actor: actorLabel(session), action: "Stopped bot", level: "warning")
             return jsonResponse(["ok": true])
         case ("POST", "/api/swiftmesh/refresh"):
             guard let session = authenticatedSession(for: request) else {
@@ -2176,7 +2242,10 @@ actor AdminWebServer {
             )
         }
 
-        return redirectResponse(to: url.absoluteString)
+        // Bind the OAuth state to the originating browser so a leaked `state`
+        // query value can't be redeemed from a different client.
+        let stateCookie = "swiftbot_oauth_state=\(state); Path=/; Max-Age=\(Int(stateTTL)); HttpOnly; Secure; SameSite=Lax"
+        return redirectResponse(to: url.absoluteString, headers: ["Set-Cookie": stateCookie])
     }
 
     private func handleLocalLogin(request: HTTPRequest) -> Data {
@@ -2194,6 +2263,7 @@ actor AdminWebServer {
 
         let attemptKey = username.lowercased()
         if isBucketLocked(localLoginAttempts[attemptKey] ?? RateLimitBucket()) {
+            audit(source: "Web Auth", actor: "local:\(username)", action: "Login blocked", detail: "Rate limit lockout", level: "warning")
             return jsonResponse(["error": "rate_limited"], status: "429 Too Many Requests")
         }
 
@@ -2209,6 +2279,7 @@ actor AdminWebServer {
             var bucket = localLoginAttempts[attemptKey] ?? RateLimitBucket()
             registerFailedAttempt(&bucket, threshold: loginFailureThreshold)
             localLoginAttempts[attemptKey] = bucket
+            audit(source: "Web Auth", actor: "local:\(username)", action: "Login failed", detail: "Invalid credentials", level: "warning")
             return jsonResponse(["error": "invalid_credentials"], status: "401 Unauthorized")
         }
 
@@ -2219,8 +2290,10 @@ actor AdminWebServer {
             username: expectedUsername,
             globalName: "Local Admin",
             discriminator: nil,
-            avatar: nil
+            avatar: nil,
+            userAgentHash: userAgentHash(for: request)
         )
+        audit(source: "Web Auth", actor: "local:\(expectedUsername)", action: "Logged in", detail: "Local fallback auth", level: "ok")
         sessions[session.id] = session
         persistSessions()
         return jsonResponse(
@@ -2266,12 +2339,27 @@ actor AdminWebServer {
             )
         }
 
+        // Verify the state cookie set at /auth/discord/login matches the `state`
+        // query parameter. This binds the OAuth flow to the originating browser
+        // and prevents login-CSRF via a leaked `state` value.
+        let stateCookieValue = cookie(named: "swiftbot_oauth_state", request: request) ?? ""
+        let isAppRedirect = pendingState.appRedirectURL != nil
+        if !isAppRedirect && !constantTimeEquals(stateCookieValue, state) {
+            return oauthErrorPageResponse(
+                status: "400 Bad Request",
+                title: "Sign-in didn't complete",
+                message: "The browser session that started this sign-in no longer matches.",
+                detail: "Start over from the login screen in the same browser you started in."
+            )
+        }
+
         do {
             let token = try await exchangeDiscordCode(code: code)
             let user = try await fetchDiscordUser(accessToken: token)
             let guilds = try await fetchDiscordGuilds(accessToken: token)
             guard await isAuthorized(userID: user.id, guilds: guilds) else {
                 await logger?("Admin Web UI login denied for \(user.username) (\(user.id))")
+                audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Login denied", detail: "User not authorized for this bot", level: "warning")
                 return authStatusPageResponse(
                     status: "403 Forbidden",
                     title: "Access not allowed",
@@ -2279,6 +2367,20 @@ actor AdminWebServer {
                     message: "This Discord account does not have permission to sign in.",
                     detail: "Ask a SwiftBot administrator to add your Discord user ID, or sign in with an account that can manage one of the connected servers.",
                     actionTitle: "Try another Discord account",
+                    actionURL: "/auth/discord/login",
+                    variant: .denied
+                )
+            }
+            guard user.mfaEnabled else {
+                await logger?("Admin Web UI MFA denied for \(user.username) (\(user.id))")
+                audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Login denied", detail: "Discord 2FA not enabled", level: "warning")
+                return authStatusPageResponse(
+                    status: "403 Forbidden",
+                    title: "Two-factor authentication required",
+                    eyebrow: "SwiftBot Web Admin",
+                    message: "Your Discord account must have two-factor authentication enabled to sign in.",
+                    detail: "Open Discord → User Settings → My Account → Enable Two-Factor Auth, then try again.",
+                    actionTitle: "Try again",
                     actionURL: "/auth/discord/login",
                     variant: .denied
                 )
@@ -2292,11 +2394,13 @@ actor AdminWebServer {
                 discriminator: user.discriminator,
                 avatar: user.avatar,
                 csrfToken: randomToken(),
-                expiresAt: Date().addingTimeInterval(sessionTTL)
+                expiresAt: Date().addingTimeInterval(sessionTTL),
+                userAgentHash: userAgentHash(for: request)
             )
             sessions[session.id] = session
             persistSessions()
             await logger?("Admin Web UI login for \(user.username) (\(user.id))")
+            audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Logged in", detail: "Discord OAuth", level: "ok")
             let redirectTarget = remoteAuthRedirectURL(
                 from: pendingState.appRedirectURL,
                 sessionID: session.id
@@ -2319,6 +2423,9 @@ actor AdminWebServer {
 
     private func handleLogout(request: HTTPRequest) -> Data {
         if let sessionID = cookie(named: "swiftbot_admin_session", request: request) {
+            if let session = sessions[sessionID] {
+                audit(source: "Web Auth", actor: "\(session.username) (\(session.userID))", action: "Logged out", level: "info")
+            }
             sessions.removeValue(forKey: sessionID)
             persistSessions()
         }
@@ -2408,7 +2515,8 @@ actor AdminWebServer {
         // First try cookie-based session (WebUI)
         if let sessionID = cookie(named: "swiftbot_admin_session", request: request),
            let session = sessions[sessionID],
-           session.expiresAt > Date() {
+           session.expiresAt > Date(),
+           sessionUserAgentMatches(session, request: request) {
             return session
         }
 
@@ -2417,7 +2525,8 @@ actor AdminWebServer {
            authorization.hasPrefix("Bearer ") {
             let sessionID = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespaces)
             if let session = sessions[sessionID],
-               session.expiresAt > Date() {
+               session.expiresAt > Date(),
+               sessionUserAgentMatches(session, request: request) {
                 return session
             }
         }
@@ -2425,33 +2534,27 @@ actor AdminWebServer {
         return nil
     }
 
-    private func mediaAccessAuthorized(_ request: HTTPRequest) -> Bool {
-        if authenticatedSession(for: request) != nil { return true }
-        guard let access = request.query["access"], !access.isEmpty else { return false }
-        let now = Date()
-        return sessions.values.contains { constantTimeEquals($0.csrfToken, access) && $0.expiresAt > now }
+    /// Session was bound to a UA at login — reject if it changed. If the session has
+    /// no recorded UA (legacy or native client that sent none), binding is not
+    /// enforced so we don't break existing Remote app installs.
+    private func sessionUserAgentMatches(_ session: Session, request: HTTPRequest) -> Bool {
+        guard let bound = session.userAgentHash, !bound.isEmpty else { return true }
+        return constantTimeEquals(bound, userAgentHash(for: request))
     }
 
-    private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
-        if authenticatedSession(for: request) != nil {
-            return true
-        }
-
-        if isBucketLocked(remoteBearerAttempts) { return false }
-
-        let expectedToken = config.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !expectedToken.isEmpty,
-              let authorization = request.headers["authorization"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              authorization.hasPrefix("Bearer ") else {
-            return false
-        }
-
-        let providedToken = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !providedToken.isEmpty, constantTimeEquals(providedToken, expectedToken) else {
-            registerFailedAttempt(&remoteBearerAttempts, threshold: remoteBearerFailureThreshold)
+    private func mediaAccessAuthorized(_ request: HTTPRequest) -> Bool {
+        if authenticatedSession(for: request) != nil { return true }
+        guard let token = request.query["token"], !token.isEmpty,
+              let boundSessionID = validateMediaAccessToken(token),
+              let session = sessions[boundSessionID],
+              session.expiresAt > Date() else {
             return false
         }
         return true
+    }
+
+    private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
+        authenticatedSession(for: request) != nil
     }
 
     private func validatedAppRedirectURL(from rawValue: String?) -> URL? {
@@ -2585,7 +2688,8 @@ actor AdminWebServer {
             username: username,
             globalName: object["global_name"] as? String,
             discriminator: object["discriminator"] as? String,
-            avatar: object["avatar"] as? String
+            avatar: object["avatar"] as? String,
+            mfaEnabled: (object["mfa_enabled"] as? Bool) ?? false
         )
     }
 
@@ -2657,6 +2761,31 @@ actor AdminWebServer {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    /// Installs (or replaces) the structured audit-log sink. Hooks AppModel's
+    /// `recordAudit(...)` to the web server's auth/config events.
+    func setAuditLogger(_ sink: @escaping @Sendable (String, String, String, String?, String) -> Void) {
+        self.auditLogger = sink
+    }
+
+    /// Internal helper to emit a structured audit event.
+    private func audit(
+        source: String,
+        actor: String,
+        action: String,
+        detail: String? = nil,
+        level: String = "info"
+    ) {
+        auditLogger?(source, actor, action, detail, level)
+    }
+
+    /// Human-readable identifier for audit-log "actor" field given a session.
+    private func actorLabel(_ session: Session) -> String {
+        if session.userID.hasPrefix("local:") {
+            return "local:\(session.username)"
+        }
+        return "\(session.username) (\(session.userID))"
+    }
+
     private func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
         let a = Array(lhs.utf8)
         let b = Array(rhs.utf8)
@@ -2667,6 +2796,83 @@ actor AdminWebServer {
             diff |= lb ^ rb
         }
         return diff == 0
+    }
+
+    private func serverSigningKey() -> SymmetricKey {
+        if let cached = cachedSigningKey { return cached }
+        if let stored = KeychainHelper.load(account: signingKeyKeychainAccount),
+           let data = Data(base64Encoded: stored) {
+            let key = SymmetricKey(data: data)
+            cachedSigningKey = key
+            return key
+        }
+        let key = SymmetricKey(size: .bits256)
+        let encoded = key.withUnsafeBytes { Data($0) }.base64EncodedString()
+        KeychainHelper.save(encoded, account: signingKeyKeychainAccount)
+        cachedSigningKey = key
+        return key
+    }
+
+    private func sha256Hex(_ input: String) -> String {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func userAgentHash(for request: HTTPRequest) -> String {
+        let ua = request.headers["user-agent"] ?? ""
+        if ua.isEmpty { return "" }
+        return sha256Hex(ua)
+    }
+
+    /// Mints a short-lived signed token granting media access for the given session.
+    /// Format: base64url(payload) "." base64url(hmac) where payload is "<sessionID>:<expiryEpoch>".
+    private func mintMediaAccessToken(sessionID: String) -> (token: String, expiresAt: Date) {
+        let expiresAt = Date().addingTimeInterval(mediaAccessTokenTTL)
+        let payload = "\(sessionID):\(Int(expiresAt.timeIntervalSince1970))"
+        let payloadData = Data(payload.utf8)
+        let signature = HMAC<SHA256>.authenticationCode(for: payloadData, using: serverSigningKey())
+        let signatureData = Data(signature)
+        let token = "\(base64URLEncode(payloadData)).\(base64URLEncode(signatureData))"
+        return (token, expiresAt)
+    }
+
+    /// Validates a media access token; returns the bound session ID on success.
+    private func validateMediaAccessToken(_ token: String) -> String? {
+        let parts = token.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2,
+              let payloadData = base64URLDecode(parts[0]),
+              let signatureData = base64URLDecode(parts[1]),
+              let payload = String(data: payloadData, encoding: .utf8) else {
+            return nil
+        }
+        let expected = HMAC<SHA256>.authenticationCode(for: payloadData, using: serverSigningKey())
+        guard Data(expected).count == signatureData.count else { return nil }
+        var diff: UInt8 = 0
+        let expectedBytes = Data(expected)
+        for i in 0..<expectedBytes.count {
+            diff |= expectedBytes[i] ^ signatureData[i]
+        }
+        guard diff == 0 else { return nil }
+        let segments = payload.split(separator: ":", maxSplits: 1).map(String.init)
+        guard segments.count == 2,
+              let expiry = TimeInterval(segments[1]),
+              Date(timeIntervalSince1970: expiry) > Date() else {
+            return nil
+        }
+        return segments[0]
+    }
+
+    private func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func base64URLDecode(_ input: String) -> Data? {
+        var s = input.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while s.count % 4 != 0 { s.append("=") }
+        return Data(base64Encoded: s)
     }
 
     private func registerFailedAttempt(_ bucket: inout RateLimitBucket, threshold: Int, now: Date = Date()) {
@@ -2688,7 +2894,8 @@ actor AdminWebServer {
         username: String,
         globalName: String?,
         discriminator: String?,
-        avatar: String?
+        avatar: String?,
+        userAgentHash: String? = nil
     ) -> Session {
         Session(
             id: randomToken(),
@@ -2698,7 +2905,8 @@ actor AdminWebServer {
             discriminator: discriminator,
             avatar: avatar,
             csrfToken: randomToken(),
-            expiresAt: Date().addingTimeInterval(sessionTTL)
+            expiresAt: Date().addingTimeInterval(sessionTTL),
+            userAgentHash: userAgentHash
         )
     }
 
@@ -3169,6 +3377,27 @@ actor AdminWebServer {
         }
         if normalizedHeaders["cache-control"] == nil {
             response += "Cache-Control: no-store\r\n"
+        }
+        if normalizedHeaders["x-content-type-options"] == nil {
+            response += "X-Content-Type-Options: nosniff\r\n"
+        }
+        if normalizedHeaders["x-frame-options"] == nil {
+            response += "X-Frame-Options: DENY\r\n"
+        }
+        if normalizedHeaders["referrer-policy"] == nil {
+            response += "Referrer-Policy: no-referrer\r\n"
+        }
+        if normalizedHeaders["permissions-policy"] == nil {
+            response += "Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()\r\n"
+        }
+        if normalizedHeaders["cross-origin-opener-policy"] == nil {
+            response += "Cross-Origin-Opener-Policy: same-origin\r\n"
+        }
+        if normalizedHeaders["cross-origin-resource-policy"] == nil {
+            response += "Cross-Origin-Resource-Policy: same-origin\r\n"
+        }
+        if activeTransportUsesTLS, normalizedHeaders["strict-transport-security"] == nil {
+            response += "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n"
         }
         headers.forEach { key, value in
             response += "\(key): \(value)\r\n"

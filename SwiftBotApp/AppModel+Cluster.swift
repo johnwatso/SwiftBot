@@ -199,7 +199,6 @@ extension AppModel {
         let currentLocalMesh = settings.swiftMeshSettings
         let currentLocalMedia = mediaLibrarySettings
         let currentLocalAdminWebUI = settings.adminWebUI
-        let currentLocalRemoteAccessToken = settings.remoteAccessToken
         var reloaded = await store.load()
         let meshFromFile = await swiftMeshConfigStore.load()
         let effectiveLocalMesh = meshFromFile ?? currentLocalMesh
@@ -210,7 +209,6 @@ extension AppModel {
         }
         if effectiveLocalMesh.mode == .standby || effectiveLocalMesh.mode == .worker {
             reloaded.adminWebUI = currentLocalAdminWebUI
-            reloaded.remoteAccessToken = currentLocalRemoteAccessToken
         }
         reloaded.wikiBot.normalizeSources()
         settings = reloaded

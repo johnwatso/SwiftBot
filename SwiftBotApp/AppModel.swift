@@ -19,6 +19,33 @@ final class AppModel: ObservableObject {
     @Published var stats = StatCounter()
     @Published var events: [ActivityEvent] = []
     @Published var commandLog: [CommandLogEntry] = []
+    @Published var auditLog: [AuditLogEntry] = []
+    private let auditLogCap = 500
+
+    /// Append an audit event. Capped at `auditLogCap` (oldest dropped). Safe to
+    /// call from any actor; hops to the main actor for the publish.
+    nonisolated func recordAudit(
+        source: AuditLogEntry.Source,
+        actor: String,
+        action: String,
+        detail: String? = nil,
+        level: AuditLogEntry.Level = .info
+    ) {
+        let entry = AuditLogEntry(
+            source: source,
+            actor: actor,
+            action: action,
+            detail: detail,
+            level: level
+        )
+        Task { @MainActor in
+            self.auditLog.append(entry)
+            if self.auditLog.count > self.auditLogCap {
+                self.auditLog.removeFirst(self.auditLog.count - self.auditLogCap)
+            }
+            self.persistAnalyticsRuntime()
+        }
+    }
     @Published var voiceLog: [VoiceEventLogEntry] = []
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
@@ -469,10 +496,6 @@ final class AppModel: ObservableObject {
                 migrated = true
             }
             loadedSettings.remoteMode.normalize()
-            if loadedSettings.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                loadedSettings.remoteAccessToken = generatedRemoteAccessToken()
-                migrated = true
-            }
             if loadedSettings.swiftMiner.enabled && !loadedSettings.adminWebUI.enabled {
                 loadedSettings.adminWebUI.enabled = true
                 migrated = true
@@ -822,10 +845,6 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
         settings.remoteMode.normalize()
-        settings.remoteAccessToken = settings.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if settings.remoteAccessToken.isEmpty {
-            settings.remoteAccessToken = generatedRemoteAccessToken()
-        }
         isOnboardingComplete = onboardingCompleted(for: settings)
 
         Task {
@@ -1138,6 +1157,7 @@ final class AppModel: ObservableObject {
         events = snapshot.events
         commandLog = snapshot.commandLog
         voiceLog = snapshot.voiceLog
+        auditLog = snapshot.auditLog
         patchyLastCycleAt = snapshot.patchyLastCycleAt
     }
 
@@ -1146,6 +1166,7 @@ final class AppModel: ObservableObject {
             events: events,
             commandLog: commandLog,
             voiceLog: voiceLog,
+            auditLog: auditLog,
             patchyLastCycleAt: patchyLastCycleAt
         )
         Task {
