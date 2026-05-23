@@ -248,7 +248,7 @@ private struct WindowAccessor: NSViewRepresentable {
         }
     }
 
-    final class Coordinator {
+    final class Coordinator: @unchecked Sendable {
         private let onResolve: (NSWindow) -> Void
         private weak var window: NSWindow?
         private var resizeObserver: NSObjectProtocol?

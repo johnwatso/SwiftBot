@@ -1084,7 +1084,8 @@ actor CertificateManager {
             )
 
             if nameInfoStatus == 0 {
-                addresses.append(String(cString: hostBuffer))
+                let string = String(decoding: hostBuffer.map { UInt8(bitPattern: $0) }.dropLast(), as: UTF8.self)
+                addresses.append(string)
             }
 
             cursor = current.pointee.ai_next

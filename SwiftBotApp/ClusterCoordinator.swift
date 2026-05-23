@@ -28,7 +28,7 @@ struct HardwareInfo: Sendable, Hashable {
             return nil
         }
 
-        let string = String(cString: value).trimmingCharacters(in: .whitespacesAndNewlines)
+        let string = String(decoding: value.map { UInt8(bitPattern: $0) }.dropLast(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return string.isEmpty ? nil : string
     }
 }

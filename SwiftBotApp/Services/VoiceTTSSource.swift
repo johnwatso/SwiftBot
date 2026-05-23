@@ -1,8 +1,6 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import OSLog
-
-extension AVAudioBuffer: @unchecked Sendable {}
 
 /// Produces 48 kHz stereo Float32 PCM buffers from `AVSpeechSynthesizer`,
 /// suitable for feeding straight into `VoicePlaybackService.speak(pcm:)`.
