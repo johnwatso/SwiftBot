@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Polish SwiftMiner tab, Voice Analytics, and overview metrics - Release Notes</title>
+  <title>SwiftMiner Integration, Analytics Dashboards, and UI Polish - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
+      background:
+        radial-gradient(circle at top left, rgba(17, 124, 182, 0.12), transparent 32rem),
+        linear-gradient(135deg, #f7fbff 0%, #f4f7fb 46%, #f7f2ff 100%);
       color: #0f1720;
     }
     main {
@@ -20,31 +22,121 @@
       border-radius: 22px;
       background: rgba(255, 255, 255, 0.86);
       box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.12);
     }
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    .meta { margin: 0 0 10px; color: #52606d; font-size: 14px; }
+    .intro { margin: 0 0 24px; color: #384454; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.42);
+      border-left: 5px solid var(--accent, #0a67a3);
+    }
+    section.mining { --accent: #ff8a3d; }
+    section.analytics { --accent: #1c8c73; }
+    section.ui { --accent: #5f5ac8; }
+    section.core { --accent: #52606d; }
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 4px;
+      color: var(--accent, #0a67a3);
+      font-size: 18px;
+    }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+    }
+    .summary { margin: 0 0 12px; color: #52606d; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body {
+        background:
+          radial-gradient(circle at top left, rgba(89, 185, 255, 0.10), transparent 32rem),
+          linear-gradient(135deg, #081019 0%, #101520 52%, #171427 100%);
+        color: #edf2f7;
+      }
       main {
         background: rgba(15, 23, 32, 0.88);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
       .meta { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .summary { color: #9fb0c2; }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Polish SwiftMiner tab, Voice Analytics, and overview metrics</h1>
-    <p class="meta">Version 1.10</p>
-    <p>Polish SwiftMiner tab, Voice Analytics, and overview metrics</p>
-<p>- Restyle Integrations tab with grouped Form + status card to match SwiftMiner.<br>- Rebalance Voice Analytics row so the insights column gets a fairer share of width.<br>- Soften 'Event flow stalled' attention item: now an info-level 'Runtime feed quiet' notice that only fires after 4h of silence and requires a healthy heartbeat.<br>- Memory metric now averages a rolling 3-minute window and renders whole MB.</p>
-<p>Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/ca2b78c9a20d118cbabb19e8ace9aaceec1dd689">ca2b78c</a></p>
+    <h1>SwiftBot 1.10</h1>
+    <p class="meta">Version 1.10 · Build 2026050801</p>
+    <p class="intro">Version 1.10 marks the official introduction of the SwiftMiner integration ecosystem and the all-new Analytics Engine. This update brings a massive amount of UI polish, performance improvements, and architectural cleanup.</p>
+
+    <section class="mining">
+      <h2><span class="badge" aria-hidden="true">⛏️</span> SwiftMiner Integration</h2>
+      <p class="summary">Seamlessly pair your bot with SwiftMiner for advanced notifications.</p>
+      <ul>
+        <li><strong>Unified Pairing:</strong> Added a dedicated SwiftMiner tab for effortless pairing, complete with status cards and connection health indicators.</li>
+        <li><strong>Onboarding DMs:</strong> Implemented a setup flow that sends one-click activation URLs via Discord DM for streamlined Twitch account linking.</li>
+        <li><strong>Real-time Webhooks:</strong> Native support for SwiftMiner webhooks, enabling the bot to relay mining status and reward notifications instantly.</li>
+        <li><strong>Durable Messaging:</strong> Added persistent DM deduplication and frequency controls to prevent notification bombardment during high-activity periods.</li>
+      </ul>
+    </section>
+
+    <section class="analytics">
+      <h2><span class="badge" aria-hidden="true">📊</span> Analytics & Monitoring</h2>
+      <p class="summary">Deeper insights into your bot's performance and server activity.</p>
+      <ul>
+        <li><strong>New Dashboards:</strong> Introduced high-fidelity analytics dashboards in both the native macOS app and the Admin Web UI.</li>
+        <li><strong>Voice Insights:</strong> Rebalanced the Voice Analytics view with improved insights into user participation and streaming trends.</li>
+        <li><strong>Smart Heartbeats:</strong> Softened the 'Event flow stalled' notice into a more intelligent 'Runtime feed quiet' alert that requires verified inactivity before firing.</li>
+        <li><strong>Refined Metrics:</strong> Memory usage metrics now utilize a rolling 3-minute window and render in whole megabytes for better readability.</li>
+      </ul>
+    </section>
+
+    <section class="ui">
+      <h2><span class="badge" aria-hidden="true">✨</span> UI & UX Polish</h2>
+      <p class="summary">A round of premium refinements across the entire interface.</p>
+      <ul>
+        <li><strong>Sidebar Refresh:</strong> Redesigned the sidebar for better density and cleaner navigation.</li>
+        <li><strong>Integrations Tab:</strong> Restyled with grouped forms and status cards to match the design language of the SwiftMiner ecosystem.</li>
+        <li><strong>Performance Boosts:</strong> Optimized chart rendering and reduced expensive shadow effects on operational cards to eliminate scroll lag.</li>
+        <li><strong>Web UI Preview:</strong> Added theme-aware previews and detailed setup guides to the README for easier local configuration.</li>
+      </ul>
+    </section>
+
+    <section class="core">
+      <h2><span class="badge" aria-hidden="true">⚙️</span> Core & Architecture</h2>
+      <p class="summary">Hardening the foundation for a more stable experience.</p>
+      <ul>
+        <li><strong>Decomposition:</strong> Major architectural cleanup, splitting the monolithic Models.swift into smaller, domain-specific components.</li>
+        <li><strong>Patchy Resilience:</strong> Hardened the Patchy update engine to better handle AMD-based fetch failures and network churn.</li>
+        <li><strong>Kernel Panic Fix:</strong> Resolved a rare but critical kernel panic that could occur when viewing specific video formats from Linux-based mesh nodes.</li>
+        <li><strong>Memory Leak Fixes:</strong> Exhaustive audit of retain cycles in the event bus and streaming subsystems.</li>
+      </ul>
+    </section>
+
+    <p style="margin-top: 24px;">Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/84bb491ced37d5c6442d3579992a83c91f9e0a58">84bb491</a></p>
   </main>
 </body>
 </html>
