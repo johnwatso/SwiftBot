@@ -97,13 +97,14 @@
       <h2><span class="badge" aria-hidden="true">🛡️</span> Security & Auditing</h2>
       <p class="summary">Advanced protection for your bot and transparency for your team.</p>
       <ul>
+        <li><strong>Content Security Policy (CSP):</strong> Implemented a strict CSP with per-request nonces for the Admin Web UI. All inline JavaScript has been removed in favor of a delegated event dispatcher, mitigating XSS risks.</li>
         <li><strong>Mandatory Discord MFA:</strong> Web UI login now requires Multi-Factor Authentication to be enabled on your Discord account.</li>
-        <li><strong>Structured Audit Log:</strong> A new persistent log for tracking authentication, configuration changes, and moderation actions.</li>
+        <li><strong>Structured Audit Log:</strong> A new persistent log for tracking authentication, configuration changes, and moderation actions (including those triggered by Automations and Sweep).</li>
         <li><strong>Keychain Session Storage:</strong> All administrative sessions are now stored in the secure macOS Keychain, encrypted at rest.</li>
-        <li><strong>Rate Limiting & Lockout:</strong> Hardened against brute-force attacks with failure-window lockouts for both local and bearer logins.</li>
+        <li><strong>IP-Based Rate Limiting:</strong> Hardened against brute-force attacks with failure-window lockouts keyed by peer IP and username.</li>
+        <li><strong>Cleartext Blocking:</strong> The Admin Web Server now refuses to serve credentials or cookies over plain HTTP on routable addresses; HTTPS is mandatory for non-loopback access.</li>
         <li><strong>Secure Media Tokens:</strong> Recording and stream playback now use short-lived, HMAC-signed tokens instead of persistent session cookies.</li>
         <li><strong>Session Binding:</strong> Sessions are bound to the browser's User-Agent to mitigate session hijacking.</li>
-        <li><strong>Modern Headers:</strong> Enforced HSTS, X-Frame-Options (DENY), and CSP-aligned security headers across the admin web server.</li>
       </ul>
     </section>
 
