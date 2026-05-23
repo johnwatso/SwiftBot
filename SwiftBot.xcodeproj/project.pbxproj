@@ -64,6 +64,7 @@
 		3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */; };
 		403C97BE65696647F37FFD89 /* IntelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316BE5EE23ADB08FD4042070 /* IntelService.swift */; };
 		40EEEB0FC47E27A70C5D25AF /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 7C341BA99920552C7CDA9D24 /* Sparkle */; };
+		42CC415A501766D93A846E6A /* Validation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC86E9EDB97C17969DD1C543 /* Validation.swift */; };
 		440F6A5F62FD1B7714FD1A2E /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */; };
 		4440417E51C60D48DDE07270 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A94E05BFB8B12D551FBD96 /* Models.swift */; };
 		451C12B27652124C3E40329B /* AutomationTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8170A687CD0015B81C30F9 /* AutomationTemplates.swift */; };
@@ -235,7 +236,7 @@
 		20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
 		216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2620F1431DA2A3DAB6CE6F69 /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
 		2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotPermissionsCheckView.swift; sourceTree = "<group>"; };
 		29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupServiceTests.swift; sourceTree = "<group>"; };
@@ -355,6 +356,7 @@
 		A902D75D3824989E0F053C6B /* HelpEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpEngine.swift; sourceTree = "<group>"; };
 		AB603D8D0A3DDC5CD01C6C1C /* CommandProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandProcessorTests.swift; sourceTree = "<group>"; };
 		AB88D227FA6059743642C852 /* MediaStreamDebug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaStreamDebug.swift; sourceTree = "<group>"; };
+		AC86E9EDB97C17969DD1C543 /* Validation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Validation.swift; sourceTree = "<group>"; };
 		ADDBE745C4836C8F28F219B2 /* PatchyValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyValidationTests.swift; sourceTree = "<group>"; };
 		B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManager.swift; sourceTree = "<group>"; };
 		B40924F306A2F1F8304B3516 /* VoiceConnectionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceConnectionStatus.swift; sourceTree = "<group>"; };
@@ -540,6 +542,7 @@
 				A8DF682CF101FA26092AD72E /* MusicModels.swift */,
 				E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */,
 				3DE0A8502C15AC0C9BD2E795 /* SwiftMinerDMTypes.swift */,
+				AC86E9EDB97C17969DD1C543 /* Validation.swift */,
 				B40924F306A2F1F8304B3516 /* VoiceConnectionStatus.swift */,
 				67FE597F87B994AB862A6AD1 /* VoiceSettings.swift */,
 			);
@@ -987,6 +990,7 @@
 				647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */,
 				0005740627E44E41BFB0B69B /* UpdatesPreferencesView.swift in Sources */,
 				F6759A323D68E4BA000C17F1 /* UserTimezonesView.swift in Sources */,
+				42CC415A501766D93A846E6A /* Validation.swift in Sources */,
 				6C82D8A3B70934851AFA0AD7 /* VariableAutocompleteField.swift in Sources */,
 				BD731E0515669EE345148385 /* VersionStore.swift in Sources */,
 				71042A6C7A95C021D36E560A /* VoiceAnnouncementService.swift in Sources */,
@@ -1100,7 +1104,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.20;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1284,7 +1288,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.20;
+				MARKETING_VERSION = 1.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
