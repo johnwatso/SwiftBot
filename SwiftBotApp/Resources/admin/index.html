@@ -69,6 +69,44 @@
       100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
     }
 
+    @keyframes driftDiagForward {
+      from { transform: translateX(0); }
+      to { transform: translateX(-1000px); }
+    }
+    @keyframes driftDiagReverse {
+      from { transform: translateX(-1000px); }
+      to { transform: translateX(0); }
+    }
+
+    .bg-stream {
+      position: fixed;
+      inset: -500px;
+      z-index: 0;
+      pointer-events: none;
+      opacity: var(--bg-stream-opacity);
+      transform: rotate(-15deg);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow: hidden;
+      filter: blur(1px);
+    }
+    .bg-row {
+      display: flex;
+      gap: 16px;
+      white-space: nowrap;
+      animation: driftDiagForward 60s linear infinite;
+    }
+    .bg-row.alt {
+      animation-name: driftDiagReverse;
+    }
+    .bg-icon {
+      font-size: 72px;
+      width: 72px;
+      height: 72px;
+      color: var(--bg-symbol-color);
+    }
+
     .bg-grid {
       position: absolute;
       inset: 0;
@@ -4148,7 +4186,7 @@
     }, true);
     let currentUser = null;
     let authOptions = { discordEnabled: true, localEnabled: false };
-    let userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+    let userPrefs = { theme: 'auto', backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
     let currentView = 'overview';
     let dashboardStatus = null;
     let dashboardOverview = null;
@@ -4414,7 +4452,7 @@
       }
       const bg = document.getElementById('bgStream');
       const isAuth = !document.getElementById('authScreen').classList.contains('hidden');
-      if (bg) bg.style.display = (userPrefs.backgroundAnimation || isAuth) ? '' : 'none';
+      if (bg) bg.style.display = isAuth ? '' : 'none';
       root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
       if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
     }
@@ -8635,7 +8673,6 @@
               <option value="dark" ${userPrefs.theme === 'dark' ? 'selected' : ''}>Dark</option>
             </select>
           </div>
-          <div class="setting-row"><div class="left"><div class="title">Background Animation</div><div class="desc">Show animated symbols behind content.</div></div><label class="switch"><input id="prefsBgAnimation" type="checkbox" ${userPrefs.backgroundAnimation ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-inline">
             <label class="field-label" style="margin:0;">Background Opacity</label>
             <input id="prefsBgOpacity" class="field-input" type="range" min="0" max="100" step="1" value="${Math.round((userPrefs.backgroundOpacity ?? 0.72) * 100)}">
@@ -8656,11 +8693,6 @@
         applyUserPrefs();
         renderUserPrefsView();
       });
-      panels.querySelector('#prefsBgAnimation')?.addEventListener('change', e => {
-        userPrefs.backgroundAnimation = e.target.checked;
-        saveUserPrefs();
-        applyUserPrefs();
-      });
       panels.querySelector('#prefsBgOpacity')?.addEventListener('input', e => {
         userPrefs.backgroundOpacity = Math.max(0, Math.min(1, Number(e.target.value || 72) / 100));
         saveUserPrefs();
@@ -8676,7 +8708,7 @@
         saveUserPrefs();
       });
       panels.querySelector('#prefsReset')?.addEventListener('click', () => {
-        userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+        userPrefs = { theme: 'auto', backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
         saveUserPrefs();
         applyUserPrefs();
         renderUserPrefsView();
