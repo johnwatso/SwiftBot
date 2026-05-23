@@ -2400,9 +2400,20 @@ actor AdminWebServer {
         let nonce = base64URLEncode(Data((0..<16).map { _ in UInt8.random(in: 0...255) }))
         var body = data
         if let html = String(data: data, encoding: .utf8) {
-            // Bare `<script>` only — `<script src=...>` is left untouched and
-            // gated by the script-src allow-list below.
-            let rewritten = html.replacingOccurrences(of: "<script>", with: "<script nonce=\"\(nonce)\">")
+            // Regex to find `<script>` tags that do NOT have a `src` attribute.
+            // Matches `<script>` or `<script type="...">` but skips `<script src="...">`.
+            let regex = try? NSRegularExpression(
+                pattern: "<script(?![^>]*\\bsrc=)([^>]*)>",
+                options: [.caseInsensitive]
+            )
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            let rewritten = regex?.stringByReplacingMatches(
+                in: html,
+                options: [],
+                range: range,
+                withTemplate: "<script nonce=\"\(nonce)\"$1>"
+            ) ?? html
+
             body = Data(rewritten.utf8)
         }
         return httpResponse(

@@ -4148,7 +4148,7 @@
     }, true);
     let currentUser = null;
     let authOptions = { discordEnabled: true, localEnabled: false };
-    let userPrefs = { theme: 'auto', backgroundAnimation: false, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
+    let userPrefs = { theme: 'auto', backgroundAnimation: true, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
     let currentView = 'overview';
     let dashboardStatus = null;
     let dashboardOverview = null;
@@ -9527,7 +9527,7 @@
       // Always populate symbols if they exist (for auth screen)
       if (symbols) populateAuthSymbols();
 
-      if (!stream || stream.style.display === 'none') return;
+      if (!stream) return;
       const icons = [
         'book-open', 'wrench', 'terminal', 'activity', 'sparkles', 'network',
         'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
