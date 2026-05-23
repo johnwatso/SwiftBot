@@ -235,7 +235,7 @@
 		20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
 		216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		2620F1431DA2A3DAB6CE6F69 /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
 		2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotPermissionsCheckView.swift; sourceTree = "<group>"; };
 		29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupServiceTests.swift; sourceTree = "<group>"; };
@@ -1100,7 +1100,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.20;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1284,7 +1284,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.20;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

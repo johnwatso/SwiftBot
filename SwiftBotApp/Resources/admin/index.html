@@ -4074,6 +4074,37 @@
 
   <script>
     let csrfToken = null;
+    let mediaAccessToken = null;
+    let mediaAccessTokenExpiresAt = 0;
+    let mediaAccessTokenPromise = null;
+
+    async function ensureMediaAccessToken() {
+      const now = Date.now();
+      // Refresh 30s before actual expiry to avoid races on long URLs.
+      if (mediaAccessToken && mediaAccessTokenExpiresAt - now > 30_000) {
+        return mediaAccessToken;
+      }
+      if (mediaAccessTokenPromise) return mediaAccessTokenPromise;
+      mediaAccessTokenPromise = (async () => {
+        try {
+          const res = await fetch('/api/media/access-token', { credentials: 'include' });
+          if (!res.ok) return null;
+          const data = await res.json();
+          mediaAccessToken = data.token || null;
+          mediaAccessTokenExpiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+          return mediaAccessToken;
+        } catch (_) {
+          return null;
+        } finally {
+          mediaAccessTokenPromise = null;
+        }
+      })();
+      return mediaAccessTokenPromise;
+    }
+
+    function mediaAccessQuery() {
+      return mediaAccessToken ? `&token=${encodeURIComponent(mediaAccessToken)}` : '';
+    }
     let currentUser = null;
     let authOptions = { discordEnabled: true, localEnabled: false };
     let userPrefs = { theme: 'auto', backgroundAnimation: false, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
@@ -6263,6 +6294,7 @@
 
 
     async function loadMediaLibrary() {
+      await ensureMediaAccessToken();
       const params = new URLSearchParams();
       if (mediaFilterState.source) params.set('source', mediaFilterState.source);
       if (mediaFilterState.dateRange) params.set('dateRange', mediaFilterState.dateRange);
@@ -6575,8 +6607,7 @@
 
     function frameURLForToken(token, seconds) {
       if (!token) return '';
-      const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
-      return `/api/media/frame?id=${encodeURIComponent(token)}&t=${encodeURIComponent(seconds)}${accessQuery}`;
+      return `/api/media/frame?id=${encodeURIComponent(token)}&t=${encodeURIComponent(seconds)}${mediaAccessQuery()}`;
     }
 
     function scheduleFramePreview(windowEl, token, seconds) {
@@ -7768,7 +7799,7 @@
                     </button>
                   </div>
                 </div>
-                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${mediaExportState.playbackQuality === 'low' ? '&quality=low' : ''}${csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : ''}"></video>
+                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${mediaExportState.playbackQuality === 'low' ? '&quality=low' : ''}${mediaAccessQuery()}"></video>
                 <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
@@ -8102,8 +8133,7 @@
         const secondary = items.find(item => item.id === mediaExportState.secondaryID);
         if (secondary) {
           const probe = document.createElement('video');
-          const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
-          probe.src = `${secondary.streamURL}${accessQuery}`;
+          probe.src = `${secondary.streamURL}${mediaAccessQuery()}`;
           probe.preload = 'metadata';
           probe.addEventListener('loadedmetadata', () => {
             probe.pause();
@@ -8184,7 +8214,7 @@
         const gameName = item.gameName || 'Unknown';
         const modifiedMs = new Date(item.modifiedAt).getTime();
         const isRecent = Number.isFinite(modifiedMs) && (now - modifiedMs) < oneDayMs;
-        const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
+        const accessQuery = mediaAccessQuery();
         const thumbnailURL = `${item.thumbnailURL}${accessQuery}`;
         const streamURL = `${item.streamURL}${accessQuery}`;
         return `
@@ -8239,12 +8269,11 @@
           if (!video || video.dataset.active === 'true') return;
           const item = items.find(entry => entry.id === node.dataset.mediaId);
           if (!item) return;
-          const accessQuery = csrfToken ? `&access=${encodeURIComponent(csrfToken)}` : '';
           video._hoverTimer = setTimeout(() => {
             if (!mediaPreviewAllowed()) return;
             video.dataset.active = 'true';
             video.style.display = 'block';
-            video.src = `${item.streamURL}${accessQuery}`;
+            video.src = `${item.streamURL}${mediaAccessQuery()}`;
             video.play().catch(() => {
               stopHoverPreview(video);
             });
@@ -9353,6 +9382,8 @@
     async function logout() {
       await fetch('/auth/logout', { method: 'POST' });
       csrfToken = null;
+      mediaAccessToken = null;
+      mediaAccessTokenExpiresAt = 0;
       currentUser = null;
       showAuthScreen();
     }

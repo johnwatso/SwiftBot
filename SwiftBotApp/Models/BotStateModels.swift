@@ -38,6 +38,51 @@ struct ActivityEvent: Identifiable, Hashable, Codable {
     }
 }
 
+/// A durable security/admin event for the unified Activity Log.
+/// Source can be the Admin Web UI (auth, config changes) or the bot itself
+/// (moderation actions). Held in memory with a rolling cap on AppModel.
+struct AuditLogEntry: Identifiable, Hashable, Codable {
+    enum Level: String, Codable, Hashable {
+        case info
+        case ok
+        case warning
+        case error
+    }
+
+    enum Source: String, Codable, Hashable {
+        case webAuth = "Web Auth"
+        case webConfig = "Web Config"
+        case moderation = "Moderation"
+        case bot = "Bot"
+    }
+
+    let id: UUID
+    let time: Date
+    let source: Source
+    let actor: String
+    let action: String
+    let detail: String?
+    let level: Level
+
+    init(
+        id: UUID = UUID(),
+        time: Date = Date(),
+        source: Source,
+        actor: String,
+        action: String,
+        detail: String? = nil,
+        level: Level = .info
+    ) {
+        self.id = id
+        self.time = time
+        self.source = source
+        self.actor = actor
+        self.action = action
+        self.detail = detail
+        self.level = level
+    }
+}
+
 struct CommandLogEntry: Identifiable, Hashable, Codable {
     let id: UUID
     let time: Date
