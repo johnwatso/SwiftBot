@@ -445,6 +445,18 @@ final class AppModel: ObservableObject {
             // Also push into the structured event list for analytics consumers.
             let eventKind: ActivityEvent.Kind = level == "error" ? .error : .info
             self.addEvent(.init(timestamp: Date(), kind: eventKind, message: body))
+
+            // Emit a moderation audit only when a non-dry-run deleted something —
+            // dry-runs and idle scans are noise.
+            if !report.dryRun && report.executed > 0 && report.error == nil {
+                self.recordAudit(
+                    source: .moderation,
+                    actor: "Sweep · \(report.policyName)",
+                    action: "Deleted \(report.executed) message\(report.executed == 1 ? "" : "s")",
+                    detail: "#\(channel) · matched \(report.matched), suppressed \(report.suppressed)",
+                    level: .warning
+                )
+            }
         }
         StreamDebug.inAppSink = { [weak self] line in
             Task { @MainActor [weak self] in

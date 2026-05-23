@@ -66,6 +66,13 @@ extension AppModel {
             },
             deleteMessage: { [weak self] c, m, t in
                 try await self?.service.deleteMessage(channelId: c, messageId: m, token: t)
+                self?.recordAudit(
+                    source: .moderation,
+                    actor: "Automation",
+                    action: "Deleted message",
+                    detail: "channel \(c) · msg \(m)",
+                    level: .warning
+                )
             },
             addRole: { [weak self] g, u, r, t in
                 try await self?.service.addRole(guildId: g, userId: u, roleId: r, token: t)
@@ -75,9 +82,23 @@ extension AppModel {
             },
             timeoutMember: { [weak self] g, u, s, t in
                 try await self?.service.timeoutMember(guildId: g, userId: u, durationSeconds: s, token: t)
+                self?.recordAudit(
+                    source: .moderation,
+                    actor: "Automation",
+                    action: "Timed out member",
+                    detail: "user \(u) · guild \(g) · \(s)s",
+                    level: .warning
+                )
             },
             kickMember: { [weak self] g, u, r, t in
                 try await self?.service.kickMember(guildId: g, userId: u, reason: r, token: t)
+                self?.recordAudit(
+                    source: .moderation,
+                    actor: "Automation",
+                    action: "Kicked member",
+                    detail: "user \(u) · guild \(g) · reason: \(r.isEmpty ? "—" : r)",
+                    level: .warning
+                )
             },
             moveMember: { [weak self] g, u, c, t in
                 try await self?.service.moveMember(guildId: g, userId: u, channelId: c, token: t)
