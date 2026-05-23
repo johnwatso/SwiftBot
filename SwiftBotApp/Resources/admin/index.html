@@ -3770,7 +3770,7 @@
                   <div class="cv-usage-title">Usage Trends</div>
                   <div class="cv-usage-sub">Voice sessions over the last 7 days</div>
                 </div>
-                <a class="cv-usage-link" href="#" onclick="event.preventDefault(); selectView('analytics');">View Analytics →</a>
+                <a class="cv-usage-link" href="#" data-action="selectView" data-view="analytics">View Analytics →</a>
               </div>
               <div class="cv-usage-chart-wrap">
                 <div id="usageChartYAxis" class="cv-usage-yaxis"></div>
@@ -4105,6 +4105,48 @@
     function mediaAccessQuery() {
       return mediaAccessToken ? `&token=${encodeURIComponent(mediaAccessToken)}` : '';
     }
+
+    // Delegated event dispatcher. Replaces inline onclick/onchange/onerror so
+    // the page can be served under a strict CSP that forbids inline JS.
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+      const action = el.dataset.action;
+      // Anchors with href="#" need preventDefault so the page doesn't scroll-jump.
+      if (el.tagName === 'A' && (el.getAttribute('href') === '#' || el.getAttribute('href') === '')) {
+        e.preventDefault();
+      }
+      switch (action) {
+        case 'hideModal': hideModal(); break;
+        case 'selectView': selectView(el.dataset.view); break;
+        case 'showSweepReportById':
+          showSweepReportById(el.dataset.id, el.dataset.projection === 'true');
+          break;
+        case 'applySweepSuggestion': applySweepSuggestion(el.dataset.id); break;
+        case 'dismissSweepSuggestion': dismissSweepSuggestion(el.dataset.id); break;
+        case 'previewSweepPolicy': previewSweepPolicy(el.dataset.id); break;
+        case 'runSweepPolicy': runSweepPolicy(el.dataset.id); break;
+        case 'deleteSweepPolicy': deleteSweepPolicy(el.dataset.id); break;
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      const el = e.target;
+      if (!el || !el.dataset || !el.dataset.action) return;
+      if (el.dataset.action === 'toggleSweepPolicy') {
+        toggleSweepPolicy(el.dataset.id, el.checked);
+      }
+    });
+
+    // Capture-phase `error` listener: img elements with data-fallback="next-sibling"
+    // hide themselves and reveal the next sibling element (used for thumbnails
+    // that fall back to a placeholder icon when the asset is missing).
+    document.addEventListener('error', (e) => {
+      const t = e.target;
+      if (!t || t.tagName !== 'IMG' || t.dataset.fallback !== 'next-sibling') return;
+      t.style.display = 'none';
+      if (t.nextElementSibling) t.nextElementSibling.style.display = 'flex';
+    }, true);
     let currentUser = null;
     let authOptions = { discordEnabled: true, localEnabled: false };
     let userPrefs = { theme: 'auto', backgroundAnimation: false, backgroundOpacity: 0.72, rememberLastTab: true, compactMode: false };
@@ -5543,7 +5585,7 @@
       const titleText = (category === 'moderation' ? 'Moderation Rule' : 'Automation');
       const title = (isNew ? 'New ' : 'Edit ') + titleText;
       showModal(title, '<div id="automationEditorBody"></div>', `
-        <button class="secondary-action" type="button" onclick="hideModal()">Cancel</button>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
         <button id="automationEditorSave" class="primary-action" type="button">${isNew ? 'Create' : 'Save'}</button>
       `);
       document.querySelector('.modal-overlay')?.classList.add('automation-editor-modal');
@@ -6182,7 +6224,7 @@
       enableWelcomeRule(kind);
       const title = WELCOME_TEMPLATES.find(t => t.id === kind)?.title || 'Welcome Flow';
       showModal(title, '<div id="welcomeEditorBody"></div>', `
-        <button class="secondary-action" type="button" onclick="hideModal()">Cancel</button>
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
         <button id="welcomeEditorSave" class="primary-action" type="button">Save</button>
       `);
       renderWelcomeEditorBody(kind);
@@ -6813,9 +6855,9 @@
               </div>
               <p style="font-size: 12px; color: var(--muted); margin: 0 0 12px; line-height: 1.4;">${s.rationale}</p>
               <div style="display: flex; align-items: center; gap: 8px;">
-                ${s.projection ? `<button class="mini-btn secondary-action" onclick="showSweepReportById('${s.id}', true)">Preview</button>` : ''}
-                <button class="mini-btn primary-action" onclick="applySweepSuggestion('${s.id}')">Apply Rule</button>
-                <button class="mini-btn secondary-action" onclick="dismissSweepSuggestion('${s.id}')">Dismiss</button>
+                ${s.projection ? `<button class="mini-btn secondary-action" data-action="showSweepReportById" data-id="${s.id}" data-projection="true">Preview</button>` : ''}
+                <button class="mini-btn primary-action" data-action="applySweepSuggestion" data-id="${s.id}">Apply Rule</button>
+                <button class="mini-btn secondary-action" data-action="dismissSweepSuggestion" data-id="${s.id}">Dismiss</button>
               </div>
             </div>
           </div>
@@ -6841,10 +6883,10 @@
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <button class="icon-btn" style="width: 28px; height: 28px;" onclick="previewSweepPolicy('${p.id}')" title="Preview (Dry Run)"><i class="lucide" data-lucide="eye" style="width: 14px; height: 14px;"></i></button>
-              <button class="icon-btn" style="width: 28px; height: 28px;" onclick="runSweepPolicy('${p.id}')" title="Run Now (Live)"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
-              <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} onchange="toggleSweepPolicy('${p.id}', this.checked)"><span class="switch-track"><span class="switch-knob"></span></span></label>
-              <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" onclick="deleteSweepPolicy('${p.id}')" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="previewSweepPolicy" data-id="${p.id}" title="Preview (Dry Run)"><i class="lucide" data-lucide="eye" style="width: 14px; height: 14px;"></i></button>
+              <button class="icon-btn" style="width: 28px; height: 28px;" data-action="runSweepPolicy" data-id="${p.id}" title="Run Now (Live)"><i class="lucide" data-lucide="play" style="width: 14px; height: 14px;"></i></button>
+              <label class="switch" style="transform: scale(0.8); margin-left: 4px;"><input type="checkbox" ${p.isEnabled ? 'checked' : ''} data-action="toggleSweepPolicy" data-id="${p.id}"><span class="switch-track"><span class="switch-knob"></span></span></label>
+              <button class="icon-btn" style="width: 28px; height: 28px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;" data-action="deleteSweepPolicy" data-id="${p.id}" title="Delete"><i class="lucide" data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
             </div>
           </div>
         `).join('');
@@ -6855,7 +6897,7 @@
       // Audit Log
       if (sweepData.recentReports && sweepData.recentReports.length > 0) {
         auditList.innerHTML = sweepData.recentReports.map(r => `
-          <div class="event-item" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" onclick="showSweepReportById('${r.id}')">
+          <div class="event-item" style="padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" data-action="showSweepReportById" data-id="${r.id}">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
               <span style="font-weight: 600; font-size: 12px; color: ${r.error ? '#f87171' : 'inherit'}">${r.policyName}</span>
               <span style="font-size: 10px; color: var(--muted);">${formatTime(r.startedAt)}</span>
@@ -6958,7 +7000,7 @@
         </div>
       `;
 
-      const footer = `<button class="primary-action" onclick="hideModal()" style="width: 100px;">Close</button>`;
+      const footer = `<button class="primary-action" data-action="hideModal" style="width: 100px;">Close</button>`;
       
       showModal(title, body, footer);
       refreshIcons();
@@ -8220,7 +8262,7 @@
         return `
         <article class="glass ${selected && selected.id === item.id ? 'ok' : ''}" data-media-id="${item.id}" title="${item.fileName}" style="cursor:pointer;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;gap:0;min-height:248px;">
           <div style="aspect-ratio:16 / 9;background:rgba(10,14,22,0.35);display:flex;align-items:center;justify-content:center;position:relative;">
-            <img src="${thumbnailURL}" alt="${item.fileName}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <img src="${thumbnailURL}" alt="${item.fileName}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" data-fallback="next-sibling">
             <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><i class="lucide" data-lucide="film" style="width:34px;height:34px;"></i></div>
             <video class="hover-preview" muted playsinline loop preload="none" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
           </div>
@@ -9753,7 +9795,7 @@
     <div class="modal glass">
       <div class="modal-header">
         <div class="modal-title" id="modalTitle">Modal Title</div>
-        <button class="mini-btn" onclick="hideModal()"><i class="lucide" data-lucide="x"></i></button>
+        <button class="mini-btn" data-action="hideModal"><i class="lucide" data-lucide="x"></i></button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>

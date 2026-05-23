@@ -542,6 +542,7 @@ actor AdminWebServer {
         let query: [String: String]
         let headers: [String: String]
         let body: Data
+        var peerIP: String? = nil
     }
 
     private struct Session: Codable {
@@ -699,6 +700,9 @@ actor AdminWebServer {
         var failures: [Date] = []
         var lockedUntil: Date?
     }
+    /// Failed-login buckets keyed by `<peerIP>|<lowercased-username>` so that an
+    /// attacker rotating usernames from a single IP still hits the cap. When the
+    /// peer IP is unknown (rare) we fall back to keying on the username alone.
     private var localLoginAttempts: [String: RateLimitBucket] = [:]
     private let loginFailureWindow: TimeInterval = 5 * 60
     private let loginFailureThreshold = 5
@@ -913,7 +917,24 @@ actor AdminWebServer {
             }
         }
 
+        // No HTTPS configured. Allow cleartext only on loopback interfaces — never
+        // serve admin credentials/cookies in the clear on a routable address.
+        guard isLoopbackBindHost(config.bindHost) else {
+            await logger?("Admin Web UI refusing to start: bindHost \(config.bindHost) is not loopback and HTTPS is not configured. Configure HTTPS or change the bind host to 127.0.0.1.")
+            return
+        }
+
         await startPlainHTTPServer()
+    }
+
+    /// True if `host` is a loopback identifier where cleartext HTTP is acceptable
+    /// (only this machine can reach it). Routable / wildcard hosts must use TLS.
+    private func isLoopbackBindHost(_ host: String) -> Bool {
+        let normalized = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "127.0.0.1"
+            || normalized == "::1"
+            || normalized == "localhost"
+            || normalized == "[::1]"
     }
 
     private func startPlainHTTPServer() async {
@@ -971,11 +992,12 @@ actor AdminWebServer {
                 .childChannelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
                 .childChannelInitializer { channel in
                     do {
+                        let peerIP = channel.remoteAddress?.ipAddress
                         let tlsHandler = NIOSSLServerHandler(context: sslContext)
                         let httpHandler = AdminWebNIOHTTPHandler(
                             maxHTTPRequestSize: self.maxHTTPRequestSize,
                             processor: { requestData in
-                                return await self.process(requestData)
+                                return await self.process(requestData, peerIP: peerIP)
                             }
                         )
                         try channel.pipeline.syncOperations.addHandlers(tlsHandler, httpHandler)
@@ -1068,11 +1090,12 @@ actor AdminWebServer {
             return
         }
 
+        let peerIP = Self.peerIP(of: connection)
         do {
             let requestData = try await withReadTimeout {
                 try await self.receiveHTTPRequest(from: connection)
             }
-            let response = await process(requestData)
+            let response = await process(requestData, peerIP: peerIP)
             try await send(response, over: connection)
         } catch {
             let response = httpResponse(
@@ -1081,6 +1104,25 @@ actor AdminWebServer {
                 contentType: "application/json; charset=utf-8"
             )
             try? await send(response, over: connection)
+        }
+    }
+
+    /// Extract the remote peer's IP string from an accepted NWConnection, if any.
+    nonisolated private static func peerIP(of connection: NWConnection) -> String? {
+        switch connection.endpoint {
+        case .hostPort(let host, _):
+            switch host {
+            case .ipv4(let addr):
+                return addr.debugDescription
+            case .ipv6(let addr):
+                return addr.debugDescription
+            case .name(let name, _):
+                return name
+            @unknown default:
+                return nil
+            }
+        default:
+            return nil
         }
     }
 
@@ -1173,10 +1215,11 @@ actor AdminWebServer {
         return 0
     }
 
-    private func process(_ requestData: Data) async -> Data {
-        guard let request = parseRequest(requestData) else {
+    private func process(_ requestData: Data, peerIP: String? = nil) async -> Data {
+        guard var request = parseRequest(requestData) else {
             return httpResponse(status: "400 Bad Request", body: Data("Invalid request".utf8))
         }
+        request.peerIP = peerIP
 
         pruneExpiredState()
         pruneExpiredSessions()
@@ -2169,17 +2212,65 @@ actor AdminWebServer {
         for (bundle, subdirectory) in candidates {
             if let url = bundle.url(forResource: "index", withExtension: "html", subdirectory: subdirectory),
                let data = try? Data(contentsOf: url) {
-                return httpResponse(status: "200 OK", body: data, contentType: "text/html; charset=utf-8")
+                return serveIndexHTML(data)
             }
         }
 
         if let url = Bundle.main.url(forResource: "index", withExtension: "html"),
            let data = try? Data(contentsOf: url) {
-            return httpResponse(status: "200 OK", body: data, contentType: "text/html; charset=utf-8")
+            return serveIndexHTML(data)
         }
 
         let fallback = "<html><body><h1>SwiftBot Admin UI</h1><p>Missing bundled resource.</p></body></html>"
         return httpResponse(status: "200 OK", body: Data(fallback.utf8), contentType: "text/html; charset=utf-8")
+    }
+
+    /// Adds a per-response CSP nonce to inline `<script>` blocks in the served
+    /// index page and returns the response with the matching `Content-Security-Policy`
+    /// header. Injected `<script>` blocks without the nonce are blocked by the browser.
+    private func serveIndexHTML(_ data: Data) -> Data {
+        let nonce = base64URLEncode(Data((0..<16).map { _ in UInt8.random(in: 0...255) }))
+        var body = data
+        if let html = String(data: data, encoding: .utf8) {
+            // Bare `<script>` only — `<script src=...>` is left untouched and
+            // gated by the script-src allow-list below.
+            let rewritten = html.replacingOccurrences(of: "<script>", with: "<script nonce=\"\(nonce)\">")
+            body = Data(rewritten.utf8)
+        }
+        return httpResponse(
+            status: "200 OK",
+            body: body,
+            contentType: "text/html; charset=utf-8",
+            headers: ["Content-Security-Policy": contentSecurityPolicy(scriptNonce: nonce)]
+        )
+    }
+
+    /// CSP for HTML responses. With a nonce set, injected `<script>` blocks
+    /// (the dominant XSS pivot) cannot execute. Inline event-handler attributes
+    /// are forbidden — the admin UI uses a centralized data-action dispatcher.
+    /// Inline styles are allowed (style XSS cannot execute JS in modern browsers).
+    private func contentSecurityPolicy(scriptNonce: String?) -> String {
+        var scriptSrc = "'self'"
+        if let scriptNonce {
+            scriptSrc += " 'nonce-\(scriptNonce)'"
+        }
+        // Lucide icons are loaded from unpkg.com (pinned version).
+        scriptSrc += " https://unpkg.com"
+        let parts = [
+            "default-src 'self'",
+            "script-src \(scriptSrc)",
+            "script-src-attr 'none'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: https://cdn.discordapp.com https://media.discordapp.net",
+            "media-src 'self' blob:",
+            "connect-src 'self'",
+            "font-src 'self' data:",
+            "frame-ancestors 'none'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            "object-src 'none'"
+        ]
+        return parts.joined(separator: "; ")
     }
 
     private func serveAsset(named name: String, ext: String, subdirectories: [String] = []) -> Data {
@@ -2261,9 +2352,10 @@ actor AdminWebServer {
             return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
         }
 
-        let attemptKey = username.lowercased()
+        let peerKey = request.peerIP ?? "unknown"
+        let attemptKey = "\(peerKey)|\(username.lowercased())"
         if isBucketLocked(localLoginAttempts[attemptKey] ?? RateLimitBucket()) {
-            audit(source: "Web Auth", actor: "local:\(username)", action: "Login blocked", detail: "Rate limit lockout", level: "warning")
+            audit(source: "Web Auth", actor: "local:\(username)", action: "Login blocked", detail: "Rate limit lockout · \(peerKey)", level: "warning")
             return jsonResponse(["error": "rate_limited"], status: "429 Too Many Requests")
         }
 
@@ -2279,7 +2371,7 @@ actor AdminWebServer {
             var bucket = localLoginAttempts[attemptKey] ?? RateLimitBucket()
             registerFailedAttempt(&bucket, threshold: loginFailureThreshold)
             localLoginAttempts[attemptKey] = bucket
-            audit(source: "Web Auth", actor: "local:\(username)", action: "Login failed", detail: "Invalid credentials", level: "warning")
+            audit(source: "Web Auth", actor: "local:\(username)", action: "Login failed", detail: "Invalid credentials · \(peerKey)", level: "warning")
             return jsonResponse(["error": "invalid_credentials"], status: "401 Unauthorized")
         }
 
@@ -3398,6 +3490,12 @@ actor AdminWebServer {
         }
         if activeTransportUsesTLS, normalizedHeaders["strict-transport-security"] == nil {
             response += "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n"
+        }
+        // For HTML responses without an explicit CSP (e.g. auth status pages), apply
+        // a nonce-less default that blocks all inline + external scripts. The index
+        // page sets its own header with a nonce.
+        if contentType.hasPrefix("text/html"), normalizedHeaders["content-security-policy"] == nil {
+            response += "Content-Security-Policy: \(contentSecurityPolicy(scriptNonce: nil))\r\n"
         }
         headers.forEach { key, value in
             response += "\(key): \(value)\r\n"
