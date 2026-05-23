@@ -3503,6 +3503,47 @@
     .automation-editor-row > textarea {
       flex: 1; min-width: 0;
     }
+    .automation-editor-row > .auto-ai-prompt-field {
+      flex: 1; min-width: 0; position: relative;
+    }
+    .auto-ai-prompt-label {
+      display: flex; align-items: center; gap: 5px;
+    }
+    .auto-ai-prompt-help {
+      width: 26px; height: 26px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .auto-ai-prompt-popover {
+      position: absolute; z-index: 30; top: calc(100% + 8px); left: 0;
+      width: min(360px, 100%);
+      padding: 14px; border-radius: 12px;
+      background: color-mix(in srgb, var(--bg-c) 92%, transparent);
+      border: 1px solid var(--glass-stroke);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(24px);
+    }
+    .auto-ai-prompt-popover h4 {
+      margin: 0 0 10px; font-size: 14px; font-weight: 650;
+      color: var(--cv-text-strong);
+    }
+    .auto-ai-help-row {
+      display: flex; align-items: flex-start; gap: 9px; margin-top: 8px;
+    }
+    .auto-ai-help-row i {
+      width: 18px; height: 18px; flex: none; margin-top: 1px;
+    }
+    .auto-ai-help-title {
+      font-size: 13px; font-weight: 650; color: var(--cv-text-strong);
+    }
+    .auto-ai-help-copy {
+      margin-top: 1px; font-size: 11px; line-height: 1.4; color: var(--muted);
+    }
+    .auto-ai-help-example {
+      margin-top: 12px; padding-top: 10px;
+      border-top: 1px solid var(--glass-stroke);
+      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+      font-size: 12px; line-height: 1.45; color: var(--muted);
+    }
     .automation-filter-card, .automation-step-card {
       padding: 12px; border-radius: 10px;
       background: rgba(255,255,255,0.03);
@@ -3619,6 +3660,10 @@
               <button class="nav-link" data-view="moderation" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="shield"></i></span>
                 <span class="nav-text">Moderation</span>
+              </button>
+              <button class="nav-link" data-view="welcome" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="hand"></i></span>
+                <span class="nav-text">Welcome</span>
               </button>
             </div>
 
@@ -3958,6 +4003,7 @@
             </div>
           </div>
           <div id="automationsMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+          <div id="automationsDraft" class="automation-editor-section" style="margin-top: 14px;"></div>
           <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="grid"></i> Start from a template</div>
           <div id="automationsTemplates" class="automation-template-row"></div>
           <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Rules</div>
@@ -3974,10 +4020,25 @@
             </div>
           </div>
           <div id="moderationMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+          <div id="moderationDraft" class="automation-editor-section" style="margin-top: 14px;"></div>
           <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="grid"></i> Start from a template</div>
           <div id="moderationTemplates" class="automation-template-row"></div>
           <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Moderation rules</div>
           <div id="moderationRules" style="display: grid; gap: 10px;"></div>
+        </section>
+
+        <section id="welcomeView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="hand"></i> Welcome Flow</div>
+              <button id="welcomeSave" class="primary-action" type="button"><i class="lucide" data-lucide="save"></i> Save</button>
+            </div>
+          </div>
+          <div id="welcomeMetrics" class="stats-grid" style="margin-top: 10px;"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="grid"></i> Start from a template</div>
+          <div id="welcomeTemplates" class="automation-template-row"></div>
+          <div class="section-mini-title" style="margin-top: 20px; margin-bottom: 12px;"><i class="lucide" data-lucide="list"></i> Rules</div>
+          <div id="welcomeRules" style="display: grid; gap: 10px;"></div>
         </section>
 
         <section id="sectionView" class="view hidden">
@@ -5272,9 +5333,51 @@
       const data = automationData[category];
       if (!data) return;
       renderAutomationMetrics(category, data.metrics);
+      renderAutomationDraft(category);
       renderAutomationTemplates(category, data.templates);
       renderAutomationRules(category, data.rules);
       refreshIcons();
+    }
+
+    function renderAutomationDraft(category) {
+      const root = document.getElementById(category === 'moderation' ? 'moderationDraft' : 'automationsDraft');
+      if (!root) return;
+      const title = category === 'moderation' ? 'Describe a new moderation rule' : 'Describe a new automation';
+      const placeholder = category === 'moderation'
+        ? "e.g. Delete messages containing spam.com"
+        : "e.g. When someone says they're tired, react with 😴";
+      root.innerHTML = `
+        <h3><i class="lucide" data-lucide="sparkles"></i> ${title}</h3>
+        <div class="automation-editor-row" style="grid-template-columns: 1fr auto; align-items: start;">
+          <textarea class="field-input auto-draft-prompt" rows="2" placeholder="${escapeHTML(placeholder)}"></textarea>
+          <button class="primary-action auto-draft-submit" type="button"><i class="lucide" data-lucide="wand-sparkles"></i> Create with AI</button>
+        </div>
+        <div class="placeholder auto-draft-status" style="display:none;margin:8px 0 0;"></div>
+      `;
+      const prompt = root.querySelector('.auto-draft-prompt');
+      const button = root.querySelector('.auto-draft-submit');
+      const status = root.querySelector('.auto-draft-status');
+      button?.addEventListener('click', async () => {
+        const text = prompt.value.trim();
+        if (!text) return;
+        button.disabled = true;
+        status.style.display = 'block';
+        status.textContent = 'Drafting...';
+        try {
+          const payload = await postJSON('/api/automations/draft', { prompt: text, category });
+          if (!payload.rule) {
+            status.textContent = payload.error || payload.unavailableReason || 'Could not draft a rule.';
+            return;
+          }
+          prompt.value = '';
+          status.style.display = 'none';
+          openAutomationEditor(payload.rule, category, true);
+        } catch (e) {
+          status.textContent = e.message || 'Could not draft a rule.';
+        } finally {
+          button.disabled = false;
+        }
+      });
     }
 
     function renderAutomationMetrics(category, metrics) {
@@ -5334,6 +5437,7 @@
           const rule = JSON.parse(JSON.stringify(tpl.rule));
           rule.id = autoNewID();
           rule.category = category;
+          rule.filters = (rule.filters || []).map(f => ({ ...f, id: autoNewID() }));
           rule.steps = (rule.steps || []).map(s => ({ ...s, id: autoNewID() }));
           openAutomationEditor(rule, category, true);
         });
@@ -5420,6 +5524,7 @@
       const { rule, category } = automationEditorState;
       if (!rule.name?.trim()) { alert('Give the rule a name.'); return; }
       if (!rule.steps?.length) { alert('Add at least one step.'); return; }
+      rule.category = category;
       await postJSON('/api/automations/upsert', { rule });
       await loadAutomations(category);
       renderAutomationsView(category);
@@ -5728,7 +5833,7 @@
             (s.sendTarget === 'specificChannel' ? row('Channel',
               `<select class="field-select auto-step-field" data-field="channelId" data-step-index="${idx}">${channelOpts(ctx.textChannels, s.channelId)}</select>`) : ''),
             row('Message', `<textarea class="field-input auto-step-field" data-field="content" data-step-index="${idx}" rows="3" placeholder="Hey {username}!">${escapeHTML(s.content || '')}</textarea>`),
-            row('AI prompt', `<textarea class="field-input auto-step-field" data-field="aiPrompt" data-step-index="${idx}" rows="2" placeholder="Optional — AI writes the body if set">${escapeHTML(s.aiPrompt || '')}</textarea>`)
+            renderAutomationAIPromptRow(s, idx)
           ].join('');
         case 'modifyMember':
           return [
@@ -5770,6 +5875,36 @@
       return '';
     }
 
+    function renderAutomationAIPromptRow(s, idx) {
+      return `<div class="automation-editor-row auto-ai-prompt-row">
+        <label class="auto-ai-prompt-label">
+          <span>AI prompt</span>
+          <button class="mini-btn auto-ai-prompt-help" type="button" data-step-index="${idx}" title="Explain AI prompts" aria-label="Explain AI prompts">
+            <i class="lucide" data-lucide="circle-help"></i>
+          </button>
+        </label>
+        <div class="auto-ai-prompt-field">
+          <textarea class="field-input auto-step-field" data-field="aiPrompt" data-step-index="${idx}" rows="2" placeholder="Optional - AI writes the message if set">${escapeHTML(s.aiPrompt || '')}</textarea>
+          <div class="auto-ai-prompt-popover hidden" data-step-index="${idx}">
+            <h4>AI Prompt</h4>
+            <div class="auto-ai-help-row">
+              <i class="lucide" data-lucide="message-square" style="color:#3b82f6;"></i>
+              <div><div class="auto-ai-help-title">Message empty or static</div><div class="auto-ai-help-copy">If AI prompt is blank, SwiftBot sends the Message field exactly as written after replacing variables.</div></div>
+            </div>
+            <div class="auto-ai-help-row">
+              <i class="lucide" data-lucide="sparkles" style="color:#a855f7;"></i>
+              <div><div class="auto-ai-help-title">AI prompt set</div><div class="auto-ai-help-copy">If AI prompt has text, SwiftBot uses it to generate the message body at runtime. This takes priority over Message.</div></div>
+            </div>
+            <div class="auto-ai-help-row">
+              <i class="lucide" data-lucide="braces" style="color:#14b8a6;"></i>
+              <div><div class="auto-ai-help-title">Variables work here</div><div class="auto-ai-help-copy">Use variables like {username}, {guildName}, {message}, or {channelName} when the trigger supports them.</div></div>
+            </div>
+            <div class="auto-ai-help-example">Write a short friendly reply to {username} about: {message}</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
     function bindAutomationStepFieldEvents() {
       const body = document.getElementById('autoStepsBody');
       if (!body) return;
@@ -5792,14 +5927,29 @@
         el.addEventListener('input', handler);
         el.addEventListener('change', handler);
       });
+      body.querySelectorAll('.auto-ai-prompt-help').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const idx = e.currentTarget.dataset.stepIndex;
+          body.querySelectorAll('.auto-ai-prompt-popover').forEach(popover => {
+            const shouldOpen = popover.dataset.stepIndex === idx && popover.classList.contains('hidden');
+            popover.classList.toggle('hidden', !shouldOpen);
+          });
+          refreshIcons();
+        });
+      });
     }
 
     function sfSymbolToLucide(symbol) {
       // Minimal map for the template icons we use.
       const map = {
         'hand.wave.fill': 'hand',
+        'mail': 'mail',
+        'envelope.fill': 'mail',
         'sparkles': 'sparkles',
         'door.left.hand.open': 'door-open',
+        'speaker.wave.2.fill': 'volume-2',
         'waveform': 'waveform',
         'face.smiling': 'smile',
         'text.bubble.fill': 'message-square',
@@ -5808,12 +5958,307 @@
         'speaker.slash.fill': 'volume-x',
         'textformat.size.larger': 'type',
         'person.crop.square.badge.camera': 'user',
+        'person.crop.circle.badge.plus': 'user-plus',
         'person.fill.xmark': 'user-x',
+        'shield.lefthalf.filled': 'shield',
         'doc.text.below.ecg': 'file-text',
         'music.note': 'music',
         'trash.fill': 'trash-2'
       };
       return map[symbol] || 'circle';
+    }
+
+    // ===== Welcome Flow ================================================
+
+    let welcomeData = null;
+
+    const WELCOME_TEMPLATES = [
+      { id: 'publicGreeting', title: 'Public Greeting', subtitle: 'Post a welcome in a selected channel when someone joins.', symbol: 'hand.wave.fill', tint: 'green' },
+      { id: 'directMessage', title: 'Welcome DM', subtitle: 'Send a private welcome and optionally fall back to channel.', symbol: 'mail', tint: 'blue' },
+      { id: 'inviteRoles', title: 'Invite Role', subtitle: 'Grant roles from invite-specific next-step rules.', symbol: 'link.badge.plus', tint: 'purple' },
+      { id: 'safety', title: 'Safety Gate', subtitle: 'Skip bots or hold welcomes for very new accounts.', symbol: 'shield.lefthalf.filled', tint: 'orange' },
+      { id: 'goodbye', title: 'Goodbye', subtitle: 'Post a departure message when someone leaves.', symbol: 'door.left.hand.open', tint: 'orange' }
+    ];
+
+    async function loadWelcomeFlow() {
+      const response = await fetch('/api/welcome-flow');
+      if (!response.ok) throw new Error('Welcome Flow unavailable');
+      welcomeData = await response.json();
+      return welcomeData;
+    }
+
+    function welcomeSettings() {
+      return welcomeData?.settings || {};
+    }
+
+    function welcomeContext() {
+      return welcomeData?.serverContext || { textChannels: [], roles: [] };
+    }
+
+    function welcomeRuleEnabled(kind) {
+      const s = welcomeSettings();
+      if (kind === 'publicGreeting') return !!s.publicWelcomeEnabled;
+      if (kind === 'directMessage') return !!s.dmWelcomeEnabled;
+      if (kind === 'inviteRoles') return (s.nextStepRules || []).some(r => r.isEnabled && r.roleId);
+      if (kind === 'safety') return !!s.skipBots || (s.minAccountAgeDays || 0) > 0;
+      if (kind === 'goodbye') return !!s.goodbyeEnabled;
+      return false;
+    }
+
+    function enableWelcomeRule(kind) {
+      const s = welcomeSettings();
+      const ctx = welcomeContext();
+      const firstChannel = ctx.textChannels?.[0]?.id || '';
+      if (kind === 'publicGreeting') {
+        s.publicWelcomeEnabled = true;
+        if (!s.publicChannelId) s.publicChannelId = firstChannel;
+      } else if (kind === 'directMessage') {
+        s.dmWelcomeEnabled = true;
+      } else if (kind === 'inviteRoles') {
+        s.nextStepRules = s.nextStepRules || [];
+        if (!s.nextStepRules.length) s.nextStepRules.push(newWelcomeInviteRule());
+      } else if (kind === 'safety') {
+        s.skipBots = true;
+      } else if (kind === 'goodbye') {
+        s.goodbyeEnabled = true;
+        if (!s.goodbyeChannelId) s.goodbyeChannelId = firstChannel;
+      }
+    }
+
+    function disableWelcomeRule(kind) {
+      const s = welcomeSettings();
+      if (kind === 'publicGreeting') s.publicWelcomeEnabled = false;
+      if (kind === 'directMessage') s.dmWelcomeEnabled = false;
+      if (kind === 'inviteRoles') (s.nextStepRules || []).forEach(r => { r.isEnabled = false; r.updatedAt = isoDateNoMillis(); });
+      if (kind === 'safety') { s.skipBots = false; s.minAccountAgeDays = 0; s.accountAgeAction = 'skipWelcome'; }
+      if (kind === 'goodbye') s.goodbyeEnabled = false;
+    }
+
+    function isoDateNoMillis() {
+      return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    }
+
+    function newWelcomeInviteRule() {
+      const n = (welcomeSettings().nextStepRules || []).length + 1;
+      const now = isoDateNoMillis();
+      return { id: autoNewID(), name: `Invite Rule ${n}`, inviteCode: '', roleId: '', isEnabled: true, createdAt: now, updatedAt: now };
+    }
+
+    function renderWelcomeFlow() {
+      if (!welcomeData) return;
+      renderWelcomeMetrics();
+      renderWelcomeTemplates();
+      renderWelcomeRules();
+      refreshIcons();
+    }
+
+    function renderWelcomeMetrics() {
+      const root = document.getElementById('welcomeMetrics');
+      if (!root) return;
+      const s = welcomeSettings();
+      const activeRules = WELCOME_TEMPLATES.filter(t => welcomeRuleEnabled(t.id)).length;
+      const tiles = [
+        { title: 'Active', value: String(activeRules), subtitle: activeRules === 1 ? 'rule enabled' : 'rules enabled', icon: 'check-circle', color: activeRules ? '#22c55e' : 'var(--muted)' },
+        { title: 'Public', value: s.publicWelcomeEnabled ? 'On' : 'Off', subtitle: s.publicChannelId ? 'Channel selected' : 'No channel', icon: 'hand', color: s.publicWelcomeEnabled ? '#22c55e' : '#f97316' },
+        { title: 'Invite Rules', value: String((s.nextStepRules || []).length), subtitle: 'role handoffs', icon: 'link', color: '#a855f7' }
+      ];
+      root.innerHTML = tiles.map(t => `
+        <div class="stat-card glass">
+          <div class="stat-header"><span class="stat-title">${t.title}</span><span class="stat-icon" style="color:${t.color};"><i class="lucide" data-lucide="${t.icon}"></i></span></div>
+          <div class="stat-value">${t.value}</div>
+          <div class="stat-sub">${t.subtitle}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderWelcomeTemplates() {
+      const root = document.getElementById('welcomeTemplates');
+      if (!root) return;
+      const tints = { blue: '#3b82f6', green: '#22c55e', purple: '#a855f7', orange: '#f97316' };
+      root.innerHTML = WELCOME_TEMPLATES.map(t => {
+        const colour = tints[t.tint] || '#3b82f6';
+        return `
+          <div class="automation-template-card" data-welcome-template="${t.id}">
+            <div class="automation-template-icon" style="background:${colour}25;color:${colour};"><i class="lucide" data-lucide="${sfSymbolToLucide(t.symbol)}"></i></div>
+            <div class="automation-template-title">${escapeHTML(t.title)}</div>
+            <div class="automation-template-subtitle">${escapeHTML(t.subtitle)}</div>
+          </div>`;
+      }).join('');
+      root.querySelectorAll('[data-welcome-template]').forEach(el => {
+        el.addEventListener('click', () => {
+          const kind = el.dataset.welcomeTemplate;
+          enableWelcomeRule(kind);
+          openWelcomeEditor(kind);
+          renderWelcomeFlow();
+        });
+      });
+    }
+
+    function renderWelcomeRules() {
+      const root = document.getElementById('welcomeRules');
+      if (!root) return;
+      const descriptors = WELCOME_TEMPLATES.map(t => {
+        const enabled = welcomeRuleEnabled(t.id);
+        return { ...t, enabled, subtitle: welcomeRuleSubtitle(t.id) };
+      }).sort((a, b) => Number(b.enabled) - Number(a.enabled));
+      root.innerHTML = descriptors.map(rule => `
+        <div class="automation-rule-card glass" data-welcome-rule="${rule.id}">
+          <div class="automation-rule-dot" style="background:${rule.enabled ? '#22c55e' : 'rgba(255,255,255,0.35)'};"></div>
+          <div class="automation-rule-text">
+            <div class="automation-rule-name">${escapeHTML(rule.title)}</div>
+            <div class="automation-rule-summary">${escapeHTML(rule.subtitle)}</div>
+          </div>
+          <div class="automation-rule-actions">
+            <button class="mini-btn welcome-rule-toggle" type="button">${rule.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="mini-btn welcome-rule-edit" type="button"><i class="lucide" data-lucide="pencil"></i></button>
+          </div>
+        </div>
+      `).join('');
+      root.querySelectorAll('[data-welcome-rule]').forEach(el => {
+        const kind = el.dataset.welcomeRule;
+        el.querySelector('.welcome-rule-toggle')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          welcomeRuleEnabled(kind) ? disableWelcomeRule(kind) : enableWelcomeRule(kind);
+          renderWelcomeFlow();
+        });
+        el.querySelector('.welcome-rule-edit')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openWelcomeEditor(kind);
+        });
+        el.addEventListener('click', () => openWelcomeEditor(kind));
+      });
+    }
+
+    function welcomeRuleSubtitle(kind) {
+      const s = welcomeSettings();
+      const ctx = welcomeContext();
+      const channelName = id => ctx.textChannels?.find(c => c.id === id)?.name || 'No channel selected';
+      if (kind === 'publicGreeting') return s.publicWelcomeEnabled ? `#${channelName(s.publicChannelId)}` : 'Not posted';
+      if (kind === 'directMessage') return s.dmWelcomeEnabled ? 'DM the new member' : 'Not sent';
+      if (kind === 'inviteRoles') return `${(s.nextStepRules || []).filter(r => r.isEnabled).length} invite rules`;
+      if (kind === 'safety') return welcomeRuleEnabled(kind) ? 'Bots or account-age checks enabled' : 'No safety gate';
+      if (kind === 'goodbye') return s.goodbyeEnabled ? `#${channelName(s.goodbyeChannelId)}` : 'Not sent';
+      return '';
+    }
+
+    async function saveWelcomeFlow() {
+      await postJSON('/api/welcome-flow', { settings: welcomeSettings() });
+      await loadWelcomeFlow();
+      renderWelcomeFlow();
+    }
+
+    function openWelcomeEditor(kind) {
+      enableWelcomeRule(kind);
+      const title = WELCOME_TEMPLATES.find(t => t.id === kind)?.title || 'Welcome Flow';
+      showModal(title, '<div id="welcomeEditorBody"></div>', `
+        <button class="secondary-action" type="button" onclick="hideModal()">Cancel</button>
+        <button id="welcomeEditorSave" class="primary-action" type="button">Save</button>
+      `);
+      renderWelcomeEditorBody(kind);
+      document.getElementById('welcomeEditorSave')?.addEventListener('click', async () => {
+        await saveWelcomeFlow();
+        hideModal();
+      });
+    }
+
+    function channelSelect(id, selected) {
+      const options = `<option value="">-- Pick a text channel --</option>` + (welcomeContext().textChannels || [])
+        .map(c => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>#${escapeHTML(c.name)}</option>`).join('');
+      return `<select id="${id}" class="field-select">${options}</select>`;
+    }
+
+    function roleSelect(cls, selected, index) {
+      const options = `<option value="">-- Pick a role --</option>` + (welcomeContext().roles || [])
+        .map(r => `<option value="${r.id}" ${r.id === selected ? 'selected' : ''}>@${escapeHTML(r.name)}</option>`).join('');
+      return `<select class="field-select ${cls}" data-index="${index}">${options}</select>`;
+    }
+
+    function renderWelcomeEditorBody(kind) {
+      const root = document.getElementById('welcomeEditorBody');
+      if (!root) return;
+      const s = welcomeSettings();
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
+      let html = '';
+      if (kind === 'publicGreeting') {
+        html = row('Enabled', `<input id="wfPublicEnabled" type="checkbox" ${s.publicWelcomeEnabled ? 'checked' : ''}>`) +
+          row('Channel', channelSelect('wfPublicChannel', s.publicChannelId)) +
+          row('Format', `<select id="wfPublicFormat" class="field-select"><option value="plainText" ${s.publicMessageFormat === 'plainText' ? 'selected' : ''}>Plain Text</option><option value="embed" ${s.publicMessageFormat === 'embed' ? 'selected' : ''}>Embed</option></select>`) +
+          row('Message', `<textarea id="wfPublicMessage" class="field-input" rows="4">${escapeHTML(s.publicMessageTemplate || '')}</textarea>`) +
+          row('Embed title', `<input id="wfPublicTitle" class="field-input" value="${escapeHTML(s.publicEmbedTitleTemplate || '')}">`) +
+          row('Embed footer', `<input id="wfPublicFooter" class="field-input" value="${escapeHTML(s.publicEmbedFooterTemplate || '')}">`);
+      } else if (kind === 'directMessage') {
+        html = row('Enabled', `<input id="wfDmEnabled" type="checkbox" ${s.dmWelcomeEnabled ? 'checked' : ''}>`) +
+          row('Message', `<textarea id="wfDmMessage" class="field-input" rows="5">${escapeHTML(s.dmMessageTemplate || '')}</textarea>`) +
+          row('Fallback', `<input id="wfDmFallbackEnabled" type="checkbox" ${s.dmFallbackToChannelEnabled ? 'checked' : ''}>`) +
+          row('Fallback text', `<textarea id="wfDmFallback" class="field-input" rows="3">${escapeHTML(s.dmFallbackTemplate || '')}</textarea>`);
+      } else if (kind === 'inviteRoles') {
+        const rules = s.nextStepRules || [];
+        html = `<div id="wfInviteRules">${rules.map((r, i) => `
+          <div class="automation-step-card" data-index="${i}">
+            <div class="automation-step-header"><span>${escapeHTML(r.name || `Invite Rule ${i + 1}`)}</span><button class="mini-btn wf-invite-remove" type="button"><i class="lucide" data-lucide="x"></i></button></div>
+            ${row('Enabled', `<input class="wf-invite-enabled" data-index="${i}" type="checkbox" ${r.isEnabled ? 'checked' : ''}>`)}
+            ${row('Name', `<input class="field-input wf-invite-name" data-index="${i}" value="${escapeHTML(r.name || '')}">`)}
+            ${row('Invite code', `<input class="field-input wf-invite-code" data-index="${i}" value="${escapeHTML(r.inviteCode || '')}" placeholder="Any invite">`)}
+            ${row('Role', roleSelect('wf-invite-role', r.roleId, i))}
+          </div>`).join('')}</div>
+          <button class="mini-btn" id="wfInviteAdd" type="button" style="margin-top:8px;"><i class="lucide" data-lucide="plus"></i> New Rule</button>`;
+      } else if (kind === 'safety') {
+        html = row('Skip bots', `<input id="wfSkipBots" type="checkbox" ${s.skipBots ? 'checked' : ''}>`) +
+          row('Minimum account age', `<input id="wfMinAge" type="number" class="field-input" value="${s.minAccountAgeDays || 0}">`) +
+          row('Action', `<select id="wfAgeAction" class="field-select"><option value="skipWelcome" ${s.accountAgeAction === 'skipWelcome' ? 'selected' : ''}>Skip silently</option><option value="alertModerators" ${s.accountAgeAction === 'alertModerators' ? 'selected' : ''}>Alert moderators</option></select>`) +
+          row('Alert channel', channelSelect('wfModAlertChannel', s.modAlertChannelId));
+      } else if (kind === 'goodbye') {
+        html = row('Enabled', `<input id="wfGoodbyeEnabled" type="checkbox" ${s.goodbyeEnabled ? 'checked' : ''}>`) +
+          row('Channel', channelSelect('wfGoodbyeChannel', s.goodbyeChannelId)) +
+          row('Format', `<select id="wfGoodbyeFormat" class="field-select"><option value="plainText" ${s.goodbyeMessageFormat === 'plainText' ? 'selected' : ''}>Plain Text</option><option value="embed" ${s.goodbyeMessageFormat === 'embed' ? 'selected' : ''}>Embed</option></select>`) +
+          row('Message', `<textarea id="wfGoodbyeMessage" class="field-input" rows="4">${escapeHTML(s.goodbyeMessageTemplate || '')}</textarea>`) +
+          row('Embed title', `<input id="wfGoodbyeTitle" class="field-input" value="${escapeHTML(s.goodbyeEmbedTitleTemplate || '')}">`) +
+          row('Embed footer', `<input id="wfGoodbyeFooter" class="field-input" value="${escapeHTML(s.goodbyeEmbedFooterTemplate || '')}">`);
+      }
+      root.innerHTML = `<div class="automation-editor-section"><h3><i class="lucide" data-lucide="git-branch"></i> ${escapeHTML(titleCaseWelcome(kind))}</h3>${html}</div>`;
+      bindWelcomeEditor(kind);
+      refreshIcons();
+    }
+
+    function titleCaseWelcome(kind) {
+      return WELCOME_TEMPLATES.find(t => t.id === kind)?.title || 'Welcome Flow';
+    }
+
+    function bindWelcomeEditor(kind) {
+      const s = welcomeSettings();
+      const byID = id => document.getElementById(id);
+      if (kind === 'publicGreeting') {
+        byID('wfPublicEnabled').onchange = e => { s.publicWelcomeEnabled = e.target.checked; };
+        byID('wfPublicChannel').onchange = e => { s.publicChannelId = e.target.value; };
+        byID('wfPublicFormat').onchange = e => { s.publicMessageFormat = e.target.value; };
+        byID('wfPublicMessage').oninput = e => { s.publicMessageTemplate = e.target.value; };
+        byID('wfPublicTitle').oninput = e => { s.publicEmbedTitleTemplate = e.target.value; };
+        byID('wfPublicFooter').oninput = e => { s.publicEmbedFooterTemplate = e.target.value; };
+      } else if (kind === 'directMessage') {
+        byID('wfDmEnabled').onchange = e => { s.dmWelcomeEnabled = e.target.checked; };
+        byID('wfDmMessage').oninput = e => { s.dmMessageTemplate = e.target.value; };
+        byID('wfDmFallbackEnabled').onchange = e => { s.dmFallbackToChannelEnabled = e.target.checked; };
+        byID('wfDmFallback').oninput = e => { s.dmFallbackTemplate = e.target.value; };
+      } else if (kind === 'inviteRoles') {
+        byID('wfInviteAdd').onclick = () => { s.nextStepRules = s.nextStepRules || []; s.nextStepRules.push(newWelcomeInviteRule()); renderWelcomeEditorBody(kind); };
+        document.querySelectorAll('.wf-invite-remove').forEach(btn => btn.onclick = e => { s.nextStepRules.splice(Number(e.target.closest('[data-index]').dataset.index), 1); renderWelcomeEditorBody(kind); });
+        document.querySelectorAll('.wf-invite-enabled').forEach(el => el.onchange = e => { s.nextStepRules[Number(e.target.dataset.index)].isEnabled = e.target.checked; });
+        document.querySelectorAll('.wf-invite-name').forEach(el => el.oninput = e => { s.nextStepRules[Number(e.target.dataset.index)].name = e.target.value; });
+        document.querySelectorAll('.wf-invite-code').forEach(el => el.oninput = e => { s.nextStepRules[Number(e.target.dataset.index)].inviteCode = e.target.value; });
+        document.querySelectorAll('.wf-invite-role').forEach(el => el.onchange = e => { s.nextStepRules[Number(e.target.dataset.index)].roleId = e.target.value; });
+      } else if (kind === 'safety') {
+        byID('wfSkipBots').onchange = e => { s.skipBots = e.target.checked; };
+        byID('wfMinAge').oninput = e => { s.minAccountAgeDays = Math.max(0, parseInt(e.target.value, 10) || 0); };
+        byID('wfAgeAction').onchange = e => { s.accountAgeAction = e.target.value; };
+        byID('wfModAlertChannel').onchange = e => { s.modAlertChannelId = e.target.value; };
+      } else if (kind === 'goodbye') {
+        byID('wfGoodbyeEnabled').onchange = e => { s.goodbyeEnabled = e.target.checked; };
+        byID('wfGoodbyeChannel').onchange = e => { s.goodbyeChannelId = e.target.value; };
+        byID('wfGoodbyeFormat').onchange = e => { s.goodbyeMessageFormat = e.target.value; };
+        byID('wfGoodbyeMessage').oninput = e => { s.goodbyeMessageTemplate = e.target.value; };
+        byID('wfGoodbyeTitle').oninput = e => { s.goodbyeEmbedTitleTemplate = e.target.value; };
+        byID('wfGoodbyeFooter').oninput = e => { s.goodbyeEmbedFooterTemplate = e.target.value; };
+      }
     }
 
 
@@ -8533,6 +8978,7 @@
       const sweep = document.getElementById('sweepView');
       const automations = document.getElementById('automationsView');
       const moderation = document.getElementById('moderationView');
+      const welcome = document.getElementById('welcomeView');
       const wikibridge = document.getElementById('wikibridgeView');
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
@@ -8548,7 +8994,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, sweep, automations, moderation, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, patchy, sweep, automations, moderation, welcome, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -8626,6 +9072,14 @@
           renderAutomationsView('moderation');
         })();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Moderation';
+        setMessage('', '');
+      } else if (view === 'welcome') {
+        welcome?.classList.remove('hidden');
+        (async () => {
+          try { await loadWelcomeFlow(); } catch (e) { console.error(e); }
+          renderWelcomeFlow();
+        })();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Welcome Flow';
         setMessage('', '');
       } else if (view === 'wikibridge') {
         overview.classList.add('hidden');
@@ -8814,7 +9268,7 @@
       showDashboard();
       await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadMediaData()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
+      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'welcome', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
       
       // Load auth options in background for the "logout" logic/labels
@@ -8834,6 +9288,15 @@
         const cat = btn.dataset.category || 'automation';
         openAutomationEditor(autoBlankRule(cat), cat, true);
       });
+    });
+
+    document.getElementById('welcomeSave')?.addEventListener('click', async () => {
+      try {
+        await saveWelcomeFlow();
+        setMessage('Welcome Flow saved.', 'success');
+      } catch (e) {
+        setMessage(e.message || 'Could not save Welcome Flow.', 'error');
+      }
     });
 
     document.getElementById('sidebarUserSettings')?.addEventListener('click', () => {

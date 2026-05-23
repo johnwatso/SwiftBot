@@ -1164,6 +1164,42 @@ extension AppModel {
         }
     }
 
+    func adminWebWelcomeFlowSnapshot() -> AdminWebWelcomeFlowPayload {
+        let ctx = automationServerContext()
+        let webCtx = AdminWebAutomationServerContext(
+            guildName: ctx.guildName,
+            guildId: ctx.guildId,
+            textChannels: ctx.textChannels.map { AdminWebSimpleOption(id: $0.id, name: $0.name) },
+            voiceChannels: ctx.voiceChannels.map { AdminWebSimpleOption(id: $0.id, name: $0.name) },
+            roles: ctx.roles.map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+        )
+        let flow = settings.welcomeFlow
+        let safetyEnabled = flow.skipBots || flow.minAccountAgeDays > 0
+        let activeRules = [
+            flow.publicWelcomeEnabled,
+            flow.dmWelcomeEnabled,
+            !flow.activeNextStepRules.isEmpty,
+            safetyEnabled,
+            flow.goodbyeEnabled
+        ].filter { $0 }.count
+
+        return AdminWebWelcomeFlowPayload(
+            settings: flow,
+            serverContext: webCtx,
+            metrics: AdminWebWelcomeFlowMetrics(
+                activeRules: activeRules,
+                inviteRules: flow.nextStepRules.count,
+                safetyEnabled: safetyEnabled
+            )
+        )
+    }
+
+    func updateAdminWebWelcomeFlow(_ flow: WelcomeFlowSettings) -> Bool {
+        settings.welcomeFlow = flow
+        saveSettings()
+        return true
+    }
+
     func updatePrefixFromAdmin(_ prefix: String) -> Bool {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
@@ -1391,6 +1427,48 @@ extension AppModel {
                     model.automationStore.toggleEnabled(id: id)
                     return true
                 }
+            },
+            draftAutomation: { [weak self] prompt, category in
+                guard let model = self else {
+                    return AdminWebAutomationDraftPayload(
+                        rule: nil,
+                        error: "Automations drafting is unavailable.",
+                        unavailableReason: nil
+                    )
+                }
+                let task = await MainActor.run {
+                    Task { @MainActor in
+                        do {
+                            var rule = try await model.automationDrafter.draft(
+                                prompt: prompt,
+                                context: model.automationServerContext()
+                            )
+                            rule.category = category
+                            return AdminWebAutomationDraftPayload(rule: rule, error: nil, unavailableReason: nil)
+                        } catch {
+                            return AdminWebAutomationDraftPayload(
+                                rule: nil,
+                                error: error.localizedDescription,
+                                unavailableReason: model.automationDrafter.unavailabilityReason
+                            )
+                        }
+                    }
+                }
+                return await task.value
+            },
+            welcomeFlowProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebWelcomeFlowPayload(
+                        settings: WelcomeFlowSettings(),
+                        serverContext: AdminWebAutomationServerContext(guildName: nil, guildId: nil, textChannels: [], voiceChannels: [], roles: []),
+                        metrics: AdminWebWelcomeFlowMetrics(activeRules: 0, inviteRules: 0, safetyEnabled: false)
+                    )
+                }
+                return await MainActor.run { model.adminWebWelcomeFlowSnapshot() }
+            },
+            updateWelcomeFlow: { [weak self] flow in
+                guard let model = self else { return false }
+                return await MainActor.run { model.updateAdminWebWelcomeFlow(flow) }
             },
             patchyProvider: { [weak self] in
                 guard let model = self else {

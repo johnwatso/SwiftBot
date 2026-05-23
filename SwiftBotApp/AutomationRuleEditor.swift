@@ -7,6 +7,7 @@ struct AutomationRuleEditor: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var rule: Automations.Rule
+    @State private var aiPromptHelpStepID: String?
     let isNew: Bool
     let serverContext: AutomationDrafter.ServerContext
     let onSave: (Automations.Rule) -> Void
@@ -150,7 +151,7 @@ struct AutomationRuleEditor: View {
         VStack(alignment: .leading, spacing: 14) {
             formRow(label: "When") {
                 Picker("", selection: $rule.trigger.kind) {
-                    ForEach(Automations.TriggerKind.allCases, id: \.self) { kind in
+                    ForEach(Automations.TriggerKind.visibleCases(for: rule.category), id: \.self) { kind in
                         Text(AutomationLabels.trigger(kind)).tag(kind)
                     }
                 }
@@ -455,19 +456,122 @@ struct AutomationRuleEditor: View {
                 stepCard(index: idx)
             }
             HStack {
-                Button {
-                    rule.steps.append(Automations.Step(
-                        kind: .sendMessage,
-                        sendTarget: .replyToTrigger,
-                        content: ""
-                    ))
+                Menu {
+                    ForEach(stepPresets(for: rule.category), id: \.id) { preset in
+                        Button {
+                            rule.steps.append(preset.step)
+                        } label: {
+                            Label(preset.title, systemImage: preset.symbol)
+                        }
+                    }
                 } label: {
                     Label("Add step", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 Spacer()
             }
+        }
+    }
+
+    private struct StepPreset: Identifiable {
+        let id: String
+        let title: String
+        let symbol: String
+        let step: Automations.Step
+    }
+
+    private func stepPresets(for category: Automations.Category) -> [StepPreset] {
+        switch category {
+        case .automation:
+            return [
+                StepPreset(
+                    id: "send-message",
+                    title: "Send message",
+                    symbol: "text.bubble",
+                    step: Automations.Step(kind: .sendMessage, sendTarget: .replyToTrigger, content: "")
+                ),
+                StepPreset(
+                    id: "wait",
+                    title: "Wait",
+                    symbol: "clock",
+                    step: Automations.Step(kind: .delay, delaySeconds: 10)
+                ),
+                StepPreset(
+                    id: "write-log",
+                    title: "Write to log",
+                    symbol: "list.clipboard",
+                    step: Automations.Step(kind: .log, logText: "{username} triggered {guildName}")
+                ),
+                StepPreset(
+                    id: "call-webhook",
+                    title: "Call webhook",
+                    symbol: "network",
+                    step: Automations.Step(kind: .webhook, webhookUrl: "", webhookContent: "{message}")
+                )
+            ]
+        case .moderation:
+            return [
+                StepPreset(
+                    id: "delete-message",
+                    title: "Delete message",
+                    symbol: "text.badge.xmark",
+                    step: Automations.Step(kind: .modifyMessage, messageOp: .delete)
+                ),
+                StepPreset(
+                    id: "timeout-user",
+                    title: "Timeout user",
+                    symbol: "timer",
+                    step: Automations.Step(kind: .modifyMember, memberOp: .timeout, timeoutSeconds: 300)
+                ),
+                StepPreset(
+                    id: "kick-user",
+                    title: "Kick user",
+                    symbol: "person.fill.xmark",
+                    step: Automations.Step(kind: .modifyMember, memberOp: .kick, kickReason: "Rule violation")
+                ),
+                StepPreset(
+                    id: "add-role",
+                    title: "Add role",
+                    symbol: "person.badge.plus",
+                    step: Automations.Step(kind: .modifyMember, memberOp: .addRole)
+                ),
+                StepPreset(
+                    id: "remove-role",
+                    title: "Remove role",
+                    symbol: "person.badge.minus",
+                    step: Automations.Step(kind: .modifyMember, memberOp: .removeRole)
+                ),
+                StepPreset(
+                    id: "move-voice",
+                    title: "Move voice user",
+                    symbol: "arrow.triangle.swap",
+                    step: Automations.Step(kind: .modifyMember, memberOp: .moveVoice)
+                ),
+                StepPreset(
+                    id: "dm-warning",
+                    title: "DM warning",
+                    symbol: "envelope",
+                    step: Automations.Step(
+                        kind: .sendMessage,
+                        sendTarget: .directMessage,
+                        content: "Hi {username}, please review the server rules."
+                    )
+                ),
+                StepPreset(
+                    id: "write-mod-log",
+                    title: "Write to moderation log",
+                    symbol: "list.clipboard",
+                    step: Automations.Step(kind: .log, logText: "{username}: {message}")
+                ),
+                StepPreset(
+                    id: "wait",
+                    title: "Wait",
+                    symbol: "clock",
+                    step: Automations.Step(kind: .delay, delaySeconds: 10)
+                )
+            ]
         }
     }
 
@@ -537,9 +641,7 @@ struct AutomationRuleEditor: View {
             }
             multilineRow(label: "Message", value: $rule.steps[index].content,
                          placeholder: "Hey {username}!")
-            multilineRow(label: "AI prompt", value: $rule.steps[index].aiPrompt,
-                         placeholder: "Optional — AI writes the message if set",
-                         help: "When set, the AI generates the message body using this prompt. Leaves Message blank.")
+            aiPromptRow(index: index)
 
         case .modifyMember:
             formRow(label: "Operation") {
@@ -652,6 +754,51 @@ struct AutomationRuleEditor: View {
                 if variablesEnabled {
                     variablePickerMenu(value: value)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func aiPromptRow(index: Int) -> some View {
+        let stepID = rule.steps[index].id
+
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(spacing: 5) {
+                Text("AI prompt")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    aiPromptHelpStepID = stepID
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .help("Explain AI prompts")
+                .popover(isPresented: Binding(
+                    get: { aiPromptHelpStepID == stepID },
+                    set: { if !$0 { aiPromptHelpStepID = nil } }
+                ), arrowEdge: .top) {
+                    AutomationAIPromptHelpPopover()
+                }
+            }
+            .frame(width: 110, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                VariableAutocompleteField(
+                    text: Binding(
+                        get: { rule.steps[index].aiPrompt ?? "" },
+                        set: { rule.steps[index].aiPrompt = $0.isEmpty ? nil : $0 }
+                    ),
+                    placeholder: "Optional - AI writes the message if set",
+                    triggerKind: rule.trigger.kind,
+                    multiline: true
+                )
+
+                variablePickerMenu(value: $rule.steps[index].aiPrompt)
             }
         }
     }
@@ -894,5 +1041,58 @@ private struct AutomationFormSection<Content: View>: View {
                 .strokeBorder(.black.opacity(0.18), lineWidth: 1)
                 .blendMode(.plusDarker)
         )
+    }
+}
+
+private struct AutomationAIPromptHelpPopover: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("AI Prompt")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("How it works")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                helpRow(symbol: "text.bubble", color: .blue, title: "Message empty or static",
+                        description: "If AI prompt is blank, SwiftBot sends the Message field exactly as written after replacing variables.")
+                helpRow(symbol: "sparkles", color: .purple, title: "AI prompt set",
+                        description: "If AI prompt has text, SwiftBot uses it to generate the message body at runtime. This takes priority over Message.")
+                helpRow(symbol: "curlybraces", color: .teal, title: "Variables work here",
+                        description: "Use Insert variable to add tokens like {username}, {guildName}, {message}, or {channelName} when the trigger supports them.")
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Example")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Write a short friendly reply to {username} about: {message}")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(width: 360, alignment: .leading)
+    }
+
+    private func helpRow(symbol: String, color: Color, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }

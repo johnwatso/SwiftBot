@@ -1,37 +1,16 @@
 import SwiftUI
 
 struct WelcomeFlowView: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case greeting, dm, safety, goodbye, nextSteps
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .greeting: return "Greeting"
-            case .dm: return "DM"
-            case .safety: return "Safety"
-            case .goodbye: return "Goodbye"
-            case .nextSteps: return "Next Steps"
-            }
-        }
-        var symbol: String {
-            switch self {
-            case .greeting: return "person.crop.circle.badge.plus"
-            case .dm: return "envelope.fill"
-            case .safety: return "shield.lefthalf.filled"
-            case .goodbye: return "door.left.hand.open"
-            case .nextSteps: return "map.fill"
-            }
-        }
-    }
-
     @EnvironmentObject private var app: AppModel
-    @AppStorage("swiftbot.welcomeFlow.selectedTab") private var selectedTab: Tab = .greeting
     @State private var selectedGuildID: String = ""
     @State private var testSendInFlight: Bool = false
     @State private var testSendFeedback: String?
     @State private var showPreviewSheet: Bool = false
+    @State private var editingFlow: WelcomeFlowEditTarget?
     @State private var inviteRefreshInFlight: Bool = false
     @State private var inviteRefreshFeedback: String?
+    @State private var welcomeRuleOrder: [WelcomeFlowEditTarget.Kind] = WelcomeFlowEditTarget.Kind.defaultOrder
+    @State private var pendingRuleSortTask: Task<Void, Never>?
     @Namespace private var formatSelectorNamespace
 
     private func bindFlow<Value>(_ keyPath: WritableKeyPath<WelcomeFlowSettings, Value>) -> Binding<Value> {
@@ -138,6 +117,101 @@ struct WelcomeFlowView: View {
             .map { "#\($0.name)" } ?? "Unknown channel"
     }
 
+    private var goodbyeChannelName: String {
+        let channelID = app.settings.welcomeFlow.goodbyeChannelId
+        guard !channelID.isEmpty else { return "No channel selected" }
+        return app.availableTextChannelsByServer.values
+            .joined()
+            .first(where: { $0.id == channelID })
+            .map { "#\($0.name)" } ?? "Unknown channel"
+    }
+
+    private var publicGreetingSubtitle: String {
+        app.settings.welcomeFlow.publicWelcomeEnabled ? "Member joins -> \(selectedChannelName)" : "Not posted"
+    }
+
+    private var inviteRulesSubtitle: String {
+        let count = app.settings.welcomeFlow.activeNextStepRules.count
+        if count == 0 { return "No role steps configured" }
+        return count == 1 ? "1 invite role rule" : "\(count) invite role rules"
+    }
+
+    private var safetyIsActive: Bool {
+        app.settings.welcomeFlow.skipBots || app.settings.welcomeFlow.minAccountAgeDays > 0
+    }
+
+    private var safetySubtitle: String {
+        let flow = app.settings.welcomeFlow
+        if flow.skipBots, flow.minAccountAgeDays > 0 {
+            return "Skip bots + require \(flow.minAccountAgeDays)d account age"
+        }
+        if flow.skipBots { return "Skip bot accounts" }
+        if flow.minAccountAgeDays > 0 { return "Require \(flow.minAccountAgeDays)d account age" }
+        return "No safety conditions"
+    }
+
+    private var welcomeRuleDescriptors: [WelcomeFlowRuleDescriptor] {
+        let descriptors = [
+            WelcomeFlowRuleDescriptor(
+                order: 0,
+                title: "Public greeting",
+                subtitle: publicGreetingSubtitle,
+                symbol: "hand.wave.fill",
+                tint: app.settings.welcomeFlow.publicWelcomeEnabled ? .green : .secondary,
+                isEnabled: app.settings.welcomeFlow.publicWelcomeEnabled,
+                isVisible: app.settings.welcomeFlow.publicWelcomeEnabled,
+                target: .publicGreeting
+            ),
+            WelcomeFlowRuleDescriptor(
+                order: 1,
+                title: "Welcome DM",
+                subtitle: app.settings.welcomeFlow.dmWelcomeEnabled ? "DM the new member" : "Not sent",
+                symbol: "envelope.fill",
+                tint: app.settings.welcomeFlow.dmWelcomeEnabled ? .teal : .secondary,
+                isEnabled: app.settings.welcomeFlow.dmWelcomeEnabled,
+                isVisible: app.settings.welcomeFlow.dmWelcomeEnabled,
+                target: .directMessage
+            ),
+            WelcomeFlowRuleDescriptor(
+                order: 2,
+                title: "Invite role rules",
+                subtitle: inviteRulesSubtitle,
+                symbol: "link.badge.plus",
+                tint: app.settings.welcomeFlow.activeNextStepRules.isEmpty ? .secondary : .purple,
+                isEnabled: !app.settings.welcomeFlow.activeNextStepRules.isEmpty,
+                isVisible: app.settings.welcomeFlow.autoRoleEnabled || !app.settings.welcomeFlow.nextStepRules.isEmpty,
+                target: .inviteRoles
+            ),
+            WelcomeFlowRuleDescriptor(
+                order: 3,
+                title: "Safety conditions",
+                subtitle: safetySubtitle,
+                symbol: "shield.lefthalf.filled",
+                tint: safetyIsActive ? .orange : .secondary,
+                isEnabled: safetyIsActive,
+                isVisible: safetyIsActive,
+                target: .safety
+            ),
+            WelcomeFlowRuleDescriptor(
+                order: 4,
+                title: "Goodbye message",
+                subtitle: app.settings.welcomeFlow.goodbyeEnabled ? goodbyeChannelName : "Not sent",
+                symbol: "door.left.hand.open",
+                tint: app.settings.welcomeFlow.goodbyeEnabled ? .orange : .secondary,
+                isEnabled: app.settings.welcomeFlow.goodbyeEnabled,
+                isVisible: app.settings.welcomeFlow.goodbyeEnabled,
+                target: .goodbye
+            )
+        ].filter(\.isVisible)
+
+        let fallbackOrder = Dictionary(uniqueKeysWithValues: descriptors.map { ($0.target, $0.order) })
+        return descriptors.sorted {
+            let left = welcomeRuleOrder.firstIndex(of: $0.target) ?? fallbackOrder[$0.target] ?? $0.order
+            let right = welcomeRuleOrder.firstIndex(of: $1.target) ?? fallbackOrder[$1.target] ?? $1.order
+            return left < right
+        }
+    }
+
     private var previewMessage: String {
         renderPreview(app.settings.welcomeFlow.publicMessageTemplate)
     }
@@ -161,7 +235,7 @@ struct WelcomeFlowView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 metrics
-                tabbedCard
+                welcomeRuleBuilderSurface
             }
             .frame(maxWidth: 880, alignment: .leading)
             .frame(maxWidth: .infinity)
@@ -173,7 +247,18 @@ struct WelcomeFlowView: View {
         .sheet(isPresented: $showPreviewSheet) {
             previewSheet
         }
-        .onAppear(perform: syncSelectedGuild)
+        .sheet(item: $editingFlow) { target in
+            flowEditorSheet(target)
+                .frame(minWidth: 640, idealWidth: 760, minHeight: 560, idealHeight: 700)
+        }
+        .onAppear {
+            syncSelectedGuild()
+            sortWelcomeRules(animated: false)
+        }
+        .onDisappear {
+            pendingRuleSortTask?.cancel()
+            pendingRuleSortTask = nil
+        }
         .onChange(of: app.settings.welcomeFlow.publicChannelId) { _, _ in
             syncSelectedGuild()
         }
@@ -209,77 +294,680 @@ struct WelcomeFlowView: View {
         }
     }
 
-    private var tabbedCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            tabBar
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .padding(.bottom, 6)
-            Divider()
-                .opacity(0.5)
-            activeSection
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
-    }
+    private var welcomeRuleBuilderSurface: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            AutomationsSection(title: "Start from a template", symbol: "square.grid.2x2") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 10) {
+                        welcomeTemplateCard(
+                            title: "Public Greeting",
+                            subtitle: "Post a simple welcome in a selected channel when someone joins.",
+                            symbol: "hand.wave.fill",
+                            tint: .green,
+                            preset: .publicGreeting
+                        )
+                        welcomeTemplateCard(
+                            title: "Welcome Embed",
+                            subtitle: "Post a richer welcome card with the member count and avatar.",
+                            symbol: "rectangle.portrait.on.rectangle.portrait.angled",
+                            tint: .blue,
+                            preset: .publicEmbed
+                        )
+                        welcomeTemplateCard(
+                            title: "Welcome DM",
+                            subtitle: "Send a private welcome and fall back to the channel if blocked.",
+                            symbol: "envelope.fill",
+                            tint: .teal,
+                            preset: .directMessage
+                        )
+                        welcomeTemplateCard(
+                            title: "Invite Role",
+                            subtitle: "Create a starter invite-based role assignment rule.",
+                            symbol: "link.badge.plus",
+                            tint: .purple,
+                            preset: .inviteRoles
+                        )
+                        welcomeTemplateCard(
+                            title: "New Account Safety",
+                            subtitle: "Skip bots and alert moderators for very new accounts.",
+                            symbol: "shield.lefthalf.filled",
+                            tint: .orange,
+                            preset: .safety
+                        )
+                        welcomeTemplateCard(
+                            title: "Goodbye",
+                            subtitle: "Post a departure message when someone leaves.",
+                            symbol: "door.left.hand.open",
+                            tint: .orange,
+                            preset: .goodbye
+                        )
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
 
-    @ViewBuilder
-    private var activeSection: some View {
-        Group {
-            switch selectedTab {
-            case .greeting: greetingSection
-            case .dm: dmSection
-            case .safety: safetySection
-            case .goodbye: goodbyeSection
-            case .nextSteps: roadmapSection
+            AutomationsSection(title: "Rules", symbol: "list.bullet") {
+                VStack(spacing: 6) {
+                    if welcomeRuleDescriptors.isEmpty {
+                        PlaceholderPanelLine(text: "No welcome flow rules yet. Start from a template above, or use Add rule.")
+                    } else {
+                        ForEach(welcomeRuleDescriptors) { rule in
+                            welcomeRuleRow(
+                                title: rule.title,
+                                subtitle: rule.subtitle,
+                                symbol: rule.symbol,
+                                tint: rule.tint,
+                                isEnabled: rule.isEnabled,
+                                target: rule.target
+                            )
+                        }
+                    }
+
+                    Divider().padding(.vertical, 2)
+
+                    HStack {
+                        Menu {
+                            Button("Public greeting") {
+                                applyWelcomePreset(.publicGreeting)
+                            }
+                            Button("Welcome DM") {
+                                applyWelcomePreset(.directMessage)
+                            }
+                            Button("Invite role rule") {
+                                applyWelcomePreset(.inviteRoles)
+                            }
+                            Button("Safety conditions") {
+                                applyWelcomePreset(.safety)
+                            }
+                            Button("Goodbye message") {
+                                applyWelcomePreset(.goodbye)
+                            }
+                        } label: {
+                            Label("Add rule", systemImage: "plus.circle")
+                                .font(.subheadline)
+                        }
+                        .menuStyle(.borderlessButton)
+                        Spacer()
+                    }
+                }
             }
         }
-        .transition(.opacity.combined(with: .scale(scale: 0.995)))
-        .id(selectedTab)
-        .animation(.easeInOut(duration: 0.16), value: selectedTab)
     }
 
-    private var tabBar: some View {
-        HStack(spacing: 2) {
-            ForEach(Tab.allCases) { tab in
-                tabPill(tab)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func tabPill(_ tab: Tab) -> some View {
-        let isSelected = selectedTab == tab
-        return Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                selectedTab = tab
-            }
+    private func welcomeTemplateCard(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        tint: Color,
+        preset: WelcomeFlowTemplatePreset
+    ) -> some View {
+        Button {
+            applyWelcomePreset(preset)
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: tab.symbol)
-                    .font(.caption2.weight(.semibold))
-                Text(tab.title)
-                    .font(.caption.weight(.medium))
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(tint.opacity(0.14)))
+
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3, reservesSpace: true)
+                    .multilineTextAlignment(.leading)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .foregroundStyle(isSelected ? Color.white : .secondary)
+            .padding(12)
+            .frame(width: 210, height: 150, alignment: .topLeading)
             .background(
-                Capsule().fill(isSelected ? Color.accentColor : Color.clear)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
             )
-            .contentShape(Capsule())
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+    }
+
+    private func welcomeRuleRow(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        tint: Color,
+        isEnabled: Bool,
+        target: WelcomeFlowEditTarget.Kind
+    ) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(isEnabled ? Color.green : Color.secondary.opacity(0.5))
+                .frame(width: 7, height: 7)
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(tint)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isRuleEnabled(target) },
+                set: { newValue in
+                    newValue ? enableRule(target) : disableRule(target)
+                    scheduleWelcomeRuleSort()
+                }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            Button {
+                editingFlow = WelcomeFlowEditTarget(kind: target)
+            } label: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Edit")
+
+            Button(role: .destructive) {
+                deleteRule(target)
+                scheduleWelcomeRuleSort()
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+            .help("Delete rule")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            editingFlow = WelcomeFlowEditTarget(kind: target)
+        }
+        .contextMenu {
+            Button("Edit") {
+                editingFlow = WelcomeFlowEditTarget(kind: target)
+            }
+            Button(isEnabled ? "Disable" : "Enable") {
+                isEnabled ? disableRule(target) : enableRule(target)
+                scheduleWelcomeRuleSort()
+            }
+            Button("Delete", role: .destructive) {
+                deleteRule(target)
+                scheduleWelcomeRuleSort()
+            }
+        }
+    }
+
+    private func flowEditorSheet(_ target: WelcomeFlowEditTarget) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            flowEditorHeader(target.kind)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    switch target.kind {
+                    case .publicGreeting:
+                        flowStage(title: "WHEN this happens", symbol: "bolt.fill", tint: .blue) {
+                            joinTriggerStage
+                        }
+                        flowStage(title: "THEN do these steps", symbol: "arrow.triangle.branch", tint: .green) {
+                            greetingSection
+                        }
+
+                    case .directMessage:
+                        flowStage(title: "WHEN this happens", symbol: "bolt.fill", tint: .blue) {
+                            joinTriggerStage
+                        }
+                        flowStage(title: "THEN do these steps", symbol: "arrow.triangle.branch", tint: .green) {
+                            dmSection
+                        }
+
+                    case .inviteRoles:
+                        flowStage(title: "WHEN this happens", symbol: "bolt.fill", tint: .blue) {
+                            joinTriggerStage
+                        }
+                        flowStage(title: "IF this invite was used", symbol: "line.3.horizontal.decrease.circle", tint: .orange) {
+                            roadmapSection
+                        }
+
+                    case .safety:
+                        flowStage(title: "WHEN this happens", symbol: "bolt.fill", tint: .blue) {
+                            joinTriggerStage
+                        }
+                        flowStage(title: "IF these conditions match", symbol: "line.3.horizontal.decrease.circle", tint: .orange) {
+                            safetySection
+                        }
+
+                    case .goodbye:
+                        flowStage(title: "WHEN this happens", symbol: "bolt.fill", tint: .blue) {
+                            leaveTriggerStage
+                        }
+                        flowStage(title: "THEN do these steps", symbol: "arrow.triangle.branch", tint: .green) {
+                            goodbyeSection
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 18)
+            }
+
+            VStack(spacing: 0) {
+                Divider().opacity(0.45)
+                HStack {
+                    Button(role: .destructive) {
+                        deleteRule(target.kind)
+                        scheduleWelcomeRuleSort()
+                        editingFlow = nil
+                    } label: {
+                        Label("Delete rule", systemImage: "trash")
+                    }
+
+                    Spacer()
+
+                    Button {
+                        if isRuleEnabled(target.kind) {
+                            disableRule(target.kind)
+                        } else {
+                            enableRule(target.kind)
+                        }
+                        scheduleWelcomeRuleSort()
+                        editingFlow = nil
+                    } label: {
+                        Label(
+                            isRuleEnabled(target.kind) ? "Disable rule" : "Enable rule",
+                            systemImage: isRuleEnabled(target.kind) ? "pause.circle" : "play.circle"
+                        )
+                    }
+                    Button("Done") {
+                        editingFlow = nil
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+            }
+            .background(.thinMaterial)
+        }
+    }
+
+    private func flowEditorHeader(_ kind: WelcomeFlowEditTarget.Kind) -> some View {
+        let meta = editorMetadata(for: kind)
+        return HStack(alignment: .center, spacing: 16) {
+            Image(systemName: meta.symbol)
+                .font(.system(size: 28, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(meta.tint)
+                .frame(width: 52, height: 52)
+                .background(Circle().fill(meta.tint.opacity(0.14)))
+                .overlay(Circle().stroke(meta.tint.opacity(0.18), lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(meta.title)
+                    .font(.title2.weight(.bold))
+                Text(meta.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+    }
+
+    private func editorMetadata(for kind: WelcomeFlowEditTarget.Kind) -> (title: String, subtitle: String, symbol: String, tint: Color) {
+        switch kind {
+        case .publicGreeting:
+            return (
+                "Public Greeting",
+                "When a member joins, post a welcome message in a channel.",
+                "hand.wave.fill",
+                .green
+            )
+        case .directMessage:
+            return (
+                "Welcome DM",
+                "When a member joins, send them a private welcome.",
+                "envelope.fill",
+                .teal
+            )
+        case .inviteRoles:
+            return (
+                "Invite Role Rules",
+                "When a member joins through an invite, grant the matching role.",
+                "link.badge.plus",
+                .purple
+            )
+        case .safety:
+            return (
+                "Safety Conditions",
+                "Gate welcome handling for bots and newly-created accounts.",
+                "shield.lefthalf.filled",
+                .orange
+            )
+        case .goodbye:
+            return (
+                "Goodbye Message",
+                "When a member leaves, post a departure message.",
+                "door.left.hand.open",
+                .orange
+            )
+        }
+    }
+
+    private func applyWelcomePreset(_ preset: WelcomeFlowTemplatePreset) {
+        let kind = preset.target
+        applyWelcomePresetSettings(preset)
+        scheduleWelcomeRuleSort()
+        editingFlow = WelcomeFlowEditTarget(kind: kind)
+    }
+
+    private func applyWelcomePresetSettings(_ preset: WelcomeFlowTemplatePreset) {
+        switch preset {
+        case .publicGreeting:
+            enableRule(.publicGreeting)
+            app.settings.welcomeFlow.publicMessageFormat = .plainText
+            app.settings.welcomeFlow.publicMessageTemplate = "👋 Welcome {userMention} to **{server}**! You are member #{memberCount}."
+            if app.settings.welcomeFlow.publicMessageTemplatePool.isEmpty {
+                app.settings.welcomeFlow.publicMessageTemplatePool = [
+                    "👋 Welcome {userMention} to **{server}**!",
+                    "Glad you made it, {username}. Welcome to **{server}**.",
+                    "Everyone say hi to {userMention} - member #{memberCount}!"
+                ]
+            }
+        case .publicEmbed:
+            enableRule(.publicGreeting)
+            app.settings.welcomeFlow.publicMessageFormat = .embed
+            app.settings.welcomeFlow.publicEmbedTitleTemplate = "Welcome to {server}"
+            app.settings.welcomeFlow.publicMessageTemplate = "Glad you made it, {userMention}. Take a look around and say hello when you are ready."
+            app.settings.welcomeFlow.publicEmbedFooterTemplate = "Member #{memberCount}"
+            app.settings.welcomeFlow.publicEmbedShowAvatar = true
+            app.settings.welcomeFlow.publicEmbedShowAuthor = true
+        case .directMessage:
+            enableRule(.directMessage)
+            app.settings.welcomeFlow.dmMessageTemplate = """
+            Welcome to {server}, {username}!
+
+            Please check the rules and introduce yourself when you are ready.
+            """
+            app.settings.welcomeFlow.dmFallbackToChannelEnabled = true
+            app.settings.welcomeFlow.dmFallbackTemplate = "👋 {userMention}, welcome to **{server}**. I tried to DM you, but your DMs are closed."
+        case .inviteRoles:
+            if app.settings.welcomeFlow.nextStepRules.isEmpty {
+                app.settings.welcomeFlow.nextStepRules = [
+                    WelcomeFlowRule(name: "Invite role")
+                ]
+            }
+            enableRule(.inviteRoles)
+        case .safety:
+            enableRule(.safety)
+            app.settings.welcomeFlow.skipBots = true
+            if app.settings.welcomeFlow.minAccountAgeDays == 0 {
+                app.settings.welcomeFlow.minAccountAgeDays = 7
+            }
+            app.settings.welcomeFlow.accountAgeAction = .alertModerators
+        case .goodbye:
+            enableRule(.goodbye)
+            app.settings.welcomeFlow.goodbyeMessageFormat = .plainText
+            app.settings.welcomeFlow.goodbyeMessageTemplate = "{username} left **{server}**. We are now at {memberCount} members."
+        }
+        saveSettingsAfterViewUpdate()
+    }
+
+    private func scheduleWelcomeRuleSort() {
+        pendingRuleSortTask?.cancel()
+        pendingRuleSortTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            sortWelcomeRules(animated: true)
+            pendingRuleSortTask = nil
+        }
+    }
+
+    private func sortWelcomeRules(animated: Bool) {
+        let sorted = welcomeRuleDescriptors
+            .sorted {
+                if $0.isEnabled != $1.isEnabled { return $0.isEnabled && !$1.isEnabled }
+                return $0.order < $1.order
+            }
+            .map(\.target)
+
+        guard welcomeRuleOrder != sorted else { return }
+        if animated {
+            withAnimation(.snappy(duration: 0.28)) {
+                welcomeRuleOrder = sorted
+            }
+        } else {
+            welcomeRuleOrder = sorted
+        }
+    }
+
+    private func enableRule(_ kind: WelcomeFlowEditTarget.Kind) {
+        switch kind {
+        case .publicGreeting:
+            app.settings.welcomeFlow.publicWelcomeEnabled = true
+            if app.settings.welcomeFlow.publicChannelId.isEmpty {
+                app.settings.welcomeFlow.publicChannelId =
+                    defaultWelcomeChannelID(for: selectedGuildID)
+                    ?? (app.availableTextChannelsByServer[selectedGuildID] ?? []).first?.id
+                    ?? ""
+            }
+        case .directMessage:
+            app.settings.welcomeFlow.dmWelcomeEnabled = true
+        case .inviteRoles:
+            if app.settings.welcomeFlow.nextStepRules.isEmpty {
+                app.settings.welcomeFlow.nextStepRules.append(WelcomeFlowRule(name: "Invite Rule 1"))
+            }
+        case .safety:
+            app.settings.welcomeFlow.skipBots = true
+        case .goodbye:
+            app.settings.welcomeFlow.goodbyeEnabled = true
+            if app.settings.welcomeFlow.goodbyeChannelId.isEmpty {
+                app.settings.welcomeFlow.goodbyeChannelId =
+                    defaultWelcomeChannelID(for: selectedGuildID)
+                    ?? (app.availableTextChannelsByServer[selectedGuildID] ?? []).first?.id
+                    ?? ""
+            }
+        }
+        saveSettingsAfterViewUpdate()
+    }
+
+    private func disableRule(_ kind: WelcomeFlowEditTarget.Kind) {
+        switch kind {
+        case .publicGreeting:
+            app.settings.welcomeFlow.publicWelcomeEnabled = false
+        case .directMessage:
+            app.settings.welcomeFlow.dmWelcomeEnabled = false
+        case .inviteRoles:
+            app.settings.welcomeFlow.autoRoleEnabled = false
+            app.settings.welcomeFlow.nextStepRules = app.settings.welcomeFlow.nextStepRules.map { rule in
+                var disabled = rule
+                disabled.isEnabled = false
+                disabled.updatedAt = Date()
+                return disabled
+            }
+        case .safety:
+            app.settings.welcomeFlow.skipBots = false
+            app.settings.welcomeFlow.minAccountAgeDays = 0
+            app.settings.welcomeFlow.accountAgeAction = .skipWelcome
+        case .goodbye:
+            app.settings.welcomeFlow.goodbyeEnabled = false
+        }
+        saveSettingsAfterViewUpdate()
+    }
+
+    private func deleteRule(_ kind: WelcomeFlowEditTarget.Kind) {
+        let defaults = WelcomeFlowSettings()
+        switch kind {
+        case .publicGreeting:
+            app.settings.welcomeFlow.publicWelcomeEnabled = false
+            app.settings.welcomeFlow.publicChannelId = ""
+            app.settings.welcomeFlow.publicMessageFormat = defaults.publicMessageFormat
+            app.settings.welcomeFlow.publicMessageTemplate = defaults.publicMessageTemplate
+            app.settings.welcomeFlow.publicMessageTemplatePool = []
+            app.settings.welcomeFlow.publicEmbedTitleTemplate = defaults.publicEmbedTitleTemplate
+            app.settings.welcomeFlow.publicEmbedFooterTemplate = defaults.publicEmbedFooterTemplate
+            app.settings.welcomeFlow.publicEmbedColor = defaults.publicEmbedColor
+            app.settings.welcomeFlow.publicEmbedShowAvatar = defaults.publicEmbedShowAvatar
+            app.settings.welcomeFlow.publicEmbedShowAuthor = defaults.publicEmbedShowAuthor
+        case .directMessage:
+            app.settings.welcomeFlow.dmWelcomeEnabled = false
+            app.settings.welcomeFlow.dmMessageTemplate = defaults.dmMessageTemplate
+            app.settings.welcomeFlow.dmFallbackToChannelEnabled = defaults.dmFallbackToChannelEnabled
+            app.settings.welcomeFlow.dmFallbackTemplate = defaults.dmFallbackTemplate
+        case .inviteRoles:
+            app.settings.welcomeFlow.autoRoleEnabled = false
+            app.settings.welcomeFlow.autoRoleId = ""
+            app.settings.welcomeFlow.nextStepRules = []
+        case .safety:
+            app.settings.welcomeFlow.skipBots = false
+            app.settings.welcomeFlow.minAccountAgeDays = 0
+            app.settings.welcomeFlow.accountAgeAction = .skipWelcome
+            app.settings.welcomeFlow.modAlertChannelId = ""
+        case .goodbye:
+            app.settings.welcomeFlow.goodbyeEnabled = false
+            app.settings.welcomeFlow.goodbyeChannelId = ""
+            app.settings.welcomeFlow.goodbyeMessageFormat = defaults.goodbyeMessageFormat
+            app.settings.welcomeFlow.goodbyeMessageTemplate = defaults.goodbyeMessageTemplate
+            app.settings.welcomeFlow.goodbyeEmbedTitleTemplate = defaults.goodbyeEmbedTitleTemplate
+            app.settings.welcomeFlow.goodbyeEmbedFooterTemplate = defaults.goodbyeEmbedFooterTemplate
+            app.settings.welcomeFlow.goodbyeEmbedColor = defaults.goodbyeEmbedColor
+        }
+        saveSettingsAfterViewUpdate()
+    }
+
+    private func isRuleEnabled(_ kind: WelcomeFlowEditTarget.Kind) -> Bool {
+        switch kind {
+        case .publicGreeting:
+            return app.settings.welcomeFlow.publicWelcomeEnabled
+        case .directMessage:
+            return app.settings.welcomeFlow.dmWelcomeEnabled
+        case .inviteRoles:
+            return !app.settings.welcomeFlow.activeNextStepRules.isEmpty
+        case .safety:
+            return safetyIsActive
+        case .goodbye:
+            return app.settings.welcomeFlow.goodbyeEnabled
+        }
+    }
+
+    private func flowStage<Content: View>(
+        title: String,
+        symbol: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(tint.opacity(0.13)))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+            }
+
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+    }
+
+    private var joinTriggerStage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            flowSummaryRow(
+                symbol: "person.badge.plus",
+                title: "A member joins the server",
+                detail: app.settings.welcomeFlow.handlesMemberJoin
+                    ? "SwiftBot will evaluate the welcome conditions below."
+                    : "Enable a greeting, DM, or invite role to activate this rule.",
+                tint: app.settings.welcomeFlow.handlesMemberJoin ? .green : .secondary
+            )
+
+            pickerField(label: "Server", selection: $selectedGuildID, options: serverOptions) { newValue in
+                let channels = app.availableTextChannelsByServer[newValue] ?? []
+                if !channels.contains(where: { $0.id == app.settings.welcomeFlow.publicChannelId }) {
+                    app.settings.welcomeFlow.publicChannelId = defaultWelcomeChannelID(for: newValue) ?? channels.first?.id ?? ""
+                    saveSettingsAfterViewUpdate()
+                }
+            }
+        }
+    }
+
+    private var leaveTriggerStage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            flowSummaryRow(
+                symbol: "person.crop.circle.badge.minus",
+                title: "A member leaves the server",
+                detail: app.settings.welcomeFlow.goodbyeEnabled
+                    ? "SwiftBot will post the configured goodbye message."
+                    : "Turn on the goodbye step below to activate this rule.",
+                tint: app.settings.welcomeFlow.goodbyeEnabled ? .green : .secondary
+            )
+
+            pickerField(label: "Server", selection: $selectedGuildID, options: serverOptions) { _ in }
+        }
+    }
+
+    private func flowSummaryRow(symbol: String, title: String, detail: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.headline)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(tint)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 
     private var metrics: some View {
@@ -347,16 +1035,7 @@ struct WelcomeFlowView: View {
 
                 Divider()
 
-                HStack(alignment: .top, spacing: 14) {
-                    pickerField(label: "Server", selection: $selectedGuildID, options: serverOptions) { newValue in
-                        let channels = app.availableTextChannelsByServer[newValue] ?? []
-                        if !channels.contains(where: { $0.id == app.settings.welcomeFlow.publicChannelId }) {
-                            app.settings.welcomeFlow.publicChannelId = defaultWelcomeChannelID(for: newValue) ?? channels.first?.id ?? ""
-                            saveSettingsAfterViewUpdate()
-                        }
-                    }
-                    pickerField(label: "Channel", selection: selectedChannelID, options: textChannelOptions) { _ in }
-                }
+                pickerField(label: "Channel", selection: selectedChannelID, options: textChannelOptions) { _ in }
 
                 messageFormatSelector("Message style", selection: publicMessageFormat)
 
@@ -1069,6 +1748,60 @@ struct WelcomeFlowView: View {
 private struct WelcomeFlowPickerOption: Identifiable, Hashable {
     let id: String
     let label: String
+}
+
+private struct WelcomeFlowEditTarget: Identifiable, Hashable {
+    enum Kind: String, Hashable, CaseIterable {
+        case publicGreeting
+        case directMessage
+        case inviteRoles
+        case safety
+        case goodbye
+
+        static var defaultOrder: [Kind] {
+            [.publicGreeting, .directMessage, .inviteRoles, .safety, .goodbye]
+        }
+    }
+
+    let kind: Kind
+    var id: String { kind.rawValue }
+}
+
+private enum WelcomeFlowTemplatePreset: Hashable {
+    case publicGreeting
+    case publicEmbed
+    case directMessage
+    case inviteRoles
+    case safety
+    case goodbye
+
+    var target: WelcomeFlowEditTarget.Kind {
+        switch self {
+        case .publicGreeting, .publicEmbed:
+            return .publicGreeting
+        case .directMessage:
+            return .directMessage
+        case .inviteRoles:
+            return .inviteRoles
+        case .safety:
+            return .safety
+        case .goodbye:
+            return .goodbye
+        }
+    }
+}
+
+private struct WelcomeFlowRuleDescriptor: Identifiable {
+    let order: Int
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let tint: Color
+    let isEnabled: Bool
+    let isVisible: Bool
+    let target: WelcomeFlowEditTarget.Kind
+
+    var id: String { target.rawValue }
 }
 
 private struct WelcomeFlowGlassButtonStyle: ButtonStyle {

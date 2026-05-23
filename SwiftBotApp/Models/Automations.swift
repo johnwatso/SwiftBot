@@ -88,6 +88,24 @@ enum Automations {
         case reactionAdded
         case slashCommand
         case mediaAdded
+
+        static func visibleCases(for category: Category) -> [TriggerKind] {
+            switch category {
+            case .automation:
+                return allCases
+            case .moderation:
+                return [
+                    .messageCreated,
+                    .memberJoined,
+                    .memberLeft,
+                    .userJoinedVoice,
+                    .userLeftVoice,
+                    .userMovedVoice,
+                    .reactionAdded,
+                    .slashCommand
+                ]
+            }
+        }
     }
 
     /// Lean trigger — only the params that *define* the trigger itself (a

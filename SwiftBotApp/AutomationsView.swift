@@ -311,6 +311,11 @@ struct AutomationsView: View {
             Circle()
                 .fill(rule.enabled ? Color.green : Color.secondary.opacity(0.5))
                 .frame(width: 7, height: 7)
+            Image(systemName: ruleSymbol(rule))
+                .font(.subheadline.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(ruleTint(rule))
+                .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(rule.name.isEmpty ? "Untitled" : rule.name)
                     .font(.subheadline.weight(.medium))
@@ -385,6 +390,56 @@ struct AutomationsView: View {
         let s = rule.steps.first.map { AutomationLabels.stepKind($0.kind) } ?? "—"
         return "\(t) → \(s)"
     }
+
+    private func ruleSymbol(_ rule: Automations.Rule) -> String {
+        if rule.category == .moderation {
+            if rule.steps.contains(where: { $0.kind == .modifyMember }) {
+                return "person.fill.xmark"
+            }
+            if rule.steps.contains(where: { $0.kind == .modifyMessage }) {
+                return "text.badge.xmark"
+            }
+            if rule.steps.contains(where: { $0.kind == .log }) {
+                return "list.clipboard"
+            }
+            return "shield.lefthalf.filled"
+        }
+
+        switch rule.trigger.kind {
+        case .userJoinedVoice: return "speaker.wave.2.fill"
+        case .userLeftVoice:   return "speaker.slash.fill"
+        case .userMovedVoice:  return "arrow.triangle.swap"
+        case .messageCreated:
+            if rule.steps.contains(where: { $0.kind == .modifyMessage }) {
+                return "face.smiling"
+            }
+            return "text.bubble.fill"
+        case .memberJoined:    return "person.crop.circle.badge.plus"
+        case .memberLeft:      return "door.left.hand.open"
+        case .reactionAdded:   return "face.smiling"
+        case .slashCommand:    return "terminal.fill"
+        case .mediaAdded:      return "movieclapper.fill"
+        }
+    }
+
+    private func ruleTint(_ rule: Automations.Rule) -> Color {
+        guard rule.enabled else { return .secondary }
+        if rule.category == .moderation {
+            return rule.steps.contains(where: { $0.kind == .log }) ? .orange : .red
+        }
+
+        switch rule.trigger.kind {
+        case .userJoinedVoice: return .green
+        case .userLeftVoice:   return .orange
+        case .userMovedVoice:  return .indigo
+        case .messageCreated:  return .blue
+        case .memberJoined:    return .green
+        case .memberLeft:      return .orange
+        case .reactionAdded:   return .blue
+        case .slashCommand:    return .purple
+        case .mediaAdded:      return .indigo
+        }
+    }
 }
 
 // MARK: - Sheet identity wrapper
@@ -453,8 +508,8 @@ enum AutomationLabels {
     static func stepKind(_ kind: Automations.StepKind) -> String {
         switch kind {
         case .sendMessage:   return "Send a message"
-        case .modifyMember:  return "Modify the member"
-        case .modifyMessage: return "Modify the message"
+        case .modifyMember:  return "Member action"
+        case .modifyMessage: return "Message action"
         case .log:           return "Write to the log"
         case .webhook:       return "Call a webhook"
         case .delay:         return "Wait"
@@ -463,11 +518,11 @@ enum AutomationLabels {
 
     static func memberOp(_ op: Automations.MemberOp) -> String {
         switch op {
-        case .addRole:    return "Add role"
-        case .removeRole: return "Remove role"
-        case .timeout:    return "Timeout"
-        case .kick:       return "Kick"
-        case .moveVoice:  return "Move voice"
+        case .addRole:    return "Add role to user"
+        case .removeRole: return "Remove role from user"
+        case .timeout:    return "Timeout user"
+        case .kick:       return "Kick user"
+        case .moveVoice:  return "Move voice user"
         }
     }
 }
