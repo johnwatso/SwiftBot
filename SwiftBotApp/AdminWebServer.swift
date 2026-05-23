@@ -347,6 +347,33 @@ struct AdminWebAutomationRuleIDPatch: Codable {
     let id: String
 }
 
+struct AdminWebAutomationDraftPatch: Codable {
+    let prompt: String
+    let category: Automations.Category
+}
+
+struct AdminWebAutomationDraftPayload: Codable {
+    let rule: Automations.Rule?
+    let error: String?
+    let unavailableReason: String?
+}
+
+struct AdminWebWelcomeFlowPayload: Codable {
+    let settings: WelcomeFlowSettings
+    let serverContext: AdminWebAutomationServerContext
+    let metrics: AdminWebWelcomeFlowMetrics
+}
+
+struct AdminWebWelcomeFlowMetrics: Codable {
+    let activeRules: Int
+    let inviteRules: Int
+    let safetyEnabled: Bool
+}
+
+struct AdminWebWelcomeFlowPatch: Codable {
+    let settings: WelcomeFlowSettings
+}
+
 struct AdminWebPatchyPayload: Codable {
     let monitoringEnabled: Bool
     let showDebug: Bool
@@ -554,6 +581,11 @@ actor AdminWebServer {
         return encoder
     }()
     private let decoder = JSONDecoder()
+    private let apiDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
     private var config = Configuration(
         enabled: false,
         bindHost: "127.0.0.1",
@@ -594,6 +626,9 @@ actor AdminWebServer {
     private var upsertAutomation: (@Sendable (Automations.Rule) async -> Bool)?
     private var deleteAutomation: (@Sendable (String) async -> Bool)?
     private var toggleAutomation: (@Sendable (String) async -> Bool)?
+    private var draftAutomation: (@Sendable (String, Automations.Category) async -> AdminWebAutomationDraftPayload)?
+    private var welcomeFlowProvider: (@Sendable () async -> AdminWebWelcomeFlowPayload)?
+    private var updateWelcomeFlow: (@Sendable (WelcomeFlowSettings) async -> Bool)?
     private var patchyProvider: (@Sendable () async -> AdminWebPatchyPayload)?
     private var updatePatchyState: (@Sendable (AdminWebPatchyStatePatch) async -> Bool)?
     private var createPatchyTarget: (@Sendable () async -> PatchySourceTarget?)?
@@ -668,6 +703,9 @@ actor AdminWebServer {
         upsertAutomation: @escaping @Sendable (Automations.Rule) async -> Bool,
         deleteAutomation: @escaping @Sendable (String) async -> Bool,
         toggleAutomation: @escaping @Sendable (String) async -> Bool,
+        draftAutomation: @escaping @Sendable (String, Automations.Category) async -> AdminWebAutomationDraftPayload,
+        welcomeFlowProvider: @escaping @Sendable () async -> AdminWebWelcomeFlowPayload,
+        updateWelcomeFlow: @escaping @Sendable (WelcomeFlowSettings) async -> Bool,
         patchyProvider: @escaping @Sendable () async -> AdminWebPatchyPayload,
         updatePatchyState: @escaping @Sendable (AdminWebPatchyStatePatch) async -> Bool,
         createPatchyTarget: @escaping @Sendable () async -> PatchySourceTarget?,
@@ -734,6 +772,9 @@ actor AdminWebServer {
         self.upsertAutomation = upsertAutomation
         self.deleteAutomation = deleteAutomation
         self.toggleAutomation = toggleAutomation
+        self.draftAutomation = draftAutomation
+        self.welcomeFlowProvider = welcomeFlowProvider
+        self.updateWelcomeFlow = updateWelcomeFlow
         self.patchyProvider = patchyProvider
         self.updatePatchyState = updatePatchyState
         self.createPatchyTarget = createPatchyTarget
@@ -1353,6 +1394,45 @@ actor AdminWebServer {
             }
             guard await toggleAutomation?(patch.id) == true else {
                 return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/automations/draft"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAutomationDraftPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            let payload = await draftAutomation?(patch.prompt, patch.category)
+                ?? AdminWebAutomationDraftPayload(rule: nil, error: "Automations drafting is unavailable.", unavailableReason: nil)
+            return codableResponse(payload)
+
+        case ("GET", "/api/welcome-flow"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let provider = welcomeFlowProvider {
+                let payload = await provider()
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "welcome_flow_unavailable"], status: "503 Service Unavailable")
+
+        case ("POST", "/api/welcome-flow"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? apiDecoder.decode(AdminWebWelcomeFlowPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateWelcomeFlow?(patch.settings) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
             }
             return jsonResponse(["ok": true])
 
@@ -2089,18 +2169,14 @@ actor AdminWebServer {
         // acknowledge it instead of running the user-login path.
         if let guildID = request.query["guild_id"] {
             await logger?("Bot re-invite callback for guild \(guildID)")
-            let body = """
-            <!doctype html><html><head><meta charset="utf-8"><title>Bot permissions updated</title>\
-            <style>body{font-family:-apple-system,system-ui,sans-serif;max-width:560px;margin:10vh auto;padding:0 1.5rem;color:#222}\
-            h1{font-size:1.4rem}p{line-height:1.5}</style></head><body>\
-            <h1>Bot permissions updated</h1>\
-            <p>SwiftBot's permissions have been refreshed for guild <code>\(guildID)</code>.</p>\
-            <p>You can close this tab and return to the app.</p></body></html>
-            """
-            return httpResponse(
+            return authStatusPageResponse(
                 status: "200 OK",
-                body: Data(body.utf8),
-                contentType: "text/html; charset=utf-8"
+                title: "Bot permissions updated",
+                eyebrow: "Discord authorization",
+                message: "SwiftBot's permissions have been refreshed.",
+                detail: "Guild \(guildID). You can close this tab and return to the app.",
+                actionTitle: "Open Web UI",
+                actionURL: "/"
             )
         }
         guard let code = request.query["code"], let state = request.query["state"] else {
@@ -2115,7 +2191,16 @@ actor AdminWebServer {
             let user = try await fetchDiscordUser(accessToken: token)
             let guilds = try await fetchDiscordGuilds(accessToken: token)
             guard await isAuthorized(userID: user.id, guilds: guilds) else {
-                return httpResponse(status: "403 Forbidden", body: Data("This Discord account is not allowed.".utf8))
+                await logger?("Admin Web UI login denied for \(user.username) (\(user.id))")
+                return authStatusPageResponse(
+                    status: "403 Forbidden",
+                    title: "Access not allowed",
+                    eyebrow: "SwiftBot Web Admin",
+                    message: "This Discord account does not have permission to sign in.",
+                    detail: "Ask a SwiftBot administrator to add your Discord user ID, or sign in with an account that can manage one of the connected servers.",
+                    actionTitle: "Try another Discord account",
+                    actionURL: "/auth/discord/login"
+                )
             }
 
             let session = Session(
@@ -2223,19 +2308,12 @@ actor AdminWebServer {
         ])
     }
 
-    /// Reads `?category=automation|moderation` from a request path, defaulting
-    /// to `.automation` when absent or unrecognised.
+    /// Reads `?category=automation|moderation`, defaulting to `.automation`
+    /// when absent or unrecognised.
     private func categoryParam(from request: HTTPRequest) -> Automations.Category {
-        let raw = request.path
-            .split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
-            .dropFirst().first.map(String.init) ?? ""
-        for pair in raw.split(separator: "&") {
-            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
-            if parts.count == 2, parts[0] == "category" {
-                if let kind = Automations.Category(rawValue: parts[1]) {
-                    return kind
-                }
-            }
+        if let raw = request.query["category"],
+           let kind = Automations.Category(rawValue: raw) {
+            return kind
         }
         return .automation
     }
@@ -2554,6 +2632,171 @@ actor AdminWebServer {
 
     private func unauthorizedResponse() -> Data {
         jsonResponse(["error": "unauthorized"], status: "401 Unauthorized")
+    }
+
+    private func authStatusPageResponse(
+        status: String,
+        title: String,
+        eyebrow: String,
+        message: String,
+        detail: String,
+        actionTitle: String,
+        actionURL: String
+    ) -> Data {
+        let safeTitle = escapedHTML(title)
+        let safeEyebrow = escapedHTML(eyebrow)
+        let safeMessage = escapedHTML(message)
+        let safeDetail = escapedHTML(detail)
+        let safeActionTitle = escapedHTML(actionTitle)
+        let safeActionURL = escapedHTML(actionURL)
+        let body = """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>\(safeTitle) - SwiftBot</title>
+          <link rel="icon" type="image/png" href="/favicon.png">
+          <style>
+            :root {
+              color-scheme: light dark;
+              --page-bg: #080b11;
+              --text: rgba(255, 255, 255, 0.94);
+              --muted: rgba(255, 255, 255, 0.62);
+              --soft: rgba(255, 255, 255, 0.42);
+              --card: rgba(10, 10, 15, 0.45);
+              --stroke: rgba(255, 255, 255, 0.15);
+              --button: linear-gradient(135deg, #5865f2 0%, #4c57d6 100%);
+            }
+            @media (prefers-color-scheme: light) {
+              :root {
+                --page-bg: #f4f5f7;
+                --text: #1d1d1f;
+                --muted: rgba(0, 0, 0, 0.66);
+                --soft: rgba(0, 0, 0, 0.50);
+                --card: rgba(255, 255, 255, 0.45);
+                --stroke: rgba(255, 255, 255, 0.45);
+              }
+            }
+            * { box-sizing: border-box; }
+            body {
+              min-height: 100vh;
+              margin: 0;
+              display: grid;
+              place-items: center;
+              padding: 24px 20px;
+              overflow: hidden;
+              background: var(--page-bg);
+              color: var(--text);
+              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+            }
+            body::before {
+              content: "";
+              position: fixed;
+              width: 40rem;
+              height: 40rem;
+              top: -10rem;
+              left: 50%;
+              transform: translateX(-50%);
+              border-radius: 999px;
+              background: radial-gradient(circle, rgba(32, 140, 255, 0.34), transparent 70%);
+              filter: blur(80px);
+              pointer-events: none;
+            }
+            body::after {
+              content: "";
+              position: fixed;
+              inset: 0;
+              opacity: 0.03;
+              background-image: radial-gradient(circle at center, currentColor 1px, transparent 1px);
+              background-size: 32px 32px;
+              pointer-events: none;
+            }
+            main {
+              position: relative;
+              z-index: 1;
+              width: min(440px, 100%);
+              padding: 28px 22px 22px;
+              border: 1px solid var(--stroke);
+              border-radius: 24px;
+              background: var(--card);
+              box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
+              backdrop-filter: blur(12px) saturate(1.8);
+              -webkit-backdrop-filter: blur(12px) saturate(1.8);
+              text-align: center;
+            }
+            img {
+              width: 88px;
+              height: 88px;
+              object-fit: contain;
+              border-radius: 999px;
+              filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
+            }
+            .eyebrow {
+              margin: 18px 0 8px;
+              color: var(--soft);
+              font-size: 11px;
+              font-weight: 700;
+              letter-spacing: 0.12em;
+              text-transform: uppercase;
+            }
+            h1 {
+              margin: 0;
+              font-size: 32px;
+              line-height: 1.05;
+              letter-spacing: -0.03em;
+            }
+            p {
+              margin: 10px auto 0;
+              max-width: 336px;
+              color: var(--muted);
+              font-size: 14px;
+              line-height: 1.48;
+            }
+            .detail {
+              color: var(--soft);
+              font-size: 13px;
+            }
+            a {
+              width: 100%;
+              height: 56px;
+              margin-top: 24px;
+              border-radius: 14px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              color: #fff;
+              background: var(--button);
+              font-size: 16px;
+              font-weight: 650;
+              text-decoration: none;
+              box-shadow: 0 4px 15px rgba(88, 101, 242, 0.25);
+            }
+            a:hover { transform: translateY(-1px); }
+          </style>
+        </head>
+        <body>
+          <main>
+            <img src="/assets/SwiftBird3.png" alt="SwiftBot Logo">
+            <div class="eyebrow">\(safeEyebrow)</div>
+            <h1>\(safeTitle)</h1>
+            <p>\(safeMessage)</p>
+            <p class="detail">\(safeDetail)</p>
+            <a href="\(safeActionURL)">\(safeActionTitle)</a>
+          </main>
+        </body>
+        </html>
+        """
+        return httpResponse(status: status, body: Data(body.utf8), contentType: "text/html; charset=utf-8")
+    }
+
+    private func escapedHTML(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private func redirectResponse(to location: String, headers: [String: String] = [:]) -> Data {
