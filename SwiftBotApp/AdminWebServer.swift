@@ -3049,7 +3049,9 @@ actor AdminWebServer {
     }
 
     private func randomToken() -> String {
-        let bytes = (0..<24).map { _ in UInt8.random(in: 0...255) }
+        // Use 48 bytes to ensure we get a 64-character string after base64 encoding.
+        // RFC 7636 (PKCE) requires code_verifier to be between 43 and 128 characters.
+        let bytes = (0..<48).map { _ in UInt8.random(in: 0...255) }
         return Data(bytes).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
