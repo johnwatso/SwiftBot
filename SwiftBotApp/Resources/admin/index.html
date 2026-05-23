@@ -125,9 +125,19 @@
       font-size: 10px;
     }
 
-    .bg-symbols div {
+    .bg-symbols span {
       position: absolute;
+      bottom: -10vh;
+      display: inline-flex;
       opacity: 0;
+      will-change: transform, opacity;
+      pointer-events: none;
+    }
+
+    .bg-symbols svg {
+      width: 100%;
+      height: 100%;
+      stroke-width: 1.6;
     }
 
     .bg-orb {
@@ -9500,56 +9510,38 @@
       if (!container) return;
       container.innerHTML = '';
       const palette = getAppleIconPalette();
-      // Use the same lucide icon set as the in-app background so the login
-      // looks like a continuation of the dashboard rather than a separate skin.
-      // Mirrors the list in buildAnimatedBackground() + a few SwiftBot-domain
-      // additions (mic, voice, message).
       const icons = [
-        // Core (matches dashboard backdrop)
         'book-open', 'wrench', 'terminal', 'activity', 'sparkles', 'network',
         'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
         'bot', 'git-merge', 'refresh-cw', 'shield',
-        // SwiftBot domain — voice, comms, audio
-        'mic', 'mic-off', 'headphones', 'radio', 'radio-tower', 'waves',
-        'volume-2', 'speaker', 'audio-waveform', 'podcast',
-        // Comms / Discord
-        'message-square', 'message-circle', 'at-sign', 'hash', 'send',
-        'bell', 'bell-ring',
-        // Code & shell
-        'code', 'code-2', 'braces', 'square-terminal', 'command', 'slash',
-        'keyboard',
-        // Infrastructure
-        'database', 'webhook', 'plug', 'plug-zap', 'wifi', 'cloud',
-        'layout-dashboard', 'gauge', 'binary',
-        // Automation / AI / actions
-        'workflow', 'wand-sparkles', 'play', 'pause', 'circle-play',
-        // Security / identity
-        'lock', 'key', 'key-round', 'fingerprint'
+        'mic', 'headphones', 'radio', 'waves', 'volume-2', 'speaker',
+        'message-square', 'hash', 'send', 'bell', 'code', 'database',
+        'webhook', 'cloud', 'play', 'lock', 'key', 'fingerprint'
       ];
-      const count = 150;
+      const count = 100;
       for (let i = 0; i < count; i++) {
-        const wrap = document.createElement('div');
-        wrap.style.left = `${Math.random() * 100}%`;
-        const duration = 30 + Math.random() * 40; // Slower: 30–70s vs 22–50s
+        const wrap = document.createElement('span');
+        const duration = 30 + Math.random() * 40;
         const delay = Math.random() * duration;
-        const size = 14 + Math.floor(Math.random() * 22); // 14–35 px
-        // Don't set opacity inline — the float-up keyframes own the fade
-        // in/out cycle. Setting it here was making symbols invisible.
+        const size = 14 + Math.floor(Math.random() * 22);
+        
+        wrap.style.left = `${Math.random() * 100}%`;
+        wrap.style.width = `${size}px`;
+        wrap.style.height = `${size}px`;
         wrap.style.animation = `float-up ${duration}s linear infinite`;
         wrap.style.animationDelay = `-${delay.toFixed(2)}s`;
+        
         const icon = document.createElement('i');
         icon.className = 'lucide';
         icon.dataset.lucide = icons[Math.floor(Math.random() * icons.length)];
-        icon.style.width = `${size}px`;
-        icon.style.height = `${size}px`;
-        icon.style.display = 'block';
         if (palette) {
           icon.style.color = palette[Math.floor(Math.random() * palette.length)];
         }
+        
         wrap.appendChild(icon);
         container.appendChild(wrap);
       }
-      try { lucide.createIcons(); } catch (_) {}
+      refreshIcons();
     }
 
     function buildAnimatedBackground() {
