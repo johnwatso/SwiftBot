@@ -39,6 +39,7 @@
     section.analytics { --accent: #1c8c73; }
     section.ui { --accent: #5f5ac8; }
     section.core { --accent: #52606d; }
+    section.docs { --accent: #1c8c73; }
     h2 {
       display: flex;
       align-items: center;
@@ -99,6 +100,7 @@
         <li><strong>Onboarding DMs:</strong> Implemented a setup flow that sends one-click activation URLs via Discord DM for streamlined Twitch account linking.</li>
         <li><strong>Real-time Webhooks:</strong> Native support for SwiftMiner webhooks, enabling the bot to relay mining status and reward notifications instantly.</li>
         <li><strong>Durable Messaging:</strong> Added persistent DM deduplication and frequency controls to prevent notification bombardment during high-activity periods.</li>
+        <li><strong>Pairing Server:</strong> Enabled a dedicated background pairing server to handle automated handshakes between SwiftBot and SwiftMiner instances.</li>
       </ul>
     </section>
 
@@ -120,23 +122,33 @@
         <li><strong>Sidebar Refresh:</strong> Redesigned the sidebar for better density and cleaner navigation.</li>
         <li><strong>Integrations Tab:</strong> Restyled with grouped forms and status cards to match the design language of the SwiftMiner ecosystem.</li>
         <li><strong>Performance Boosts:</strong> Optimized chart rendering and reduced expensive shadow effects on operational cards to eliminate scroll lag.</li>
-        <li><strong>Web UI Preview:</strong> Added theme-aware previews and detailed setup guides to the README for easier local configuration.</li>
+        <li><strong>Native Views:</strong> Massive overhaul of the RootView and layout engine for better resizing behavior and visual balance.</li>
       </ul>
     </section>
 
     <section class="core">
-      <h2><span class="badge" aria-hidden="true">⚙️</span> Core & Architecture</h2>
+      <h2><span class="badge" aria-hidden="true">⚙️</span> Core & Infrastructure</h2>
       <p class="summary">Hardening the foundation for a more stable experience.</p>
       <ul>
         <li><strong>Decomposition:</strong> Major architectural cleanup, splitting the monolithic Models.swift into smaller, domain-specific components.</li>
+        <li><strong>App-Owned Security:</strong> Clarified app-owned security components and added a dedicated Security Policy to the project.</li>
         <li><strong>Patchy Resilience:</strong> Hardened the Patchy update engine to better handle AMD-based fetch failures and network churn.</li>
-        <li><strong>Kernel Panic Fix:</strong> Resolved a rare but critical kernel panic that could occur when viewing specific video formats from Linux-based mesh nodes.</li>
-        <li><strong>Memory Leak Fixes:</strong> Exhaustive audit of retain cycles in the event bus and streaming subsystems.</li>
+        <li><strong>Project Cleanup:</strong> Switched project license to MIT and removed legacy architecture reports, risk matrices, and obsolete Python scripts.</li>
+        <li><strong>Sandboxing:</strong> Pinned user script sandboxing settings in project.yml to prevent build phase issues with SwiftLint.</li>
       </ul>
     </section>
 
-    <p style="margin-top: 24px;">Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/84bb491ced37d5c6442d3579992a83c91f9e0a58">84bb491</a></p>
+    <section class="docs">
+      <h2><span class="badge" aria-hidden="true">📖</span> Documentation</h2>
+      <p class="summary">Better guides for setup and security.</p>
+      <ul>
+        <li><strong>README Overhaul:</strong> Switched to a more condensed, theme-aware README with updated UI previews.</li>
+        <li><strong>Security Policy:</strong> Added a formal security policy and clarified vulnerability reporting procedures.</li>
+        <li><strong>SwiftMiner Docs:</strong> Integrated detailed documentation for SwiftMiner linking and webhook configuration.</li>
+      </ul>
+    </section>
+
+    <p style="margin-top: 24px;"><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/84bb491ced37d5c6442d3579992a83c91f9e0a58">84bb491</a></p>
   </main>
 </body>
 </html>
