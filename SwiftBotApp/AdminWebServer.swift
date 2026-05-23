@@ -677,9 +677,21 @@ actor AdminWebServer {
     private var sessions: [String: Session] = [:]
     private var pendingStates: [String: PendingState] = [:]
     private let stateTTL: TimeInterval = 600
-    private let sessionTTL: TimeInterval = 30 * 24 * 60 * 60
+    private let sessionTTL: TimeInterval = 24 * 60 * 60
     private let sessionsDefaultsKey = "swiftbot.admin.web.sessions"
+    private let sessionsKeychainAccount = "swiftbot.admin.web.sessions"
     private let maxHTTPRequestSize = 1_024 * 1_024
+
+    private struct RateLimitBucket {
+        var failures: [Date] = []
+        var lockedUntil: Date?
+    }
+    private var localLoginAttempts: [String: RateLimitBucket] = [:]
+    private var remoteBearerAttempts = RateLimitBucket()
+    private let loginFailureWindow: TimeInterval = 5 * 60
+    private let loginFailureThreshold = 5
+    private let loginLockoutDuration: TimeInterval = 15 * 60
+    private let remoteBearerFailureThreshold = 10
 
     func configure(
         config: Configuration,
@@ -2006,8 +2018,45 @@ actor AdminWebServer {
         case ("GET", "/api/server/info"):
             return await handleServerInfo(request: request)
         default:
+            // GET requests to unknown non-API paths get the styled 404 page so
+            // a misclicked link in the browser lands somewhere friendly. API
+            // and non-GET routes keep the plain text response.
+            if request.method == "GET" && !request.path.hasPrefix("/api/") {
+                return notFoundPageResponse(path: request.path)
+            }
             return httpResponse(status: "404 Not Found", body: Data("Not Found".utf8))
         }
+    }
+
+    private func oauthErrorPageResponse(
+        status: String,
+        title: String,
+        message: String,
+        detail: String
+    ) -> Data {
+        return authStatusPageResponse(
+            status: status,
+            title: title,
+            eyebrow: "SwiftBot Web Admin",
+            message: message,
+            detail: detail,
+            actionTitle: "Back to sign in",
+            actionURL: "/",
+            variant: .error
+        )
+    }
+
+    private func notFoundPageResponse(path: String) -> Data {
+        return authStatusPageResponse(
+            status: "404 Not Found",
+            title: "Page not found",
+            eyebrow: "SwiftBot Web Admin",
+            message: "We couldn't find the page you were looking for.",
+            detail: "The link may be broken or the page may have moved. Head back to the dashboard to keep going.",
+            actionTitle: "Back to dashboard",
+            actionURL: "/",
+            variant: .notFound
+        )
     }
 
     private func parseRequest(_ data: Data) -> HTTPRequest? {
@@ -2090,7 +2139,12 @@ actor AdminWebServer {
         let clientID = config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         let clientSecret = config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientID.isEmpty, !clientSecret.isEmpty else {
-            return httpResponse(status: "503 Service Unavailable", body: Data("Discord OAuth is not configured.".utf8))
+            return oauthErrorPageResponse(
+                status: "503 Service Unavailable",
+                title: "Discord sign-in unavailable",
+                message: "Discord OAuth hasn't been configured on this SwiftBot instance.",
+                detail: "Ask an administrator to add the Discord client ID and secret in the bot's settings."
+            )
         }
 
         let state = randomToken()
@@ -2114,7 +2168,12 @@ actor AdminWebServer {
         ]
 
         guard let url = components?.url else {
-            return httpResponse(status: "500 Internal Server Error", body: Data("Failed to build OAuth URL.".utf8))
+            return oauthErrorPageResponse(
+                status: "500 Internal Server Error",
+                title: "Something went wrong",
+                message: "We couldn't build the Discord sign-in URL.",
+                detail: "This is usually transient. Try again in a moment, or contact an administrator if it keeps happening."
+            )
         }
 
         return redirectResponse(to: url.absoluteString)
@@ -2133,16 +2192,27 @@ actor AdminWebServer {
             return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
         }
 
+        let attemptKey = username.lowercased()
+        if isBucketLocked(localLoginAttempts[attemptKey] ?? RateLimitBucket()) {
+            return jsonResponse(["error": "rate_limited"], status: "429 Too Many Requests")
+        }
+
         let expectedUsername = config.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         let expectedPassword = config.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard
-            !expectedUsername.isEmpty,
-            !expectedPassword.isEmpty,
-            username == expectedUsername,
-            password == expectedPassword
-        else {
+        let credentialsValid =
+            !expectedUsername.isEmpty &&
+            !expectedPassword.isEmpty &&
+            constantTimeEquals(username, expectedUsername) &&
+            constantTimeEquals(password, expectedPassword)
+
+        guard credentialsValid else {
+            var bucket = localLoginAttempts[attemptKey] ?? RateLimitBucket()
+            registerFailedAttempt(&bucket, threshold: loginFailureThreshold)
+            localLoginAttempts[attemptKey] = bucket
             return jsonResponse(["error": "invalid_credentials"], status: "401 Unauthorized")
         }
+
+        localLoginAttempts[attemptKey] = nil
 
         let session = makeSession(
             userID: "local:\(expectedUsername)",
@@ -2180,10 +2250,20 @@ actor AdminWebServer {
             )
         }
         guard let code = request.query["code"], let state = request.query["state"] else {
-            return httpResponse(status: "400 Bad Request", body: Data("Missing code or state.".utf8))
+            return oauthErrorPageResponse(
+                status: "400 Bad Request",
+                title: "Sign-in didn't complete",
+                message: "Discord didn't send back the information we needed to finish signing you in.",
+                detail: "Head back to the sign-in screen and try again."
+            )
         }
         guard let pendingState = pendingStates.removeValue(forKey: state) else {
-            return httpResponse(status: "400 Bad Request", body: Data("State expired or invalid.".utf8))
+            return oauthErrorPageResponse(
+                status: "400 Bad Request",
+                title: "Sign-in link expired",
+                message: "This Discord sign-in link is no longer valid.",
+                detail: "Sign-in links expire after a short time. Start over from the login screen to get a fresh link."
+            )
         }
 
         do {
@@ -2199,7 +2279,8 @@ actor AdminWebServer {
                     message: "This Discord account does not have permission to sign in.",
                     detail: "Ask a SwiftBot administrator to add your Discord user ID, or sign in with an account that can manage one of the connected servers.",
                     actionTitle: "Try another Discord account",
-                    actionURL: "/auth/discord/login"
+                    actionURL: "/auth/discord/login",
+                    variant: .denied
                 )
             }
 
@@ -2227,7 +2308,12 @@ actor AdminWebServer {
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             await logger?("Admin Web UI OAuth failed: \(message)")
-            return httpResponse(status: "502 Bad Gateway", body: Data("Discord OAuth failed: \(message)".utf8))
+            return oauthErrorPageResponse(
+                status: "502 Bad Gateway",
+                title: "Discord sign-in failed",
+                message: "We couldn't complete the Discord sign-in.",
+                detail: message
+            )
         }
     }
 
@@ -2343,13 +2429,15 @@ actor AdminWebServer {
         if authenticatedSession(for: request) != nil { return true }
         guard let access = request.query["access"], !access.isEmpty else { return false }
         let now = Date()
-        return sessions.values.contains { $0.csrfToken == access && $0.expiresAt > now }
+        return sessions.values.contains { constantTimeEquals($0.csrfToken, access) && $0.expiresAt > now }
     }
 
     private func isRemoteRequestAuthorized(_ request: HTTPRequest) -> Bool {
         if authenticatedSession(for: request) != nil {
             return true
         }
+
+        if isBucketLocked(remoteBearerAttempts) { return false }
 
         let expectedToken = config.remoteAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !expectedToken.isEmpty,
@@ -2359,7 +2447,11 @@ actor AdminWebServer {
         }
 
         let providedToken = String(authorization.dropFirst("Bearer ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-        return !providedToken.isEmpty && providedToken == expectedToken
+        guard !providedToken.isEmpty, constantTimeEquals(providedToken, expectedToken) else {
+            registerFailedAttempt(&remoteBearerAttempts, threshold: remoteBearerFailureThreshold)
+            return false
+        }
+        return true
     }
 
     private func validatedAppRedirectURL(from rawValue: String?) -> URL? {
@@ -2387,7 +2479,8 @@ actor AdminWebServer {
     }
 
     private func validateCSRF(session: Session, request: HTTPRequest) -> Bool {
-        request.headers["x-admin-csrf"] == session.csrfToken
+        guard let provided = request.headers["x-admin-csrf"] else { return false }
+        return constantTimeEquals(provided, session.csrfToken)
     }
 
     private func cookie(named name: String, request: HTTPRequest) -> String? {
@@ -2564,6 +2657,32 @@ actor AdminWebServer {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    private func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let a = Array(lhs.utf8)
+        let b = Array(rhs.utf8)
+        var diff = UInt8(a.count ^ b.count)
+        for i in 0..<Swift.max(a.count, b.count) {
+            let lb = i < a.count ? a[i] : 0
+            let rb = i < b.count ? b[i] : 0
+            diff |= lb ^ rb
+        }
+        return diff == 0
+    }
+
+    private func registerFailedAttempt(_ bucket: inout RateLimitBucket, threshold: Int, now: Date = Date()) {
+        bucket.failures.removeAll { now.timeIntervalSince($0) > loginFailureWindow }
+        bucket.failures.append(now)
+        if bucket.failures.count >= threshold {
+            bucket.lockedUntil = now.addingTimeInterval(loginLockoutDuration)
+            bucket.failures.removeAll()
+        }
+    }
+
+    private func isBucketLocked(_ bucket: RateLimitBucket, now: Date = Date()) -> Bool {
+        if let until = bucket.lockedUntil, until > now { return true }
+        return false
+    }
+
     private func makeSession(
         userID: String,
         username: String,
@@ -2602,7 +2721,18 @@ actor AdminWebServer {
     }
 
     private func loadPersistedSessions() {
-        guard let data = UserDefaults.standard.data(forKey: sessionsDefaultsKey),
+        // One-time migration: drain any sessions stashed in UserDefaults by previous
+        // builds into the Keychain, then clear the plist entry so it's not readable
+        // by other processes running as this user.
+        if let legacy = UserDefaults.standard.data(forKey: sessionsDefaultsKey) {
+            if let legacyString = String(data: legacy, encoding: .utf8) {
+                KeychainHelper.save(legacyString, account: sessionsKeychainAccount)
+            }
+            UserDefaults.standard.removeObject(forKey: sessionsDefaultsKey)
+        }
+
+        guard let stored = KeychainHelper.load(account: sessionsKeychainAccount),
+              let data = stored.data(using: .utf8),
               let decoded = try? decoder.decode([String: Session].self, from: data) else {
             sessions = [:]
             return
@@ -2613,11 +2743,12 @@ actor AdminWebServer {
 
     private func persistSessions() {
         if sessions.isEmpty {
-            UserDefaults.standard.removeObject(forKey: sessionsDefaultsKey)
+            KeychainHelper.delete(account: sessionsKeychainAccount)
             return
         }
-        guard let data = try? encoder.encode(sessions) else { return }
-        UserDefaults.standard.set(data, forKey: sessionsDefaultsKey)
+        guard let data = try? encoder.encode(sessions),
+              let serialized = String(data: data, encoding: .utf8) else { return }
+        KeychainHelper.save(serialized, account: sessionsKeychainAccount)
     }
 
     private func codableResponse<T: Encodable>(_ value: T) -> Data {
@@ -2634,6 +2765,13 @@ actor AdminWebServer {
         jsonResponse(["error": "unauthorized"], status: "401 Unauthorized")
     }
 
+    enum AuthStatusVariant {
+        case success
+        case denied
+        case notFound
+        case error
+    }
+
     private func authStatusPageResponse(
         status: String,
         title: String,
@@ -2641,7 +2779,8 @@ actor AdminWebServer {
         message: String,
         detail: String,
         actionTitle: String,
-        actionURL: String
+        actionURL: String,
+        variant: AuthStatusVariant = .success
     ) -> Data {
         let safeTitle = escapedHTML(title)
         let safeEyebrow = escapedHTML(eyebrow)
@@ -2649,6 +2788,213 @@ actor AdminWebServer {
         let safeDetail = escapedHTML(detail)
         let safeActionTitle = escapedHTML(actionTitle)
         let safeActionURL = escapedHTML(actionURL)
+        let isDenied = (variant == .denied)
+        let isNotFound = (variant == .notFound)
+        let isError = (variant == .error)
+        let heroHTML: String
+        let extraStyles: String
+        let bgStreamHTML: String
+        heroHTML = "<img src=\"/assets/SwiftBird3.png\" alt=\"SwiftBot Logo\">"
+        if isDenied {
+            extraStyles = """
+            .bg-symbols {
+              position: fixed;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+              z-index: 0;
+            }
+            .bg-symbols span {
+              position: absolute;
+              bottom: -10vh;
+              display: inline-flex;
+              opacity: 0;
+              will-change: transform, opacity;
+              animation-name: denied-float-up;
+              animation-timing-function: linear;
+              animation-iteration-count: infinite;
+            }
+            .bg-symbols svg {
+              width: 100%;
+              height: 100%;
+              stroke-width: 1.6;
+            }
+            @keyframes denied-float-up {
+              0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+              15%  { opacity: 0.55; }
+              85%  { opacity: 0.55; }
+              100% { transform: translateY(-120vh) rotate(360deg); opacity: 0; }
+            }
+            """
+
+            // Self-contained float-up bg, mirroring populateAuthSymbols() in the
+            // login screen but with denied-themed icons (lock, shield-x, ban,
+            // alert, key-off, octagon) and an orange/red palette.
+            let deniedIcons = [
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-3z"/><path d="M9 9l6 6M15 9l-6 6"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3"/><path d="M10 13l8-8M14 7l3 3M3 21 21 3"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/><path d="M9 9l6 6M15 9l-6 6"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M4.93 4.93l2.83 2.83M2 12h4M4.93 19.07l2.83-2.83M12 18v4M19.07 19.07l-2.83-2.83M22 12h-4M19.07 4.93l-2.83 2.83"/><circle cx="12" cy="12" r="3"/></svg>"#,
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>"#
+            ]
+            let palette = ["#ff8a3d", "#ff4d4d", "#ff6b35", "#e0392b", "#ffa066", "#c2410c", "#f97316"]
+            let count = 90
+            var iconsHTML = ""
+            // Deterministic pseudo-random sequence so the layout is stable but
+            // doesn't look gridded. Mulberry32-ish from a fixed seed.
+            var seed: UInt32 = 0x9E3779B1
+            func next() -> Double {
+                seed &+= 0x6D2B79F5
+                var t = seed
+                t = (t ^ (t >> 15)) &* (t | 1)
+                t ^= t &+ ((t ^ (t >> 7)) &* (t | 61))
+                return Double((t ^ (t >> 14)) & 0xFFFFFF) / Double(0xFFFFFF)
+            }
+            for _ in 0..<count {
+                let leftPct = next() * 100.0
+                let duration = 30.0 + next() * 40.0
+                let delay = next() * duration
+                let size = 14 + Int(next() * 22)
+                let svg = deniedIcons[Int(next() * Double(deniedIcons.count)) % deniedIcons.count]
+                let color = palette[Int(next() * Double(palette.count)) % palette.count]
+                iconsHTML += "<span style=\"left:\(String(format: "%.2f", leftPct))%;width:\(size)px;height:\(size)px;color:\(color);animation-duration:\(String(format: "%.2f", duration))s;animation-delay:-\(String(format: "%.2f", delay))s\">\(svg)</span>"
+            }
+            bgStreamHTML = "<div class=\"bg-symbols\" aria-hidden=\"true\">\(iconsHTML)</div>"
+        } else if isNotFound {
+            extraStyles = """
+            .bg-symbols {
+              position: fixed;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+              z-index: 0;
+            }
+            .bg-symbols span {
+              position: absolute;
+              bottom: -10vh;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              opacity: 0;
+              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+              font-weight: 700;
+              line-height: 1;
+              will-change: transform, opacity;
+              animation-name: nf-float-up;
+              animation-timing-function: linear;
+              animation-iteration-count: infinite;
+            }
+            @keyframes nf-float-up {
+              0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+              15%  { opacity: 0.55; }
+              85%  { opacity: 0.55; }
+              100% { transform: translateY(-120vh) rotate(360deg); opacity: 0; }
+            }
+            """
+
+            // Floating "?" marks — same float-up motion as the login backdrop,
+            // but rendered as styled text glyphs instead of SVG icons.
+            let palette = ["#5b8def", "#7c5cff", "#3aa0ff", "#8aa6ff", "#a78bfa", "#60a5fa", "#818cf8"]
+            let count = 90
+            var iconsHTML = ""
+            var seed: UInt32 = 0x9E3779B1
+            func next() -> Double {
+                seed &+= 0x6D2B79F5
+                var t = seed
+                t = (t ^ (t >> 15)) &* (t | 1)
+                t ^= t &+ ((t ^ (t >> 7)) &* (t | 61))
+                return Double((t ^ (t >> 14)) & 0xFFFFFF) / Double(0xFFFFFF)
+            }
+            for _ in 0..<count {
+                let leftPct = next() * 100.0
+                let duration = 30.0 + next() * 40.0
+                let delay = next() * duration
+                let size = 18 + Int(next() * 40)
+                let color = palette[Int(next() * Double(palette.count)) % palette.count]
+                iconsHTML += "<span style=\"left:\(String(format: "%.2f", leftPct))%;font-size:\(size)px;color:\(color);animation-duration:\(String(format: "%.2f", duration))s;animation-delay:-\(String(format: "%.2f", delay))s\">?</span>"
+            }
+            bgStreamHTML = "<div class=\"bg-symbols\" aria-hidden=\"true\">\(iconsHTML)</div>"
+        } else if isError {
+            extraStyles = """
+            .bg-symbols {
+              position: fixed;
+              inset: 0;
+              overflow: hidden;
+              pointer-events: none;
+              z-index: 0;
+            }
+            .bg-symbols span {
+              position: absolute;
+              bottom: -10vh;
+              display: inline-flex;
+              opacity: 0;
+              will-change: transform, opacity;
+              animation-name: err-float-up;
+              animation-timing-function: linear;
+              animation-iteration-count: infinite;
+            }
+            .bg-symbols svg {
+              width: 100%;
+              height: 100%;
+              stroke-width: 1.6;
+            }
+            @keyframes err-float-up {
+              0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+              15%  { opacity: 0.55; }
+              85%  { opacity: 0.55; }
+              100% { transform: translateY(-120vh) rotate(360deg); opacity: 0; }
+            }
+            """
+
+            // Floating "something went wrong" icons — wrench, alert-triangle,
+            // broken plug, cloud-off, refresh, server-crash — in an amber/gold
+            // palette so it reads as "transient failure" rather than "denied".
+            let errorIcons = [
+                // alert-triangle
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>"#,
+                // wrench
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 12.6 12.6 21a2 2 0 0 1-2.8-2.8L18.2 9.7a4 4 0 0 0-5-5L11.4 3 3 11.4a2 2 0 0 0 2.8 2.8z"/></svg>"#,
+                // plug (disconnected)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/></svg>"#,
+                // cloud-off
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M7.8 7.8a5 5 0 0 0-.8 9.7H17"/><path d="M9 5.2A5 5 0 0 1 18 9h.5a3.5 3.5 0 0 1 2.5 6"/></svg>"#,
+                // refresh-cw
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>"#,
+                // server-crash
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10 4 14h4l-2 4"/><path d="M10 4h10a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"/><path d="M10 20h10a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2"/><path d="M6 6h.01M6 18h.01"/></svg>"#,
+                // bug
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l2 2M16 2l-2 2"/><rect x="6" y="8" width="12" height="12" rx="6"/><path d="M12 8v12M3 12h3M18 12h3M4 6l3 2M20 6l-3 2M4 18l3-2M20 18l-3-2"/></svg>"#,
+                // zap-off
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M13 2 5 14h6l-1 8 4-6"/></svg>"#
+            ]
+            let palette = ["#f59e0b", "#fbbf24", "#facc15", "#eab308", "#d97706", "#fb923c", "#f97316"]
+            let count = 90
+            var iconsHTML = ""
+            var seed: UInt32 = 0x9E3779B1
+            func next() -> Double {
+                seed &+= 0x6D2B79F5
+                var t = seed
+                t = (t ^ (t >> 15)) &* (t | 1)
+                t ^= t &+ ((t ^ (t >> 7)) &* (t | 61))
+                return Double((t ^ (t >> 14)) & 0xFFFFFF) / Double(0xFFFFFF)
+            }
+            for _ in 0..<count {
+                let leftPct = next() * 100.0
+                let duration = 30.0 + next() * 40.0
+                let delay = next() * duration
+                let size = 14 + Int(next() * 22)
+                let svg = errorIcons[Int(next() * Double(errorIcons.count)) % errorIcons.count]
+                let color = palette[Int(next() * Double(palette.count)) % palette.count]
+                iconsHTML += "<span style=\"left:\(String(format: "%.2f", leftPct))%;width:\(size)px;height:\(size)px;color:\(color);animation-duration:\(String(format: "%.2f", duration))s;animation-delay:-\(String(format: "%.2f", delay))s\">\(svg)</span>"
+            }
+            bgStreamHTML = "<div class=\"bg-symbols\" aria-hidden=\"true\">\(iconsHTML)</div>"
+        } else {
+            extraStyles = ""
+            bgStreamHTML = ""
+        }
         let body = """
         <!doctype html>
         <html lang="en">
@@ -2773,11 +3119,13 @@ actor AdminWebServer {
               box-shadow: 0 4px 15px rgba(88, 101, 242, 0.25);
             }
             a:hover { transform: translateY(-1px); }
+            \(extraStyles)
           </style>
         </head>
         <body>
+          \(bgStreamHTML)
           <main>
-            <img src="/assets/SwiftBird3.png" alt="SwiftBot Logo">
+            \(heroHTML)
             <div class="eyebrow">\(safeEyebrow)</div>
             <h1>\(safeTitle)</h1>
             <p>\(safeMessage)</p>
