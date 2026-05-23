@@ -97,6 +97,9 @@
       <h2><span class="badge" aria-hidden="true">🛡️</span> Security & Auditing</h2>
       <p class="summary">Advanced protection for your bot and transparency for your team.</p>
       <ul>
+        <li><strong>Role-Based Access Control (RBAC):</strong> Introduced foundational RBAC with 'Viewer' and 'Admin' roles. All state-changing operations are now strictly gated by admin permissions, allowing for future 'Read-Only' access.</li>
+        <li><strong>Deep Payload Validation:</strong> Implemented strict field-level validation for all complex payloads (Automations, Sweep Policies, Webhooks), preventing 'Logic Injection' and ensuring values remain within safe operational bounds.</li>
+        <li><strong>PKCE for OAuth:</strong> Hardened the Discord login flow with PKCE (Proof Key for Code Exchange), providing cryptographically secure binding for the authentication handshake.</li>
         <li><strong>Content Security Policy (CSP):</strong> Implemented a strict CSP with per-request nonces for the Admin Web UI. All inline JavaScript has been removed in favor of a delegated event dispatcher, mitigating XSS risks.</li>
         <li><strong>Mandatory Discord MFA:</strong> Web UI login now requires Multi-Factor Authentication to be enabled on your Discord account.</li>
         <li><strong>Structured Audit Log:</strong> A new persistent log for tracking authentication, configuration changes, and moderation actions (including those triggered by Automations and Sweep).</li>

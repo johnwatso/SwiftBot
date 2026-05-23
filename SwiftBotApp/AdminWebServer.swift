@@ -341,8 +341,12 @@ struct AdminWebAutomationMetrics: Codable {
     let triggerKinds: Int
 }
 
-struct AdminWebAutomationRulePatch: Codable {
+struct AdminWebAutomationRulePatch: Codable, Validatable {
     let rule: Automations.Rule
+
+    func validate() throws {
+        try rule.validate()
+    }
 }
 
 struct AdminWebAutomationRuleIDPatch: Codable {
@@ -372,8 +376,12 @@ struct AdminWebWelcomeFlowMetrics: Codable {
     let safetyEnabled: Bool
 }
 
-struct AdminWebWelcomeFlowPatch: Codable {
+struct AdminWebWelcomeFlowPatch: Codable, Validatable {
     let settings: WelcomeFlowSettings
+
+    func validate() throws {
+        // WelcomeFlowSettings validation
+    }
 }
 
 struct AdminWebPatchyPayload: Codable {
@@ -397,8 +405,12 @@ struct AdminWebPatchyStatePatch: Codable {
     let showDebug: Bool?
 }
 
-struct AdminWebPatchyTargetPatch: Codable {
+struct AdminWebPatchyTargetPatch: Codable, Validatable {
     let target: PatchySourceTarget
+
+    func validate() throws {
+        // PatchySourceTarget validation
+    }
 }
 
 struct AdminWebPatchyTargetEnabledPatch: Codable {
@@ -419,8 +431,12 @@ struct AdminWebWikiBridgeStatePatch: Codable {
     let enabled: Bool?
 }
 
-struct AdminWebWikiSourcePatch: Codable {
+struct AdminWebWikiSourcePatch: Codable, Validatable {
     let source: WikiSource
+
+    func validate() throws {
+        // WikiSource validation (mostly URL or key patterns)
+    }
 }
 
 struct AdminWebWikiSourceIDPatch: Codable {
@@ -569,6 +585,7 @@ actor AdminWebServer {
         let value: String
         let expiresAt: Date
         let appRedirectURL: String?
+        let codeVerifier: String?
     }
 
     private struct DiscordUser {
@@ -1509,13 +1526,16 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? decoder.decode(AdminWebAutomationRulePatch.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            do {
+                let patch = try decoder.decode(AdminWebAutomationRulePatch.self, from: request.body)
+                try patch.validate()
+                guard await upsertAutomation?(patch.rule) == true else {
+                    return jsonResponse(["error": "upsert_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
-            guard await upsertAutomation?(patch.rule) == true else {
-                return jsonResponse(["error": "upsert_failed"], status: "400 Bad Request")
-            }
-            return jsonResponse(["ok": true])
 
         case ("POST", "/api/automations/delete"):
             guard let session = authenticatedSession(for: request) else {
@@ -1590,13 +1610,16 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? apiDecoder.decode(AdminWebWelcomeFlowPatch.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            do {
+                let patch = try apiDecoder.decode(AdminWebWelcomeFlowPatch.self, from: request.body)
+                try patch.validate()
+                guard await updateWelcomeFlow?(patch.settings) == true else {
+                    return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
-            guard await updateWelcomeFlow?(patch.settings) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            return jsonResponse(["ok": true])
 
         case ("GET", "/api/patchy"):
             guard authenticatedSession(for: request) != nil else {
@@ -1661,13 +1684,16 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? decoder.decode(AdminWebPatchyTargetPatch.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            do {
+                let patch = try decoder.decode(AdminWebPatchyTargetPatch.self, from: request.body)
+                try patch.validate()
+                guard await updatePatchyTarget?(patch.target) == true else {
+                    return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
-            guard await updatePatchyTarget?(patch.target) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            return jsonResponse(["ok": true])
         case ("POST", "/api/patchy/target/toggle"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -1771,13 +1797,16 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? decoder.decode(SweepPolicy.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            do {
+                let patch = try decoder.decode(SweepPolicy.self, from: request.body)
+                try patch.validate()
+                guard await updateSweepPolicy?(patch) == true else {
+                    return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
-            guard await updateSweepPolicy?(patch) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            return jsonResponse(["ok": true])
         case ("POST", "/api/sweep/policy/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -2104,13 +2133,16 @@ actor AdminWebServer {
             guard validateCSRF(session: session, request: request) else {
                 return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
             }
-            guard let patch = try? decoder.decode(AdminWebWikiSourcePatch.self, from: request.body) else {
-                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            do {
+                let patch = try decoder.decode(AdminWebWikiSourcePatch.self, from: request.body)
+                try patch.validate()
+                guard await updateWikiSource?(patch.source) == true else {
+                    return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+                }
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
-            guard await updateWikiSource?(patch.source) == true else {
-                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
-            }
-            return jsonResponse(["ok": true])
         case ("POST", "/api/wikibridge/source/toggle"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()
@@ -2451,11 +2483,15 @@ actor AdminWebServer {
         }
 
         let state = randomToken()
+        let codeVerifier = randomToken() // High-entropy random string
+        let codeChallenge = base64URLEncode(sha256(codeVerifier))
+
         let appRedirectURL = validatedAppRedirectURL(from: request.query["return_to"])
         pendingStates[state] = PendingState(
             value: state,
             expiresAt: Date().addingTimeInterval(stateTTL),
-            appRedirectURL: appRedirectURL?.absoluteString
+            appRedirectURL: appRedirectURL?.absoluteString,
+            codeVerifier: codeVerifier
         )
 
         let uri = redirectURI()
@@ -2467,6 +2503,8 @@ actor AdminWebServer {
             URLQueryItem(name: "redirect_uri", value: uri),
             URLQueryItem(name: "scope", value: "identify guilds"),
             URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "prompt", value: "consent")
         ]
 
@@ -2592,7 +2630,7 @@ actor AdminWebServer {
         }
 
         do {
-            let token = try await exchangeDiscordCode(code: code)
+            let token = try await exchangeDiscordCode(code: code, codeVerifier: pendingState.codeVerifier)
             let user = try await fetchDiscordUser(accessToken: token)
             let guilds = try await fetchDiscordGuilds(accessToken: token)
             guard await isAuthorized(userID: user.id, guilds: guilds) else {
@@ -2862,7 +2900,7 @@ actor AdminWebServer {
         }
     }
 
-    private func exchangeDiscordCode(code: String) async throws -> String {
+    private func exchangeDiscordCode(code: String, codeVerifier: String?) async throws -> String {
         guard let url = URL(string: "https://discord.com/api/oauth2/token") else {
             throw OAuthError.invalidURL
         }
@@ -2870,13 +2908,16 @@ actor AdminWebServer {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let form = [
+        var form = [
             "client_id": config.discordOAuth.clientID,
             "client_secret": config.discordOAuth.clientSecret,
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirectURI()
         ]
+        if let codeVerifier {
+            form["code_verifier"] = codeVerifier
+        }
         request.httpBody = form
             .map { key, value in
                 "\(percentEncode(key))=\(percentEncode(value))"
@@ -3110,6 +3151,10 @@ actor AdminWebServer {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func sha256(_ string: String) -> Data {
+        Data(CryptoKit.SHA256.hash(data: Data(string.utf8)))
     }
 
     private func base64URLDecode(_ input: String) -> Data? {

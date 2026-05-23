@@ -200,7 +200,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
 
 /// A configured strategy on a policy. Strategies are composed in order — for
 /// example, `summarise` followed by `delete` preserves a digest before pruning.
-struct SweepStrategy: Codable, Hashable, Identifiable {
+struct SweepStrategy: Codable, Hashable, Identifiable, Validatable {
     var id: UUID = UUID()
     var kind: SweepStrategyKind
     /// Strategy-specific parameter: age in hours used by `.delete`, `.archive`,
@@ -211,6 +211,15 @@ struct SweepStrategy: Codable, Hashable, Identifiable {
     var keepCount: Int = 1
     /// When true, restrict matching to messages authored by bots.
     var fromBotsOnly: Bool = false
+
+    func validate() throws {
+        if ageHours < 0 || ageHours > 8760 {
+            throw ValidationError.outOfRange("ageHours", min: 0, max: 8760)
+        }
+        if keepCount < 0 || keepCount > 1000 {
+            throw ValidationError.outOfRange("keepCount", min: 0, max: 1000)
+        }
+    }
 }
 
 enum SweepSchedule: Codable, Hashable {
@@ -249,7 +258,7 @@ enum SweepSchedule: Codable, Hashable {
     }
 }
 
-struct SweepSafetyRails: Codable, Hashable {
+struct SweepSafetyRails: Codable, Hashable, Validatable {
     var maxMessagesPerRun: Int = 200
     /// Legacy flag retained for back-compat with persisted snapshots. New
     /// rules default to armed; users sanity-check via the Try Run button on
@@ -258,9 +267,18 @@ struct SweepSafetyRails: Codable, Hashable {
     var minMessageAgeMinutes: Int = 5
     var protectPinned: Bool = true
     var protectReacted: Bool = true
+
+    func validate() throws {
+        if maxMessagesPerRun < 1 || maxMessagesPerRun > 1000 {
+            throw ValidationError.outOfRange("maxMessagesPerRun", min: 1, max: 1000)
+        }
+        if minMessageAgeMinutes < 0 || minMessageAgeMinutes > 43200 { // 30 days
+            throw ValidationError.outOfRange("minMessageAgeMinutes", min: 0, max: 43200)
+        }
+    }
 }
 
-struct SweepPolicy: Codable, Identifiable, Hashable {
+struct SweepPolicy: Codable, Identifiable, Hashable, Validatable {
     var id: UUID = UUID()
     var name: String
     var guildID: String
@@ -279,6 +297,16 @@ struct SweepPolicy: Codable, Identifiable, Hashable {
     var strategyChipSummary: String {
         if strategies.isEmpty { return "No strategies" }
         return strategies.map { $0.kind.displayName }.joined(separator: " · ")
+    }
+
+    func validate() throws {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw ValidationError.invalidValue("Policy name cannot be empty")
+        }
+        for strategy in strategies {
+            try strategy.validate()
+        }
+        try safety.validate()
     }
 }
 

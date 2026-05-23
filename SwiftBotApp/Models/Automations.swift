@@ -17,7 +17,7 @@ enum Automations {
     // MARK: - Rule
 
     @Generable
-    struct Rule: Codable, Identifiable, Hashable, Sendable {
+    struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
         @Guide(description: "Stable unique identifier (UUID).")
         var id: String
 
@@ -60,6 +60,19 @@ enum Automations {
             self.filterLogic = filterLogic
             self.filters = filters
             self.steps = steps
+        }
+
+        func validate() throws {
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ValidationError.invalidValue("Rule name cannot be empty")
+            }
+            try trigger.validate()
+            for filter in filters {
+                try filter.validate()
+            }
+            for step in steps {
+                try step.validate()
+            }
         }
     }
 
@@ -112,12 +125,20 @@ enum Automations {
     /// slash command without a name is meaningless). Everything else
     /// (channel, role, message content, etc.) is expressed as a Filter.
     @Generable
-    struct Trigger: Codable, Hashable, Sendable {
+    struct Trigger: Codable, Hashable, Sendable, Validatable {
         @Guide(description: "Which Discord event fires this rule.")
         var kind: TriggerKind
 
         @Guide(description: "For slashCommand: command name without the leading slash. Required when kind is slashCommand.")
         var commandName: String?
+
+        func validate() throws {
+            if kind == .slashCommand {
+                guard let name = commandName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                    throw ValidationError.invalidValue("Command name is required for slashCommand triggers")
+                }
+            }
+        }
     }
 
     // MARK: - Filter
@@ -150,7 +171,7 @@ enum Automations {
     }
 
     @Generable
-    struct Filter: Codable, Hashable, Sendable, Identifiable {
+    struct Filter: Codable, Hashable, Sendable, Identifiable, Validatable {
         @Guide(description: "Stable unique identifier for this filter.")
         var id: String
 
@@ -202,6 +223,27 @@ enum Automations {
             self.boolValue = boolValue
             self.intValue = intValue
         }
+
+        func validate() throws {
+            switch kind {
+            case .messageMatchesRegex:
+                if let pattern = text {
+                    do {
+                        _ = try NSRegularExpression(pattern: pattern)
+                    } catch {
+                        throw ValidationError.invalidValue("Invalid regex pattern: \(error.localizedDescription)")
+                    }
+                }
+            case .minVoiceDurationSeconds:
+                if let value = intValue {
+                    if value < 0 || value > 86400 {
+                        throw ValidationError.outOfRange("minVoiceDurationSeconds", min: 0, max: 86400)
+                    }
+                }
+            default:
+                break
+            }
+        }
     }
 
     // MARK: - Step
@@ -240,7 +282,7 @@ enum Automations {
     }
 
     @Generable
-    struct Step: Codable, Hashable, Sendable, Identifiable {
+    struct Step: Codable, Hashable, Sendable, Identifiable, Validatable {
         @Guide(description: "Stable unique identifier for this step.")
         var id: String
 
@@ -328,6 +370,27 @@ enum Automations {
             self.webhookUrl = webhookUrl
             self.webhookContent = webhookContent
             self.delaySeconds = delaySeconds
+        }
+
+        func validate() throws {
+            switch kind {
+            case .webhook:
+                try validateSecureURL(webhookUrl)
+            case .delay:
+                if let val = delaySeconds {
+                    if val < 0 || val > 3600 {
+                        throw ValidationError.outOfRange("delaySeconds", min: 0, max: 3600)
+                    }
+                }
+            case .modifyMember:
+                if memberOp == .timeout, let val = timeoutSeconds {
+                    if val < 0 || val > 2419200 { // 28 days
+                        throw ValidationError.outOfRange("timeoutSeconds", min: 0, max: 2419200)
+                    }
+                }
+            default:
+                break
+            }
         }
     }
 
