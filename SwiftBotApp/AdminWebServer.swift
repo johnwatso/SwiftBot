@@ -3387,7 +3387,8 @@ actor AdminWebServer {
             let size: String = (icons.count == 1 && icons[0] == "?") ? "font-size:\(18 + Int(next() * 40))px" : "width:\(14 + Int(next() * 22))px;height:\(14 + Int(next() * 22))px"
             iconsHTML += "<span style=\"left:\(String(format: "%.2f", leftPct))%;\(size);color:\(color);animation-duration:\(String(format: "%.2f", duration))s;animation-delay:-\(String(format: "%.2f", delay))s\">\(svg)</span>"
         }
-        bgStreamHTML = "<div class=\"bg-symbols\" aria-hidden=\"true\">\(iconsHTML)</div>"        let body = """
+        bgStreamHTML = "<div class=\"bg-symbols\" aria-hidden=\"true\">\(iconsHTML)</div>"
+        let body = """
         <!doctype html>
         <html lang="en">
         <head>
