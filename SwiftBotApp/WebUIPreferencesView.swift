@@ -64,6 +64,7 @@ struct WebUIPreferencesView: View {
 struct AdminWebServerConfigurationSection: View {
     @EnvironmentObject var app: AppModel
     @State private var isAdvancedExpanded = false
+    @State private var showRequireHTTPSDisableConfirm = false
 
     private var hasAnyAuthConfigured: Bool {
         let s = app.settings.adminWebUI
@@ -95,6 +96,8 @@ struct AdminWebServerConfigurationSection: View {
                 AdminWebAuthMissingBanner()
             }
 
+            requireHTTPSSection
+
             DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Override Public Base URL")
@@ -117,6 +120,71 @@ struct AdminWebServerConfigurationSection: View {
         .onAppear {
             isAdvancedExpanded = !app.settings.adminWebUI.publicBaseURL
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    @ViewBuilder
+    private var requireHTTPSSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+                .padding(.vertical, 2)
+
+            Toggle(isOn: Binding(
+                get: { app.settings.adminWebUI.requireHTTPS },
+                set: { newValue in
+                    if newValue {
+                        // Enabling is always safe — apply immediately.
+                        app.settings.adminWebUI.requireHTTPS = true
+                    } else {
+                        // Disabling weakens security; defer until the operator
+                        // confirms in the alert below.
+                        showRequireHTTPSDisableConfirm = true
+                    }
+                }
+            )) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(.orange)
+                    Text("Require HTTPS")
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+            .toggleStyle(.switch)
+            .alert("Disable HTTPS requirement?", isPresented: $showRequireHTTPSDisableConfirm) {
+                Button("Cancel", role: .cancel) {
+                    // No-op: the binding never wrote `false`, so the toggle
+                    // visually snaps back to ON on its own.
+                }
+                Button("Disable", role: .destructive) {
+                    app.settings.adminWebUI.requireHTTPS = false
+                }
+            } message: {
+                Text("Turning this off allows the Admin Web UI to serve over plain HTTP if HTTPS isn't configured. Credentials and session cookies would be visible on the network. Only disable this if you've intentionally moved the admin panel behind a VPN, reverse proxy, or another TLS terminator.")
+            }
+
+            Text("When enabled, SwiftBot refuses to start the Admin Web UI unless HTTPS is configured (via the Internet Access setup above). Prevents the admin panel from accidentally serving over plain HTTP.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("This setting can only be changed here in the desktop app — the Web UI cannot disable its own protection.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if app.settings.adminWebUI.requireHTTPS && !app.settings.adminWebUI.internetAccessEnabled {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                        .font(.caption)
+                    Text("HTTPS isn't configured yet — the Admin Web UI will refuse to start. Enable Internet Access (Cloudflare) below or turn this off.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
         }
     }
 }

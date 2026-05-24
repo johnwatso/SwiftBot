@@ -57,6 +57,12 @@ struct AdminWebUISettings: Codable, Hashable {
     static let defaultPort = 38888
 
     var enabled: Bool = false
+    /// When `true`, the Admin Web UI server refuses to start if HTTPS isn't
+    /// configured. Prevents accidental plain-HTTP serving of the admin panel.
+    /// Defaults to `false` to preserve behavior of existing installs.
+    /// This setting is intentionally not editable via the Web UI itself — only
+    /// the macOS desktop GUI can change it.
+    var requireHTTPS: Bool = false
     var publicBaseURL: String = ""
     var internetAccessEnabled: Bool = false
     var hostname: String = ""
@@ -104,6 +110,7 @@ struct AdminWebUISettings: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case enabled
+        case requireHTTPS
         case publicBaseURL
         case internetAccessEnabled
         case hostname
@@ -146,6 +153,7 @@ struct AdminWebUISettings: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        requireHTTPS = try container.decodeIfPresent(Bool.self, forKey: .requireHTTPS) ?? false
         publicBaseURL = try container.decodeIfPresent(String.self, forKey: .publicBaseURL) ?? ""
 
         // Migration: prefer hostname
@@ -189,6 +197,7 @@ struct AdminWebUISettings: Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(enabled, forKey: .enabled)
+        try container.encode(requireHTTPS, forKey: .requireHTTPS)
         try container.encode(publicBaseURL, forKey: .publicBaseURL)
         try container.encode(hostname, forKey: .hostname)
         try container.encode(subdomain, forKey: .subdomain)
