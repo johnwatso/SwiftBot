@@ -1241,13 +1241,19 @@ extension AppModel {
 
     func configureAdminWebServer() async {
         let httpsConfiguration = usesLocalRuntime ? await resolveAdminWebHTTPSConfiguration() : nil
+        // Cloudflare Internet Access terminates TLS at the edge and forwards to
+        // SwiftBot's loopback-only HTTP origin. In that mode, HTTPS is still
+        // required for public traffic, but the local listener must be allowed
+        // to start without its own certificate.
+        let requireLocalHTTPS = settings.adminWebUI.requireHTTPS
+            && !settings.adminWebUI.internetAccessEnabled
         let config = AdminWebServer.Configuration(
             enabled: usesLocalRuntime && settings.adminWebUI.enabled,
             bindHost: settings.adminWebUI.bindHost,
             port: settings.adminWebUI.port,
             publicBaseURL: adminWebOAuthBaseURL(),
             https: httpsConfiguration,
-            requireHTTPS: settings.adminWebUI.requireHTTPS,
+            requireHTTPS: requireLocalHTTPS,
             discordOAuth: settings.adminWebUI.discordOAuth,
             localAuthEnabled: settings.adminWebUI.localAuthEnabled,
             localAuthUsername: settings.adminWebUI.localAuthUsername,
