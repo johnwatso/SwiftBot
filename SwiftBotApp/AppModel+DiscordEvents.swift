@@ -290,7 +290,17 @@ extension AppModel {
             if case let .string(nick)? = memberMap["nick"], !nick.isEmpty,
                case let .object(user)? = memberMap["user"],
                case let .string(userId)? = user["id"] {
-                await discordCache.upsertUser(id: userId, preferredName: nick)
+                let username: String?
+                if case let .string(value)? = user["username"] {
+                    username = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    username = nil
+                }
+                await discordCache.upsertUser(
+                    id: userId,
+                    preferredName: nick,
+                    username: username?.isEmpty == false ? username : nil
+                )
                 if user["bot"] == .bool(true) {
                     await discordCache.markBot(id: userId)
                 } else {
@@ -306,10 +316,20 @@ extension AppModel {
                 cacheUserAvatar(avatarHash, for: userId)
             }
 
+            let username: String?
+            if case let .string(value)? = user["username"] {
+                username = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                username = nil
+            }
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                await discordCache.upsertUser(id: userId, preferredName: globalName)
-            } else if case let .string(username)? = user["username"], !username.isEmpty {
-                await discordCache.upsertUser(id: userId, preferredName: username)
+                await discordCache.upsertUser(
+                    id: userId,
+                    preferredName: globalName,
+                    username: username?.isEmpty == false ? username : nil
+                )
+            } else if let username, !username.isEmpty {
+                await discordCache.upsertUser(id: userId, preferredName: username, username: username)
             }
 
             if user["bot"] == .bool(true) {

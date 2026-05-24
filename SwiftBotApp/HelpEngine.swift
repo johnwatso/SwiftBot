@@ -112,9 +112,9 @@ struct CommandCatalog {
             CommandEntry(
                 name: "miner",
                 aliases: ["swiftminer"],
-                usage: "\(prefix)miner [status|setup|health]",
-                description: "Checks or starts setup for your SwiftMiner drops miner.",
-                examples: ["\(prefix)miner status", "\(prefix)miner setup"],
+                usage: "\(prefix)miner [status|setup|pause|resume|refresh|health]",
+                description: "Checks, sets up, or controls your SwiftMiner drops miner.",
+                examples: ["\(prefix)miner status", "\(prefix)miner setup", "\(prefix)miner refresh"],
                 category: .general,
                 isAdminOnly: false
             ),

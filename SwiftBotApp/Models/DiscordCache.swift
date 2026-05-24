@@ -7,6 +7,7 @@ struct DiscordCacheSnapshot: Codable, Hashable {
     var availableTextChannelsByServer: [String: [GuildTextChannel]] = [:]
     var availableRolesByServer: [String: [GuildRole]] = [:]
     var usernamesById: [String: String] = [:]
+    var rawUsernamesById: [String: String] = [:]
     var channelTypesById: [String: Int] = [:]
     var botUserIds: Set<String> = []
     var guildMemberIds: Set<String> = []
@@ -18,6 +19,7 @@ struct DiscordCacheSnapshot: Codable, Hashable {
         case availableTextChannelsByServer
         case availableRolesByServer
         case usernamesById
+        case rawUsernamesById
         case channelTypesById
         case botUserIds
         case guildMemberIds
@@ -33,10 +35,17 @@ struct DiscordCacheSnapshot: Codable, Hashable {
         availableTextChannelsByServer = try container.decodeIfPresent([String: [GuildTextChannel]].self, forKey: .availableTextChannelsByServer) ?? [:]
         availableRolesByServer = try container.decodeIfPresent([String: [GuildRole]].self, forKey: .availableRolesByServer) ?? [:]
         usernamesById = try container.decodeIfPresent([String: String].self, forKey: .usernamesById) ?? [:]
+        rawUsernamesById = try container.decodeIfPresent([String: String].self, forKey: .rawUsernamesById) ?? [:]
         channelTypesById = try container.decodeIfPresent([String: Int].self, forKey: .channelTypesById) ?? [:]
         botUserIds = try container.decodeIfPresent(Set<String>.self, forKey: .botUserIds) ?? []
         guildMemberIds = try container.decodeIfPresent(Set<String>.self, forKey: .guildMemberIds) ?? []
     }
+}
+
+struct DiscordCachedUser: Hashable, Sendable {
+    let id: String
+    let displayName: String
+    let username: String?
 }
 
 actor DiscordCache {
@@ -136,6 +145,20 @@ actor DiscordCache {
     /// Returns only Discord users not flagged as bots/webhooks.
     func humanUserNames() -> [String: String] {
         snapshot.usernamesById.filter { !snapshot.botUserIds.contains($0.key) }
+    }
+
+    /// Returns only Discord users not flagged as bots/webhooks, including the
+    /// raw Discord username when gateway payloads have provided it.
+    func humanUsers() -> [DiscordCachedUser] {
+        snapshot.usernamesById
+            .filter { !snapshot.botUserIds.contains($0.key) }
+            .map { id, displayName in
+                DiscordCachedUser(
+                    id: id,
+                    displayName: displayName,
+                    username: snapshot.rawUsernamesById[id]
+                )
+            }
     }
 
     func markBot(id userID: String) {
@@ -258,12 +281,24 @@ actor DiscordCache {
         }
     }
 
-    func upsertUser(id userID: String, preferredName: String?) {
+    func upsertUser(id userID: String, preferredName: String?, username: String? = nil) {
         let cleaned = (preferredName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        if snapshot.usernamesById[userID] == cleaned { return }
-        snapshot.usernamesById[userID] = cleaned
-        emitUpdate()
+        let cleanedUsername = (username ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var didChange = false
+
+        if !cleaned.isEmpty, snapshot.usernamesById[userID] != cleaned {
+            snapshot.usernamesById[userID] = cleaned
+            didChange = true
+        }
+
+        if !cleanedUsername.isEmpty, snapshot.rawUsernamesById[userID] != cleanedUsername {
+            snapshot.rawUsernamesById[userID] = cleanedUsername
+            didChange = true
+        }
+
+        if didChange {
+            emitUpdate()
+        }
     }
 
     private func emitUpdate() {
