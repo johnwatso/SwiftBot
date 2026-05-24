@@ -543,6 +543,9 @@ actor AdminWebServer {
         var port: Int
         var publicBaseURL: String
         var https: HTTPSConfiguration?
+        /// When true, the server refuses to start if `https` is nil. Prevents
+        /// the admin panel from accidentally serving over plain HTTP.
+        var requireHTTPS: Bool = false
         var discordOAuth: OAuthProviderSettings
         var localAuthEnabled: Bool
         var localAuthUsername: String
@@ -940,8 +943,16 @@ actor AdminWebServer {
             }
         }
 
-        // No HTTPS configured. Allow cleartext only on loopback interfaces — never
-        // serve admin credentials/cookies in the clear on a routable address.
+        // No HTTPS configured. Two gates before we'll serve cleartext:
+        // 1. If the operator explicitly opted into HTTPS-only via the desktop GUI
+        //    (`requireHTTPS`), refuse to start. This is not exposed in the Web UI,
+        //    so the admin panel can't disable its own protection.
+        if config.requireHTTPS {
+            await logger?("Admin Web UI refusing to start: HTTPS is required (per desktop preferences) but no TLS configuration is present. Configure HTTPS or disable 'Require HTTPS' in the SwiftBot desktop app.")
+            return
+        }
+        // 2. Allow cleartext only on loopback interfaces — never serve admin
+        //    credentials/cookies in the clear on a routable address.
         guard isLoopbackBindHost(config.bindHost) else {
             await logger?("Admin Web UI refusing to start: bindHost \(config.bindHost) is not loopback and HTTPS is not configured. Configure HTTPS or change the bind host to 127.0.0.1.")
             return
@@ -2669,7 +2680,7 @@ actor AdminWebServer {
                     detail: "Open Discord → User Settings → My Account → Enable Two-Factor Auth, then try again.",
                     actionTitle: "Try again",
                     actionURL: "/auth/discord/login",
-                    variant: .denied
+                    variant: .mfaRequired
                 )
             }
 
@@ -3281,6 +3292,7 @@ actor AdminWebServer {
         case denied
         case notFound
         case error
+        case mfaRequired
     }
 
     private func authStatusPageResponse(
@@ -3302,6 +3314,7 @@ actor AdminWebServer {
         let isDenied = (variant == .denied)
         let isNotFound = (variant == .notFound)
         let isError = (variant == .error)
+        let isMFARequired = (variant == .mfaRequired)
         let heroHTML: String
         let extraStyles: String
         let bgStreamHTML: String
@@ -3360,6 +3373,27 @@ actor AdminWebServer {
                 #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>"#
             ]
             palette = ["#f59e0b", "#fbbf24", "#facc15", "#eab308", "#d97706", "#fb923c", "#f97316"]
+        } else if isMFARequired {
+            // 2FA-themed glyphs: padlock, key, shield with check, authenticator
+            // phone with shield, fingerprint, KeyRound, and a TOTP-style hexagon.
+            icons = [
+                // Padlock (closed)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#,
+                // Key
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 21 2"/><path d="M16 7l3 3"/><path d="M18 5l3 3"/></svg>"#,
+                // Shield with checkmark
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-3z"/><path d="M9 12l2 2 4-4"/></svg>"#,
+                // Phone with shield (authenticator app)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/><path d="M9 7l3-1 3 1v2.5c0 1.7-1.3 3-3 3.5-1.7-.5-3-1.8-3-3.5V7z"/></svg>"#,
+                // Fingerprint
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11v2a9 9 0 0 1-.6 3"/><path d="M9 13a3 3 0 1 1 6 0 9 9 0 0 1-.4 2.5"/><path d="M6 13a6 6 0 0 1 12 0v.5"/><path d="M3.5 12a8.5 8.5 0 0 1 17 0"/><path d="M7 18.8q.5-1 .8-2.3"/><path d="M16.5 19a17 17 0 0 0 1-3.5"/></svg>"#,
+                // Lock with rounded keyhole (KeyRound style)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="M18 5l3 3"/><path d="M15 8l3 3"/></svg>"#,
+                // TOTP hexagon
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 21 7 21 17 12 22 3 17 3 7 12 2"/><circle cx="12" cy="12" r="3"/></svg>"#
+            ]
+            // Warm amber/gold palette — security warning without the harshness of red.
+            palette = ["#f59e0b", "#fbbf24", "#fcd34d", "#facc15", "#eab308", "#d97706", "#f97316"]
         } else {
             // Success/Generic
             icons = [

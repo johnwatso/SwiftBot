@@ -99,6 +99,7 @@
       <ul>
         <li><strong>Role-Based Access Control (RBAC):</strong> Introduced foundational RBAC with 'Viewer' and 'Admin' roles. All state-changing operations are now strictly gated by admin permissions, allowing for future 'Read-Only' access.</li>
         <li><strong>Deep Payload Validation:</strong> Implemented strict field-level validation for all complex payloads (Automations, Sweep Policies, Webhooks), preventing 'Logic Injection' and ensuring values remain within safe operational bounds.</li>
+        <li><strong>Require HTTPS Mode:</strong> Introduced a high-security mode that forces the Admin Web UI to refuse connections over plain HTTP. This setting can only be toggled from the macOS desktop app, preventing the web panel from accidentally disabling its own transport security.</li>
         <li><strong>PKCE for OAuth:</strong> Hardened the Discord login flow with PKCE (Proof Key for Code Exchange), providing cryptographically secure binding for the authentication handshake.</li>
         <li><strong>Content Security Policy (CSP):</strong> Implemented a strict CSP with per-request nonces for the Admin Web UI. All inline JavaScript has been removed in favor of a delegated event dispatcher, mitigating XSS risks.</li>
         <li><strong>Mandatory Discord MFA:</strong> Web UI login now requires Multi-Factor Authentication to be enabled on your Discord account.</li>
@@ -143,6 +144,7 @@
       <ul>
         <li><strong>UI Consistency:</strong> A comprehensive visual refresh across all native views and the admin web interface, ensuring a seamless and consistent experience throughout the application.</li>
         <li><strong>Static UI Mode:</strong> Introduced a specialized "Static Auth" mode when the Admin UI is loaded directly from local files, ensuring a consistent fallback experience.</li>
+        <li><strong>Enhanced MFA Awareness:</strong> Redesigned the "MFA Required" login status page with security-themed iconography (fingerprints, padlocks, keys) and a warm amber palette to clearly communicate 2FA requirements.</li>
         <li><strong>SwiftMesh UI Refresh:</strong> A complete redesign of the mesh management interface with a new node list, configuration grid, and improved visual hierarchy.</li>
         <li><strong>Unified Activity Log:</strong> Merged Command Log and System Logs into a single, high-performance view with smart filtering for Gateway, Audit, and Mesh events.</li>
         <li><strong>Premium Login Experience:</strong> A completely redesigned, Apple-inspired login screen for the Web UI with high-density background animations.</li>

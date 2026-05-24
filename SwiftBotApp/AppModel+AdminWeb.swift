@@ -1247,6 +1247,7 @@ extension AppModel {
             port: settings.adminWebUI.port,
             publicBaseURL: adminWebOAuthBaseURL(),
             https: httpsConfiguration,
+            requireHTTPS: settings.adminWebUI.requireHTTPS,
             discordOAuth: settings.adminWebUI.discordOAuth,
             localAuthEnabled: settings.adminWebUI.localAuthEnabled,
             localAuthUsername: settings.adminWebUI.localAuthUsername,
