@@ -59,6 +59,22 @@ struct SwiftMinerActivationStatus: Codable, Sendable {
     let failureReason: String?
 }
 
+struct SwiftMinerControlResponse: Codable, Sendable {
+    let ok: Bool
+    let action: String
+    let state: String
+    let twitchUsername: String?
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case action
+        case state
+        case twitchUsername = "twitchUsername"
+        case message
+    }
+}
+
 enum SwiftMinerClientError: LocalizedError {
     case disabled
     case invalidBaseURL
@@ -136,6 +152,11 @@ struct SwiftMinerClient {
             method: "POST",
             body: Body(scope: scope)
         )
+    }
+
+    func controlMiner(discordUserId: String, action: String) async throws -> SwiftMinerControlResponse {
+        let data = try await request(path: "/v1/users/\(discordUserId)/miner/\(action)", method: "POST")
+        return try decoder.decode(SwiftMinerControlResponse.self, from: data)
     }
 
     private func request<T: Encodable>(

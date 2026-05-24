@@ -2199,6 +2199,15 @@ extension AppModel {
             )
         }
 
+        let authorUsername: String? = {
+            if case let .object(author)? = map["author"],
+               case let .string(username)? = author["username"],
+               !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return username
+            }
+            return nil
+        }()
+
         let preferredName: String = {
             if case let .object(member)? = map["member"],
                case let .string(nick)? = member["nick"],
@@ -2218,7 +2227,7 @@ extension AppModel {
             return fallbackUsername
         }()
 
-        await discordCache.upsertUser(id: userID, preferredName: preferredName)
+        await discordCache.upsertUser(id: userID, preferredName: preferredName, username: authorUsername)
 
         // Flag bots and webhooks so the admin user picker can exclude non-human authors.
         var isNonHuman = false

@@ -3616,6 +3616,26 @@
       transform: translateY(-1px);
       border-color: rgba(255,255,255,0.18);
     }
+    html[data-theme="light"] #appShell .automation-template-card {
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(0, 0, 0, 0.12);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    }
+    html[data-theme="light"] #appShell .automation-template-card:hover {
+      border-color: rgba(0, 122, 255, 0.34);
+      background: rgba(255, 255, 255, 0.88);
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme]) #appShell .automation-template-card {
+        background: rgba(255, 255, 255, 0.72);
+        border-color: rgba(0, 0, 0, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+      }
+      html:not([data-theme]) #appShell .automation-template-card:hover {
+        border-color: rgba(0, 122, 255, 0.34);
+        background: rgba(255, 255, 255, 0.88);
+      }
+    }
     .automation-template-icon {
       width: 32px; height: 32px;
       border-radius: 50%;
@@ -3743,6 +3763,270 @@
       background: none; border: 0; color: inherit; cursor: pointer;
       font-size: 14px; line-height: 1; padding: 0;
     }
+
+    /* ============================================================
+       Compact admin shell pass
+       Keeps each view as one scrolling surface and removes the
+       heavy top strips that made the Web UI feel too much like chat.
+       ============================================================ */
+    #appShell {
+      --sidebar-width: 236px;
+    }
+    #appShell::before,
+    #appShell::after {
+      opacity: 0.12;
+      filter: blur(150px);
+    }
+    #appShell .sidebar {
+      height: calc(100vh - 28px);
+      margin: 14px 0 14px 14px;
+      padding: 14px 10px 12px;
+      border: 1px solid var(--cv-border);
+      border-radius: 22px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 18px 48px rgba(0, 0, 0, 0.18);
+    }
+    #appShell .sidebar-inner { gap: 10px; }
+    #appShell .sidebar-brand {
+      padding: 0 8px 12px;
+      gap: 9px;
+    }
+    #appShell .sidebar-brand .app-icon {
+      width: 34px;
+      height: 34px;
+      flex-basis: 34px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.28), transparent 38%),
+        #5865f2;
+      box-shadow: 0 8px 22px rgba(88, 101, 242, 0.24);
+      overflow: hidden;
+    }
+    #appShell .sidebar-brand .app-icon-img {
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      object-fit: cover;
+      display: block;
+    }
+    #appShell .sidebar-brand .app-icon-img.is-fallback {
+      object-fit: contain;
+      padding: 5px;
+    }
+    #appShell .brand-title {
+      font-size: 18px;
+      line-height: 1.1;
+    }
+    #appShell .nav-section,
+    #appShell .nav-section + .nav-section {
+      margin-top: 12px;
+    }
+    #appShell .nav-heading {
+      padding: 0 10px 5px;
+      margin: 0;
+      font-size: 11px;
+      line-height: 14px;
+      font-weight: 650;
+    }
+    #appShell .nav-link,
+    #appShell .sidebar-action {
+      min-height: 34px;
+      padding: 6px 10px;
+      gap: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    #appShell .nav-icon,
+    #appShell .nav-icon .lucide {
+      width: 18px;
+      height: 18px;
+    }
+    #appShell .sidebar-user {
+      padding-top: 10px;
+      gap: 8px;
+    }
+    #appShell .sidebar-user-card {
+      padding: 6px 4px 6px 10px;
+      border-radius: 8px;
+    }
+    #appShell .user-avatar {
+      width: 30px;
+      height: 30px;
+    }
+    #appShell .user-display { font-size: 13px; }
+    #appShell .user-handle { font-size: 11px; }
+    #appShell .icon-btn {
+      width: 28px;
+      height: 28px;
+    }
+
+    #appShell .content {
+      height: 100vh;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+    #appShell .view {
+      padding: 16px 24px 28px;
+    }
+    #appShell .section-sticky {
+      position: static;
+      z-index: auto;
+      margin: 0 0 12px;
+      padding: 0;
+      background: transparent;
+      border-bottom: 0;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    #appShell .section-sticky-row {
+      min-height: 30px;
+      align-items: center;
+    }
+    #appShell .section-mini-title {
+      font-size: 15px;
+      line-height: 20px;
+      font-weight: 720;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    #appShell .section-mini-title .lucide {
+      width: 16px;
+      height: 16px;
+      margin-right: 5px;
+    }
+
+    #appShell .glass,
+    #appShell .stat-card,
+    #appShell .diagnostics-panel,
+    #appShell .overview-panel,
+    #appShell .detail-card,
+    #appShell .analytics-panel {
+      border-radius: 8px;
+      box-shadow: none;
+    }
+    #appShell .stats-grid {
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    #appShell .stat-card {
+      padding: 10px 11px;
+      gap: 4px;
+    }
+    #appShell .stat-card .stat-icon,
+    #appShell .stat-card .panel-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+    }
+    #appShell .stat-card .stat-value,
+    #appShell .stat-card .value,
+    #appShell .stat-card > strong {
+      font-size: 19px;
+      line-height: 1.1;
+    }
+    #appShell .stat-card h3,
+    #appShell .stat-card .stat-label {
+      font-size: 9px;
+      letter-spacing: 0.05em;
+    }
+
+    #appShell .cv-overview-top {
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    #appShell .cv-overview-top > .diagnostics-panel,
+    #appShell .cv-usage-panel {
+      min-height: 230px;
+    }
+    #appShell .cv-usage-panel {
+      padding: 14px;
+      gap: 10px;
+    }
+    #appShell .cv-usage-chart-wrap {
+      min-height: 150px;
+    }
+    #appShell .panel-title {
+      padding: 0 0 9px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      gap: 8px;
+    }
+    #appShell #overviewPanelVoiceEvents .panel-title i.lucide,
+    #appShell #overviewPanelRecentCommands .panel-title i.lucide,
+    #appShell #overviewPanelActiveVoice .panel-title i.lucide {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      padding: 5px;
+    }
+    #appShell .event-list .event-item,
+    #appShell .event-list > *,
+    #appShell .info-list > * {
+      padding: 7px 8px;
+      border-radius: 6px;
+    }
+    #appShell .event-list .event-item {
+      gap: 9px;
+    }
+    #appShell .event-list .event-item + .event-item {
+      margin-top: 2px;
+    }
+
+    #appShell .overview-header {
+      margin: 0 0 12px;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    #appShell .overview-title {
+      font-size: 24px;
+      letter-spacing: -0.02em;
+    }
+    #appShell .overview-copy {
+      margin-top: 4px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    #appShell .section-label {
+      padding: 0;
+      background: transparent;
+      border: 0;
+    }
+
+    #appShell .settings-shell,
+    #appShell .diagnostics-shell,
+    #appShell .commands-shell,
+    #appShell .analytics-shell,
+    #appShell .patchy-shell,
+    #appShell .wiki-shell {
+      gap: 10px;
+    }
+
+    @media (max-width: 880px) {
+      #appShell .sidebar {
+        height: calc(100vh - 24px);
+        margin: 12px;
+        padding: 14px 10px 12px;
+        border-radius: 22px;
+        transform: translateX(calc(-100% - 24px));
+      }
+      #appShell .view {
+        padding: 12px 14px 24px;
+      }
+      #appShell .mobile-topbar {
+        margin: 10px 12px 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+      }
+      #appShell .cv-overview-top {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -3808,7 +4092,7 @@
     <section id="appShell" class="app-shell">
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-brand">
-          <div class="app-icon" aria-hidden="true"><img id="sidebarAppIconImg" class="app-icon-img" src="/assets/AppIcon.png" alt=""></div>
+          <div class="app-icon" aria-hidden="true"><img id="sidebarAppIconImg" class="app-icon-img is-fallback" src="/assets/SwiftBird3.png" alt=""></div>
           <div>
             <div id="sidebarBrandTitle" class="brand-title">SwiftBot</div>
             <div id="sidebarBrandSubtitle" class="brand-subtitle">Web Admin</div>
@@ -3927,12 +4211,6 @@
           <div class="section-sticky">
             <div class="section-sticky-row">
               <div class="section-mini-title"><i class="lucide" data-lucide="layout-dashboard"></i> Dashboard</div>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="botToggleIcon" class="bot-toggle-btn" type="button">
-                  <i class="lucide" data-lucide="play"></i>
-                  <span id="botToggleText">Start Bot</span>
-                </button>
-              </div>
             </div>
           </div>
 
@@ -3980,12 +4258,11 @@
             </article>
           </section>
 
-          <!-- Hidden plumbing kept for code that still reads these (renderInfoRows
-               for clusterInfo, swiftMeshButton wiring, toggleBot button, etc.). -->
+          <!-- Hidden plumbing kept for code that still reads these
+               (renderInfoRows for clusterInfo and swiftMeshButton wiring). -->
           <div id="overviewHiddenPlumbing" style="display:none;">
             <div id="clusterInfo"></div>
             <button id="swiftMeshButton" type="button"></button>
-            <button id="toggleBot" type="button"></button>
             <div id="message"></div>
           </div>
         </section>
@@ -5256,7 +5533,14 @@
 
       const brandImg = document.getElementById('sidebarAppIconImg');
       if (brandImg) {
-        brandImg.src = data.botAvatarURL || '/assets/AppIcon.png';
+        const hasBotAvatar = !!data.botAvatarURL;
+        brandImg.classList.toggle('is-fallback', !hasBotAvatar);
+        brandImg.onerror = () => {
+          brandImg.onerror = null;
+          brandImg.classList.add('is-fallback');
+          brandImg.src = '/assets/SwiftBird3.png';
+        };
+        brandImg.src = hasBotAvatar ? data.botAvatarURL : '/assets/SwiftBird3.png';
       }
       const brandTitle = document.getElementById('sidebarBrandTitle');
       if (brandTitle) {
@@ -5267,8 +5551,6 @@
         brandSubtitle.textContent = (data.botStatus === 'running') ? 'Online' : 'Stopped';
       }
       applyBotIdentityLabels();
-
-      refreshBotToggleButton();
       return data;
     }
 
@@ -5409,32 +5691,6 @@
       const data = await response.json();
       dashboardSettings = data;
       return data;
-    }
-
-    function refreshBotToggleButton() {
-      if (!dashboardStatus) return;
-      const runningStates = ['running', 'connecting', 'reconnecting'];
-      const isRunning = runningStates.includes((dashboardStatus.botStatus || '').toLowerCase());
-
-      // Legacy hidden button kept for compatibility with other code paths.
-      const legacy = document.getElementById('toggleBot');
-      if (legacy) {
-        legacy.textContent = isRunning ? 'Stop Bot' : 'Start Bot';
-        legacy.className = isRunning ? 'secondary-action' : 'primary-action';
-      }
-
-      // New header button with icon and text.
-      const btn = document.getElementById('botToggleIcon');
-      const text = document.getElementById('botToggleText');
-      if (btn && text) {
-        const label = isRunning ? 'Stop Bot' : 'Start Bot';
-        btn.title = label;
-        text.textContent = label;
-        btn.classList.toggle('bot-toggle-btn-running', isRunning);
-        btn.classList.toggle('bot-toggle-btn-stopped', !isRunning);
-        btn.innerHTML = `<i class="lucide" data-lucide="${isRunning ? 'square' : 'play'}"></i><span>${label}</span>`;
-        try { lucide.createIcons(); } catch (_) {}
-      }
     }
 
     async function loadConfig() {
@@ -9690,36 +9946,6 @@
       }
       renderOverviewPanels();
       renderOverviewAddList();
-    });
-
-    document.getElementById('botToggleIcon')?.addEventListener('click', () => {
-      document.getElementById('toggleBot')?.click();
-    });
-
-    document.getElementById('toggleBot')?.addEventListener('click', async () => {
-      try {
-        const runningStates = ['running', 'connecting', 'reconnecting'];
-        const isRunning = runningStates.includes((dashboardStatus?.botStatus || '').toLowerCase());
-        
-        // Optimistic UI update: flip the state immediately in the status object
-        if (dashboardStatus) {
-            dashboardStatus.botStatus = isRunning ? 'stopped' : 'running';
-            refreshBotToggleButton();
-        }
-
-        await postJSON(isRunning ? '/api/bot/stop' : '/api/bot/start', {});
-        
-        // Explicitly load status and refresh UI after the request completes
-        await Promise.all([loadStatus(), loadOverview(), loadAnalytics(), loadSettings(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
-        refreshCurrentView();
-        refreshBotToggleButton();
-        
-        setMessage(isRunning ? 'Bot stop requested.' : 'Bot start requested.', 'success');
-      } catch (error) {
-        setMessage(error.message, 'error');
-        // Revert UI on error by reloading status
-        loadStatus().then(refreshBotToggleButton);
-      }
     });
 
     async function logout() {

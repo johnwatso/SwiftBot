@@ -1668,17 +1668,30 @@ extension AppModel {
                 await discordCache.markBot(id: userId)
             }
             if case let .string(nick)? = member["nick"], !nick.isEmpty {
-                await discordCache.upsertUser(id: userId, preferredName: nick)
+                let username: String?
+                if case let .object(user)? = member["user"],
+                   case let .string(value)? = user["username"] {
+                    username = value
+                } else {
+                    username = nil
+                }
+                await discordCache.upsertUser(id: userId, preferredName: nick, username: username)
                 return nick
             }
 
             if case let .object(user)? = member["user"] {
+                let username: String?
+                if case let .string(value)? = user["username"] {
+                    username = value
+                } else {
+                    username = nil
+                }
                 if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                    await discordCache.upsertUser(id: userId, preferredName: globalName)
+                    await discordCache.upsertUser(id: userId, preferredName: globalName, username: username)
                     return globalName
                 }
-                if case let .string(username)? = user["username"], !username.isEmpty {
-                    await discordCache.upsertUser(id: userId, preferredName: username)
+                if let username, !username.isEmpty {
+                    await discordCache.upsertUser(id: userId, preferredName: username, username: username)
                     return username
                 }
             }
@@ -1688,12 +1701,18 @@ extension AppModel {
             if user["bot"] == .bool(true) {
                 await discordCache.markBot(id: userId)
             }
+            let username: String?
+            if case let .string(value)? = user["username"] {
+                username = value
+            } else {
+                username = nil
+            }
             if case let .string(globalName)? = user["global_name"], !globalName.isEmpty {
-                await discordCache.upsertUser(id: userId, preferredName: globalName)
+                await discordCache.upsertUser(id: userId, preferredName: globalName, username: username)
                 return globalName
             }
-            if case let .string(username)? = user["username"], !username.isEmpty {
-                await discordCache.upsertUser(id: userId, preferredName: username)
+            if let username, !username.isEmpty {
+                await discordCache.upsertUser(id: userId, preferredName: username, username: username)
                 return username
             }
         }

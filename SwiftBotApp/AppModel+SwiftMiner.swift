@@ -77,8 +77,11 @@ extension AppModel {
             case "status":
                 let projection = try await client.projection(discordUserId: userId)
                 return (true, renderSwiftMinerProjection(projection))
+            case "pause", "resume", "refresh":
+                let response = try await client.controlMiner(discordUserId: userId, action: normalizedAction)
+                return (response.ok, response.message)
             default:
-                return (false, "Usage: `/miner action:status`, `/miner action:setup`, or `/miner action:health`.")
+                return (false, "Usage: `/miner action:status`, `/miner action:setup`, `/miner action:pause`, `/miner action:resume`, `/miner action:refresh`, or `/miner action:health`.")
             }
         } catch {
             return (false, error.localizedDescription)
@@ -96,6 +99,19 @@ extension AppModel {
             result[id] = cacheNames[id] ?? id
         }
         return result
+    }
+
+    func swiftMinerDiscordUsers() async -> [AdminWebDiscordUser] {
+        let users = await discordCache.humanUsers()
+        return users.map { user in
+            let avatar = avatarURL(forUserId: user.id) ?? fallbackAvatarURL(forUserId: user.id)
+            return AdminWebDiscordUser(
+                discordId: user.id,
+                displayName: user.displayName,
+                username: user.username,
+                avatarURL: avatar?.absoluteString
+            )
+        }
     }
 
     // MARK: - SwiftMiner Typed DM Pipeline

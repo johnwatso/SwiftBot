@@ -1692,8 +1692,8 @@ extension AppModel {
                 return await model.handleSwiftMinerWebhook(headers: headers, body: body)
             },
             discordUsersProvider: { [weak self] in
-                guard let model = self else { return [:] }
-                return await model.discordCache.humanUserNames()
+                guard let model = self else { return [] }
+                return await model.swiftMinerDiscordUsers()
             },
             swiftMinerTestDMSender: { [weak self] request, discordUserId in
                 guard let model = self else { return false }

@@ -71,6 +71,24 @@ struct AdminWebActiveVoicePayload: Codable {
     let joinedText: String
 }
 
+struct AdminWebDiscordUser: Codable, Sendable {
+    let discordId: String
+    let displayName: String
+    let username: String?
+    let avatarURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case discordId = "discord_id"
+        case displayName = "display_name"
+        case username
+        case avatarURL = "avatar_url"
+    }
+}
+
+private struct AdminWebDiscordUsersResponse: Codable {
+    let users: [AdminWebDiscordUser]
+}
+
 struct AdminWebBotInfoPayload: Codable {
     let uptime: String
     let errors: Int
@@ -701,7 +719,7 @@ actor AdminWebServer {
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
-    private var discordUsersProvider: (@Sendable () async -> [String: String])?
+    private var discordUsersProvider: (@Sendable () async -> [AdminWebDiscordUser])?
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var swiftMinerPairedProvider: (@Sendable () async -> Bool)?
     private var logger: (@Sendable (String) async -> Void)?
@@ -800,7 +818,7 @@ actor AdminWebServer {
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
-        discordUsersProvider: @escaping @Sendable () async -> [String: String],
+        discordUsersProvider: @escaping @Sendable () async -> [AdminWebDiscordUser],
         swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
         swiftMinerPairedProvider: @escaping @Sendable () async -> Bool,
         log: @escaping @Sendable (String) async -> Void
@@ -1110,7 +1128,7 @@ actor AdminWebServer {
     private func handleConnection(_ connection: NWConnection) async {
         defer {
             connection.cancel()
-            Task { await self.releaseConnectionSlot() }
+            Task { self.releaseConnectionSlot() }
         }
 
         guard await acquireConnectionSlot() else {
@@ -1291,11 +1309,9 @@ actor AdminWebServer {
             let paired = await swiftMinerPairedProvider?() ?? false
             return jsonResponse(["status": "ok", "paired": paired])
         case ("GET", "/v1/users"):
-            let usernamesById = await discordUsersProvider?() ?? [:]
-            let users = usernamesById
-                .map { ["discord_id": $0.key, "display_name": $0.value] }
-                .sorted { ($0["display_name"] ?? "") < ($1["display_name"] ?? "") }
-            return jsonResponse(["users": users])
+            let users = (await discordUsersProvider?() ?? [])
+                .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            return codableResponse(AdminWebDiscordUsersResponse(users: users))
         case ("POST", let path) where path.hasPrefix("/v1/users/") && path.hasSuffix("/dm/test"):
             let segments = path.split(separator: "/").map(String.init)
             // Expected: ["v1", "users", "<discordUserId>", "dm", "test"]
@@ -3725,18 +3741,19 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         guard !hasWrittenResponse else { return }
         hasWrittenResponse = true
 
+        nonisolated(unsafe) let unsafeContext = context
         context.eventLoop.execute {
-            var buffer = context.channel.allocator.buffer(capacity: response.count)
+            var buffer = unsafeContext.channel.allocator.buffer(capacity: response.count)
             buffer.writeBytes(response)
-            context.writeAndFlush(self.wrapOutboundOut(buffer)).whenComplete { _ in
+            unsafeContext.writeAndFlush(self.wrapOutboundOut(buffer)).whenComplete { _ in
                 if closeAfterWrite {
-                    context.close(promise: nil)
+                    unsafeContext.close(promise: nil)
                     return
                 }
                 self.hasWrittenResponse = false
                 self.isProcessing = false
                 self.processorTask = nil
-                self.tryProcessNextRequest(context: context)
+                self.tryProcessNextRequest(context: unsafeContext)
             }
         }
     }
