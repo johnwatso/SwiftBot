@@ -216,8 +216,15 @@ struct DashboardSidebar: View {
     @ViewBuilder
     private func sidebarListRow(_ item: SidebarItem, count: Int? = nil) -> some View {
         HStack(spacing: 8) {
-            Label(item.rawValue, systemImage: item.icon)
-                .labelStyle(.titleAndIcon)
+            Image(systemName: item.icon)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 18, alignment: .center)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(item.rawValue)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
             Spacer(minLength: 0)
             if let count, count > 0 {
                 Text("\(count)")
