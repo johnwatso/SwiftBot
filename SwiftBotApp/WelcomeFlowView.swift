@@ -285,12 +285,6 @@ struct WelcomeFlowView: View {
                     .background(.quaternary, in: Capsule())
             }
             Spacer()
-            Button {
-                showPreviewSheet = true
-            } label: {
-                Label("Preview", systemImage: "text.bubble")
-            }
-            .buttonStyle(WelcomeFlowGlassButtonStyle())
         }
     }
 
@@ -1040,6 +1034,20 @@ struct WelcomeFlowView: View {
                 messageFormatSelector("Message style", selection: publicMessageFormat)
 
                 if app.settings.welcomeFlow.publicMessageFormat == .embed {
+                    HStack(spacing: 8) {
+                        Text("EMBED CARD")
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button {
+                            showPreviewSheet = true
+                        } label: {
+                            Label("Preview", systemImage: "text.bubble")
+                        }
+                        .buttonStyle(WelcomeFlowGlassButtonStyle(compact: true))
+                    }
+
                     HStack(alignment: .top, spacing: 14) {
                         templateField(label: "EMBED TITLE", placeholder: "Welcome to {server}", text: embedTitleTemplate, lineLimit: 1...2)
                         templateField(

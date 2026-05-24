@@ -2451,7 +2451,7 @@ actor AdminWebServer {
     }
 
     private func serveAsset(named name: String, ext: String, subdirectories: [String] = []) -> Data {
-        let baseDirectories = ["Resources", "admin", "Resources/admin", "Resources/admin/assets"]
+        let baseDirectories = ["Resources", "admin", "admin/assets", "Resources/admin", "Resources/admin/assets"]
         let candidates: [(Bundle, String)] = (subdirectories + baseDirectories).map { (.main, $0) }
 
         let contentType: String = {
