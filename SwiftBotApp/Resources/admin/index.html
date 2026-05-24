@@ -7,6 +7,9 @@
   <script>
     (function() {
       try {
+        if (window.location.protocol === 'file:') {
+          document.documentElement.setAttribute('data-static-auth', 'true');
+        }
         const storageKey = 'swiftbot.webui.prefs';
         const parsed = JSON.parse(localStorage.getItem(storageKey) || '{}');
         const theme = ['light', 'dark'].includes(parsed.theme) ? parsed.theme : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
@@ -14,9 +17,9 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="icon" type="image/png" href="favicon.png">
   <!-- Self-hosted Lucide icons for maximum privacy and CSP compatibility. -->
-  <script src="/assets/lucide.min.js"></script>
+  <script src="assets/lucide.min.js"></script>
   <style>
     :root {
       color-scheme: light dark;
@@ -63,10 +66,10 @@
     .animation-delay-4000 { animation-delay: 4s; }
 
     @keyframes float-up {
-      0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
-      15% { opacity: 0.55; }
-      85% { opacity: 0.55; }
-      100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+      0% { transform: translate3d(0, 14vh, 0) rotate(0deg); opacity: 0; }
+      12% { opacity: 0.78; }
+      84% { opacity: 0.78; }
+      100% { transform: translate3d(0, -126vh, 0) rotate(360deg); opacity: 0; }
     }
 
     @keyframes driftDiagForward {
@@ -121,8 +124,9 @@
       inset: 0;
       overflow: hidden;
       pointer-events: none;
-      color: var(--bg-symbols-color, rgba(255, 255, 255, 0.2));
+      color: var(--bg-symbols-color, rgba(255, 255, 255, 0.55));
       font-size: 10px;
+      z-index: 1;
     }
 
     .bg-symbols span {
@@ -137,7 +141,8 @@
     .bg-symbols svg {
       width: 100%;
       height: 100%;
-      stroke-width: 1.6;
+      stroke-width: 2.1;
+      filter: drop-shadow(0 10px 22px rgba(32, 140, 255, 0.14));
     }
 
     .bg-orb {
@@ -273,6 +278,10 @@
       display: none;
     }
 
+    body:has(#authScreen:not(.hidden))::before {
+      display: none;
+    }
+
     .bg-stream {
       position: fixed;
       inset: 0;
@@ -342,6 +351,18 @@
     }
 
     .hidden { display: none !important; }
+
+    html[data-static-auth="true"] #authScreen.hidden {
+      display: grid !important;
+    }
+
+    html[data-static-auth="true"] #appShell {
+      display: none !important;
+    }
+
+    html[data-static-auth="true"] #bgStream {
+      display: none !important;
+    }
 
     .page > *,
     .page button,
@@ -1709,6 +1730,20 @@
       margin-top: 12px;
     }
 
+    .mesh-status-card .value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mesh-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.04);
+    }
+
     .mesh-map-svg {
       position: absolute;
       inset: 0;
@@ -1763,6 +1798,11 @@
       color: var(--muted);
     }
 
+    .mesh-node-icon i {
+      width: 18px;
+      height: 18px;
+    }
+
     .mesh-node-name {
       font-size: 13px;
       font-weight: 700;
@@ -1793,13 +1833,6 @@
       color: var(--muted);
     }
 
-    .mesh-status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      flex: 0 0 auto;
-    }
-
     .setting-row {
       display: flex;
       align-items: center;
@@ -1823,6 +1856,97 @@
       font-size: 13px;
       font-weight: 600;
       line-height: 1.2;
+    }
+
+    .mesh-panel-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      grid-column: 1 / -1;
+    }
+
+    .mesh-config-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .mesh-node-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mesh-node-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-radius: var(--radius-md);
+      padding: 9px 10px;
+      border: 1px solid var(--glass-stroke);
+      background: var(--glass-bottom);
+    }
+
+    .mesh-node-main {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 10px;
+    }
+
+    .mesh-node-main i {
+      color: var(--muted);
+      flex: 0 0 auto;
+    }
+
+    .mesh-node-text {
+      min-width: 0;
+    }
+
+    .mesh-node-title {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .mesh-node-title span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mesh-node-meta,
+    .mesh-node-latency {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .mesh-role-chip {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      border: 1px solid var(--glass-stroke);
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.04em;
+      padding: 2px 6px;
+      text-transform: uppercase;
+    }
+
+    .mesh-config-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
     }
 
     .setting-row .left .desc {
@@ -1859,7 +1983,9 @@
       .settings-top,
       .diagnostics-top,
       .settings-panels,
-      .diagnostics-panels {
+      .diagnostics-panels,
+      .mesh-panel-grid,
+      .mesh-config-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -3370,7 +3496,7 @@
        ============================================================ */
     html[data-theme="light"] #authScreen,
     html[data-theme="light"] .onboarding-shell {
-      background: #f4f5f7 !important;
+      background: transparent !important;
       color: #1d1d1f !important;
     }
     html[data-theme="light"] #authScreen #authBotName {
@@ -3425,7 +3551,7 @@
     @media (prefers-color-scheme: light) {
       html:not([data-theme]) #authScreen,
       html:not([data-theme]) .onboarding-shell {
-        background: #f4f5f7 !important;
+        background: transparent !important;
         color: #1d1d1f !important;
       }
       html:not([data-theme]) #authScreen #authBotName { color: #1d1d1f !important; }
@@ -3627,16 +3753,20 @@
       <!-- BACKGROUND ANIMATION LAYER -->
       <div class="absolute inset-0 z-0" style="position: absolute; inset: 0; pointer-events: none;">
         <div class="bg-grid"></div>
-        <div id="bgSymbols" class="bg-symbols"></div>
-        
-        <div class="bg-orb animate-blob" style="top: 25%; left: 25%; width: 24rem; height: 24rem; background: rgba(30, 58, 138, 0.15);"></div>
-        <div class="bg-orb animate-blob animation-delay-2000" style="bottom: 25%; right: 25%; width: 30rem; height: 30rem; background: rgba(49, 46, 129, 0.15); filter: blur(120px);"></div>
+        <div id="bgSymbols" class="bg-symbols">
+          <span style="left:8%;width:30px;height:30px;animation:float-up 42s linear infinite -8s;"><svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M12 7h5M12 17h5"/></svg></span>
+          <span style="left:18%;width:24px;height:24px;animation:float-up 38s linear infinite -18s;"><svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><path d="M5 4v4M3 6h4M19 16v4M17 18h4"/></svg></span>
+          <span style="left:31%;width:34px;height:34px;animation:float-up 54s linear infinite -28s;"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+          <span style="left:45%;width:28px;height:28px;animation:float-up 47s linear infinite -6s;"><svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg></span>
+          <span style="left:59%;width:22px;height:22px;animation:float-up 36s linear infinite -20s;"><svg viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5-5-5"/><path d="M12 19h8"/></svg></span>
+          <span style="left:73%;width:32px;height:32px;animation:float-up 61s linear infinite -38s;"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-13h-7z"/></svg></span>
+          <span style="left:86%;width:26px;height:26px;animation:float-up 45s linear infinite -12s;"><svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/></svg></span>
+        </div>
       </div>
 
       <div class="onboarding" style="position: relative; z-index: 10; width: 100%; max-width: 440px;">
         <!-- Main Interactive Card -->
         <div class="auth-card glass" style="width: 100%; background: rgba(10, 10, 15, 0.45); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.15); padding: 28px 22px 22px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.3); backdrop-filter: blur(12px) saturate(1.8); -webkit-backdrop-filter: blur(12px) saturate(1.8); transform: translateZ(0); -webkit-transform: translateZ(0);">
-
           <!-- Header (inside the card) -->
           <div style="display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px;">
             <div style="position: relative; margin-bottom: 14px;">
@@ -3700,6 +3830,10 @@
                 <span class="nav-icon"><i class="lucide" data-lucide="terminal"></i></span>
                 <span class="nav-text">Commands</span>
               </button>
+              <button class="nav-link" data-view="welcome" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="hand"></i></span>
+                <span class="nav-text">Welcome</span>
+              </button>
               <button class="nav-link" data-view="automations" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="zap"></i></span>
                 <span class="nav-text">Automations</span>
@@ -3707,10 +3841,6 @@
               <button class="nav-link" data-view="moderation" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="shield"></i></span>
                 <span class="nav-text">Moderation</span>
-              </button>
-              <button class="nav-link" data-view="welcome" type="button">
-                <span class="nav-icon"><i class="lucide" data-lucide="hand"></i></span>
-                <span class="nav-text">Welcome</span>
               </button>
             </div>
 
@@ -3720,9 +3850,17 @@
                 <span class="nav-icon"><i class="lucide" data-lucide="download"></i></span>
                 <span class="nav-text">Patchy</span>
               </button>
+              <button class="nav-link" data-view="sweep" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="layers"></i></span>
+                <span class="nav-text">Sweep</span>
+              </button>
               <button class="nav-link" data-view="wikibridge" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="scan-search"></i></span>
-                <span class="nav-text">Lookup</span>
+                <span class="nav-text">WikiBridge</span>
+              </button>
+              <button class="nav-link" data-view="recordings" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="film"></i></span>
+                <span class="nav-text">Recordings</span>
               </button>
             </div>
 
@@ -3731,14 +3869,6 @@
               <button class="nav-link" data-view="aibots" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="bot"></i></span>
                 <span class="nav-text">AI Bots</span>
-              </button>
-              <button class="nav-link" data-view="recordings" type="button">
-                <span class="nav-icon"><i class="lucide" data-lucide="film"></i></span>
-                <span class="nav-text">Recordings</span>
-              </button>
-              <button class="nav-link" data-view="sweep" type="button">
-                <span class="nav-icon"><i class="lucide" data-lucide="layers"></i></span>
-                <span class="nav-text">Sweep</span>
               </button>
               <button class="nav-link" data-view="analytics" type="button">
                 <span class="nav-icon"><i class="lucide" data-lucide="activity"></i></span>
@@ -4461,8 +4591,7 @@
         root.setAttribute('data-theme', userPrefs.theme);
       }
       const bg = document.getElementById('bgStream');
-      const isAuth = !document.getElementById('authScreen').classList.contains('hidden');
-      if (bg) bg.style.display = isAuth ? '' : 'none';
+      if (bg) bg.style.display = 'none';
       root.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
       if (body) body.classList.toggle('compact-density', userPrefs.compactMode);
     }
@@ -4498,9 +4627,30 @@
       document.getElementById('appShell').classList.remove('active');
       document.getElementById('authScreen').classList.remove('hidden');
       const bg = document.getElementById('bgStream');
-      if (bg) bg.style.display = ''; // Force show on auth screen
+      if (bg) bg.style.display = 'none';
+      buildAnimatedBackground();
       applyAuthOptions();
       loadAuthOptions();
+      refreshIcons();
+    }
+
+    function showStaticAuthScreen() {
+      loadUserPrefs();
+      const appShell = document.getElementById('appShell');
+      const authScreen = document.getElementById('authScreen');
+      const bg = document.getElementById('bgStream');
+      appShell?.classList.remove('active');
+      authScreen?.classList.remove('hidden');
+      if (bg) bg.style.display = 'none';
+      document.documentElement.style.setProperty('--bg-user-opacity', String(Math.max(0, Math.min(1, userPrefs.backgroundOpacity ?? 0.72))));
+
+      const avatar = document.getElementById('authBotAvatar');
+      if (avatar && window.location.protocol === 'file:') {
+        avatar.src = '../SwiftBird3.png';
+      }
+
+      populateAuthSymbols();
+      applyAuthOptions();
       refreshIcons();
     }
 
@@ -8403,11 +8553,11 @@
 
     function meshHardwareIcon(hardwareModel) {
       const value = String(hardwareModel || '').toLowerCase();
-      if (value.startsWith('macbook')) return 'laptop_mac';
+      if (value.startsWith('macbook')) return 'laptop';
       if (value.startsWith('macmini') || value.startsWith('macstudio') || value.startsWith('macpro') || value.startsWith('imac') || value.startsWith('mac')) {
-        return 'dns';
+        return 'server';
       }
-      return 'developer_board';
+      return 'cpu';
     }
 
     function renderSwiftMeshClusterMap(container, nodes) {
@@ -8462,13 +8612,13 @@
         const latencyLabel = hasLatency ? `${Math.round(node.latencyMs)} ms` : '';
         el.innerHTML = `
           <div class="mesh-node-header">
-            <span class="mesh-node-icon">${meshHardwareIcon(node.hardwareModel)}</span>
-            <span class="mesh-node-name">${node.displayName || node.hostname || 'Node'}</span>
-            <span class="mesh-node-role">${roleLabel}</span>
+            <span class="mesh-node-icon"><i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i></span>
+            <span class="mesh-node-name">${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
+            <span class="mesh-node-role">${escapeHTML(roleLabel)}</span>
           </div>
           <div class="mesh-node-sub">
             <span class="mesh-status-dot" style="background:${meshStatusColor(status)};"></span>
-            <span>${status}</span>
+            <span>${escapeHTML(status)}</span>
             ${hasLatency ? `<span>•</span><span>${latencyLabel}</span>` : ''}
           </div>
         `;
@@ -8554,6 +8704,62 @@
       });
     }
 
+    function meshModeLabel(mode) {
+      switch (String(mode || '').toLowerCase()) {
+        case 'leader': return 'Primary';
+        case 'standby': return 'Fail Over';
+        case 'worker': return 'Worker';
+        default: return 'Standalone';
+      }
+    }
+
+    function meshRuntimeTone(mode, nodes) {
+      if (String(mode || '').toLowerCase() === 'standalone') return 'var(--muted)';
+      const statuses = (nodes || []).map(node => String(node.status || '').toLowerCase());
+      if (!statuses.length) return 'var(--error)';
+      if (statuses.some(status => status === 'disconnected')) return 'var(--error)';
+      if (statuses.some(status => status === 'degraded')) return '#ff9500';
+      return 'var(--success)';
+    }
+
+    function meshAverageLatency(nodes) {
+      const samples = (nodes || [])
+        .map(node => node.latencyMs)
+        .filter(value => typeof value === 'number' && Number.isFinite(value));
+      if (!samples.length) return { value: '—', subtitle: 'No samples' };
+      const avg = Math.round(samples.reduce((sum, value) => sum + value, 0) / samples.length);
+      const min = Math.round(Math.min(...samples));
+      const max = Math.round(Math.max(...samples));
+      return { value: `${avg} ms`, subtitle: `min ${min} · max ${max} ms` };
+    }
+
+    function meshHealthySummary(nodes) {
+      const total = (nodes || []).length;
+      if (!total) return 'No nodes';
+      const healthy = nodes.filter(node => String(node.status || '').toLowerCase() === 'healthy').length;
+      return `${healthy}/${total} healthy`;
+    }
+
+    function meshNodeRoleLabel(role) {
+      return String(role || '').toLowerCase() === 'leader' ? 'Primary' : 'Worker';
+    }
+
+    function meshConfigRows(mesh, cluster) {
+      return [
+        ['Node Name', mesh.nodeName || '—'],
+        ['Listen Port', mesh.listenPort || '—'],
+        ['Primary Host', mesh.leaderAddress || '—'],
+        ['Configured Role', meshModeLabel(mesh.mode)],
+        ['Runtime Role', meshModeLabel(cluster.mode || mesh.mode)],
+        ['Registered Nodes', cluster.connectedNodes || 0]
+      ].map(([label, value]) => `
+        <div class="info-row">
+          <span class="label">${escapeHTML(label)}</span>
+          <span class="value">${escapeHTML(value)}</span>
+        </div>
+      `).join('');
+    }
+
     function renderSwiftMeshView() {
       if (!dashboardOverview || !dashboardConfig || !dashboardStatus) return;
       const top = document.getElementById('swiftmeshTop');
@@ -8562,22 +8768,36 @@
       const mesh = dashboardConfig.swiftMesh;
       const cluster = dashboardOverview.cluster;
       const clusterNodes = dashboardOverview.clusterNodes || [];
+      const latency = meshAverageLatency(clusterNodes);
+      const modeLabel = meshModeLabel(mesh.mode);
+      const runtimeLabel = meshModeLabel(cluster.mode || mesh.mode);
+      const configuredRuntimeDetail = modeLabel === runtimeLabel
+        ? `Configured ${modeLabel}`
+        : `Configured ${modeLabel} · Runtime ${runtimeLabel}`;
+      const isStandalone = String(mesh.mode || '').toLowerCase() === 'standalone';
+      const healthySummary = meshHealthySummary(clusterNodes);
+      const topologyText = isStandalone
+        ? 'Cluster mode is disabled. Enable Primary or Fail Over mode to use SwiftMesh.'
+        : 'Waiting for /cluster/status ...';
+      const workerOption = mesh.mode === 'Worker'
+        ? '<option value="Worker" selected>Worker (Deprecated)</option>'
+        : '';
 
       top.innerHTML = `
-        <div class="commands-toggle-card">
+        <div class="commands-toggle-card mesh-status-card">
           <span class="label">Cluster Mode</span>
-          <span class="value">${mesh.mode || 'Standalone'}</span>
-          <div class="command-desc">Configured local role</div>
+          <span class="value"><span class="mesh-status-dot" style="background:${meshRuntimeTone(cluster.mode || mesh.mode, clusterNodes)};"></span>${escapeHTML(runtimeLabel)}</span>
+          <div class="command-desc">${escapeHTML(configuredRuntimeDetail)}</div>
         </div>
         <div class="commands-toggle-card">
           <span class="label">Connected Nodes</span>
           <span class="value">${cluster.connectedNodes || 0}</span>
-          <div class="command-desc">Leader: ${cluster.leader || '-'}</div>
+          <div class="command-desc">${escapeHTML(healthySummary)}</div>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">Gateway Health</span>
-          <span class="value">${dashboardStatus.gatewayEventCount} events</span>
-          <div class="command-desc">${dashboardStatus.botStatus}</div>
+          <span class="label">Avg Latency</span>
+          <span class="value">${escapeHTML(latency.value)}</span>
+          <div class="command-desc">${escapeHTML(latency.subtitle)}</div>
         </div>
       `;
 
@@ -8585,29 +8805,43 @@
         <section class="settings-panel glass full-span">
           <div class="panel-title"><i class="lucide" data-lucide="share-2"></i> Cluster Map</div>
           <div id="meshTopologyMap" class="mesh-map-panel"></div>
+          <div id="meshTopologyEmpty" class="placeholder hidden">${escapeHTML(topologyText)}</div>
         </section>
+        <div class="mesh-panel-grid">
+          <section class="settings-panel glass">
+            <div class="panel-title"><i class="lucide" data-lucide="stethoscope"></i> Diagnostics</div>
+            <div class="info-list">
+              <div class="info-row"><span class="label">Bot</span><span class="value">${escapeHTML(dashboardStatus.botStatus || '—')}</span></div>
+              <div class="info-row"><span class="label">Gateway Events</span><span class="value">${escapeHTML(dashboardStatus.gatewayEventCount || 0)}</span></div>
+              <div class="info-row"><span class="label">Primary</span><span class="value">${escapeHTML(cluster.leader || '—')}</span></div>
+            </div>
+          </section>
+          <section class="settings-panel glass">
+            <div class="panel-title"><i class="lucide" data-lucide="package"></i> Runtime</div>
+            <div class="info-list">
+              <div class="info-row"><span class="label">Configured Role</span><span class="value">${escapeHTML(modeLabel)}</span></div>
+              <div class="info-row"><span class="label">Runtime Role</span><span class="value">${escapeHTML(runtimeLabel)}</span></div>
+              <div class="info-row"><span class="label">Healthy Nodes</span><span class="value">${escapeHTML(healthySummary)}</span></div>
+            </div>
+          </section>
+        </div>
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="cpu"></i> Nodes</div>
-          <div id="meshNodesList"></div>
+          <div id="meshNodesList" class="mesh-node-list"></div>
         </section>
         <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="network"></i> Node Configuration</div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Leader</option><option value="Worker" ${mesh.mode === 'Worker' ? 'selected' : ''}>Worker</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Standby</option></select></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${(mesh.nodeName || '').replaceAll('"', '&quot;')}"></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Leader Address</label><input id="meshLeader" class="field-input" value="${(mesh.leaderAddress || '').replaceAll('"', '&quot;')}"></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="meshPort" class="field-input" type="number" min="1" value="${mesh.listenPort || 0}"></div>
+          <div class="panel-title"><i class="lucide" data-lucide="gear"></i> Configuration & Replication</div>
+          <div class="mesh-config-grid">${meshConfigRows(mesh, cluster)}</div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Mode</label><select id="meshMode" class="field-select"><option value="Standalone" ${mesh.mode === 'Standalone' ? 'selected' : ''}>Standalone</option><option value="Leader" ${mesh.mode === 'Leader' ? 'selected' : ''}>Primary</option><option value="Standby" ${mesh.mode === 'Standby' ? 'selected' : ''}>Fail Over</option>${workerOption}</select></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Node Name</label><input id="meshNode" class="field-input" value="${escapeHTML(mesh.nodeName || '')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Primary Host</label><input id="meshLeader" class="field-input" value="${escapeHTML(mesh.leaderAddress || '')}"></div>
+          <div class="setting-inline"><label class="field-label" style="margin:0;">Listen Port</label><input id="meshPort" class="field-input" type="number" min="1" value="${escapeHTML(mesh.listenPort || 0)}"></div>
           <div class="setting-row"><div class="left"><div class="title">Offload AI Replies</div><div class="desc">Route AI replies to workers when Primary.</div></div><label class="switch"><input id="meshOffloadAI" type="checkbox" ${mesh.offloadAIReplies ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="setting-row"><div class="left"><div class="title">Offload Wiki Lookups</div><div class="desc">Route Wiki lookups to workers when Primary.</div></div><label class="switch"><input id="meshOffloadWiki" type="checkbox" ${mesh.offloadWikiLookups ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div style="display:flex;gap:8px;">
+          <div class="mesh-config-actions">
             <button id="meshSave" class="mini-btn" type="button"><i class="lucide" data-lucide="save"></i> Save</button>
             <button id="meshRefresh" class="mini-btn" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
           </div>
-        </section>
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="activity"></i> Runtime</div>
-          <div class="info-row"><span class="label">Leader</span><span class="value">${cluster.leader || '-'}</span></div>
-          <div class="info-row"><span class="label">Connected Nodes</span><span class="value">${cluster.connectedNodes || 0}</span></div>
-          <div class="info-row"><span class="label">Mode</span><span class="value">${cluster.mode || '-'}</span></div>
         </section>
       `;
 
@@ -8627,7 +8861,16 @@
         renderSwiftMeshView();
       });
 
-      renderSwiftMeshClusterMap(panels.querySelector('#meshTopologyMap'), clusterNodes);
+      const mapNode = panels.querySelector('#meshTopologyMap');
+      const emptyNode = panels.querySelector('#meshTopologyEmpty');
+      if (isStandalone || !clusterNodes.length) {
+        mapNode?.classList.add('hidden');
+        emptyNode?.classList.remove('hidden');
+      } else {
+        mapNode?.classList.remove('hidden');
+        emptyNode?.classList.add('hidden');
+        renderSwiftMeshClusterMap(mapNode, clusterNodes);
+      }
 
       const listNode = panels.querySelector('#meshNodesList');
       if (listNode) {
@@ -8635,13 +8878,30 @@
           listNode.innerHTML = `<div class="placeholder">No nodes available.</div>`;
         } else {
           listNode.innerHTML = clusterNodes.map(node => `
-            <div class="info-row">
-              <span class="label">${node.displayName || node.hostname || 'Node'} (${String(node.role || '').toLowerCase() === 'leader' ? 'Primary' : 'Worker'})</span>
-              <span class="value">${String(node.status || '').toLowerCase()}${typeof node.latencyMs === 'number' ? ` • ${Math.round(node.latencyMs)} ms` : ''}</span>
+            <div class="mesh-node-row">
+              <div class="mesh-node-main">
+                <i class="lucide" data-lucide="${meshHardwareIcon(node.hardwareModel)}"></i>
+                <div class="mesh-node-text">
+                  <div class="mesh-node-title">
+                    <span>${escapeHTML(node.displayName || node.hostname || 'Node')}</span>
+                    <span class="mesh-role-chip">${escapeHTML(meshNodeRoleLabel(node.role))}</span>
+                  </div>
+                  <div class="mesh-node-meta">
+                    <span class="mesh-status-dot" style="background:${meshStatusColor(String(node.status || '').toLowerCase())};"></span>
+                    <span>${escapeHTML(String(node.status || '').toLowerCase() || 'unknown')}</span>
+                    <span>•</span>
+                    <span>${escapeHTML(node.hostname || '—')}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mesh-node-latency">
+                ${typeof node.latencyMs === 'number' ? `${Math.round(node.latencyMs)} ms` : ''}
+              </div>
             </div>
           `).join('');
         }
       }
+      refreshIcons();
     }
 
     function renderUserPrefsView() {
@@ -9511,37 +9771,91 @@
       container.innerHTML = '';
       const palette = getAppleIconPalette();
       const icons = [
-        'book-open', 'wrench', 'terminal', 'activity', 'sparkles', 'network',
-        'server', 'users', 'settings', 'cpu', 'hammer', 'zap',
-        'bot', 'git-merge', 'refresh-cw', 'shield',
-        'mic', 'headphones', 'radio', 'waves', 'volume-2', 'speaker',
-        'message-square', 'hash', 'send', 'bell', 'code', 'database',
-        'webhook', 'cloud', 'play', 'lock', 'key', 'fingerprint'
+        'terminal', 'sparkles', 'list', 'network', 'bot', 'zap',
+        'film', 'activity', 'play', 'mic', 'layers', 'filter',
+        'users', 'shield', 'settings', 'scan-search', 'refresh-cw',
+        'download', 'clock', 'wrench', 'server', 'cpu', 'lock'
       ];
-      const count = 100;
+      const count = 170;
       for (let i = 0; i < count; i++) {
         const wrap = document.createElement('span');
         const duration = 30 + Math.random() * 40;
         const delay = Math.random() * duration;
         const size = 14 + Math.floor(Math.random() * 22);
+        const color = palette
+          ? palette[Math.floor(Math.random() * palette.length)]
+          : 'currentColor';
         
         wrap.style.left = `${Math.random() * 100}%`;
         wrap.style.width = `${size}px`;
         wrap.style.height = `${size}px`;
         wrap.style.animation = `float-up ${duration}s linear infinite`;
         wrap.style.animationDelay = `-${delay.toFixed(2)}s`;
-        
-        const icon = document.createElement('i');
-        icon.className = 'lucide';
-        icon.dataset.lucide = icons[Math.floor(Math.random() * icons.length)];
-        if (palette) {
-          icon.style.color = palette[Math.floor(Math.random() * palette.length)];
-        }
-        
-        wrap.appendChild(icon);
+
+        wrap.appendChild(makeAuthSymbol(icons[Math.floor(Math.random() * icons.length)], color));
         container.appendChild(wrap);
       }
-      refreshIcons();
+    }
+
+    function makeAuthSymbol(name, color) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', color);
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      svg.setAttribute('aria-hidden', 'true');
+
+      const shapes = {
+        server: [['rect', 4, 4, 16, 6, 2], ['rect', 4, 14, 16, 6, 2], ['circle', 8, 7, 0.7], ['circle', 8, 17, 0.7], ['path', 'M12 7h5M12 17h5']],
+        cpu: [['rect', 7, 7, 10, 10, 2], ['path', 'M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4'], ['rect', 10, 10, 4, 4, 1]],
+        terminal: [['path', 'M4 17l5-5-5-5'], ['path', 'M12 19h8']],
+        wrench: [['path', 'M15 6a5 5 0 0 0 6 6L12 21l-5-5 9-9a5 5 0 0 0-1-1z']],
+        zap: [['path', 'M13 2L4 14h7l-1 8 10-13h-7z']],
+        sparkles: [['path', 'M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z'], ['path', 'M5 4v4M3 6h4M19 16v4M17 18h4']],
+        activity: [['path', 'M3 12h4l3-8 4 16 3-8h4']],
+        users: [['circle', 9, 8, 3], ['circle', 17, 9, 2.5], ['path', 'M3 21a7 7 0 0 1 12 0M14 20a5 5 0 0 1 7 0']],
+        play: [['circle', 12, 12, 9], ['path', 'M10 8l6 4-6 4z']],
+        film: [['rect', 4, 5, 16, 14, 2], ['path', 'M8 5v14M16 5v14M4 9h4M16 9h4M4 15h4M16 15h4']],
+        lock: [['rect', 5, 10, 14, 10, 2], ['path', 'M8 10V7a4 4 0 0 1 8 0v3']],
+        shield: [['path', 'M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z']],
+        settings: [['circle', 12, 12, 3], ['path', 'M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1']],
+        clock: [['circle', 12, 12, 9], ['path', 'M12 7v5l4 2']],
+        mic: [['rect', 9, 3, 6, 11, 3], ['path', 'M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8']],
+        network: [['rect', 4, 4, 6, 6, 1], ['rect', 14, 4, 6, 6, 1], ['rect', 9, 15, 6, 6, 1], ['path', 'M7 10v3h5M17 10v3h-5v2']],
+        bot: [['rect', 6, 8, 12, 10, 2], ['path', 'M12 4v4M9 13h.01M15 13h.01M8 18l-2 2M16 18l2 2']],
+        list: [['path', 'M8 6h13M8 12h13M8 18h13'], ['path', 'M3 6h.01M3 12h.01M3 18h.01']],
+        layers: [['path', 'M12 2l9 5-9 5-9-5z'], ['path', 'M3 12l9 5 9-5M3 17l9 5 9-5']],
+        filter: [['path', 'M4 5h16l-6 7v5l-4 2v-7z']],
+        'scan-search': [['path', 'M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2'], ['circle', 11, 11, 4], ['path', 'M14 14l4 4']],
+        'refresh-cw': [['path', 'M21 12a9 9 0 0 1-15 6.7M3 12a9 9 0 0 1 15-6.7'], ['path', 'M18 3v5h-5M6 21v-5h5']],
+        download: [['path', 'M12 3v12M7 10l5 5 5-5'], ['path', 'M5 21h14']],
+      };
+
+      for (const shape of shapes[name] || shapes.sparkles) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', shape[0]);
+        if (shape[0] === 'path') {
+          el.setAttribute('d', shape[1]);
+        } else if (shape[0] === 'rect') {
+          el.setAttribute('x', shape[1]);
+          el.setAttribute('y', shape[2]);
+          el.setAttribute('width', shape[3]);
+          el.setAttribute('height', shape[4]);
+          if (shape[5] != null) el.setAttribute('rx', shape[5]);
+        } else if (shape[0] === 'circle') {
+          el.setAttribute('cx', shape[1]);
+          el.setAttribute('cy', shape[2]);
+          el.setAttribute('r', shape[3]);
+        } else if (shape[0] === 'ellipse') {
+          el.setAttribute('cx', shape[1]);
+          el.setAttribute('cy', shape[2]);
+          el.setAttribute('rx', shape[3]);
+          el.setAttribute('ry', shape[4]);
+        }
+        svg.appendChild(el);
+      }
+
+      return svg;
     }
 
     function buildAnimatedBackground() {
@@ -9588,10 +9902,14 @@
       refreshIcons();
     }
 
-    bootstrap().catch(error => {
-      setMessage(error.message, 'error');
-      showAuthScreen();
-    });
+    if (window.location.protocol === 'file:') {
+      showStaticAuthScreen();
+    } else {
+      bootstrap().catch(error => {
+        setMessage(error.message, 'error');
+        showAuthScreen();
+      });
+    }
 
     window.addEventListener('resize', () => {
       buildAnimatedBackground();
