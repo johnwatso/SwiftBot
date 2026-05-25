@@ -25,9 +25,11 @@ final class VoiceTTSSource: @unchecked Sendable {
     var format: AVAudioFormat { targetFormat }
 
     /// Pick the best available voice for an English locale.
-    /// Prefers Premium (Siri-style neural) → Enhanced → Default.
+    /// Prefers Nathan Enhanced → Premium → Enhanced → Default.
     static func preferredEnglishVoice() -> AVSpeechSynthesisVoice? {
         let englishVoices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
+        if let nathan = englishVoices.first(where: { $0.name == "Nathan (Enhanced)" }) { return nathan }
+        if let nathan = englishVoices.first(where: { $0.identifier == "com.apple.voice.enhanced.en-US.Nathan" }) { return nathan }
         if let premium = englishVoices.first(where: { $0.quality == .premium }) { return premium }
         if let enhanced = englishVoices.first(where: { $0.quality == .enhanced }) { return enhanced }
         return englishVoices.first ?? AVSpeechSynthesisVoice(language: "en-US")

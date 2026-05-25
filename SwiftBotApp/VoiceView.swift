@@ -703,7 +703,7 @@ struct VoiceView: View {
                     voiceDownloadHelpPopover
                 }
             }
-            Text("Premium and Enhanced English voices on this Mac. Empty means “best Premium English voice available.”")
+            Text("Recommended: Nathan (Enhanced). Empty uses Nathan when installed, then the best available Premium or Enhanced English voice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -722,7 +722,7 @@ struct VoiceView: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Choose Premium or Enhanced English voices there, then reopen this menu in SwiftBot. VoiceOver-only Siri voices are not available to apps.")
+            Text("Download Nathan (Enhanced) under English voices if it is not listed. macOS does not let SwiftBot install voices automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -786,7 +786,7 @@ struct VoiceView: View {
     }
 
     private var voiceOptions: [PickerOption] {
-        var options = [PickerOption(id: "", label: "Best Premium English voice (auto)")]
+        var options = [PickerOption(id: "", label: "Recommended: Nathan Enhanced (auto)")]
         let englishVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
         let premium = englishVoices.filter { $0.quality == .premium }
