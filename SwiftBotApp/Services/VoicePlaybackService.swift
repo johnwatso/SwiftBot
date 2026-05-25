@@ -29,8 +29,11 @@ actor VoicePlaybackService {
     private var ssrc: UInt32?
     private var negotiatedMode: VoiceEncryptionMode?
     private var daveCoordinator: DaveSessionCoordinator?
+    private var daveMediaRequired: Bool = false
+    private var daveMediaReady: Bool = false
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
+    private var connectionTimeoutTask: Task<Void, Never>?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -57,6 +60,12 @@ actor VoicePlaybackService {
             return
         }
         await setStatus(.connecting)
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.fail("timed out waiting for voice media readiness")
+        }
 
         let opus = try OpusFrameEncoder()
         self.opus = opus
@@ -127,6 +136,10 @@ actor VoicePlaybackService {
         recognizedUserIds.removeAll()
         await daveCoordinator?.reset()
         daveCoordinator = nil
+        daveMediaRequired = false
+        daveMediaReady = false
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
         await setStatus(.idle)
     }
 
@@ -147,6 +160,9 @@ actor VoicePlaybackService {
               let opus = opus,
               let ssrc = ssrc else {
             throw VoicePipelineError.notConnected
+        }
+        guard !daveMediaRequired || daveMediaReady else {
+            throw VoicePipelineError.daveNotReady
         }
         try await gateway.sendSpeaking(true, ssrc: ssrc)
         defer { Task { try? await gateway.sendSpeaking(false, ssrc: ssrc) } }
@@ -214,6 +230,7 @@ actor VoicePlaybackService {
               let ssrc = ssrc else {
             return
         }
+        guard !daveMediaRequired || daveMediaReady else { return }
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let plainPayload = RTPPacketBuilder.opusSilenceFrame
         let encryptedPayload: Data
@@ -280,6 +297,8 @@ actor VoicePlaybackService {
         encryption = VoiceEncryption(secretKey: key.secretKey)
 
         if let daveVersion = key.daveProtocolVersion, daveVersion > 0, ssrc != nil, let gateway = gateway {
+            daveMediaRequired = true
+            daveMediaReady = false
             Self.logger.info("DAVE negotiated version: \(daveVersion). Preparing session coordinator...")
             await debug("DAVE negotiated version \(daveVersion); preparing MLS session.")
             let coordinator = DaveSessionCoordinator(authSessionId: nil)
@@ -293,19 +312,19 @@ actor VoicePlaybackService {
                 self.daveCoordinator = coordinator
 
                 try await sendDaveKeyPackage(reason: "session description")
+                await debug("Waiting for DAVE MLS transition before enabling Discord speech.")
             } catch {
                 Self.logger.error("DAVE coordinator initialization failed: \(error.localizedDescription)")
                 await debug("DAVE coordinator initialization failed: \(error.localizedDescription)")
+                await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
             }
         } else {
+            daveMediaRequired = false
+            daveMediaReady = true
             Self.logger.info("DAVE not enabled or negotiated for this session.")
             await debug("DAVE not negotiated for this voice session.")
+            await completeConnection(reason: "transport encryption ready")
         }
-
-        await setStatus(.connected)
-        let continuation = readyContinuation
-        readyContinuation = nil
-        continuation?.resume()
     }
 
     private func handleClientsConnect(_ userIds: [String]) async {
@@ -336,6 +355,13 @@ actor VoicePlaybackService {
 
     private func handleDaveExecuteTransition(_ transitionId: UInt64) async {
         Self.logger.info("DAVE transition execute received. Transition ID: \(transitionId)")
+        guard let coordinator = daveCoordinator else { return }
+        let diagnostics = await coordinator.getDiagnostics()
+        guard diagnostics.handshakeState == .ready else {
+            await debug("DAVE transition execute received, but MLS handshake is \(diagnostics.handshakeState.rawValue).")
+            return
+        }
+        await completeConnection(reason: "DAVE transition \(transitionId) ready")
     }
 
     private func handleDaveExternalSender(_ data: Data) async {
@@ -414,10 +440,24 @@ actor VoicePlaybackService {
 
     private func fail(_ reason: String) async {
         Self.logger.error("voice pipeline failed: \(reason)")
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
         await setStatus(.failed(reason))
         let continuation = readyContinuation
         readyContinuation = nil
         continuation?.resume(throwing: VoicePipelineError.unexpectedPayload(reason))
+    }
+
+    private func completeConnection(reason: String) async {
+        guard status != .connected else { return }
+        daveMediaReady = true
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+        await debug("Voice media ready: \(reason).")
+        await setStatus(.connected)
+        let continuation = readyContinuation
+        readyContinuation = nil
+        continuation?.resume()
     }
 
     private func setStatus(_ new: Status) async {
