@@ -28,8 +28,9 @@ actor VoiceAnnouncementService {
     private var recent: [Announcement] = []
     private let recentLimit: Int = 25
 
-    private var onQueueChange: (([Announcement]) async -> Void)?
-    private var onRecentChange: (([Announcement]) async -> Void)?
+    private var onQueueChange: (@Sendable ([Announcement]) async -> Void)?
+    private var onRecentChange: (@Sendable ([Announcement]) async -> Void)?
+    private var onDebug: (@Sendable (String) async -> Void)?
 
     init(playback: VoicePlaybackService) throws {
         self.playback = playback
@@ -41,12 +42,16 @@ actor VoiceAnnouncementService {
         self.voice = voice
     }
 
-    func setOnQueueChange(_ handler: @escaping ([Announcement]) async -> Void) {
+    func setOnQueueChange(_ handler: @escaping @Sendable ([Announcement]) async -> Void) {
         onQueueChange = handler
     }
 
-    func setOnRecentChange(_ handler: @escaping ([Announcement]) async -> Void) {
+    func setOnRecentChange(_ handler: @escaping @Sendable ([Announcement]) async -> Void) {
         onRecentChange = handler
+    }
+
+    func setOnDebug(_ handler: @escaping @Sendable (String) async -> Void) {
+        onDebug = handler
     }
 
     var pending: [Announcement] { queue }
@@ -57,6 +62,7 @@ actor VoiceAnnouncementService {
         guard !trimmed.isEmpty else { return }
         let announcement = Announcement(text: trimmed)
         queue.append(announcement)
+        await onDebug?("Queued Discord speech: \"\(Self.preview(trimmed))\".")
         await onQueueChange?(queue)
         if !draining {
             Task { await self.drain() }
@@ -70,11 +76,15 @@ actor VoiceAnnouncementService {
             let next = queue.removeFirst()
             await onQueueChange?(queue)
             do {
+                await onDebug?("Rendering speech audio for Discord.")
                 let buffer = try await ttsSource.render(text: next.text, voice: voice)
+                await onDebug?("Sending speech audio to Discord.")
                 try await playback.speak(pcm: buffer)
+                await onDebug?("Finished Discord speech: \"\(Self.preview(next.text))\".")
                 recordRecent(next)
             } catch {
                 Self.logger.error("announcement failed: \(error.localizedDescription)")
+                await onDebug?("Discord speech failed: \(error.localizedDescription)")
             }
         }
     }
@@ -84,5 +94,10 @@ actor VoiceAnnouncementService {
         if recent.count > recentLimit { recent.removeLast(recent.count - recentLimit) }
         let copy = recent
         Task { await onRecentChange?(copy) }
+    }
+
+    private static func preview(_ text: String) -> String {
+        if text.count <= 80 { return text }
+        return String(text.prefix(77)) + "..."
     }
 }

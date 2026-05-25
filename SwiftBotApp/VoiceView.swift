@@ -33,7 +33,7 @@ struct VoiceView: View {
                     voiceSettingsPanel
                 }
                 SwiftMeshSection(title: "Recent Announcements", symbol: "text.bubble") {
-                    PlaceholderPanelLine(text: "Spoken announcements will appear here as the bot reads them aloud.")
+                    recentVoiceActivityPanel
                 }
             }
             .padding(.horizontal, 16)
@@ -412,6 +412,29 @@ struct VoiceView: View {
             Text("English voices on this Mac, grouped Premium → Enhanced → Default. Empty means “best Premium English voice available.”")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var recentVoiceActivityPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if app.voiceLog.isEmpty {
+                PlaceholderPanelLine(text: "Spoken announcements and voice connection events will appear here.")
+            } else {
+                ForEach(Array(app.voiceLog.prefix(8))) { entry in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(entry.time, style: .time)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 56, alignment: .leading)
+                        Text(entry.description)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 

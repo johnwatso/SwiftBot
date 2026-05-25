@@ -38,6 +38,13 @@ extension AppModel {
             let announcer = try VoiceAnnouncementService(playback: voicePlaybackService)
             voiceAnnouncementServiceStorage = announcer
             applyPreferredVoiceFromSettings(to: announcer)
+            Task { [weak self] in
+                await announcer.setOnDebug { [weak self] message in
+                    await MainActor.run {
+                        self?.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+                    }
+                }
+            }
             return announcer
         } catch {
             voiceLog.append(VoiceEventLogEntry(
@@ -156,7 +163,10 @@ extension AppModel {
             guard let self else { return }
             await MainActor.run {
                 if self.voiceConnectionStatus == .connecting,
-                   self.voicePendingGuildID == attemptGuildID {
+                   self.voicePendingGuildID == attemptGuildID,
+                   (self.voicePendingSessionID == nil ||
+                    self.voicePendingServerToken == nil ||
+                    self.voicePendingServerEndpoint == nil) {
                     let message = "Timed out waiting for Discord VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE."
                     self.voiceConnectionStatus = .failed(message)
                     self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
@@ -184,8 +194,23 @@ extension AppModel {
     /// Manually trigger an announcement (e.g. `/say` or the Test button in the
     /// Voice tab).
     func speakAnnouncement(_ text: String) async {
-        guard let announcer = voiceAnnouncementService else { return }
-        await announcer.enqueue(text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard voiceConnectionStatus.isConnected else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Discord speech skipped because voice is not connected."
+            ))
+            return
+        }
+        guard let announcer = voiceAnnouncementService else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Discord speech skipped because the voice announcer is unavailable."
+            ))
+            return
+        }
+        await announcer.enqueue(trimmed)
     }
 
     /// Speak `text` through the Mac's local speakers using

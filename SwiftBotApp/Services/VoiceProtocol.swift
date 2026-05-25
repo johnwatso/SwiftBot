@@ -85,6 +85,7 @@ enum VoicePipelineError: LocalizedError {
     case opusInitFailed
     case audioFormatUnsupported
     case notConnected
+    case daveNotReady
 
     var errorDescription: String? {
         switch self {
@@ -96,6 +97,7 @@ enum VoicePipelineError: LocalizedError {
         case .opusInitFailed: return "Opus encoder init failed"
         case .audioFormatUnsupported: return "Audio format unsupported"
         case .notConnected: return "Voice pipeline not connected"
+        case .daveNotReady: return "DAVE media encryption is not ready yet"
         }
     }
 }
