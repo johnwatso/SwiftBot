@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/johnwatso/libdave-swift.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "7c915d759737759dab8495401404ae4bf711014b"
+        "revision" : "e2f93e51988b14b64daadd80a6338000ae438886",
+        "version" : "1.0.3"
       }
     },
     {

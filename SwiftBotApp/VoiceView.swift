@@ -1,6 +1,6 @@
 import AVFoundation
 import SwiftUI
-import LibDave
+import libdave_swift
 
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
