@@ -419,7 +419,7 @@ struct VoiceView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help("Where to download Premium voices")
+                .help("Where to download SwiftBot voices")
                 .popover(isPresented: $showingVoiceDownloadHelp, arrowEdge: .bottom) {
                     voiceDownloadHelpPopover
                 }
@@ -435,7 +435,7 @@ struct VoiceView: View {
             HStack(spacing: 8) {
                 Image(systemName: "speaker.wave.2.circle.fill")
                     .foregroundStyle(.blue)
-                Text("Download Premium Voices")
+                Text("Download SwiftBot Voices")
                     .font(.headline)
             }
 
@@ -443,7 +443,7 @@ struct VoiceView: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Choose Premium or Enhanced English voices there, then reopen this menu in SwiftBot.")
+            Text("Choose Premium or Enhanced English voices there, then reopen this menu in SwiftBot. VoiceOver-only Siri voices are not available to apps.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
