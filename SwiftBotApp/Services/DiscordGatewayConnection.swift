@@ -115,7 +115,7 @@ actor DiscordGatewayConnection {
 
     /// Send Voice State Update (op 4) to join or leave a voice channel.
     /// Pass `channelID: nil` to leave the current voice channel.
-    func sendVoiceStateUpdate(guildID: String, channelID: String?, selfMute: Bool = false, selfDeaf: Bool = true) async {
+    func sendVoiceStateUpdate(guildID: String, channelID: String?, selfMute: Bool = false, selfDeaf: Bool = true) async -> Bool {
         let payload: [String: Any] = [
             "op": 4,
             "d": [
@@ -125,7 +125,7 @@ actor DiscordGatewayConnection {
                 "self_deaf": selfDeaf
             ]
         ]
-        await sendRaw(payload)
+        return await sendRaw(payload)
     }
 
     func sendPresence(text: String) async {
@@ -138,7 +138,7 @@ actor DiscordGatewayConnection {
                 "afk": false
             ]
         ]
-        await sendRaw(payload)
+        _ = await sendRaw(payload)
     }
 
     private func receiveLoop(token: String, generation: Int) async {
@@ -303,7 +303,7 @@ actor DiscordGatewayConnection {
     private func sendHeartbeat() async {
         heartbeatSentAt = dependencies.dateProvider()
         let payload: [String: Any] = ["op": 1, "d": sequence as Any]
-        await sendRaw(payload)
+        _ = await sendRaw(payload)
     }
 
     private func identify(token: String) async {
@@ -324,19 +324,25 @@ actor DiscordGatewayConnection {
             "properties": ["$os": "macOS", "$browser": "SwiftBot", "$device": "SwiftBot"],
             "presence": presence
         ]
-        await sendRaw(["op": 2, "d": identify])
+        _ = await sendRaw(["op": 2, "d": identify])
     }
 
-    private func sendRaw(_ dictionary: [String: Any]) async {
-        guard let socket else { return }
+    @discardableResult
+    private func sendRaw(_ dictionary: [String: Any]) async -> Bool {
+        guard let socket else {
+            Self.logger.warning("Gateway send skipped: socket is not connected")
+            return false
+        }
         do {
             let data = try dependencies.encodeJSON(dictionary)
             if let text = String(data: data, encoding: .utf8) {
                 try await socket.send(.string(text))
+                return true
             }
         } catch {
             Self.logger.warning("Gateway send failed: \(error.localizedDescription)")
         }
+        return false
     }
 }
 

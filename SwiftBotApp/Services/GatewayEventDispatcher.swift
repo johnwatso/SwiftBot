@@ -86,7 +86,7 @@ struct GatewayVoiceStateUpdateEvent: Sendable {
 struct GatewayVoiceServerUpdateEvent: Sendable {
     let guildID: String
     let token: String
-    let endpoint: String
+    let endpoint: String?
 }
 
 actor GatewayEventDispatcher {
@@ -400,10 +400,10 @@ actor GatewayEventDispatcher {
     private func parseVoiceServerUpdateEvent(from raw: DiscordJSON?) -> GatewayVoiceServerUpdateEvent? {
         guard case let .object(map)? = raw,
               let guildID = stringValue(for: "guild_id", in: map),
-              let token = stringValue(for: "token", in: map),
-              let endpoint = stringValue(for: "endpoint", in: map) else {
+              let token = stringValue(for: "token", in: map) else {
             return nil
         }
+        let endpoint = stringValue(for: "endpoint", in: map)
         return GatewayVoiceServerUpdateEvent(guildID: guildID, token: token, endpoint: endpoint)
     }
 

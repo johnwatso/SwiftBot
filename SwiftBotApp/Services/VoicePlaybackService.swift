@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import OSLog
+import LibDave
 
 /// Top-level coordinator for one Discord voice connection. Owns the WS state
 /// machine, UDP transport, Opus encoder, RTP builder, and encryption state.
@@ -27,9 +28,12 @@ actor VoicePlaybackService {
     private var opus: OpusFrameEncoder?
     private var ssrc: UInt32?
     private var negotiatedMode: VoiceEncryptionMode?
+    private var daveCoordinator: DaveSessionCoordinator?
+    private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
+    private var onDebug: (@Sendable (String) async -> Void)?
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -37,6 +41,10 @@ actor VoicePlaybackService {
 
     func setOnStatusChange(_ handler: @escaping @Sendable (Status) async -> Void) {
         onStatusChange = handler
+    }
+
+    func setOnDebug(_ handler: @escaping @Sendable (String) async -> Void) {
+        onDebug = handler
     }
 
     var currentStatus: Status { status }
@@ -65,6 +73,33 @@ actor VoicePlaybackService {
         await gateway.setOnClose { [weak self] code in
             await self?.handleGatewayClose(code)
         }
+        await gateway.setOnDebug { [weak self] message in
+            await self?.debug(message)
+        }
+        await gateway.setOnClientsConnect { [weak self] userIds in
+            await self?.handleClientsConnect(userIds)
+        }
+        await gateway.setOnClientDisconnect { [weak self] userId in
+            await self?.handleClientDisconnect(userId)
+        }
+        await gateway.setOnDavePrepareEpoch { [weak self] protocolVersion, epoch in
+            await self?.handleDavePrepareEpoch(protocolVersion: protocolVersion, epoch: epoch)
+        }
+        await gateway.setOnDaveExecuteTransition { [weak self] transitionId in
+            await self?.handleDaveExecuteTransition(transitionId)
+        }
+        await gateway.setOnDaveMlsExternalSender { [weak self] data in
+            await self?.handleDaveExternalSender(data)
+        }
+        await gateway.setOnDaveMlsProposals { [weak self] data in
+            await self?.handleDaveProposals(data)
+        }
+        await gateway.setOnDaveMlsAnnounceCommit { [weak self] data, transitionId in
+            await self?.handleDaveAnnounceCommit(data, transitionId: transitionId)
+        }
+        await gateway.setOnDaveMlsWelcome { [weak self] data, transitionId in
+            await self?.handleDaveWelcome(data, transitionId: transitionId)
+        }
 
         do {
             try await gateway.connect()
@@ -89,7 +124,17 @@ actor VoicePlaybackService {
         opus = nil
         ssrc = nil
         negotiatedMode = nil
+        recognizedUserIds.removeAll()
+        await daveCoordinator?.reset()
+        daveCoordinator = nil
         await setStatus(.idle)
+    }
+
+    func getDaveDiagnostics() async -> DaveDiagnostics? {
+        if let coordinator = daveCoordinator {
+            return await coordinator.getDiagnostics()
+        }
+        return nil
     }
 
     /// Feed pre-resampled 48 kHz stereo Float32 PCM to the encoder. The buffer
@@ -165,11 +210,19 @@ actor VoicePlaybackService {
         guard status == .connected,
               let transport = transport,
               var rtp = self.rtp,
-              var encryption = self.encryption else {
+              var encryption = self.encryption,
+              let ssrc = ssrc else {
             return
         }
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
-        let packet = try encryption.seal(rtpHeader: header, payload: RTPPacketBuilder.opusSilenceFrame)
+        let plainPayload = RTPPacketBuilder.opusSilenceFrame
+        let encryptedPayload: Data
+        if let coordinator = daveCoordinator {
+            encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
+        } else {
+            encryptedPayload = plainPayload
+        }
+        let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
         self.rtp = rtp
         self.encryption = encryption
@@ -180,12 +233,19 @@ actor VoicePlaybackService {
     private func sendFrame(_ buffer: AVAudioPCMBuffer, transport: VoiceUDPTransport) async throws {
         guard let opus = opus,
               var rtp = self.rtp,
-              var encryption = self.encryption else {
+              var encryption = self.encryption,
+              let ssrc = ssrc else {
             return
         }
-        let payload = try opus.encode(buffer)
+        let plainPayload = try opus.encode(buffer)
+        let encryptedPayload: Data
+        if let coordinator = daveCoordinator {
+            encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
+        } else {
+            encryptedPayload = plainPayload
+        }
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
-        let packet = try encryption.seal(rtpHeader: header, payload: payload)
+        let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
         self.rtp = rtp
         self.encryption = encryption
@@ -202,12 +262,14 @@ actor VoicePlaybackService {
             return
         }
         negotiatedMode = mode
+        await debug("Voice selected transport encryption: \(mode.rawValue).")
 
         let udp = VoiceUDPTransport(host: info.ip, port: info.port)
         transport = udp
         do {
             try await udp.start()
             let address = try await udp.discoverAddress(ssrc: info.ssrc)
+            await debug("Voice UDP discovery returned \(address.ip):\(address.port); selecting protocol.")
             try await gateway?.sendSelectProtocol(address: address, mode: mode)
         } catch {
             await fail("ip discovery failed: \(error.localizedDescription)")
@@ -216,10 +278,132 @@ actor VoicePlaybackService {
 
     private func handleSessionDescription(_ key: VoiceSessionKey) async {
         encryption = VoiceEncryption(secretKey: key.secretKey)
+
+        if let daveVersion = key.daveProtocolVersion, daveVersion > 0, ssrc != nil, let gateway = gateway {
+            Self.logger.info("DAVE negotiated version: \(daveVersion). Preparing session coordinator...")
+            await debug("DAVE negotiated version \(daveVersion); preparing MLS session.")
+            let coordinator = DaveSessionCoordinator(authSessionId: nil)
+            do {
+                recognizedUserIds.insert(gateway.server.userID)
+                try await coordinator.configureForDiscordVoice(
+                    groupId: UInt64(gateway.server.guildID) ?? 0,
+                    selfUserId: gateway.server.userID,
+                    protocolVersion: daveVersion
+                )
+                self.daveCoordinator = coordinator
+
+                try await sendDaveKeyPackage(reason: "session description")
+            } catch {
+                Self.logger.error("DAVE coordinator initialization failed: \(error.localizedDescription)")
+                await debug("DAVE coordinator initialization failed: \(error.localizedDescription)")
+            }
+        } else {
+            Self.logger.info("DAVE not enabled or negotiated for this session.")
+            await debug("DAVE not negotiated for this voice session.")
+        }
+
         await setStatus(.connected)
         let continuation = readyContinuation
         readyContinuation = nil
         continuation?.resume()
+    }
+
+    private func handleClientsConnect(_ userIds: [String]) async {
+        recognizedUserIds.formUnion(userIds)
+    }
+
+    private func handleClientDisconnect(_ userId: String) async {
+        recognizedUserIds.remove(userId)
+    }
+
+    private func handleDavePrepareEpoch(protocolVersion: UInt16, epoch: UInt64) async {
+        guard protocolVersion > 0 else { return }
+        do {
+            if let coordinator = daveCoordinator {
+                if epoch == 1 {
+                    try await coordinator.configureForDiscordVoice(
+                        groupId: UInt64(gateway?.server.guildID ?? "") ?? 0,
+                        selfUserId: gateway?.server.userID ?? "",
+                        protocolVersion: protocolVersion
+                    )
+                    try await sendDaveKeyPackage(reason: "prepare epoch")
+                }
+            }
+        } catch {
+            Self.logger.error("DAVE prepare epoch failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleDaveExecuteTransition(_ transitionId: UInt64) async {
+        Self.logger.info("DAVE transition execute received. Transition ID: \(transitionId)")
+    }
+
+    private func handleDaveExternalSender(_ data: Data) async {
+        do {
+            try await daveCoordinator?.setExternalSender(data)
+            Self.logger.info("DAVE external sender package registered successfully.")
+            try await sendDaveKeyPackage(reason: "external sender")
+        } catch {
+            Self.logger.error("DAVE setExternalSender failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleDaveProposals(_ data: Data) async {
+        do {
+            guard let coordinator = daveCoordinator else { return }
+            let commitWelcome = try await coordinator.processProposals(
+                data,
+                recognizedUserIds: Array(recognizedUserIds)
+            )
+            try await gateway?.sendMlsCommitWelcome(commitWelcome)
+            Self.logger.info("DAVE MLS proposals processed and commit/welcome sent.")
+        } catch {
+            Self.logger.error("DAVE proposal handling failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleDaveAnnounceCommit(_ data: Data, transitionId: UInt64) async {
+        do {
+            try await daveCoordinator?.processDiscordTransition(.commit(data))
+            Self.logger.info("DAVE transition commit processed successfully. Transition ID: \(transitionId)")
+            try await gateway?.sendTransitionReady(transitionId: transitionId)
+        } catch {
+            Self.logger.error("DAVE process transition commit failed: \(error.localizedDescription)")
+            await recoverFromInvalidDaveTransition(transitionId: transitionId)
+        }
+    }
+
+    private func handleDaveWelcome(_ data: Data, transitionId: UInt64) async {
+        guard let gateway = gateway else { return }
+        do {
+            recognizedUserIds.insert(gateway.server.userID)
+            try await daveCoordinator?.processDiscordTransition(
+                .welcome(data, recognizedUserIds: Array(recognizedUserIds))
+            )
+            Self.logger.info("DAVE transition welcome processed successfully. Transition ID: \(transitionId)")
+            try await gateway.sendTransitionReady(transitionId: transitionId)
+        } catch {
+            Self.logger.error("DAVE process transition welcome failed: \(error.localizedDescription)")
+            await recoverFromInvalidDaveTransition(transitionId: transitionId)
+        }
+    }
+
+    private func sendDaveKeyPackage(reason: String) async throws {
+        guard let coordinator = daveCoordinator, let gateway = gateway else { return }
+        let keyPackage = try await coordinator.getMarshalledKeyPackage()
+        try await gateway.sendMlsKeyPackage(keyPackage)
+        Self.logger.info("DAVE MLS key package sent after \(reason, privacy: .public).")
+        await debug("DAVE MLS key package sent after \(reason).")
+    }
+
+    private func recoverFromInvalidDaveTransition(transitionId: UInt64) async {
+        do {
+            try await gateway?.sendInvalidCommitWelcome(transitionId: transitionId)
+            try await daveCoordinator?.recreateSessionState()
+            try await sendDaveKeyPackage(reason: "invalid commit/welcome recovery")
+        } catch {
+            Self.logger.error("DAVE recovery failed: \(error.localizedDescription)")
+        }
     }
 
     private func handleGatewayClose(_ code: Int) async {
@@ -239,6 +423,10 @@ actor VoicePlaybackService {
     private func setStatus(_ new: Status) async {
         status = new
         await onStatusChange?(new)
+    }
+
+    private func debug(_ message: String) async {
+        await onDebug?(message)
     }
 
     private func isFailed(_ status: Status) -> Bool {

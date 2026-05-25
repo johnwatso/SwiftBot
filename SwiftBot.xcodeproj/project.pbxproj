@@ -90,6 +90,7 @@
 		5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */; };
 		61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FD42789A025FD409C081463 /* AppModel+Patchy.swift */; };
 		61FE77A534CAE8A1DB129DD6 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985814A00309DEBC6C7FD35F /* OverviewView.swift */; };
+		626D847B8BB20176403EBBAA /* LibDave in Frameworks */ = {isa = PBXBuildFile; productRef = D844BEB77843D9F864B46527 /* LibDave */; };
 		63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */; };
 		647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */; };
 		65F8E1C9E4E603B4E420DCE9 /* CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */; };
@@ -424,6 +425,7 @@
 				9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */,
 				B05A581D1D38DD1E658FB806 /* SwiftSoup in Frameworks */,
 				AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */,
+				626D847B8BB20176403EBBAA /* LibDave in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -746,6 +748,7 @@
 				1C81108D7CF200AA2750ED17 /* NIOSSL */,
 				7551369833EB21380EB8B404 /* SwiftSoup */,
 				8340F7290FCD93DB7287E27A /* Opus */,
+				D844BEB77843D9F864B46527 /* LibDave */,
 			);
 			productName = SwiftBot;
 			productReference = FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */;
@@ -794,6 +797,7 @@
 			mainGroup = 5862010FC4698115F0427E7E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */,
 				D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */,
 				6A7976F088120A7F5815E5B9 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */,
@@ -1417,6 +1421,14 @@
 				minimumVersion = 2.30.0;
 			};
 		};
+		32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnwatso/libdave-swift.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-certificates.git";
@@ -1520,6 +1532,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */;
 			productName = Opus;
+		};
+		D844BEB77843D9F864B46527 /* LibDave */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */;
+			productName = LibDave;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

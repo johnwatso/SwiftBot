@@ -37,9 +37,12 @@ actor DiscordService {
     /// Send VOICE_STATE_UPDATE on the main gateway to join (or leave, if
     /// `channelID == nil`) a voice channel. Used by the Voice tab to drive
     /// `VoicePlaybackService`.
-    func sendVoiceStateUpdate(guildID: String, channelID: String?) async {
-        guard outputAllowed else { return }
-        await gatewayConnection.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
+    func sendVoiceStateUpdate(guildID: String, channelID: String?) async -> Bool {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Voice state update blocked — outputAllowed is false.")
+            return false
+        }
+        return await gatewayConnection.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
     }
 
     typealias HistoryProvider = @Sendable (MemoryScope) async -> [Message]

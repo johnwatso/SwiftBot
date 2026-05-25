@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import LibDave
 
 /// Voice tab integration: owns `VoicePlaybackService`, `VoiceAnnouncementService`,
 /// and `TextChannelAnnouncer`; coordinates the two main-gateway events
@@ -19,6 +20,11 @@ extension AppModel {
         Task { [weak self] in
             await service.setOnStatusChange { [weak self] status in
                 await self?.handleVoicePlaybackStatus(status)
+            }
+            await service.setOnDebug { [weak self] message in
+                await MainActor.run {
+                    self?.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+                }
             }
         }
         return service
@@ -58,6 +64,31 @@ extension AppModel {
 
     // MARK: - Public API used by Voice tab + slash commands
 
+    func getDaveDiagnostics() async -> DaveDiagnostics? {
+        await voicePlaybackService.getDaveDiagnostics()
+    }
+
+    func setVoiceGuildForAnnouncer(_ guildID: String) {
+        settings.voice.guildID = guildID
+        if settings.voice.voiceChannelID.isEmpty == false {
+            settings.voice.voiceChannelID = ""
+        }
+        if settings.voice.watchedTextChannelID.isEmpty == false {
+            settings.voice.watchedTextChannelID = ""
+        }
+        persistSettingsIfPossible()
+    }
+
+    func setVoiceChannelForAnnouncer(_ channelID: String) {
+        settings.voice.voiceChannelID = channelID
+        persistSettingsIfPossible()
+    }
+
+    func setTextChannelSourceEnabledForAnnouncer(_ enabled: Bool) {
+        settings.voice.textChannelSourceEnabled = enabled
+        persistSettingsIfPossible()
+    }
+
     /// Connect the bot to the voice channel configured in `settings.voice`.
     func connectVoice() async {
         let guildID = settings.voice.guildID
@@ -75,13 +106,46 @@ extension AppModel {
             voiceConnectionStatus = .failed("Bot is offline — click Start Bot first.")
             return
         }
+        if voiceConnectionStatus == .connected,
+           voicePendingGuildID == guildID,
+           voicePendingChannelID == channelID {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice join skipped; already connected to channel \(channelID)."
+            ))
+            return
+        }
+        if voiceConnectionStatus == .connecting,
+           voicePendingGuildID == guildID,
+           voicePendingChannelID == channelID {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice join skipped; already connecting to channel \(channelID)."
+            ))
+            return
+        }
         voicePendingGuildID = guildID
         voicePendingChannelID = channelID
         voicePendingSessionID = nil
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceConnectionStatus = .connecting
-        await service.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice join requested for channel \(channelID)."))
+
+        if let preflightFailure = await voiceChannelPreflightFailure(channelID: channelID) {
+            voiceConnectionStatus = .failed(preflightFailure)
+            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: preflightFailure))
+            return
+        }
+
+        let didSendJoin = await service.sendVoiceStateUpdate(guildID: guildID, channelID: channelID)
+        guard didSendJoin else {
+            let message = "Voice join failed before Discord acknowledged it: main gateway send was blocked or disconnected."
+            voiceConnectionStatus = .failed(message)
+            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+            return
+        }
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice state update sent on main Discord gateway."))
 
         // Defensive timeout: if VOICE_STATE_UPDATE + VOICE_SERVER_UPDATE
         // don't both arrive within 10s, surface a clear error instead of
@@ -93,7 +157,9 @@ extension AppModel {
             await MainActor.run {
                 if self.voiceConnectionStatus == .connecting,
                    self.voicePendingGuildID == attemptGuildID {
-                    self.voiceConnectionStatus = .failed("Timed out waiting for Discord VOICE_SERVER_UPDATE.")
+                    let message = "Timed out waiting for Discord VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE."
+                    self.voiceConnectionStatus = .failed(message)
+                    self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
                 }
             }
         }
@@ -104,7 +170,7 @@ extension AppModel {
     func disconnectVoice() async {
         let guildID = voicePendingGuildID ?? settings.voice.guildID
         if !guildID.isEmpty {
-            await service.sendVoiceStateUpdate(guildID: guildID, channelID: nil)
+            _ = await service.sendVoiceStateUpdate(guildID: guildID, channelID: nil)
         }
         await voicePlaybackService.disconnect()
         voicePendingGuildID = nil
@@ -179,20 +245,60 @@ extension AppModel {
     // MARK: - Gateway event handlers
 
     func handleVoiceServerUpdate(_ event: GatewayVoiceServerUpdateEvent) async {
-        guard event.guildID == voicePendingGuildID else { return }
+        guard event.guildID == voicePendingGuildID else {
+            if voicePendingGuildID != nil {
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Ignored VOICE_SERVER_UPDATE for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
+                ))
+            }
+            return
+        }
+        guard let endpoint = event.endpoint, !endpoint.isEmpty else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice server update received without an endpoint; Discord has not allocated a voice server yet."
+            ))
+            return
+        }
         voicePendingServerToken = event.token
-        voicePendingServerEndpoint = event.endpoint
+        voicePendingServerEndpoint = endpoint
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice server update received; endpoint ready."))
         await beginVoicePipelineIfReady()
     }
 
     /// Hook called from `handleVoiceStateUpdate` (in AppModel+DiscordEvents)
     /// when a VOICE_STATE_UPDATE for our own bot user lands.
     func observeSelfVoiceStateUpdate(_ event: GatewayVoiceStateUpdateEvent) async {
-        guard let botUserId, event.userID == botUserId else { return }
-        guard event.guildID == voicePendingGuildID else { return }
+        let expectedBotUserId = botUserId ?? {
+            let cached = settings.cachedBotIdentity.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cached.isEmpty ? nil : cached
+        }()
+        guard event.guildID == voicePendingGuildID else {
+            if voicePendingGuildID != nil {
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Ignored VOICE_STATE_UPDATE for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
+                ))
+            }
+            return
+        }
+        guard let expectedBotUserId, event.userID == expectedBotUserId else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Observed VOICE_STATE_UPDATE for user \(event.userID); waiting for bot user \(expectedBotUserId ?? "unknown")."
+            ))
+            return
+        }
         if case let .string(sessionID)? = event.rawMap["session_id"] {
             voicePendingSessionID = sessionID
+            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice state update received; session id ready."))
             await beginVoicePipelineIfReady()
+        } else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice state update for bot arrived without a session id."
+            ))
         }
     }
 
@@ -213,16 +319,17 @@ extension AppModel {
             token: token,
             endpoint: endpoint
         )
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice websocket pipeline starting."))
         do {
             try await voicePlaybackService.connect(server: info)
             voiceConnectionStatus = .connected
-            voiceLog.append(VoiceEventLogEntry(
+            addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connected to channel \(voicePendingChannelID ?? "?")"
             ))
         } catch {
             voiceConnectionStatus = .failed(error.localizedDescription)
-            voiceLog.append(VoiceEventLogEntry(
+            addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connect failed: \(error.localizedDescription)"
             ))
@@ -256,10 +363,39 @@ extension AppModel {
     }
 
     private func persistSettingsIfPossible() {
-        // The main settings save path lives elsewhere; mutations to
-        // `settings` are observed via @Published. Most code in this project
-        // relies on auto-persistence wired up at the AppModel level, so just
-        // setting `settings.voice.*` is enough. This stub gives us a hook to
-        // explicitly flush in the future if needed.
+        saveSettings()
+    }
+
+    private func voiceChannelPreflightFailure(channelID: String) async -> String? {
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else {
+            return "Voice join failed: bot token is missing."
+        }
+
+        do {
+            let channel = try await service.fetchChannel(channelId: channelID, token: token)
+            if let type = discordIntValue(for: "type", in: channel), type != 2, type != 13 {
+                return "Voice join failed: selected channel is not a Discord voice channel."
+            }
+            return nil
+        } catch {
+            let nsError = error as NSError
+            if nsError.code == 403 {
+                return "Voice join failed: SwiftBot cannot access this voice channel. Give the bot View Channel and Connect permissions, then retry."
+            }
+            if nsError.code == 404 {
+                return "Voice join failed: Discord could not find the selected voice channel."
+            }
+            return "Voice join failed: channel preflight check failed (\(error.localizedDescription))."
+        }
+    }
+
+    private func discordIntValue(for key: String, in map: [String: DiscordJSON]) -> Int? {
+        switch map[key] {
+        case .int(let value): return value
+        case .double(let value): return Int(value)
+        case .string(let value): return Int(value)
+        default: return nil
+        }
     }
 }

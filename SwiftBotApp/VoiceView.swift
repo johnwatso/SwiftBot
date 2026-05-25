@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import LibDave
 
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
@@ -10,6 +11,7 @@ struct VoiceView: View {
     @State private var selectedVoiceIdentifier: String = ""
     @State private var textChannelSourceEnabled: Bool = false
     @State private var testText: String = "Hello from SwiftBot."
+    @State private var daveDiagnostics: DaveDiagnostics? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -41,6 +43,15 @@ struct VoiceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { syncFromSettings() }
         .onChange(of: app.settings.voice) { _, _ in syncFromSettings() }
+        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
+            if app.voiceConnectionStatus.isConnected {
+                Task {
+                    daveDiagnostics = await app.getDaveDiagnostics()
+                }
+            } else {
+                daveDiagnostics = nil
+            }
+        }
     }
 
     // MARK: - Header
@@ -91,39 +102,95 @@ struct VoiceView: View {
     }
 
     private var daveBlockedBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .font(.title3)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Voice playback is paused")
-                    .font(.subheadline.weight(.semibold))
-                Text(
-                    "Discord enforced their DAVE end-to-end encryption " +
-                    "protocol on March 2, 2026. Third-party bots can no " +
-                    "longer connect to regular voice channels without a " +
-                    "Swift MLS / DAVE implementation, which doesn't exist " +
-                    "yet. The full pipeline (WS, UDP, RTP, Opus, AES-GCM) " +
-                    "is built and waiting; only the encryption layer needs " +
-                    "swapping. Use **Preview on Mac** below to audition " +
-                    "voices in the meantime."
+        Group {
+            if let diag = daveDiagnostics {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(.green)
+                        .font(.title3)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("DAVE End-to-End Encryption Active")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                        
+                        Text("Secure voice connection established via **libdave-swift** and Apple's MLS key ratchet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        HStack(spacing: 16) {
+                            HStack(spacing: 4) {
+                                Text("MLS Epoch:")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text("\(diag.currentEpoch)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.green)
+                            }
+                            HStack(spacing: 4) {
+                                Text("Handshake:")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(diag.handshakeState.rawValue)
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
+                            if let stats = diag.encryptionStats {
+                                HStack(spacing: 4) {
+                                    Text("Encrypted Frames:")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text("\(stats.encryptSuccessCount)")
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.green)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.green.opacity(0.08))
                 )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
+                )
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "shield.checkered")
+                        .foregroundStyle(.purple)
+                        .font(.title3)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("DAVE E2EE Capability Enabled")
+                            .font(.subheadline.weight(.semibold))
+                        Text(
+                            "SwiftBot now includes a native integration of Discord's DAVE end-to-end encryption " +
+                            "protocol powered by **libdave-swift**. Once you connect to a voice channel, a " +
+                            "secure, hardware-accelerated MLS session will be established automatically."
+                        )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.purple.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.purple.opacity(0.25), lineWidth: 1)
+                )
             }
-            Spacer()
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.orange.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
-        )
     }
 
     private var statusBadge: some View {
@@ -212,12 +279,12 @@ struct VoiceView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 pickerField(label: "Server", selection: $selectedGuild, options: serverOptions) { newValue in
-                    app.settings.voice.guildID = newValue
+                    app.setVoiceGuildForAnnouncer(newValue)
                     selectedVoiceChannel = ""
                     selectedTextChannel = ""
                 }
                 pickerField(label: "Voice Channel", selection: $selectedVoiceChannel, options: voiceChannelOptions) { newValue in
-                    app.settings.voice.voiceChannelID = newValue
+                    app.setVoiceChannelForAnnouncer(newValue)
                 }
                 .disabled(selectedGuild.isEmpty)
             }
@@ -226,10 +293,10 @@ struct VoiceView: View {
                 Button {
                     Task { await app.connectVoice() }
                 } label: {
-                    Label("Join (blocked: DAVE required)", systemImage: "lock.fill")
+                    Label(connectButtonTitle, systemImage: "phone.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(true)
+                .disabled(!canConnect)
 
                 Button {
                     Task { await app.disconnectVoice() }
@@ -242,12 +309,8 @@ struct VoiceView: View {
             }
 
             Text(
-                "Discord requires the DAVE end-to-end encryption protocol " +
-                "on regular voice channels as of March 2, 2026. SwiftBot's " +
-                "WS/UDP/RTP/Opus pipeline is built and tested up to the " +
-                "encryption negotiation; we're waiting on a Swift MLS " +
-                "implementation (or a libdave wrapper) before this can be " +
-                "enabled."
+                "Establish a secure, end-to-end encrypted connection to the selected Discord voice channel. " +
+                "SwiftBot will negotiate the MLS protocol and stream announcements natively."
             )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -256,7 +319,7 @@ struct VoiceView: View {
 
     private var connectButtonTitle: String {
         switch app.voiceConnectionStatus {
-        case .connected: return "Reconnect"
+        case .connected: return "Connected"
         case .connecting: return "Connecting\u{2026}"
         default: return "Join Voice Channel"
         }
@@ -265,7 +328,8 @@ struct VoiceView: View {
     private var canConnect: Bool {
         !selectedGuild.isEmpty &&
         !selectedVoiceChannel.isEmpty &&
-        app.voiceConnectionStatus != .connecting
+        app.voiceConnectionStatus != .connecting &&
+        !app.voiceConnectionStatus.isConnected
     }
 
     // MARK: - Sources panel
@@ -290,14 +354,14 @@ struct VoiceView: View {
                 Toggle("", isOn: $textChannelSourceEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .disabled(true)
-                    .help("Disabled until DAVE support lands — no voice channel to read into.")
+                    .onChange(of: textChannelSourceEnabled) { _, newValue in
+                        app.setTextChannelSourceEnabledForAnnouncer(newValue)
+                    }
             }
 
             pickerField(label: "Text Channel", selection: $selectedTextChannel, options: textChannelOptions) { newValue in
                 Task { await app.setWatchedTextChannelForAnnouncer(newValue) }
             }
-            .disabled(true)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -313,7 +377,10 @@ struct VoiceView: View {
                     }
                     .disabled(!app.voiceConnectionStatus.isConnected || testText.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                Text("Preview plays through this Mac's speakers using the selected voice — no Discord connection needed. Speak in Discord is blocked until DAVE support lands.")
+                Text(
+                    "Preview plays through this Mac's speakers using the selected voice. " +
+                    "Speak in Discord sends the audio to the connected Discord voice channel using native DAVE encryption."
+                )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

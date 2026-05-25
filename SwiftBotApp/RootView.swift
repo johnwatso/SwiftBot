@@ -88,6 +88,7 @@ struct UnifiedRootView: View {
         case .activity: ActivityLogView()
         case .wikiBridge: WikiBridgeView()
         case .aiBots: AIBotsView()
+        case .voice: VoiceView()
         case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
         case .swiftMesh: SwiftMeshView()
@@ -163,6 +164,7 @@ struct DashboardSidebar: View {
                         sidebarListRow(.patchy)
                         sidebarListRow(.sweep)
                         sidebarListRow(.wikiBridge)
+                        sidebarListRow(.voice)
                         sidebarListRow(.recordings, count: app.recentMediaCount24h)
                     }
 

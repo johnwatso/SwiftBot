@@ -34,6 +34,9 @@ packages:
   swift-opus:
     url: https://github.com/alta/swift-opus.git
     exactVersion: 0.0.2
+  LibDave:
+    url: https://github.com/johnwatso/libdave-swift.git
+    branch: main
 
 targets:
   SwiftBot:
@@ -84,6 +87,8 @@ targets:
         product: SwiftSoup
       - package: swift-opus
         product: Opus
+      - package: LibDave
+        product: LibDave
     settings:
       base:
         PRODUCT_NAME: SwiftBot
