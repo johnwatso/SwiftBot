@@ -106,7 +106,7 @@ actor VoiceGatewayConnection {
         let payload: [String: Any] = [
             "op": VoiceOpcode.daveTransitionReady.rawValue,
             "d": [
-                "transition_id": String(transitionId)
+                "transition_id": Int(clamping: transitionId)
             ]
         ]
         try await sendJSON(payload)
@@ -124,7 +124,7 @@ actor VoiceGatewayConnection {
         let payload: [String: Any] = [
             "op": VoiceOpcode.daveMlsInvalidCommitWelcome.rawValue,
             "d": [
-                "transition_id": String(transitionId)
+                "transition_id": Int(clamping: transitionId)
             ]
         ]
         try await sendJSON(payload)
@@ -183,6 +183,9 @@ actor VoiceGatewayConnection {
             } catch {
                 Self.logger.warning("voice WS receive error: \(error.localizedDescription)")
                 let code = (socket.closeCode.rawValue)
+                if code == 4020 {
+                    await debug("Voice gateway closed with 4020 Bad Request; Discord rejected a malformed voice payload.")
+                }
                 await onClose?(code)
                 return
             }
