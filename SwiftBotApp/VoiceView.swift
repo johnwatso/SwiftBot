@@ -406,7 +406,7 @@ struct VoiceView: View {
     private var voiceSettingsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom, spacing: 8) {
-                pickerField(label: "Voice", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
+                pickerField(label: "Announcer", symbol: "speaker.wave.3.fill", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
                     Task { await app.setPreferredAnnouncerVoice(newValue) }
                 }
 
@@ -547,15 +547,22 @@ struct VoiceView: View {
 
     private func pickerField(
         label: String,
+        symbol: String? = nil,
         selection: Binding<String>,
         options: [PickerOption],
         onChange: @escaping (String) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label.uppercased())
-                .font(.caption2.weight(.semibold))
-                .tracking(0.6)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 5) {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.caption2.weight(.semibold))
+                }
+                Text(label.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.6)
+            }
+            .foregroundStyle(.secondary)
             Picker("", selection: selection) {
                 ForEach(options) { option in
                     Text(option.label).tag(option.id)
