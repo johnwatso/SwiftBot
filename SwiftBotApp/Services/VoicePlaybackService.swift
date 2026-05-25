@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import OSLog
-import LibDave
+import libdave_swift
 
 /// Top-level coordinator for one Discord voice connection. Owns the WS state
 /// machine, UDP transport, Opus encoder, RTP builder, and encryption state.

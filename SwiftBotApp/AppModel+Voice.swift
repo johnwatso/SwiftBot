@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import LibDave
+import libdave_swift
 
 /// Voice tab integration: owns `VoicePlaybackService`, `VoiceAnnouncementService`,
 /// and `TextChannelAnnouncer`; coordinates the two main-gateway events

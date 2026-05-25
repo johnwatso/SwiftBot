@@ -1,6 +1,6 @@
 import Foundation
 import OSLog
-import LibDave
+import libdave_swift
 
 /// WebSocket connection to a Discord voice server. Handles the op 0/2/1/4
 /// handshake plus heartbeats. Exposes callbacks at each state transition so a
