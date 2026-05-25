@@ -12,6 +12,7 @@ struct VoiceView: View {
     @State private var textChannelSourceEnabled: Bool = false
     @State private var testText: String = "Hello from SwiftBot."
     @State private var daveDiagnostics: DaveDiagnostics? = nil
+    @State private var showingVoiceDownloadHelp: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -404,15 +405,51 @@ struct VoiceView: View {
 
     private var voiceSettingsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 8) {
                 pickerField(label: "Voice", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
                     Task { await app.setPreferredAnnouncerVoice(newValue) }
+                }
+
+                Button {
+                    showingVoiceDownloadHelp = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Where to download Premium voices")
+                .popover(isPresented: $showingVoiceDownloadHelp, arrowEdge: .bottom) {
+                    voiceDownloadHelpPopover
                 }
             }
             Text("Premium English voices on this Mac. Empty means “best Premium English voice available.”")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var voiceDownloadHelpPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "speaker.wave.2.circle.fill")
+                    .foregroundStyle(.blue)
+                Text("Download Premium Voices")
+                    .font(.headline)
+            }
+
+            Text("Open System Settings → Accessibility → Spoken Content → System Voice → Manage Voices.")
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Choose Premium English voices there, then reopen this menu in SwiftBot.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 320, alignment: .leading)
     }
 
     private var recentVoiceActivityPanel: some View {
