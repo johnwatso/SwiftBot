@@ -409,7 +409,7 @@ struct VoiceView: View {
                     Task { await app.setPreferredAnnouncerVoice(newValue) }
                 }
             }
-            Text("English voices on this Mac, grouped Premium → Enhanced → Default. Empty means “best Premium English voice available.”")
+            Text("Premium English voices on this Mac. Empty means “best Premium English voice available.”")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -474,16 +474,8 @@ struct VoiceView: View {
         let englishVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
         let premium = englishVoices.filter { $0.quality == .premium }
-        let enhanced = englishVoices.filter { $0.quality == .enhanced }
-        let standard = englishVoices.filter { $0.quality == .default }
         for v in premium {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Premium · \(v.language))"))
-        }
-        for v in enhanced {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Enhanced · \(v.language))"))
-        }
-        for v in standard {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (\(v.language))"))
         }
         return options
     }
