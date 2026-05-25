@@ -31,6 +31,7 @@ actor VoicePlaybackService {
     private var daveCoordinator: DaveSessionCoordinator?
     private var daveMediaRequired: Bool = false
     private var daveMediaReady: Bool = false
+    private var daveExternalSender: Data?
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeoutTask: Task<Void, Never>?
@@ -138,6 +139,7 @@ actor VoicePlaybackService {
         daveCoordinator = nil
         daveMediaRequired = false
         daveMediaReady = false
+        daveExternalSender = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         await setStatus(.idle)
@@ -310,6 +312,7 @@ actor VoicePlaybackService {
                     protocolVersion: daveVersion
                 )
                 self.daveCoordinator = coordinator
+                try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "session description")
 
                 try await sendDaveKeyPackage(reason: "session description")
                 await debug("Waiting for DAVE MLS transition before enabling Discord speech.")
@@ -345,6 +348,7 @@ actor VoicePlaybackService {
                         selfUserId: gateway?.server.userID ?? "",
                         protocolVersion: protocolVersion
                     )
+                    try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "prepare epoch")
                     try await sendDaveKeyPackage(reason: "prepare epoch")
                 }
             }
@@ -366,7 +370,10 @@ actor VoicePlaybackService {
 
     private func handleDaveExternalSender(_ data: Data) async {
         do {
-            try await daveCoordinator?.setExternalSender(data)
+            daveExternalSender = data
+            if let coordinator = daveCoordinator {
+                try await coordinator.setExternalSender(data)
+            }
             Self.logger.info("DAVE external sender package registered successfully.")
             try await sendDaveKeyPackage(reason: "external sender")
         } catch {
@@ -426,10 +433,20 @@ actor VoicePlaybackService {
         do {
             try await gateway?.sendInvalidCommitWelcome(transitionId: transitionId)
             try await daveCoordinator?.recreateSessionState()
+            if let coordinator = daveCoordinator {
+                try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "invalid commit/welcome recovery")
+            }
             try await sendDaveKeyPackage(reason: "invalid commit/welcome recovery")
         } catch {
             Self.logger.error("DAVE recovery failed: \(error.localizedDescription)")
         }
+    }
+
+    private func applyDaveExternalSenderIfAvailable(to coordinator: DaveSessionCoordinator, reason: String) async throws {
+        guard let externalSender = daveExternalSender else { return }
+        try await coordinator.setExternalSender(externalSender)
+        Self.logger.info("DAVE external sender reapplied after \(reason, privacy: .public).")
+        await debug("DAVE external sender reapplied after \(reason).")
     }
 
     private func handleGatewayClose(_ code: Int) async {
