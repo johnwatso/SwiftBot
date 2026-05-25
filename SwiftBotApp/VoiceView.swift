@@ -424,7 +424,7 @@ struct VoiceView: View {
                     voiceDownloadHelpPopover
                 }
             }
-            Text("Premium English voices on this Mac. Empty means “best Premium English voice available.”")
+            Text("Premium and Enhanced English voices on this Mac. Empty means “best Premium English voice available.”")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -443,7 +443,7 @@ struct VoiceView: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Choose Premium English voices there, then reopen this menu in SwiftBot.")
+            Text("Choose Premium or Enhanced English voices there, then reopen this menu in SwiftBot.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -511,8 +511,12 @@ struct VoiceView: View {
         let englishVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
         let premium = englishVoices.filter { $0.quality == .premium }
+        let enhanced = englishVoices.filter { $0.quality == .enhanced }
         for v in premium {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Premium · \(v.language))"))
+        }
+        for v in enhanced {
+            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Enhanced · \(v.language))"))
         }
         return options
     }
