@@ -74,6 +74,11 @@ struct AutomationsView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
+            if app.isFailoverManagedNode {
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. \(copy.title) sync from Primary.")
+                    .padding(.horizontal, 16)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                 metricTileRow
@@ -86,6 +91,8 @@ struct AutomationsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .onAppear {
             if !app.automationStore.isLoaded { app.automationStore.load() }
         }

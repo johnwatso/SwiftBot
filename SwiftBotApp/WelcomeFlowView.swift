@@ -234,6 +234,9 @@ struct WelcomeFlowView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                if app.isFailoverManagedNode {
+                    PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
+                }
                 metrics
                 welcomeRuleBuilderSurface
             }
@@ -244,6 +247,8 @@ struct WelcomeFlowView: View {
             .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .sheet(isPresented: $showPreviewSheet) {
             previewSheet
         }

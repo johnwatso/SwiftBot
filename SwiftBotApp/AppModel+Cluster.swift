@@ -500,4 +500,243 @@ extension AppModel {
         return nodes
     }
 
+    // MARK: - SwiftMesh Join Code Support
+
+    /// Fetches the public WAN IP address of the primary node asynchronously.
+    func fetchPublicIPAddress() async -> String? {
+        guard let url = URL(string: "https://api.ipify.org") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3.0 // 3.0-second timeout to prevent UI blocking
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let ip, !ip.isEmpty {
+                    return ip
+                }
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    /// Fetches all active local IPv4 interface addresses (Wi-Fi/Ethernet en0, en1, etc.).
+    private func getLocalIPAddresses() -> [String] {
+        var addresses = [String]()
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return [] }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr = ifaddr
+        while ptr != nil {
+            guard let interface = ptr?.pointee else { break }
+            let addrFamily = interface.ifa_addr.pointee.sa_family
+            if addrFamily == UInt8(AF_INET) {
+                let name = String(cString: interface.ifa_name)
+                if name.hasPrefix("en") {
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    if getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
+                                   &hostname, socklen_t(hostname.count),
+                                   nil, socklen_t(0), NI_NUMERICHOST) == 0 {
+                        let ip = String(cString: hostname)
+                        if !ip.isEmpty && ip != "127.0.0.1" {
+                            addresses.append(ip)
+                        }
+                    }
+                }
+            }
+            ptr = interface.ifa_next
+        }
+        return addresses
+    }
+
+    /// Generates a base64-encoded SwiftMesh Join Code containing the leader's address details and secret.
+    func generateSwiftMeshJoinCode() async -> String? {
+        var addresses = [String]()
+
+        // Add local LAN IPs first (prioritizing local network pairing)
+        addresses.append(contentsOf: getLocalIPAddresses())
+
+        // Add public WAN IP next
+        if let publicIP = await fetchPublicIPAddress() {
+            addresses.append(publicIP)
+        }
+
+        // Add configured leader address if not already present and not a loopback
+        let configured = settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !configured.isEmpty && configured != "localhost" && configured != "127.0.0.1" {
+            if !addresses.contains(configured) {
+                addresses.append(configured)
+            }
+        }
+
+        // Fallback to loopback if empty
+        if addresses.isEmpty {
+            addresses.append("127.0.0.1")
+        }
+
+        let sharedSecret = ensureSwiftMeshSharedSecret()
+
+        let bundle = SwiftMeshJoinBundle(
+            leaderAddresses: addresses,
+            leaderPort: settings.clusterListenPort,
+            sharedSecret: sharedSecret
+        )
+
+        guard let data = try? JSONEncoder().encode(bundle) else { return nil }
+        let b64 = data.base64EncodedString()
+        return "swiftmesh://join?b=\(b64)"
+    }
+
+    private func ensureSwiftMeshSharedSecret() -> String {
+        let existing = settings.clusterSharedSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !existing.isEmpty {
+            return existing
+        }
+
+        let generated = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        settings.clusterSharedSecret = generated
+        saveSettings()
+        logs.append("[SwiftMesh] Generated a shared secret for the Join Code.")
+        return generated
+    }
+
+    /// Decodes a SwiftMesh Join Code into a configuration bundle.
+    func decodeSwiftMeshJoinCode(_ rawCode: String) throws -> SwiftMeshJoinBundle {
+        let trimmed = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SwiftMeshJoinError.empty }
+
+        let base64: String
+        if trimmed.hasPrefix("swiftmesh://join?") {
+            guard let components = URLComponents(string: trimmed),
+                  let value = components.queryItems?.first(where: { $0.name == "b" })?.value else {
+                throw SwiftMeshJoinError.invalidCode
+            }
+            base64 = value
+        } else {
+            base64 = trimmed
+        }
+
+        guard let data = Data(base64Encoded: base64) else {
+            throw SwiftMeshJoinError.invalidBase64
+        }
+
+        do {
+            return try JSONDecoder().decode(SwiftMeshJoinBundle.self, from: data)
+        } catch {
+            throw SwiftMeshJoinError.invalidJSON
+        }
+    }
+
+    /// Applies a SwiftMesh Join Code bundle to settings.
+    func applySwiftMeshJoinCode(_ rawCode: String) -> (ok: Bool, message: String) {
+        do {
+            let bundle = try decodeSwiftMeshJoinCode(rawCode)
+
+            // We do not save a single leaderAddress yet. We let the Standby's
+            // connection tester cycle through `bundle.leaderAddresses` to find
+            // the working one, and save the winner. But as a safe fallback we set
+            // the first address now.
+            if let firstAddress = bundle.leaderAddresses.first {
+                settings.clusterLeaderAddress = firstAddress
+            } else {
+                settings.clusterLeaderAddress = "127.0.0.1"
+            }
+
+            settings.clusterLeaderPort = bundle.leaderPort
+            settings.clusterListenPort = bundle.leaderPort // Keep them aligned by default
+            settings.clusterSharedSecret = bundle.sharedSecret
+            settings.clusterMode = .standby
+            settings.launchMode = .swiftMeshClusterNode
+
+            // Auto-generate a node name if none is configured
+            if settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let name = Host.current().localizedName ?? "Standby Node"
+                let randomID = String(UUID().uuidString.prefix(4)).lowercased()
+                settings.clusterNodeName = "\(name)-\(randomID)"
+            }
+
+            saveSettings()
+            return (true, "Join code parsed successfully.")
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
+    /// Asynchronously tests each address in the Join Code (tries local LAN IPs first, then falls back to public WAN IP) and binds to the winner.
+    func testWorkerJoinCodeConnection(addresses: [String], port: Int) async -> Bool {
+        await MainActor.run {
+            self.workerConnectionTestInProgress = true
+            self.workerConnectionTestIsSuccess = false
+            self.workerConnectionTestStatus = "Testing connection..."
+            self.workerConnectionTestOutcome = nil
+        }
+
+        var workingAddress: String?
+        var finalOutcome: WorkerConnectionTestOutcome?
+
+        // Try local LAN IPs first, then fall back to public WAN IP
+        for addr in addresses {
+            await MainActor.run {
+                self.workerConnectionTestStatus = "Trying \(addr)..."
+            }
+            let outcome = await performWorkerConnectionTest(
+                leaderAddress: addr,
+                leaderPort: port
+            )
+            if outcome.isSuccess {
+                workingAddress = addr
+                finalOutcome = outcome
+                break
+            } else {
+                finalOutcome = outcome
+            }
+        }
+
+        let success = workingAddress != nil
+        let statusMessage = finalOutcome?.message ?? "Connection failed."
+
+        await MainActor.run {
+            if let winner = workingAddress {
+                self.settings.clusterLeaderAddress = winner
+                self.saveSettings()
+            }
+            self.workerConnectionTestInProgress = false
+            self.workerConnectionTestIsSuccess = success
+            self.workerConnectionTestStatus = success ? "Success! Bound to \(workingAddress ?? "")" : statusMessage
+            self.workerConnectionTestOutcome = finalOutcome
+            self.lastClusterStatusRefreshAt = Date()
+            self.logs.append("SwiftMesh worker connection test: \(success ? "Success on \(workingAddress ?? "")" : statusMessage)")
+        }
+
+        return success
+    }
+
+}
+
+struct SwiftMeshJoinBundle: Codable {
+    let leaderAddresses: [String]
+    let leaderPort: Int
+    let sharedSecret: String
+}
+
+enum SwiftMeshJoinError: LocalizedError {
+    case empty
+    case invalidCode
+    case invalidBase64
+    case invalidJSON
+
+    var errorDescription: String? {
+        switch self {
+        case .empty:
+            return "The copied code is empty. Please copy a valid SwiftMesh join code first."
+        case .invalidCode:
+            return "That does not look like a valid SwiftMesh join code."
+        case .invalidBase64:
+            return "The SwiftMesh join payload could not be decoded."
+        case .invalidJSON:
+            return "The SwiftMesh join payload is corrupted."
+        }
+    }
 }

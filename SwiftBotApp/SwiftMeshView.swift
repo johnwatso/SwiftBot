@@ -1,9 +1,12 @@
 import SwiftUI
+import AppKit
 
 struct SwiftMeshView: View {
     @EnvironmentObject var app: AppModel
     @State private var showPromoteConfirm = false
     @State private var showHandoverTestConfirm = false
+    @State private var isCopyingJoinCode = false
+    @State private var justCopiedJoinCode = false
 
     /// 10s polling interval for the SwiftMesh UI. The old 3s interval caused
     /// excessive standby-to-primary HTTP load (up to 40 req/min) and overlapping
@@ -246,14 +249,51 @@ struct SwiftMeshView: View {
     }
 
     private var configurationGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
-            DiagnosticsLine(label: "Node Name", value: app.settings.clusterNodeName, tone: .primary)
-            DiagnosticsLine(label: "Listen Port", value: "\(app.settings.clusterListenPort)", tone: .primary)
-            DiagnosticsLine(label: "Primary Host", value: primaryHostDisplay, tone: .primary)
-            DiagnosticsLine(label: "Primary Port", value: "\(app.settings.clusterLeaderPort)", tone: .primary)
-            DiagnosticsLine(label: "Configured Role", value: app.settings.clusterMode.displayName, tone: .primary)
-            DiagnosticsLine(label: "Runtime Role", value: app.clusterSnapshot.mode.displayName, tone: .primary)
-            DiagnosticsLine(label: "Registered Workers", value: app.registeredWorkersDebugSummary, tone: .secondary, multiline: true)
+        VStack(alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+                DiagnosticsLine(label: "Node Name", value: app.settings.clusterNodeName, tone: .primary)
+                DiagnosticsLine(label: "Listen Port", value: "\(app.settings.clusterListenPort)", tone: .primary)
+                DiagnosticsLine(label: "Primary Host", value: primaryHostDisplay, tone: .primary)
+                DiagnosticsLine(label: "Primary Port", value: "\(app.settings.clusterLeaderPort)", tone: .primary)
+                DiagnosticsLine(label: "Configured Role", value: app.settings.clusterMode.displayName, tone: .primary)
+                DiagnosticsLine(label: "Runtime Role", value: app.clusterSnapshot.mode.displayName, tone: .primary)
+                DiagnosticsLine(label: "Registered Workers", value: app.registeredWorkersDebugSummary, tone: .secondary, multiline: true)
+            }
+
+            if app.settings.clusterMode == .leader {
+                Button {
+                    isCopyingJoinCode = true
+                    Task {
+                        if let code = await app.generateSwiftMeshJoinCode() {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(code, forType: .string)
+                            app.logs.append("[SwiftMesh] Join code copied to clipboard!")
+                            justCopiedJoinCode = true
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            justCopiedJoinCode = false
+                        }
+                        isCopyingJoinCode = false
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isCopyingJoinCode {
+                            ProgressView().controlSize(.small)
+                            Text("Generating Join Code...")
+                        } else if justCopiedJoinCode {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            Text("Join Code Copied!")
+                        } else {
+                            Image(systemName: "doc.on.clipboard.fill")
+                            Text("Copy SwiftMesh Join Code")
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.top, 4)
+                .disabled(isCopyingJoinCode)
+                .help("Generates and copies a single pairing code containing this Primary's address and shared secret for standbys to paste.")
+            }
         }
     }
 
@@ -1076,7 +1116,7 @@ private struct NodeIconContextMenu: View {
     let onSelect: (String?) -> Void
 
     var body: some View {
-        Menu("Set Icon") {
+        Section("Set Icon") {
             ForEach(SwiftMeshNodeIconCatalog.all) { option in
                 Button {
                     onSelect(option.symbol)

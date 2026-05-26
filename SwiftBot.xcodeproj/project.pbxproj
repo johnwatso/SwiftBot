@@ -90,7 +90,7 @@
 		5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */; };
 		61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FD42789A025FD409C081463 /* AppModel+Patchy.swift */; };
 		61FE77A534CAE8A1DB129DD6 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985814A00309DEBC6C7FD35F /* OverviewView.swift */; };
-		626D847B8BB20176403EBBAA /* libdave-swift in Frameworks */ = {isa = PBXBuildFile; productRef = D844BEB77843D9F864B46527 /* libdave-swift */; };
+		626D847B8BB20176403EBBAA /* libdave-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 24FCC927E2337E1A74F2A427 /* libdave-swift */; };
 		63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */; };
 		647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */; };
 		65F8E1C9E4E603B4E420DCE9 /* CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */; };
@@ -149,6 +149,7 @@
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
 		A19AE8F43B9B8CFB90BE7638 /* Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440472C1541FD0866542066B /* Automations.swift */; };
 		A463269B72381B592011FA78 /* WelcomeFlowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */; };
+		A47258F9FC57B429217A7D70 /* cloudflared in Resources */ = {isa = PBXBuildFile; fileRef = 8CEF7EB5B287F29B8308E663 /* cloudflared */; };
 		A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */; };
 		A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */; };
 		AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
@@ -321,6 +322,7 @@
 		8828FF064E45A0519FB1640E /* ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEClient.swift; sourceTree = "<group>"; };
 		8964B98159AC25452C4423DF /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = SwiftBot.icon; sourceTree = "<group>"; };
 		8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionView.swift; sourceTree = "<group>"; };
+		8CEF7EB5B287F29B8308E663 /* cloudflared */ = {isa = PBXFileReference; path = cloudflared; sourceTree = "<group>"; };
 		8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWeb.swift"; sourceTree = "<group>"; };
 		8F8170A687CD0015B81C30F9 /* AutomationTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationTemplates.swift; sourceTree = "<group>"; };
@@ -648,6 +650,7 @@
 			isa = PBXGroup;
 			children = (
 				7C4E3B85871C475A7A8D53DE /* AppIcon.png */,
+				8CEF7EB5B287F29B8308E663 /* cloudflared */,
 				7B9C73206F296924B1FAAF39 /* SwiftBird.png */,
 				C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */,
 			);
@@ -748,7 +751,7 @@
 				1C81108D7CF200AA2750ED17 /* NIOSSL */,
 				7551369833EB21380EB8B404 /* SwiftSoup */,
 				8340F7290FCD93DB7287E27A /* Opus */,
-				D844BEB77843D9F864B46527 /* libdave-swift */,
+				24FCC927E2337E1A74F2A427 /* libdave-swift */,
 			);
 			productName = SwiftBot;
 			productReference = FD22E0CFEADC14DEFF30FD53 /* SwiftBot.app */;
@@ -797,9 +800,9 @@
 			mainGroup = 5862010FC4698115F0427E7E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */,
 				D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */,
 				6A7976F088120A7F5815E5B9 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */,
 				7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */,
 				3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */,
 				8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */,
@@ -829,6 +832,7 @@
 				29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
 				587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */,
+				A47258F9FC57B429217A7D70 /* cloudflared in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1498,6 +1502,11 @@
 			package = 084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
 			productName = NIOSSL;
 		};
+		24FCC927E2337E1A74F2A427 /* libdave-swift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */;
+			productName = "libdave-swift";
+		};
 		5AEB32046AFF5E8525A5B458 /* NIOCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */;
@@ -1532,11 +1541,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */;
 			productName = Opus;
-		};
-		D844BEB77843D9F864B46527 /* libdave-swift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 32A69702B32B1B4E5A6C12E7 /* XCRemoteSwiftPackageReference "libdave-swift" */;
-			productName = libdave-swift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -8,7 +8,6 @@ struct GeneralSettingsView: View {
     @AppStorage("settings.swiftmesh.expanded.v1") private var isSwiftMeshExpanded = false
     @AppStorage("settings.media.expanded.v1") private var isMediaExpanded = false
     @AppStorage("settings.webui.expanded.v1") private var isWebUIExpanded = false
-    @State private var autoSaveTask: Task<Void, Never>? = nil
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
@@ -251,14 +250,7 @@ struct GeneralSettingsView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .onChange(of: app.createPreferencesSnapshot()) { _, _ in
-            autoSaveTask?.cancel()
-            autoSaveTask = Task {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard !Task.isCancelled else { return }
-                app.saveSettings()
-            }
-        }
+        .autosavesPreferences(for: app)
         .sheet(isPresented: $showingPermissionsCheck) {
             BotPermissionsCheckView(token: app.settings.token)
         }

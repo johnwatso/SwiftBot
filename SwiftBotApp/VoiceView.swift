@@ -5,29 +5,25 @@ import libdave_swift
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
 
-    @State private var selectedGuild: String = ""
-    @State private var selectedVoiceChannel: String = ""
-    @State private var selectedTextChannel: String = ""
     @State private var selectedVoiceIdentifier: String = ""
-    @State private var textChannelSourceEnabled: Bool = false
-    @State private var testText: String = "Hello from SwiftBot."
     @State private var daveDiagnostics: DaveDiagnostics? = nil
     @State private var showingVoiceDownloadHelp: Bool = false
-    @State private var expandedVoiceChannelIDs: Set<String> = ["ao"]
-    @State private var speechRate: Double = 0.50
-    @State private var ignoreBots: Bool = true
-    @State private var ignoreLinks: Bool = true
-    @State private var ignoreLongMessages: Bool = true
-    @State private var readEmojis: Bool = true
-    @State private var autoLeaveMinutes: Double = 10
+    @State private var vcConfigs: [AnnouncerVoiceChannelConfig] = []
     @State private var advancedExpanded: Bool = false
-    @State private var editingAnnouncerRule: AutomationEditTarget?
+    @State private var vcBehaviours: [String: AnnouncerBehaviourState] = [:]
+    @State private var technicalLogsExpanded: Bool = false
+    @State private var editingVCConfigIndex: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
+
+            if app.isFailoverManagedNode {
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Announcer settings sync from Primary.")
+                    .padding(.horizontal, 16)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -42,21 +38,22 @@ struct VoiceView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .onAppear { syncFromSettings() }
         .onChange(of: app.settings.voice) { _, _ in syncFromSettings() }
-        .sheet(item: $editingAnnouncerRule) { target in
-            AutomationRuleEditor(
-                rule: target.rule,
-                isNew: target.isNew,
-                serverContext: app.automationServerContext(),
-                onSave: { updated in
-                    app.automationStore.upsert(updated)
-                },
-                onDelete: { id in
-                    app.automationStore.remove(id: id)
-                }
-            )
-            .frame(minWidth: 640, idealWidth: 760, minHeight: 560, idealHeight: 700)
+        .onChange(of: vcConfigs) { _, newValue in
+            app.settings.voice.announcerConfigs = newValue
+            app.saveSettings()
+        }
+        .sheet(isPresented: Binding(
+            get: { editingVCConfigIndex != nil },
+            set: { if !$0 { editingVCConfigIndex = nil } }
+        )) {
+            if let index = editingVCConfigIndex {
+                AnnouncerConfigSheet(config: $vcConfigs[index], state: behaviourBinding(for: vcConfigs[index].id))
+                    .environmentObject(app)
+            }
         }
         .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
             if app.voiceConnectionStatus.isConnected {
@@ -276,15 +273,15 @@ struct VoiceView: View {
             )
             DashboardMetricCard(
                 title: "Configured Voice Channels",
-                value: "\(announcerVoiceChannelConfigs.count)",
+                value: "\(vcConfigs.count)",
                 subtitle: "Feeds ready for /announce join",
                 symbol: "speaker.wave.2.bubble.fill",
                 color: .purple
             )
             DashboardMetricCard(
                 title: "Messages Read Today",
-                value: "\(app.voiceLog.count)",
-                subtitle: app.voiceLog.isEmpty ? "No reads yet" : "Includes previews and sessions",
+                value: "\(app.messagesSpokenToday)",
+                subtitle: app.messagesSpokenToday == 0 ? "No reads yet today" : "Announcements + previews",
                 symbol: "text.bubble.fill",
                 color: .blue
             )
@@ -306,146 +303,159 @@ struct VoiceView: View {
 
     private var voiceChannelConfigurationsSection: some View {
         AutomationsSection(title: "Voice Channel Configurations", symbol: "speaker.wave.2.bubble.fill") {
-            VStack(spacing: 8) {
-                HStack {
-                    Label("/announce join", systemImage: "terminal.fill")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.purple)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.10), in: Capsule())
-                    Text("SwiftBot infers the caller's current voice channel and applies that channel's rules.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.bottom, 2)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("SwiftBot detects your current voice channel and loads that channel's configuration.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
 
-                ForEach(announcerVoiceChannelConfigs) { config in
-                    voiceChannelConfigCard(config)
+                if vcConfigs.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No voice channel configurations yet.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button { addVoiceChannel() } label: {
+                            Label("Add Voice Channel", systemImage: "plus")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    VStack(spacing: 4) {
+                        ForEach(vcConfigs) { config in
+                            voiceChannelConfigCard(config)
+                        }
+                    }
+                    Button { addVoiceChannel() } label: {
+                        Label("Add Voice Channel", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 2)
                 }
             }
         }
     }
 
     private func voiceChannelConfigCard(_ config: AnnouncerVoiceChannelConfig) -> some View {
-        let isExpanded = expandedVoiceChannelIDs.contains(config.id)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Toggle("", isOn: .constant(config.enabled))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
+        HStack(spacing: 10) {
+            Circle()
+                .fill(config.enabled ? config.tint.color : Color.secondary.opacity(0.4))
+                .frame(width: 7, height: 7)
 
-                Image(systemName: config.symbol)
-                    .font(.title3.weight(.semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(config.tint)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(config.tint.opacity(0.14)))
+            Image(systemName: config.symbol)
+                .font(.subheadline.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(config.tint.color)
+                .frame(width: 22)
 
-                VStack(alignment: .leading, spacing: 7) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(config.name)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text("Voice Channel: \(config.voiceChannelName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Reads From")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        pillWrap(config.textChannels.map { "#\($0)" }, tint: .blue, symbol: "text.bubble.fill")
-                    }
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Rules")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        pillWrap(config.rules, tint: config.tint, symbol: "checkmark.circle.fill")
-                    }
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            toggleVoiceChannelExpansion(config.id)
-                        }
-                    } label: {
-                        Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help(isExpanded ? "Collapse" : "Expand")
-
-                    Menu {
-                        Button("Duplicate configuration") {}
-                        Button(config.enabled ? "Pause for this voice channel" : "Enable for this voice channel") {}
-                        Divider()
-                        Button("Remove configuration", role: .destructive) {}
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                }
-            }
-
-            if isExpanded {
-                voiceChannelExpandedContent(config)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(config.tint.opacity(isExpanded ? 0.18 : 0.09), lineWidth: 1)
-        )
-    }
-
-    private func voiceChannelExpandedContent(_ config: AnnouncerVoiceChannelConfig) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Behaviour")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(config.behaviours, id: \.self) { behaviour in
-                    Label(behaviour, systemImage: "checkmark.circle.fill")
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(config.name)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(config.voiceChannelName)
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+
+                if !config.textChannels.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(config.textChannels.prefix(3), id: \.self) { ch in
+                            Text("#\(ch)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(config.tint.color)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(config.tint.color.opacity(0.10), in: Capsule())
+                        }
+                        if config.textChannels.count > 3 {
+                            Text("+\(config.textChannels.count - 3)")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        if !behaviourSummary(for: config).isEmpty {
+                            Text("·")
+                                .font(.caption2)
+                                .foregroundStyle(.quaternary)
+                            Text(behaviourSummary(for: config))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    editingAnnouncerRule = AutomationEditTarget(rule: announcerRule(for: config), isNew: false)
-                } label: {
-                    Label("Edit Rules", systemImage: "slider.horizontal.3")
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { config.enabled },
+                set: { newValue in
+                    if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
+                        vcConfigs[i].enabled = newValue
+                    }
                 }
-                Button {
-                    app.speakLocallyPreview(sampleLastMessage(for: config))
-                } label: {
-                    Label("Read Last Message", systemImage: "text.bubble.fill")
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            Button {
+                Task {
+                    let text = await app.fetchLastMessageText(fromChannelNamed: config.textChannels.first ?? "")
+                    app.speakLocallyPreview(text)
                 }
-                .buttonStyle(.borderedProminent)
-                Spacer()
+            } label: {
+                Image(systemName: "text.bubble")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Read Last Message")
+
+            Button { openConfig(for: config) } label: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Configure")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { openConfig(for: config) }
+        .contextMenu {
+            Button {
+                Task {
+                    let text = await app.fetchLastMessageText(fromChannelNamed: config.textChannels.first ?? "")
+                    app.speakLocallyPreview(text)
+                }
+            } label: {
+                Label("Read Last Message", systemImage: "text.bubble")
+            }
+            Button { openConfig(for: config) } label: {
+                Label("Configure", systemImage: "pencil")
+            }
+            Divider()
+            Button(config.enabled ? "Pause" : "Enable") {
+                if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
+                    vcConfigs[i].enabled.toggle()
+                }
+            }
+            Button("Remove", role: .destructive) {
+                vcConfigs.removeAll { $0.id == config.id }
             }
         }
-        .padding(.leading, 52)
     }
 
     // MARK: - Global voice settings
@@ -454,32 +464,6 @@ struct VoiceView: View {
         AutomationsSection(title: "Global Voice Settings", symbol: "speaker.wave.3.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 voiceSettingsPanel
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Label("Speech Speed", systemImage: "speedometer")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(Int(speechRate * 100))%")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(value: $speechRate, in: 0.35...0.75)
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 8) {
-                    Toggle("Summarise long messages", isOn: $ignoreLongMessages)
-                    Toggle("Skip bots", isOn: $ignoreBots)
-                    Toggle("Ignore links", isOn: $ignoreLinks)
-                    Toggle("Read emojis", isOn: $readEmojis)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Auto leave")
-                            .font(.caption.weight(.medium))
-                        Stepper("\(Int(autoLeaveMinutes)) min", value: $autoLeaveMinutes, in: 1...60, step: 1)
-                    }
-                }
-                .font(.caption)
 
                 HStack(spacing: 8) {
                     VoiceWaveformMark(color: .purple)
@@ -515,63 +499,112 @@ struct VoiceView: View {
     }
 
     private var recentActivitySection: some View {
-        AutomationsSection(title: "Recent reads", symbol: "text.bubble") {
-            recentVoiceActivityPanel
+        AutomationsSection(title: "Recent Activity", symbol: "text.bubble") {
+            VStack(alignment: .leading, spacing: 8) {
+                if app.voiceLog.isEmpty {
+                    PlaceholderPanelLine(text: "Spoken announcements and voice connection events will appear here.")
+                } else {
+                    ForEach(Array(app.voiceLog.prefix(8))) { entry in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(entry.time, style: .time)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 48, alignment: .leading)
+                            Text(humanReadableLog(entry.description))
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 1)
+                    }
+
+                    DisclosureGroup("Technical Logs", isExpanded: $technicalLogsExpanded) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(app.voiceLog.prefix(12))) { entry in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(entry.time, style: .time)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: 48, alignment: .leading)
+                                    Text(entry.description)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                }
+            }
         }
     }
 
-    private func toggleVoiceChannelExpansion(_ id: String) {
-        if expandedVoiceChannelIDs.contains(id) {
-            expandedVoiceChannelIDs.remove(id)
-        } else {
-            expandedVoiceChannelIDs.insert(id)
+    private func humanReadableLog(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("join") && lower.contains("voice") {
+            if let channel = raw.components(separatedBy: "#").dropFirst().first?.components(separatedBy: " ").first {
+                return "Joined #\(channel) voice channel"
+            }
+            return "Joined voice channel"
         }
+        if lower.contains("left") || lower.contains("disconnect") {
+            return "Left voice channel"
+        }
+        if lower.contains("read") || lower.contains("speak") || lower.contains("announced") {
+            if let channel = raw.components(separatedBy: "#").dropFirst().first?.components(separatedBy: " ").first {
+                return "Read message from #\(channel)"
+            }
+            return "Read a message aloud"
+        }
+        if lower.contains("connect") {
+            return "Connected to Discord voice"
+        }
+        return raw
     }
 
-    private func sampleLastMessage(for config: AnnouncerVoiceChannelConfig) -> String {
-        let channel = config.textChannels.first ?? "general"
-        return "Latest from #\(channel). Jo says: The raid starts in ten, clips are pinned, and links are being skipped for voice."
+    private func behaviourSummary(for config: AnnouncerVoiceChannelConfig) -> String {
+        var parts: [String] = []
+        if config.autoJoin { parts.append("auto-join") }
+        switch config.connectionMode {
+        case .fixed:      parts.append("\(config.connectionMinutes) min")
+        case .untilEmpty: parts.append("until empty")
+        }
+        let s = vcBehaviours[config.id] ?? AnnouncerBehaviourState()
+        if s.summariseLong { parts.append("summarises") }
+        if s.ignoreLinks   { parts.append("no links") }
+        return parts.prefix(3).joined(separator: " · ")
     }
 
-    private func announcerRule(for config: AnnouncerVoiceChannelConfig) -> Automations.Rule {
-        Automations.Rule(
-            name: "\(config.name) spoken feed rules",
-            category: .automation,
-            trigger: Automations.Trigger(kind: .messageCreated),
-            filters: [
-                Automations.Filter(kind: .messageContains, text: "")
-            ],
-            steps: [
-                Automations.Step(kind: .log, logText: "Keep announcements short for \(config.voiceChannelName)")
-            ]
+    private let vcTintCycle: [AnnouncerTint] = AnnouncerTint.allCases
+
+    private func addVoiceChannel() {
+        let tint = vcTintCycle[vcConfigs.count % vcTintCycle.count]
+        let config = AnnouncerVoiceChannelConfig(
+            id: UUID().uuidString,
+            name: "New Voice Channel",
+            tint: tint
         )
+        vcConfigs.append(config)
+        editingVCConfigIndex = vcConfigs.count - 1
     }
 
-    private func compactPill(_ text: String, tint: Color, symbol: String? = nil) -> some View {
-        HStack(spacing: 4) {
-            if let symbol {
-                Image(systemName: symbol)
-                    .font(.system(size: 9, weight: .semibold))
-            }
-            Text(text)
-                .lineLimit(1)
+    private func openConfig(for config: AnnouncerVoiceChannelConfig) {
+        if let index = vcConfigs.firstIndex(where: { $0.id == config.id }) {
+            editingVCConfigIndex = index
         }
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(tint.opacity(0.10), in: Capsule())
     }
 
-    private func pillWrap(_ values: [String], tint: Color, symbol: String) -> some View {
-        HStack(spacing: 5) {
-            ForEach(values.prefix(4), id: \.self) { value in
-                compactPill(value, tint: tint, symbol: symbol)
-            }
-            if values.count > 4 {
-                compactPill("+\(values.count - 4)", tint: .secondary)
-            }
-        }
+    private func behaviourBinding(for id: String) -> Binding<AnnouncerBehaviourState> {
+        Binding(
+            get: { self.vcBehaviours[id] ?? AnnouncerBehaviourState() },
+            set: { self.vcBehaviours[id] = $0 }
+        )
     }
 
     // MARK: - Connection panel
@@ -607,74 +640,6 @@ struct VoiceView: View {
             }
 
             Text("Connection setup and DAVE encryption happen automatically when a user summons SwiftBot from Discord.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Sources panel
-
-    private var sourcesPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "text.bubble.fill")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Read messages from a text channel")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Bot will speak each new message as “Author: text.” Skips messages over 300 characters and link-only posts; reads embed titles when present.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Toggle("", isOn: $textChannelSourceEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .onChange(of: textChannelSourceEnabled) { _, newValue in
-                        app.setTextChannelSourceEnabledForAnnouncer(newValue)
-                    }
-            }
-
-            pickerField(label: "Text Channel", selection: $selectedTextChannel, options: textChannelOptions) { newValue in
-                Task { await app.setWatchedTextChannelForAnnouncer(newValue) }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    TextField("Test something", text: $testText)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Preview on Mac") {
-                        app.speakLocallyPreview(testText)
-                    }
-                    .disabled(testText.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button("Speak in Discord") {
-                        let snapshot = testText
-                        Task { await app.speakAnnouncement(snapshot) }
-                    }
-                    .disabled(!app.voiceConnectionStatus.isConnected || testText.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                Text(
-                    "Preview plays through this Mac's speakers using the selected voice. " +
-                    "Speak in Discord sends the audio to the connected Discord voice channel using native DAVE encryption."
-                )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider().padding(.vertical, 4)
-
-            DisabledSourceRow(symbol: "person.wave.2.fill", title: "Voice channel join / leave",
-                              detail: "Announce when members join or leave the connected voice channel.")
-            DisabledSourceRow(symbol: "bolt.shield.fill", title: "Moderation actions",
-                              detail: "Speak moderation events (mutes, bans, deletes) as they happen.")
-            DisabledSourceRow(symbol: "pickaxe", title: "SwiftMiner alerts",
-                              detail: "Voice-channel alerts for rig status changes.")
-
-            Text("Additional sources will ship once the text-channel reader has been exercised in production.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -731,58 +696,15 @@ struct VoiceView: View {
         .frame(width: 320, alignment: .leading)
     }
 
-    private var recentVoiceActivityPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if app.voiceLog.isEmpty {
-                PlaceholderPanelLine(text: "Spoken announcements and voice connection events will appear here.")
-            } else {
-                ForEach(Array(app.voiceLog.prefix(8))) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(entry.time, style: .time)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 56, alignment: .leading)
-                        Text(entry.description)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-    }
-
     // MARK: - Helpers
 
     private func syncFromSettings() {
-        selectedGuild = app.settings.voice.guildID
-        selectedVoiceChannel = app.settings.voice.voiceChannelID
-        selectedTextChannel = app.settings.voice.watchedTextChannelID
         selectedVoiceIdentifier = app.settings.voice.preferredVoiceIdentifier
-        textChannelSourceEnabled = app.settings.voice.textChannelSourceEnabled
-    }
-
-    private var serverOptions: [PickerOption] {
-        var options = [PickerOption(id: "", label: "— Pick a server —")]
-        let sorted = app.connectedServers.sorted(by: { $0.value.localizedCompare($1.value) == .orderedAscending })
-        options.append(contentsOf: sorted.map { PickerOption(id: $0.key, label: $0.value) })
-        return options
-    }
-
-    private var voiceChannelOptions: [PickerOption] {
-        var options = [PickerOption(id: "", label: "— Pick a voice channel —")]
-        let list = app.availableVoiceChannelsByServer[selectedGuild] ?? []
-        options.append(contentsOf: list.map { PickerOption(id: $0.id, label: $0.name) })
-        return options
-    }
-
-    private var textChannelOptions: [PickerOption] {
-        var options = [PickerOption(id: "", label: "— Pick a text channel —")]
-        let list = app.availableTextChannelsByServer[selectedGuild] ?? []
-        options.append(contentsOf: list.map { PickerOption(id: $0.id, label: "#\($0.name)") })
-        return options
+        // Only pull configs in from settings if our local state is stale
+        // (avoids overwriting edits in progress when settings change for unrelated reasons)
+        if vcConfigs != app.settings.voice.announcerConfigs {
+            vcConfigs = app.settings.voice.announcerConfigs
+        }
     }
 
     private var voiceOptions: [PickerOption] {
@@ -857,85 +779,365 @@ struct VoiceView: View {
     }
 }
 
+// MARK: - AnnouncerConfigSheet
+
+private struct AnnouncerConfigSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var app: AppModel
+
+    @Binding var config: AnnouncerVoiceChannelConfig
+    @Binding var state: AnnouncerBehaviourState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sheetHeader
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    voiceChannelSection
+                    connectionSection
+                    readsFromSection
+                    behaviourSection
+                    testingSection
+                    advancedSection
+                }
+                .padding(20)
+            }
+        }
+        .frame(minWidth: 480, idealWidth: 520, minHeight: 560, idealHeight: 660)
+    }
+
+    // MARK: Header
+
+    private var sheetHeader: some View {
+        HStack(spacing: 14) {
+            Image(systemName: config.symbol)
+                .font(.title2.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(config.tint.color)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(config.tint.color.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(config.name)
+                    .font(.title3.weight(.semibold))
+                Text("Voice Channel • \(config.voiceChannelName)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Done") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(.bar)
+    }
+
+    // MARK: Voice Channel
+
+    private var voiceChannelSection: some View {
+        AutomationsSection(title: "Voice Channel", symbol: "speaker.wave.2.fill") {
+            VStack(alignment: .leading, spacing: 6) {
+                let options = allVoiceChannelOptions
+                if options.isEmpty {
+                    Text("No voice channels found. Connect the bot to Discord first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Voice Channel", selection: Binding(
+                        get: { config.voiceChannelID },
+                        set: { newID in
+                            if let match = options.first(where: { $0.id == newID }) {
+                                config.voiceChannelID = newID
+                                config.voiceChannelName = match.label
+                                if config.name == "New Voice Channel" || config.name.isEmpty {
+                                    config.name = match.label
+                                }
+                            } else {
+                                config.voiceChannelID = ""
+                                config.voiceChannelName = "—"
+                            }
+                        }
+                    )) {
+                        Text("— Pick a voice channel —").tag("")
+                        ForEach(options) { option in
+                            Text(option.label).tag(option.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    // MARK: Connection
+
+    private var connectionSection: some View {
+        AutomationsSection(title: "Connection", symbol: "bolt.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+
+                // Auto-join
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $config.autoJoin) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Auto-join when someone enters")
+                                .font(.subheadline)
+                            Text("SwiftBot joins \(config.voiceChannelName == "—" ? "this channel" : config.voiceChannelName) automatically whenever a member enters.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+
+                Divider()
+
+                // Duration
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Stay connected")
+                            .font(.subheadline)
+                        Spacer()
+                        Picker("", selection: $config.connectionMode) {
+                            ForEach(AnnouncerConnectionMode.allCases, id: \.self) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+
+                    if config.connectionMode == .fixed {
+                        HStack {
+                            Text("Duration")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Picker("", selection: $config.connectionMinutes) {
+                                ForEach(connectionMinuteOptions, id: \.self) { minutes in
+                                    Text(minutes >= 60
+                                         ? "\(minutes / 60) hr\(minutes / 60 > 1 ? "s" : "")"
+                                         : "\(minutes) min")
+                                    .tag(minutes)
+                                }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                    }
+
+                    Text(config.connectionMode == .fixed
+                         ? "SwiftBot leaves after \(config.connectionMinutes) minutes of reading, even if users are still present."
+                         : "SwiftBot stays until the last member leaves the voice channel.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: Reads From
+
+    private var readsFromSection: some View {
+        AutomationsSection(title: "Reads From", symbol: "text.bubble.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                if config.textChannels.isEmpty {
+                    Text("No text channels added yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(config.textChannels, id: \.self) { channel in
+                            HStack(spacing: 6) {
+                                channelPill("#\(channel)")
+                                Spacer()
+                                Button {
+                                    config.textChannels.removeAll { $0 == channel }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
+                let textOptions = allTextChannelOptions.filter { !config.textChannels.contains($0.label) }
+                if !textOptions.isEmpty {
+                    Menu {
+                        ForEach(textOptions) { option in
+                            Button(option.label) {
+                                config.textChannels.append(option.label)
+                            }
+                        }
+                    } label: {
+                        Label("Add Channel", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    // MARK: Behaviour
+
+    private var behaviourSection: some View {
+        AutomationsSection(title: "Behaviour", symbol: "dial.medium.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Toggle("Announce joins", isOn: $state.announceJoins)
+                    Toggle("Announce leaves", isOn: $state.announceLeaves)
+                    Divider().padding(.vertical, 2)
+                    Toggle("Summarise long messages", isOn: $state.summariseLong)
+                    Toggle("Ignore links", isOn: $state.ignoreLinks)
+                    Toggle("Skip bot messages", isOn: $state.skipBots)
+                    Toggle("Ignore emoji spam", isOn: $state.ignoreEmojiSpam)
+                    Toggle("Keep announcements short", isOn: $state.keepShort)
+                }
+                .toggleStyle(.checkbox)
+
+                Text("Long messages are summarised before being read aloud.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Testing
+
+    private var testingSection: some View {
+        AutomationsSection(title: "Testing", symbol: "play.circle.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Button {
+                        let channelName = config.textChannels.first ?? ""
+                        Task {
+                            let text = await app.fetchLastMessageText(fromChannelNamed: channelName)
+                            app.speakLocallyPreview(text)
+                        }
+                    } label: {
+                        Label("Read Last Message", systemImage: "text.bubble.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(config.textChannels.isEmpty)
+
+                    Button {
+                        app.speakLocallyPreview("SwiftBot is ready for the \(config.voiceChannelName) voice channel.")
+                    } label: {
+                        Label("Preview Voice", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+                }
+
+                if let channel = config.textChannels.first {
+                    Text("Last tested from: #\(channel)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: Advanced
+
+    private var advancedSection: some View {
+        AutomationsSection(title: "Advanced", symbol: "gearshape") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Read embeds", isOn: $state.readEmbeds)
+                    .toggleStyle(.checkbox)
+
+                configSlider("Cooldown between announcements", value: $state.cooldownSeconds, in: 0...10) {
+                    "\(Int($0))s"
+                }
+                configSlider("Speech delay", value: $state.speechDelay, in: 0...3) {
+                    String(format: "%.1fs", $0)
+                }
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    private var allVoiceChannelOptions: [PickerOption] {
+        var options: [PickerOption] = []
+        for channels in app.availableVoiceChannelsByServer.values {
+            options.append(contentsOf: channels.map { PickerOption(id: $0.id, label: $0.name) })
+        }
+        return options.sorted { $0.label.localizedCompare($1.label) == .orderedAscending }
+    }
+
+    private var allTextChannelOptions: [PickerOption] {
+        var options: [PickerOption] = []
+        for channels in app.availableTextChannelsByServer.values {
+            options.append(contentsOf: channels.map { PickerOption(id: $0.id, label: $0.name) })
+        }
+        return options.sorted { $0.label.localizedCompare($1.label) == .orderedAscending }
+    }
+
+    private func configSlider(
+        _ label: String,
+        value: Binding<Double>,
+        in range: ClosedRange<Double>,
+        display: @escaping (Double) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(display(value.wrappedValue))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range)
+        }
+    }
+
+    private func channelPill(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "text.bubble.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(config.tint.color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(config.tint.color.opacity(0.10), in: Capsule())
+    }
+}
+
 private struct PickerOption: Identifiable, Hashable {
     let id: String
     let label: String
 }
 
-private struct AnnouncerVoiceChannelConfig: Identifiable {
-    let id: String
-    let name: String
-    let voiceChannelName: String
-    let symbol: String
-    let tint: Color
-    let textChannels: [String]
-    let rules: [String]
-    let behaviours: [String]
-    let enabled: Bool
+private let connectionMinuteOptions: [Int] = [5, 10, 15, 20, 30, 45, 60, 90, 120]
+
+private struct AnnouncerBehaviourState {
+    var summariseLong: Bool = true
+    var ignoreLinks: Bool = true
+    var skipBots: Bool = true
+    var ignoreEmojiSpam: Bool = false
+    var keepShort: Bool = true
+    var announceJoins: Bool = true
+    var announceLeaves: Bool = true
+    var readEmbeds: Bool = false
+    var cooldownSeconds: Double = 3
+    var speechDelay: Double = 0.5
+    var advancedExpanded: Bool = false
 }
 
-private let announcerVoiceChannelConfigs: [AnnouncerVoiceChannelConfig] = [
-    AnnouncerVoiceChannelConfig(
-        id: "ao",
-        name: "AO Friends",
-        voiceChannelName: "AO",
-        symbol: "person.2.wave.2.fill",
-        tint: .purple,
-        textChannels: ["the-finals", "water-cooler", "clips"],
-        rules: ["Summarise long messages", "Ignore links", "Skip bots"],
-        behaviours: [
-            "Keep announcements short",
-            "Read emoji names only when they add meaning",
-            "Skip link-only posts"
-        ],
-        enabled: true
-    ),
-    AnnouncerVoiceChannelConfig(
-        id: "staff",
-        name: "Staff VC",
-        voiceChannelName: "Staff",
-        symbol: "shield.lefthalf.filled",
-        tint: .red,
-        textChannels: ["mod-log", "reports"],
-        rules: ["Priority announcements only", "Ignore embeds"],
-        behaviours: [
-            "Read reporter and channel names",
-            "Skip noisy moderation batches",
-            "Keep wording calm and direct"
-        ],
-        enabled: true
-    ),
-    AnnouncerVoiceChannelConfig(
-        id: "stream",
-        name: "Stream Room",
-        voiceChannelName: "Live",
-        symbol: "dot.radiowaves.left.and.right",
-        tint: .blue,
-        textChannels: ["stream-alerts", "clips"],
-        rules: ["Read highlights", "Skip repeated emotes", "Summarise embeds"],
-        behaviours: [
-            "Only speak messages marked as highlights",
-            "Turn long clip descriptions into one sentence",
-            "Skip duplicate reactions"
-        ],
-        enabled: true
-    ),
-    AnnouncerVoiceChannelConfig(
-        id: "swiftminer",
-        name: "Rig Watch",
-        voiceChannelName: "SwiftMiner",
-        symbol: "pickaxe",
-        tint: .orange,
-        textChannels: ["swiftminer", "rig-alerts"],
-        rules: ["Read urgent alerts", "Summarise status changes"],
-        behaviours: [
-            "Speak failures immediately",
-            "Summarise routine hash-rate changes",
-            "Skip repeated recovery messages"
-        ],
-        enabled: false
-    )
-]
 
 private struct VoiceWaveformMark: View {
     let color: Color
@@ -972,31 +1174,6 @@ private struct LiveWaveformBars: View {
         }
         .frame(width: 22, height: 16)
         .onAppear { isAnimating = true }
-    }
-}
-
-private struct DisabledSourceRow: View {
-    let symbol: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Toggle("", isOn: .constant(false))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .disabled(true)
-        }
     }
 }
 

@@ -87,9 +87,6 @@ extension AppModel {
                 debugSummaryEmbed: { [weak self] in
                     self?.debugSummaryEmbed() ?? .init()
                 },
-                bugReportText: { [weak self] raw in
-                    self?.bugReportText(for: raw) ?? ""
-                },
                 weeklySummary: { [weak self] in
                     self?.weeklyPlugin?.snapshotSummary() ?? "No data yet."
                 },
@@ -116,25 +113,6 @@ extension AppModel {
                         source: source,
                         query: query,
                         channelId: channelId
-                    )
-                },
-                handleLogABugSlash: { [weak self] raw, username, channelId, errorText in
-                    guard let self else { return (ok: false, message: "Bug report failed: app unavailable.") }
-                    return await self.handleLogABugSlash(
-                        raw: raw,
-                        username: username,
-                        channelId: channelId,
-                        errorText: errorText
-                    )
-                },
-                handleFeatureRequestSlash: { [weak self] raw, username, channelId, featureText, reasonText in
-                    guard let self else { return (ok: false, message: "Feature request failed: app unavailable.") }
-                    return await self.handleFeatureRequestSlash(
-                        raw: raw,
-                        username: username,
-                        channelId: channelId,
-                        featureText: featureText,
-                        reasonText: reasonText
                     )
                 },
                 lookupFinalsWiki: { [weak self] query in
@@ -176,6 +154,10 @@ extension AppModel {
                 sweepCommand: { [weak self] action in
                     guard let self else { return (ok: false, message: "Sweep is unavailable.") }
                     return await self.handleSweepSlash(action: action)
+                },
+                announceCommand: { [weak self] raw in
+                    guard let self else { return (ok: false, message: "Announcer is unavailable.") }
+                    return await self.handleAnnounceJoinSlash(raw: raw)
                 },
                 lookupUserTimeZone: { [weak self] userID in
                     guard let self else { return nil }

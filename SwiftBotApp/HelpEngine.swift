@@ -164,15 +164,6 @@ struct CommandCatalog {
                 isAdminOnly: true
             ),
             CommandEntry(
-                name: "bugreport",
-                aliases: [],
-                usage: "\(prefix)bugreport",
-                description: "Shows tracked bug counts by status for this server.",
-                examples: ["\(prefix)bugreport"],
-                category: .moderation,
-                isAdminOnly: false
-            ),
-            CommandEntry(
                 name: "meta",
                 aliases: [],
                 usage: "\(prefix)meta",
@@ -192,6 +183,15 @@ struct CommandCatalog {
                     "\(prefix)timestamp 6:15 friday the 13th",
                     "\(prefix)timestamp in 2 hours"
                 ],
+                category: .general,
+                isAdminOnly: false
+            ),
+            CommandEntry(
+                name: "announce",
+                aliases: [],
+                usage: "/announce join",
+                description: "Joins the caller's configured Announcer voice channel and reads its text feed aloud.",
+                examples: ["/announce join"],
                 category: .general,
                 isAdminOnly: false
             ),

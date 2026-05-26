@@ -110,17 +110,6 @@ struct CommandsView: View {
                 }
             }
         }
-        commandsByName["bug-mention"] = VisualCommand(
-            id: "mention-bug",
-            name: "bug",
-            usage: "@swiftbot bug (reply to a message)",
-            description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
-            category: CommandGroup.moderation,
-            surfaces: ["Mention"],
-            aliases: [],
-            adminOnly: true,
-            icon: "ant.fill"
-        )
 
         return commandsByName.values.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
@@ -128,15 +117,6 @@ struct CommandsView: View {
     }
 
     private func commandEnabledBinding(for command: VisualCommand) -> Binding<Bool> {
-        if command.id == "mention-bug" {
-            return Binding(
-                get: { app.settings.bugTrackingEnabled },
-                set: {
-                    app.settings.bugTrackingEnabled = $0
-                    persistCommandSettings(syncSlash: false)
-                }
-            )
-        }
         return Binding(
             get: {
                 command.surfaces.allSatisfy { surface in
@@ -209,9 +189,6 @@ struct CommandsView: View {
         }
         .onChange(of: app.settings.slashCommandsEnabled) { _, _ in
             persistCommandSettings(syncSlash: true)
-        }
-        .onChange(of: app.settings.bugTrackingEnabled) { _, _ in
-            persistCommandSettings(syncSlash: false)
         }
         .onChange(of: app.settings.disabledCommandKeys) { _, _ in
             persistCommandSettings(syncSlash: true)
@@ -313,9 +290,9 @@ struct CommandsView: View {
         switch commandName.lowercased() {
         case "help", "ping", "userinfo":
             return .general
-        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp":
+        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp", "announce":
             return .utilities
-        case "debug", "bugreport", "logabug", "featurerequest", "ignorechannel", "setchannel", "notifystatus":
+        case "debug", "ignorechannel", "setchannel", "notifystatus":
             return .moderation
         case "cluster", "miner", "weekly":
             return .infrastructure
@@ -340,9 +317,6 @@ struct CommandsView: View {
         case "setchannel": return "gearshape.fill"
         case "ignorechannel": return "speaker.slash.fill"
         case "weekly": return "calendar.badge.clock"
-        case "bugreport": return "ant.fill"
-        case "logabug": return "doc.text.badge.plus"
-        case "featurerequest": return "lightbulb.fill"
         case "image": return "photo.fill"
         case "music": return "music.note"
         case "playlist": return "list.bullet"
@@ -351,6 +325,7 @@ struct CommandsView: View {
         case "compare": return "square.split.2x1"
         case "meta": return "crown.fill"
         case "timestamp": return "clock.fill"
+        case "announce": return "speaker.wave.2.bubble.fill"
         default: return "command"
         }
     }
@@ -566,18 +541,6 @@ enum CommandsDashboardSummary {
             }
         }
 
-        commandsByName["bug-mention"] = VisualCommand(
-            id: "mention-bug",
-            name: "bug",
-            usage: "@swiftbot bug (reply to a message)",
-            description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
-            category: .moderation,
-            surfaces: ["Mention"],
-            aliases: [],
-            adminOnly: true,
-            icon: "ant.fill"
-        )
-
         return commandsByName.values.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
@@ -585,9 +548,6 @@ enum CommandsDashboardSummary {
 
     @MainActor
     private static func isEnabled(command: VisualCommand, app: AppModel) -> Bool {
-        if command.id == "mention-bug" {
-            return app.settings.bugTrackingEnabled
-        }
         return command.surfaces.allSatisfy { surface in
             app.isCommandEnabled(name: command.name, surface: surface.lowercased())
         }

@@ -47,6 +47,9 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var voiceLog: [VoiceEventLogEntry] = []
+    @Published var messagesSpokenToday: Int = 0
+    var lastSpokenDate: Date = Date()
+    var autoDisconnectTask: Task<Void, Never>?
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
     @Published var connectedServers: [String: String] = [:]
@@ -85,8 +88,6 @@ final class AppModel: ObservableObject {
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
     var patchyTargetValidationCache: [String: (isValid: Bool, detail: String, validatedAt: Date)] = [:]
-    @Published var bugAutoFixStatusText: String = "Idle"
-    @Published var bugAutoFixConsoleText: String = ""
     @Published var adminWebResolvedBaseURL: String = ""
     @Published var adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
     @Published var workerModeMigrated = false
@@ -301,10 +302,6 @@ final class AppModel: ObservableObject {
     var lastSlashGuildRegistrationAt: [String: Date] = [:]
     var clearedGlobalSlashCommands = false
     var lastSlashCommandsEnabledState: Bool?
-    var bugEntriesByMessageID: [String: BugEntry] = [:]
-    var activeBugAutoFixMessageIDs: Set<String> = []
-    var pendingBugAutoFixStarts: [String: BugAutoFixPendingStart] = [:]
-    var pendingBugAutoFixApprovals: [String: BugAutoFixPendingApproval] = [:]
     var pendingMusicSelectionsByUserID: [String: PendingMusicSelection] = [:]
     var musicInteractionSessionsByID: [String: MusicInteractionSession] = [:]
     var playlistTrackCardsByKey: [String: PlaylistTrackCardState] = [:]

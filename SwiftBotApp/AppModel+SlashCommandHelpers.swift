@@ -19,12 +19,6 @@ extension AppModel {
                 ["type": 7, "name": "channel", "description": "Channel for add/remove", "required": false]
             ]],
             ["name": "weekly", "description": "Show weekly summary", "type": 1],
-            ["name": "bugreport", "description": "Show bug tracking status counts", "type": 1],
-            ["name": "logabug", "description": "Create a tracked bug from typed error text", "type": 1, "options": [["type": 3, "name": "error", "description": "Bug/error details", "required": true]]],
-            ["name": "featurerequest", "description": "Submit a feature request to swiftbot-dev", "type": 1, "options": [
-                ["type": 3, "name": "feature", "description": "Feature request details", "required": true],
-                ["type": 3, "name": "reason", "description": "Why this feature is needed (optional)", "required": false]
-            ]],
             ["name": "image", "description": "Generate an image with OpenAI", "type": 1, "options": [["type": 3, "name": "prompt", "description": "Image prompt", "required": true]]],
             ["name": "music", "description": "Search music and get Apple/Spotify/YouTube links", "type": 1, "options": [
                 ["type": 5, "name": "help", "description": "Show detailed music + playlist help", "required": false],
@@ -57,6 +51,11 @@ extension AppModel {
             ]],
             ["name": "timestamp", "description": "Convert a natural-language time into a Discord timestamp", "type": 1, "options": [
                 ["type": 3, "name": "when", "description": "e.g. 6pm, 6pm friday, 6:15 friday the 13th, in 2 hours", "required": true]
+            ]],
+            ["name": "announce", "description": "Join your configured Announcer voice channel", "type": 1, "options": [
+                ["type": 3, "name": "action", "description": "join", "required": false, "choices": [
+                    ["name": "join", "value": "join"]
+                ]]
             ]],
             ["name": "sweep", "description": "Run, preview, or pause Sweep rules", "type": 1, "options": [
                 ["type": 3, "name": "action", "description": "run | preview | pause | resume | status", "required": false, "choices": [

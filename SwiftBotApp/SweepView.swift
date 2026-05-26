@@ -1429,6 +1429,11 @@ private struct SweepContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
+            if app.isFailoverManagedNode {
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Sweep policies sync from Primary.")
+                    .padding(.horizontal, 16)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                 if service.state == .running {
@@ -1452,6 +1457,8 @@ private struct SweepContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .disabled(app.isFailoverManagedNode)
+        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .sheet(isPresented: $showingNewPolicySheet) {
             SweepPolicyEditor(
                 policy: SweepPolicy(

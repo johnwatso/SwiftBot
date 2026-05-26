@@ -610,9 +610,7 @@ struct OverviewView: View {
     }
 
     private var defaultMetricIDs: [String] {
-        let defaults = settings.clusterMode == .worker
-            ? ["status", "meshMode", "listenPort", "inVoice", "wikibridge", "patchy", "recentMedia", "actions", "moderation", "sweep", "activity", "analytics", "aiBots"]
-            : ["status", "servers", "inVoice", "commandsRun", "recentMedia", "wikibridge", "patchy", "actions", "moderation", "sweep", "activity", "analytics", "aiBots"]
+        let defaults = ["aiBots", "status", "inVoice"]
         let availableIDs = Set(availableMetricWidgets.map(\.id))
         return defaults.filter { availableIDs.contains($0) }
     }

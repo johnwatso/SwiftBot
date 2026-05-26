@@ -85,10 +85,13 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
 
-    // OAuth Providers (Discord is active, others are placeholders)
+    // OAuth Providers (Discord is active, others are archived/placeholder placeholders)
     var discordOAuth = OAuthProviderSettings()
+    @available(*, deprecated, message: "Archived/Unused")
     var appleOAuth = OAuthProviderSettings()
+    @available(*, deprecated, message: "Archived/Unused")
     var steamOAuth = OAuthProviderSettings()
+    @available(*, deprecated, message: "Archived/Unused")
     var githubOAuth = OAuthProviderSettings()
     var localAuthEnabled: Bool = false
     var localAuthUsername: String = "admin"
@@ -323,16 +326,27 @@ struct BotSettings: Codable, Hashable {
     /// Missing entries fall back to the bot host's `TimeZone.current`.
     var userTimezones: [String: String] = [:]
     var devFeaturesEnabled: Bool = false
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixEnabled: Bool = false
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixTriggerEmoji: String = "🤖"
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixCommandTemplate: String = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixRepoPath: String = ""
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixGitBranch: String = "main"
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixVersionBumpEnabled: Bool = true
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixPushEnabled: Bool = true
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixRequireApproval: Bool = true
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixApproveEmoji: String = "🚀"
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixRejectEmoji: String = "🛑"
+    @available(*, deprecated, message: "Archived/Unused")
     var bugAutoFixAllowedUsernames: [String] = []
     var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length

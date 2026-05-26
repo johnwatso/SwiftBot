@@ -7,8 +7,6 @@ struct PreferencesView: View {
     @AppStorage("swiftbot.preferences.selectedTab")
     private var selectedTab = 0
 
-    @State private var autoSaveTask: Task<Void, Never>? = nil
-
     var body: some View {
         Group {
             if app.isRemoteLaunchMode {
@@ -61,14 +59,7 @@ struct PreferencesView: View {
                         }
                         .tag(5)
                 }
-                .onChange(of: app.createPreferencesSnapshot()) { _, _ in
-                    autoSaveTask?.cancel()
-                    autoSaveTask = Task {
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        guard !Task.isCancelled else { return }
-                        app.saveSettings()
-                    }
-                }
+                .autosavesPreferences(for: app)
             }
         }
         .frame(width: 720, height: 480)
@@ -76,6 +67,35 @@ struct PreferencesView: View {
             // Hidden view that observes onboarding state and closes window when complete
             PreferencesWindowCloser()
         )
+    }
+}
+
+private struct PreferencesAutosaveModifier: ViewModifier {
+    @ObservedObject var app: AppModel
+    @State private var lastSnapshot: AppPreferencesSnapshot?
+
+    func body(content: Content) -> some View {
+        let snapshot = app.createPreferencesSnapshot()
+
+        content
+            .task(id: snapshot) {
+                guard lastSnapshot != nil else {
+                    lastSnapshot = snapshot
+                    return
+                }
+
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+
+                lastSnapshot = snapshot
+                app.saveSettings()
+            }
+    }
+}
+
+extension View {
+    func autosavesPreferences(for app: AppModel) -> some View {
+        modifier(PreferencesAutosaveModifier(app: app))
     }
 }
 

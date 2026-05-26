@@ -40,6 +40,7 @@ struct GatewayMessageCreateEvent: Sendable {
     let content: String
     let author: [String: DiscordJSON]
     let username: String
+    let displayName: String
     let channelID: String
     let userID: String
     let guildID: String?
@@ -306,12 +307,14 @@ actor GatewayEventDispatcher {
         let userID = stringValue(for: "id", in: author) ?? "unknown-user"
         let messageID = stringValue(for: "id", in: map) ?? UUID().uuidString
         let isBot = author["bot"] == .bool(true)
+        let displayName = messageDisplayName(from: map, author: author, fallback: username)
 
         return GatewayMessageCreateEvent(
             rawMap: map,
             content: content,
             author: author,
             username: username,
+            displayName: displayName,
             channelID: channelID,
             userID: userID,
             guildID: stringValue(for: "guild_id", in: map),
@@ -319,6 +322,21 @@ actor GatewayEventDispatcher {
             isBot: isBot,
             avatarHash: stringValue(for: "avatar", in: author)
         )
+    }
+
+    private func messageDisplayName(
+        from map: [String: DiscordJSON],
+        author: [String: DiscordJSON],
+        fallback: String
+    ) -> String {
+        if case let .object(member)? = map["member"],
+           let nick = nonEmptyStringValue(for: "nick", in: member) {
+            return nick
+        }
+        if let globalName = nonEmptyStringValue(for: "global_name", in: author) {
+            return globalName
+        }
+        return fallback
     }
 
     private func parseMemberJoinEvent(from raw: DiscordJSON?) -> GatewayMemberJoinEvent? {
@@ -412,5 +430,11 @@ actor GatewayEventDispatcher {
             return value
         }
         return nil
+    }
+
+    private func nonEmptyStringValue(for key: String, in map: [String: DiscordJSON]) -> String? {
+        guard let value = stringValue(for: key, in: map) else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
