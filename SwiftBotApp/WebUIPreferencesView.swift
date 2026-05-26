@@ -201,6 +201,7 @@ struct InternetAccessConfigurationSection: View {
     @State private var isVerifyingToken = false
     @State private var hasVerifiedToken = false
     @State private var tokenVerificationTask: Task<Void, Never>?
+    @State private var isCredentialsExpanded = true
 
     private var selectedZone: CloudflareDNSProvider.ZoneSummary? {
         availableZones.first(where: { $0.id == app.settings.adminWebUI.selectedZoneID })
@@ -320,101 +321,109 @@ struct InternetAccessConfigurationSection: View {
             .toggleStyle(.switch)
             .disabled(isEnabling || isDisabling)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cloudflare API Token")
-                    .font(.subheadline.weight(.medium))
+            DisclosureGroup(isExpanded: $isCredentialsExpanded) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Cloudflare API Token")
+                            .font(.subheadline.weight(.medium))
 
-                HStack(spacing: 8) {
-                    SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
-                        .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
-                            hasVerifiedToken = false
-                            availableZones = []
-                            app.settings.adminWebUI.selectedZoneID = ""
-                        }
+                        HStack(spacing: 8) {
+                            SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(app.settings.adminWebUI.internetAccessEnabled)
+                                .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
+                                    hasVerifiedToken = false
+                                    availableZones = []
+                                    app.settings.adminWebUI.selectedZoneID = ""
+                                }
 
-                    if !hasVerifiedToken {
-                        Button {
-                            verifyToken()
-                        } label: {
-                            if isVerifyingToken {
-                                ProgressView().controlSize(.small)
+                            if !hasVerifiedToken {
+                                Button {
+                                    verifyToken()
+                                } label: {
+                                    if isVerifyingToken {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Text("Verify")
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
                             } else {
-                                Text("Verify")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Text("Stored securely in your macOS Keychain.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Hostname")
-                    .font(.subheadline.weight(.medium))
-
-                // Inline hostname editor: [subdomain] . [zone ▼]
-                HStack(spacing: 6) {
-                    TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
-                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
-                        .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
-                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
-                            if filtered != newValue {
-                                app.settings.adminWebUI.subdomain = filtered
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
                             }
                         }
 
-                    Text(".")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
-                        if availableZones.isEmpty {
-                            if !app.settings.adminWebUI.selectedZoneName.isEmpty {
-                                Text(app.settings.adminWebUI.selectedZoneName)
-                                    .tag(app.settings.adminWebUI.selectedZoneID)
-                            } else {
-                                Text("Verify token to load zones")
-                                    .tag("")
-                            }
-                        } else {
-                            ForEach(availableZones, id: \.id) { zone in
-                                Text(zone.name).tag(zone.id)
-                            }
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
-                    .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
-                        if let zone = availableZones.first(where: { $0.id == newValue }) {
-                            app.settings.adminWebUI.selectedZoneName = zone.name
-                        }
+                        Text("Stored securely in your macOS Keychain.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
-                    Spacer()
-                }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Hostname")
+                            .font(.subheadline.weight(.medium))
 
-                // Live URL preview
-                HStack(spacing: 4) {
-                    Text("SwiftBot will be available at:")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                        // Inline hostname editor: [subdomain] . [zone ▼]
+                        HStack(spacing: 6) {
+                            TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 120)
+                                .disabled(app.settings.adminWebUI.internetAccessEnabled)
+                                .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
+                                    let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+                                    if filtered != newValue {
+                                        app.settings.adminWebUI.subdomain = filtered
+                                    }
+                                }
+
+                            Text(".")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
+                                if availableZones.isEmpty {
+                                    if !app.settings.adminWebUI.selectedZoneName.isEmpty {
+                                        Text(app.settings.adminWebUI.selectedZoneName)
+                                            .tag(app.settings.adminWebUI.selectedZoneID)
+                                    } else {
+                                        Text("Verify token to load zones")
+                                            .tag("")
+                                    }
+                                } else {
+                                    ForEach(availableZones, id: \.id) { zone in
+                                        Text(zone.name).tag(zone.id)
+                                    }
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
+                            .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
+                                if let zone = availableZones.first(where: { $0.id == newValue }) {
+                                    app.settings.adminWebUI.selectedZoneName = zone.name
+                                }
+                            }
+
+                            Spacer()
+                        }
+
+                        // Live URL preview
+                        HStack(spacing: 4) {
+                            Text("SwiftBot will be available at:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
+                .padding(.top, 6)
+            } label: {
+                Text("Cloudflare Credentials & Hostname")
+                    .font(.subheadline.weight(.semibold))
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -510,14 +519,27 @@ struct InternetAccessConfigurationSection: View {
                 HStack(spacing: 10) {
                     if canEnable {
                         if lastError is CloudflareDNSProvider.TunnelDNSConflict {
-                            Button("Override DNS") {
-                                if app.isFailoverManagedNode {
-                                    showingNonPrimaryWarning = true
-                                } else {
-                                    enable(forceReplaceDNS: true)
+                            HStack(spacing: 8) {
+                                Button("Override DNS") {
+                                    if app.isFailoverManagedNode {
+                                        showingNonPrimaryWarning = true
+                                    } else {
+                                        enable(forceReplaceDNS: true)
+                                    }
                                 }
+                                .buttonStyle(.borderedProminent)
+
+                                Button("Override & Don't Warn Again") {
+                                    let hostname = app.settings.adminWebUI.normalizedHostname
+                                    app.dismissDNSConflict(for: hostname)
+                                    if app.isFailoverManagedNode {
+                                        showingNonPrimaryWarning = true
+                                    } else {
+                                        enable(forceReplaceDNS: true)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.borderedProminent)
                         } else {
                             Button {
                                 if app.isFailoverManagedNode {
@@ -569,6 +591,23 @@ struct InternetAccessConfigurationSection: View {
                 Text("\(message)\n\nPrimary node detected at: \(primaryHost)")
             } else {
                 Text(message)
+            }
+        }
+        .onAppear {
+            isCredentialsExpanded = !(app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled)
+        }
+        .onChange(of: app.settings.adminWebUI.internetAccessEnabled) { _, newValue in
+            if !newValue {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isCredentialsExpanded = true
+                }
+            }
+        }
+        .onChange(of: app.adminWebPublicAccessStatus.isEnabled) { _, newValue in
+            if newValue {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isCredentialsExpanded = false
+                }
             }
         }
     }
@@ -984,7 +1023,7 @@ struct OAuthProviderCard: View {
     @Binding var settings: OAuthProviderSettings
     let redirectURL: String
 
-    @State private var showingConfigPopover = false
+    @State private var isCredentialsExpanded = false
 
     private var isConfigured: Bool {
         !settings.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -1023,22 +1062,8 @@ struct OAuthProviderCard: View {
                             Capsule()
                                 .fill((isConfigured ? Color.green : Color.orange).opacity(0.12))
                         )
-
-                        // Configure button that triggers the popover
-                        Button {
-                            showingConfigPopover = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                                .font(.body)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Configure \(name) credentials")
-                        .popover(isPresented: $showingConfigPopover, arrowEdge: .trailing) {
-                            providerSetupPopoverView
-                        }
                     }
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    .transition(.opacity)
                 }
 
                 Toggle("", isOn: $settings.enabled)
@@ -1046,89 +1071,94 @@ struct OAuthProviderCard: View {
                     .labelsHidden()
             }
             .padding(14)
+
+            if settings.enabled {
+                Divider()
+                    .padding(.horizontal, 14)
+
+                DisclosureGroup(isExpanded: $isCredentialsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Client ID
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Client ID")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            TextField("Enter Client ID", text: $settings.clientID)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        // Client Secret
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Client Secret")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            SecureField("Enter Client Secret", text: $settings.clientSecret)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        // Redirect URL
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Redirect URL")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 8) {
+                                TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(true)
+
+                                Button {
+                                    copyToClipboard(redirectURL)
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(redirectURL.isEmpty)
+                                .help("Copy Redirect URL")
+                            }
+
+                            Text("Use this Redirect URL in your \(name) developer portal.")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
+                    .padding(.horizontal, 14)
+                } label: {
+                    HStack {
+                        Text("Client Credentials")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onAppear {
+            isCredentialsExpanded = settings.enabled && !isConfigured
+        }
         .onChange(of: settings.enabled) { _, newValue in
-            if newValue && !isConfigured {
-                showingConfigPopover = true
+            if newValue {
+                isCredentialsExpanded = !isConfigured
+            }
+        }
+        .onChange(of: isConfigured) { _, newValue in
+            if newValue {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isCredentialsExpanded = false
+                }
+            } else if settings.enabled {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isCredentialsExpanded = true
+                }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: settings.enabled)
         .animation(.easeInOut(duration: 0.2), value: isConfigured)
-    }
-
-    private var providerSetupPopoverView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(color)
-                Text("\(name) Authentication")
-                    .font(.headline.weight(.bold))
-                Spacer()
-            }
-
-            Divider()
-
-            // Client ID
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Client ID")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                TextField("Enter Client ID", text: $settings.clientID)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            // Client Secret
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Client Secret")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                SecureField("Enter Client Secret", text: $settings.clientSecret)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            // Redirect URL
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Redirect URL")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 8) {
-                    TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(true)
-
-                    Button {
-                        copyToClipboard(redirectURL)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(redirectURL.isEmpty)
-                    .help("Copy Redirect URL")
-                }
-
-                Text("Use this Redirect URL in your \(name) developer portal.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
-
-            // Done Button
-            HStack {
-                Spacer()
-                Button("Done") {
-                    showingConfigPopover = false
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-            }
-        }
-        .padding(18)
-        .frame(width: 320)
     }
 
     private func copyToClipboard(_ value: String) {

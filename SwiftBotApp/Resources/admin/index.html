@@ -4126,6 +4126,10 @@
                 <span class="nav-icon"><i class="lucide" data-lucide="shield"></i></span>
                 <span class="nav-text">Moderation</span>
               </button>
+              <button class="nav-link" data-view="announcer" type="button">
+                <span class="nav-icon"><i class="lucide" data-lucide="volume-2"></i></span>
+                <span class="nav-text">Announcer</span>
+              </button>
             </div>
 
             <div class="nav-section">
@@ -4495,6 +4499,68 @@
           <div id="welcomeRules" style="display: grid; gap: 10px;"></div>
         </section>
 
+        <section id="announcerView" class="view hidden">
+          <div class="section-sticky">
+            <div class="section-sticky-row">
+              <div class="section-mini-title"><i class="lucide" data-lucide="volume-2"></i> Announcer</div>
+            </div>
+          </div>
+
+          <div id="announcerTop" class="stats-grid" style="margin-top: 10px;"></div>
+
+          <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px; margin-top: 14px;">
+            <div>
+              <div class="section-mini-title" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <span><i class="lucide" data-lucide="speaker"></i> Voice Channel Configurations</span>
+                <button id="announcerNewConfig" class="primary-action mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add Voice Channel</button>
+              </div>
+              <div id="announcerConfigsList" style="display: grid; gap: 10px;"></div>
+            </div>
+            <div>
+              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="settings"></i> Global Settings</div>
+              <div class="glass" style="padding: 16px; display: grid; gap: 12px;">
+                <div class="setting-row">
+                  <div class="left">
+                    <div class="title">Announcer Enable</div>
+                    <div class="desc">Watch text channels to read messages aloud.</div>
+                  </div>
+                  <label class="switch">
+                    <input id="globalAnnouncerTextChannelSourceEnabled" type="checkbox">
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                  </label>
+                </div>
+                <div class="setting-row">
+                  <div class="left">
+                    <div class="title">Auto-Connect</div>
+                    <div class="desc">Connect bot automatically on startup.</div>
+                  </div>
+                  <label class="switch">
+                    <input id="globalAnnouncerAutoConnect" type="checkbox">
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                  </label>
+                </div>
+                <div class="setting-row-column">
+                  <label class="label">Discord Server (Guild)</label>
+                  <select id="globalAnnouncerGuild" class="field-select"></select>
+                </div>
+                <div class="setting-row-column">
+                  <label class="label">Voice Channel</label>
+                  <select id="globalAnnouncerVoiceChannel" class="field-select"></select>
+                </div>
+                <div class="setting-row-column">
+                  <label class="label">Watched Text Channel</label>
+                  <select id="globalAnnouncerWatchedTextChannel" class="field-select"></select>
+                </div>
+                <div class="setting-row-column">
+                  <label class="label">Preferred System Voice</label>
+                  <input id="globalAnnouncerPreferredVoice" class="field-input" placeholder="AVSpeechSynthesisVoice Identifier (e.g. com.apple.voice.premium.en-US.Nathan)">
+                </div>
+                <button id="globalAnnouncerSave" class="primary-action" type="button" style="width: 100%; margin-top: 8px;">Save Settings</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="sectionView" class="view hidden">
           <header class="overview-header glass">
             <div>
@@ -4616,6 +4682,7 @@
     let wikiBridgeData = null;
     let mediaLibraryData = null;
     let sweepData = null;
+    let announcerData = null;
     let mediaExportStatus = null;
     let mediaExportJobs = [];
     let selectedActionRuleID = null;
@@ -5733,6 +5800,14 @@
       if (!response.ok) throw new Error('Sweep unavailable');
       const data = await response.json();
       sweepData = data;
+      return data;
+    }
+
+    async function loadAnnouncer() {
+      const response = await fetch('/api/announcer');
+      if (!response.ok) throw new Error('Announcer unavailable');
+      const data = await response.json();
+      announcerData = data;
       return data;
     }
 
@@ -6909,13 +6984,13 @@
 
     async function saveConfigPatch(patch) {
       await postJSON('/api/config', patch);
-      await Promise.all([loadConfig(), loadOverview(), loadAnalytics(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadConfig(), loadOverview(), loadAnalytics(), loadStatus(), loadSettings(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
       refreshCurrentView();
     }
 
     async function toggleCommand(name, surface, enabled) {
       await postJSON('/api/commands/toggle', { name, surface, enabled });
-      await Promise.all([loadCommandsCatalog(), loadOverview(), loadAnalytics(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadCommandsCatalog(), loadOverview(), loadAnalytics(), loadStatus(), loadActions(), loadPatchy(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
       renderCommandsView();
     }
 
@@ -7502,6 +7577,350 @@
       await postJSON('/api/sweep/suggestions/dismiss', { suggestionID: id });
       await loadSweep();
       renderSweepView();
+    }
+
+    function populateAnnouncerChannels(guildId, selectedVoiceChannelId, selectedTextChannelId) {
+      const voiceSelect = document.getElementById('globalAnnouncerVoiceChannel');
+      const textSelect = document.getElementById('globalAnnouncerWatchedTextChannel');
+      if (!voiceSelect || !textSelect) return;
+
+      const voiceChannels = announcerData.voiceChannelsByServer[guildId] || [];
+      const textChannels = announcerData.textChannelsByServer[guildId] || [];
+
+      voiceSelect.innerHTML = '<option value="">— Pick a voice channel —</option>' + 
+        voiceChannels.map(ch => `<option value="${ch.id}" ${ch.id === selectedVoiceChannelId ? 'selected' : ''}>${escapeHTML(ch.name)}</option>`).join('');
+
+      textSelect.innerHTML = '<option value="">— Pick a text channel —</option>' + 
+        textChannels.map(ch => `<option value="${ch.id}" ${ch.id === selectedTextChannelId ? 'selected' : ''}>${escapeHTML(ch.name)}</option>`).join('');
+    }
+
+    function renderAnnouncerView() {
+      if (!announcerData) return;
+      const top = document.getElementById('announcerTop');
+      const listNode = document.getElementById('announcerConfigsList');
+      const newBtn = document.getElementById('announcerNewConfig');
+      if (!top || !listNode || !newBtn) return;
+
+      // Render top dashboard stats
+      const totalConfigs = announcerData.configs.length;
+      const activeConfigs = announcerData.configs.filter(c => c.enabled).length;
+      const uniqueWatchedTextChannels = new Set(announcerData.configs.flatMap(c => c.textChannels)).size;
+
+      top.innerHTML = `
+        <div class="commands-toggle-card">
+          <span class="label">Total Configurations</span>
+          <span class="value">${totalConfigs}</span>
+          <div class="command-desc">Voice feeds registered</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Active Feeds</span>
+          <span class="value" style="color: ${activeConfigs > 0 ? '#10b981' : 'inherit'}">${activeConfigs}</span>
+          <div class="command-desc">Currently listening</div>
+        </div>
+        <div class="commands-toggle-card">
+          <span class="label">Watched Channels</span>
+          <span class="value">${uniqueWatchedTextChannels}</span>
+          <div class="command-desc">Distinct text sources</div>
+        </div>
+      `;
+
+      // Render cards
+      if (announcerData.configs.length === 0) {
+        listNode.innerHTML = '<div class="placeholder">No voice channel configurations yet. Click "Add Voice Channel" to create one.</div>';
+      } else {
+        listNode.innerHTML = announcerData.configs.map(config => {
+          const tintColor = getTintHex(config.tint);
+          const channelPills = config.textChannels.map(ch => `
+            <span class="automation-chip" style="background: ${tintColor}20; color: ${tintColor}; border: 1px solid ${tintColor}30; font-size:11px; padding: 2px 8px; border-radius:999px;">
+              #${escapeHTML(ch)}
+            </span>
+          `).join('');
+
+          const summaryParts = [];
+          if (config.autoJoin) summaryParts.push('auto-join');
+          if (config.connectionMode === 'fixed') summaryParts.push(`${config.connectionMinutes} min`);
+          else summaryParts.push('until empty');
+
+          return `
+            <div class="automation-rule-card glass" data-config-id="${config.id}">
+              <div class="automation-rule-dot" style="background: ${config.enabled ? tintColor : 'rgba(255,255,255,0.2)'};"></div>
+              <div class="automation-rule-text" style="flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-weight:600;font-size:14px;color:var(--cv-text-strong);">${escapeHTML(config.name)}</span>
+                  <span style="color:var(--muted);font-size:11px;">•</span>
+                  <span style="color:var(--muted);font-size:12px;font-weight:500;"><i class="lucide" data-lucide="${escapeHTML(config.symbol)}" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px;color:${tintColor};"></i>${escapeHTML(config.voiceChannelName)}</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;">
+                  ${channelPills || '<span style="font-size:11px;color:var(--muted);">No text channels watched</span>'}
+                  ${summaryParts.length > 0 ? `<span style="color:var(--muted);font-size:11px;margin-left:4px;">(${summaryParts.join(' · ')})</span>` : ''}
+                </div>
+              </div>
+              <div class="automation-rule-actions" style="display:flex;align-items:center;gap:8px;">
+                <label class="switch" style="transform:scale(0.85);margin-right:4px;">
+                  <input class="announcer-config-toggle" type="checkbox" ${config.enabled ? 'checked' : ''}>
+                  <span class="switch-track"><span class="switch-knob"></span></span>
+                </label>
+                <button class="mini-btn announcer-config-edit" type="button" aria-label="Edit"><i class="lucide" data-lucide="pencil"></i></button>
+                <button class="mini-btn announcer-config-delete" type="button" aria-label="Delete" style="color:#f87171;"><i class="lucide" data-lucide="trash-2"></i></button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Bind card events
+        listNode.querySelectorAll('[data-config-id]').forEach(el => {
+          const configId = el.dataset.configId;
+          el.querySelector('.announcer-config-toggle').addEventListener('change', async (e) => {
+            await postJSON('/api/announcer/config/toggle', { id: configId, enabled: e.target.checked });
+            await loadAnnouncer();
+            renderAnnouncerView();
+          });
+          el.querySelector('.announcer-config-edit').onclick = () => {
+            openAnnouncerConfigEditor(configId);
+          };
+          el.querySelector('.announcer-config-delete').onclick = async () => {
+            if (confirm('Are you sure you want to delete this configuration?')) {
+              await postJSON('/api/announcer/config/delete', { id: configId });
+              await loadAnnouncer();
+              renderAnnouncerView();
+            }
+          };
+        });
+      }
+
+      // Bind new config click
+      newBtn.onclick = () => openAnnouncerConfigEditor(null);
+
+      // Global Settings Populating
+      const enableSourceCb = document.getElementById('globalAnnouncerTextChannelSourceEnabled');
+      const autoConnectCb = document.getElementById('globalAnnouncerAutoConnect');
+      const guildSelect = document.getElementById('globalAnnouncerGuild');
+      const voiceInput = document.getElementById('globalAnnouncerPreferredVoice');
+      const saveSettingsBtn = document.getElementById('globalAnnouncerSave');
+
+      enableSourceCb.checked = announcerData.textChannelSourceEnabled;
+      autoConnectCb.checked = announcerData.autoConnect;
+      voiceInput.value = announcerData.preferredVoiceIdentifier || '';
+
+      guildSelect.innerHTML = '<option value="">— Pick a Discord server —</option>' + 
+        announcerData.servers.map(s => `<option value="${s.id}" ${s.id === announcerData.guildID ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('');
+
+      // Populate text/voice dropdowns based on guildID
+      populateAnnouncerChannels(announcerData.guildID, announcerData.voiceChannelID, announcerData.watchedTextChannelID);
+
+      guildSelect.onchange = (e) => {
+        populateAnnouncerChannels(e.target.value, '', '');
+      };
+
+      saveSettingsBtn.onclick = async () => {
+        const patch = {
+          textChannelSourceEnabled: enableSourceCb.checked,
+          autoConnect: autoConnectCb.checked,
+          guildID: guildSelect.value,
+          voiceChannelID: document.getElementById('globalAnnouncerVoiceChannel').value,
+          watchedTextChannelID: document.getElementById('globalAnnouncerWatchedTextChannel').value,
+          preferredVoiceIdentifier: voiceInput.value.trim()
+        };
+
+        const success = await postJSON('/api/announcer/settings', patch);
+        if (success) {
+          setMessage('Announcer settings saved successfully!', 'success');
+          await loadAnnouncer();
+          renderAnnouncerView();
+        } else {
+          setMessage('Failed to save announcer settings.', 'error');
+        }
+      };
+
+      refreshIcons();
+    }
+
+    function getTintHex(tint) {
+      switch (tint) {
+        case 'purple': return '#a855f7';
+        case 'blue': return '#3b82f6';
+        case 'orange': return '#f97316';
+        case 'teal': return '#14b8a6';
+        case 'pink': return '#ec4899';
+        case 'green': return '#10b981';
+        case 'indigo': return '#6366f1';
+        default: return '#a855f7';
+      }
+    }
+
+    function openAnnouncerConfigEditor(configId) {
+      let isNew = !configId;
+      let config = isNew ? {
+        id: autoNewID(),
+        name: 'New Voice Channel',
+        voiceChannelID: '',
+        voiceChannelName: '—',
+        symbol: 'volume-2',
+        tint: 'purple',
+        autoJoin: false,
+        connectionMode: 'fixed',
+        connectionMinutes: 20,
+        textChannels: [],
+        enabled: true
+      } : JSON.parse(JSON.stringify(announcerData.configs.find(c => c.id === configId)));
+
+      const title = isNew ? 'Add Voice Channel' : 'Edit Configuration';
+      showModal(title, '<div id="announcerEditorBody"></div>', `
+        <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="announcerEditorSave" class="primary-action" type="button">Save</button>
+      `);
+
+      renderAnnouncerEditor(config);
+
+      document.getElementById('announcerEditorSave').onclick = async () => {
+        // Collect updated values from form
+        config.name = document.getElementById('acName').value.trim() || 'Voice Channel';
+        const vcSelect = document.getElementById('acVoiceChannel');
+        config.voiceChannelID = vcSelect.value;
+        config.voiceChannelName = vcSelect.options[vcSelect.selectedIndex]?.text || '—';
+        config.symbol = document.getElementById('acSymbol').value;
+        config.tint = document.getElementById('acTint').value;
+        config.autoJoin = document.getElementById('acAutoJoin').checked;
+        config.connectionMode = document.getElementById('acConnectionMode').value;
+        config.connectionMinutes = parseInt(document.getElementById('acConnectionMinutes').value) || 20;
+        config.enabled = document.getElementById('acEnabled').checked;
+
+        // Gather checked text channels
+        const checked = [];
+        document.querySelectorAll('.ac-text-channel-cb:checked').forEach(cb => {
+          checked.push(cb.value);
+        });
+        config.textChannels = checked;
+
+        // POST upsert
+        const success = await postJSON('/api/announcer/config/upsert', { config });
+        if (success) {
+          await loadAnnouncer();
+          renderAnnouncerView();
+          hideModal();
+        } else {
+          alert('Failed to save announcer configuration.');
+        }
+      };
+    }
+
+    function renderAnnouncerEditor(config) {
+      const root = document.getElementById('announcerEditorBody');
+      if (!root) return;
+
+      const allVoiceChannels = [];
+      Object.entries(announcerData.voiceChannelsByServer).forEach(([serverId, channels]) => {
+        const serverName = announcerData.servers.find(s => s.id === serverId)?.name || 'Server';
+        channels.forEach(ch => {
+          allVoiceChannels.push({ id: ch.id, name: `${serverName} — #${ch.name}` });
+        });
+      });
+
+      const row = (label, html) => `<div class="automation-editor-row"><label>${label}</label>${html}</div>`;
+
+      const vcSelectHTML = `
+        <select id="acVoiceChannel" class="field-select">
+          <option value="">— Pick a voice channel —</option>
+          ${allVoiceChannels.map(vc => `<option value="${vc.id}" ${vc.id === config.voiceChannelID ? 'selected' : ''}>${escapeHTML(vc.name)}</option>`).join('')}
+        </select>
+      `;
+
+      const symbolSelectHTML = `
+        <select id="acSymbol" class="field-select">
+          <option value="volume-2" ${config.symbol === 'volume-2' ? 'selected' : ''}>Speaker (Default)</option>
+          <option value="mic" ${config.symbol === 'mic' ? 'selected' : ''}>Microphone</option>
+          <option value="message-square" ${config.symbol === 'message-square' ? 'selected' : ''}>Chat Square</option>
+          <option value="message-circle" ${config.symbol === 'message-circle' ? 'selected' : ''}>Chat Circle</option>
+          <option value="bell" ${config.symbol === 'bell' ? 'selected' : ''}>Bell Notification</option>
+          <option value="radio" ${config.symbol === 'radio' ? 'selected' : ''}>Radio Broadcast</option>
+          <option value="speaker" ${config.symbol === 'speaker' ? 'selected' : ''}>Classic Speaker</option>
+        </select>
+      `;
+
+      const tintSelectHTML = `
+        <select id="acTint" class="field-select">
+          <option value="purple" ${config.tint === 'purple' ? 'selected' : ''}>Purple</option>
+          <option value="blue" ${config.tint === 'blue' ? 'selected' : ''}>Blue</option>
+          <option value="orange" ${config.tint === 'orange' ? 'selected' : ''}>Orange</option>
+          <option value="teal" ${config.tint === 'teal' ? 'selected' : ''}>Teal</option>
+          <option value="pink" ${config.tint === 'pink' ? 'selected' : ''}>Pink</option>
+          <option value="green" ${config.tint === 'green' ? 'selected' : ''}>Green</option>
+          <option value="indigo" ${config.tint === 'indigo' ? 'selected' : ''}>Indigo</option>
+        </select>
+      `;
+
+      const connectionModeHTML = `
+        <select id="acConnectionMode" class="field-select">
+          <option value="fixed" ${config.connectionMode === 'fixed' ? 'selected' : ''}>Fixed time</option>
+          <option value="untilEmpty" ${config.connectionMode === 'untilEmpty' ? 'selected' : ''}>Until last person leaves</option>
+        </select>
+      `;
+
+      const connectionMinutesHTML = `
+        <select id="acConnectionMinutes" class="field-select">
+          <option value="5" ${config.connectionMinutes === 5 ? 'selected' : ''}>5 min</option>
+          <option value="10" ${config.connectionMinutes === 10 ? 'selected' : ''}>10 min</option>
+          <option value="15" ${config.connectionMinutes === 15 ? 'selected' : ''}>15 min</option>
+          <option value="20" ${config.connectionMinutes === 20 ? 'selected' : ''}>20 min</option>
+          <option value="30" ${config.connectionMinutes === 30 ? 'selected' : ''}>30 min</option>
+          <option value="45" ${config.connectionMinutes === 45 ? 'selected' : ''}>45 min</option>
+          <option value="60" ${config.connectionMinutes === 60 ? 'selected' : ''}>1 hr</option>
+          <option value="90" ${config.connectionMinutes === 90 ? 'selected' : ''}>1.5 hrs</option>
+          <option value="120" ${config.connectionMinutes === 120 ? 'selected' : ''}>2 hrs</option>
+        </select>
+      `;
+
+      function updateEditorTextChannels() {
+        const vcId = document.getElementById('acVoiceChannel').value;
+        let serverId = '';
+        Object.entries(announcerData.voiceChannelsByServer).forEach(([sId, channels]) => {
+          if (channels.some(ch => ch.id === vcId)) {
+            serverId = sId;
+          }
+        });
+
+        const listNode = document.getElementById('acTextChannelsList');
+        if (!listNode) return;
+
+        if (!serverId) {
+          listNode.innerHTML = '<div class="placeholder" style="font-size:11px;color:var(--muted);text-align:center;padding:12px;">Select a voice channel first to load text channels.</div>';
+          return;
+        }
+
+        const textChannels = announcerData.textChannelsByServer[serverId] || [];
+        if (textChannels.length === 0) {
+          listNode.innerHTML = '<div class="placeholder" style="font-size:11px;color:var(--muted);text-align:center;padding:12px;">No text channels found for this server.</div>';
+          return;
+        }
+
+        listNode.innerHTML = textChannels.map(ch => {
+          const isChecked = config.textChannels.includes(ch.name);
+          return `
+            <label class="ac-text-channel-item" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;">
+              <input class="ac-text-channel-cb" type="checkbox" value="${escapeHTML(ch.name)}" ${isChecked ? 'checked' : ''}>
+              <span>#${escapeHTML(ch.name)}</span>
+            </label>
+          `;
+        }).join('');
+      }
+
+      let html = 
+        row('Enabled', `<input id="acEnabled" type="checkbox" ${config.enabled ? 'checked' : ''}>`) +
+        row('Name', `<input id="acName" class="field-input" value="${escapeHTML(config.name || '')}" placeholder="e.g. Lounge Announcer">`) +
+        row('Voice Channel', vcSelectHTML) +
+        row('Icon', symbolSelectHTML) +
+        row('Tint Color', tintSelectHTML) +
+        row('Auto-join', `<input id="acAutoJoin" type="checkbox" ${config.autoJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Join automatically when a user enters voice</span>`) +
+        row('Connection Mode', connectionModeHTML) +
+        row('Fixed Stay Duration', connectionMinutesHTML) +
+        row('Reads Text Channels', `<div id="acTextChannelsList" style="max-height: 150px; overflow-y: auto; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--cv-border); border-radius: 6px;"></div>`);
+
+      root.innerHTML = `<div class="automation-editor-section" style="padding: 10px 0;">${html}</div>`;
+
+      const vcSelect = document.getElementById('acVoiceChannel');
+      vcSelect.addEventListener('change', updateEditorTextChannels);
+
+      updateEditorTextChannels();
     }
 
     function renderPatchyView() {
@@ -9251,6 +9670,14 @@
         secondaryTitle: 'Configuration',
         eventsTitle: 'Recent Commands'
       },
+      announcer: {
+        title: 'Announcer',
+        icon: 'volume-2',
+        copy: 'Manage voice channel configurations and spoken text channel feeds.',
+        primaryTitle: 'Announcer Status',
+        secondaryTitle: 'Voice Channels',
+        eventsTitle: 'Recent Announcements'
+      },
       analytics: {
         title: 'Analytics',
         icon: 'monitoring',
@@ -9607,6 +10034,7 @@
       const automations = document.getElementById('automationsView');
       const moderation = document.getElementById('moderationView');
       const welcome = document.getElementById('welcomeView');
+      const announcer = document.getElementById('announcerView');
       const wikibridge = document.getElementById('wikibridgeView');
       const settings = document.getElementById('settingsView');
       const diagnostics = document.getElementById('diagnosticsView');
@@ -9622,7 +10050,7 @@
       const mobileSubtitle = document.querySelector('.mobile-topbar .brand-subtitle');
       const selected = viewCopy[view];
       const hideAllViews = () => {
-        [overview, commands, analytics, patchy, sweep, automations, moderation, welcome, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
+        [overview, commands, analytics, patchy, sweep, automations, moderation, welcome, announcer, wikibridge, settings, diagnostics, aibots, recordings, activity, swiftmesh, userprefs, voice, section]
           .forEach(node => node?.classList.add('hidden'));
       };
       hideAllViews();
@@ -9708,6 +10136,14 @@
           renderWelcomeFlow();
         })();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Welcome Flow';
+        setMessage('', '');
+      } else if (view === 'announcer') {
+        announcer?.classList.remove('hidden');
+        (async () => {
+          try { await loadAnnouncer(); } catch (e) { console.error(e); }
+          renderAnnouncerView();
+        })();
+        if (mobileSubtitle) mobileSubtitle.textContent = 'Announcer';
         setMessage('', '');
       } else if (view === 'wikibridge') {
         overview.classList.add('hidden');
@@ -9894,9 +10330,9 @@
       
       loadOverviewLayout();
       showDashboard();
-      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadMediaData()]);
+      await Promise.all([loadOverview(), loadAnalytics(), loadSettings(), loadStatus(), loadConfig(), loadCommandsCatalog(), loadActions(), loadPatchy(), loadSweep(), loadWikiBridge(), loadMediaData(), loadAnnouncer()]);
       const remembered = userPrefs.rememberLastTab ? (localStorage.getItem(lastViewStorageKey() || '') || 'overview') : 'overview';
-      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'welcome', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
+      const allowed = new Set(['overview', 'analytics', 'commands', 'automations', 'moderation', 'welcome', 'announcer', 'patchy', 'sweep', 'wikibridge', 'aibots', 'recordings', 'settings', 'diagnostics', 'activity', 'swiftmesh']);
       selectView(allowed.has(remembered) ? remembered : 'overview');
       
       // Load auth options in background for the "logout" logic/labels
