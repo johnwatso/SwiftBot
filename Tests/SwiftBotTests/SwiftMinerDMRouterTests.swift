@@ -44,9 +44,30 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         // Absolute timestamp wins over the relative minute count so Discord
         // renders a live-updating countdown.
         XCTAssertTrue(hasField(result, matching: { _, value in
-            value.contains("<t:1800000000:R>")
+            value.contains("<t:1800000000:R>") &&
+            value.contains("/miner action:setup") // expired-code hint
         }))
         XCTAssertFalse(hasField(result, matching: { _, value in value.contains("15 minute") }))
+    }
+
+    func testLinkedRouteRanksPriorityGamesWithMedalsAndNumbers() {
+        let result = router.route(
+            request: .init(
+                messageType: .linked,
+                twitchUsername: "tester",
+                priorityGames: ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India"]
+            ),
+            discordName: nil
+        )
+        XCTAssertTrue(hasField(result, matching: { _, value in
+            value.contains("🥇 **1.** Alpha") &&
+            value.contains("🥈 **2.** Bravo") &&
+            value.contains("🥉 **3.** Charlie") &&
+            value.contains("**4.** Delta") &&
+            value.contains("**8.** Hotel") &&
+            value.contains("…and 1 more") &&
+            !value.contains("India")
+        }))
     }
 
     func testLinkedRouteHasLinkedSemantics() {
