@@ -46,6 +46,12 @@ actor AutomationService {
         handledMessageIds.contains(messageId)
     }
 
+    #if DEBUG
+    func markMessageHandledForTesting(_ messageId: String) {
+        markHandled(messageId)
+    }
+    #endif
+
     private func markHandled(_ messageId: String) {
         handledMessageIds.insert(messageId)
         if handledMessageIds.count > 1000 {

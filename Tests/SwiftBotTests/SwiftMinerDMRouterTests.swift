@@ -23,9 +23,30 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertTrue(hasField(result, matching: { name, value in
             value.contains("CODE-1234") && value.contains("```")
         }))
+        // Falls back to relative minute text when no absolute expiry is supplied.
+        XCTAssertTrue(hasField(result, matching: { _, value in value.contains("15 minute") }))
         // Setup starts onboarding but does NOT complete it.
         XCTAssertFalse(result.shouldTrackCompletion)
         XCTAssertFalse(result.shouldTrackWelcome)
+    }
+
+    func testSetupRouteUsesDiscordRelativeTimestampWhenAbsoluteExpirySupplied() {
+        let expiresAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let result = router.route(
+            request: .init(
+                messageType: .setup,
+                activationCode: "CODE-1234",
+                activationExpiresInMinutes: 15,
+                activationExpiresAt: expiresAt
+            ),
+            discordName: nil
+        )
+        // Absolute timestamp wins over the relative minute count so Discord
+        // renders a live-updating countdown.
+        XCTAssertTrue(hasField(result, matching: { _, value in
+            value.contains("<t:1800000000:R>")
+        }))
+        XCTAssertFalse(hasField(result, matching: { _, value in value.contains("15 minute") }))
     }
 
     func testLinkedRouteHasLinkedSemantics() {

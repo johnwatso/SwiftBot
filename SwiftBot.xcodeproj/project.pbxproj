@@ -78,6 +78,7 @@
 		566EE7D8A59E9C9890359374 /* AppModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3EF8C962344F48B9C0BF73 /* AppModel+Commands.swift */; };
 		56B1C09E13E53AF7007401CE /* MusicLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C62599CD5D11338B087201C /* MusicLookupService.swift */; };
 		5799D01A37C0C70F209DEE50 /* AIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40B1CD3E3726DBE1AA70765 /* AIModels.swift */; };
+		57B689BC7F6E15C9D73DB81D /* GatewayDMHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */; };
 		587ADB0DBB1B3D4FF7DA3BD5 /* admin in Resources */ = {isa = PBXBuildFile; fileRef = 6A7A4945675389627AFBFB2F /* admin */; };
 		58E683E4B09BA7F0510C4D2B /* ClusterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */; };
 		591002A179F04E930433FF81 /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3617EE72A6A0D23A2FB2BFE0 /* VoiceView.swift */; };
@@ -292,6 +293,7 @@
 		67FE597F87B994AB862A6AD1 /* VoiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettings.swift; sourceTree = "<group>"; };
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManagerTests.swift; sourceTree = "<group>"; };
+		69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayDMHandlingTests.swift; sourceTree = "<group>"; };
 		6A7A4945675389627AFBFB2F /* admin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = admin; path = SwiftBotApp/Resources/admin; sourceTree = SOURCE_ROOT; };
 		6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceGlowBorder.swift; sourceTree = "<group>"; };
 		6D1D661935821791F5D63D2C /* VoiceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSessionStore.swift; sourceTree = "<group>"; };
@@ -593,6 +595,7 @@
 				AACEF05469E5AF7C7BF81683 /* DiscordServiceDMTests.swift */,
 				FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */,
 				D805505B771458F0D91FCB25 /* FoundationModelsSpikeTests.swift */,
+				69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */,
 				3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */,
 				91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */,
 				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
@@ -1051,6 +1054,7 @@
 				3C1C26B9F698198C1D340768 /* DiscordMessageRESTClientDMTests.swift in Sources */,
 				D55CF55772E4C031658C0980 /* DiscordServiceDMTests.swift in Sources */,
 				1FCA51DAF6B62F56F46C441C /* FoundationModelsSpikeTests.swift in Sources */,
+				57B689BC7F6E15C9D73DB81D /* GatewayDMHandlingTests.swift in Sources */,
 				C0DDE65E5C04789A09133D38 /* HelpEngineTests.swift in Sources */,
 				BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */,
 				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
