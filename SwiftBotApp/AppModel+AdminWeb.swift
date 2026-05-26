@@ -1462,6 +1462,115 @@ extension AppModel {
                 guard let model = self else { return false }
                 return await MainActor.run { model.updateAdminWebWelcomeFlow(flow) }
             },
+            announcerProvider: { [weak self] in
+                guard let model = self else {
+                    return AdminWebAnnouncerPayload(
+                        configs: [],
+                        servers: [],
+                        textChannelsByServer: [:],
+                        voiceChannelsByServer: [:],
+                        guildID: "",
+                        voiceChannelID: "",
+                        watchedTextChannelID: "",
+                        preferredVoiceIdentifier: "",
+                        textChannelSourceEnabled: false,
+                        autoConnect: false
+                    )
+                }
+                return await MainActor.run {
+                    let serverIDs = model.connectedServers.keys.sorted {
+                        (model.connectedServers[$0] ?? $0).localizedCaseInsensitiveCompare(model.connectedServers[$1] ?? $1) == .orderedAscending
+                    }
+                    let servers = serverIDs.map { AdminWebSimpleOption(id: $0, name: model.connectedServers[$0] ?? $0) }
+                    let textChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+                        let channels = (model.availableTextChannelsByServer[serverID] ?? [])
+                            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                            .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+                        return (serverID, channels)
+                    })
+                    let voiceChannelsByServer = Dictionary(uniqueKeysWithValues: serverIDs.map { serverID in
+                        let channels = (model.availableVoiceChannelsByServer[serverID] ?? [])
+                            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                            .map { AdminWebSimpleOption(id: $0.id, name: $0.name) }
+                        return (serverID, channels)
+                    })
+
+                    return AdminWebAnnouncerPayload(
+                        configs: model.settings.voice.announcerConfigs,
+                        servers: servers,
+                        textChannelsByServer: textChannelsByServer,
+                        voiceChannelsByServer: voiceChannelsByServer,
+                        guildID: model.settings.voice.guildID,
+                        voiceChannelID: model.settings.voice.voiceChannelID,
+                        watchedTextChannelID: model.settings.voice.watchedTextChannelID,
+                        preferredVoiceIdentifier: model.settings.voice.preferredVoiceIdentifier,
+                        textChannelSourceEnabled: model.settings.voice.textChannelSourceEnabled,
+                        autoConnect: model.settings.voice.autoConnect
+                    )
+                }
+            },
+            upsertAnnouncerConfig: { [weak self] config in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    var current = model.settings.voice.announcerConfigs
+                    if let index = current.firstIndex(where: { $0.id == config.id }) {
+                        current[index] = config
+                    } else {
+                        current.append(config)
+                    }
+                    model.settings.voice.announcerConfigs = current
+                    model.saveSettings()
+                    return true
+                }
+            },
+            deleteAnnouncerConfig: { [weak self] id in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    var current = model.settings.voice.announcerConfigs
+                    current.removeAll { $0.id == id }
+                    model.settings.voice.announcerConfigs = current
+                    model.saveSettings()
+                    return true
+                }
+            },
+            toggleAnnouncerConfig: { [weak self] id, enabled in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    var current = model.settings.voice.announcerConfigs
+                    if let index = current.firstIndex(where: { $0.id == id }) {
+                        current[index].enabled = enabled
+                        model.settings.voice.announcerConfigs = current
+                        model.saveSettings()
+                        return true
+                    }
+                    return false
+                }
+            },
+            updateAnnouncerSettings: { [weak self] patch in
+                guard let model = self else { return false }
+                return await MainActor.run {
+                    if let guildID = patch.guildID {
+                        model.settings.voice.guildID = guildID
+                    }
+                    if let voiceChannelID = patch.voiceChannelID {
+                        model.settings.voice.voiceChannelID = voiceChannelID
+                    }
+                    if let watchedTextChannelID = patch.watchedTextChannelID {
+                        model.settings.voice.watchedTextChannelID = watchedTextChannelID
+                    }
+                    if let preferredVoiceIdentifier = patch.preferredVoiceIdentifier {
+                        model.settings.voice.preferredVoiceIdentifier = preferredVoiceIdentifier
+                    }
+                    if let textChannelSourceEnabled = patch.textChannelSourceEnabled {
+                        model.settings.voice.textChannelSourceEnabled = textChannelSourceEnabled
+                    }
+                    if let autoConnect = patch.autoConnect {
+                        model.settings.voice.autoConnect = autoConnect
+                    }
+                    model.saveSettings()
+                    return true
+                }
+            },
             patchyProvider: { [weak self] in
                 guard let model = self else {
                     return AdminWebPatchyPayload(
@@ -1896,6 +2005,15 @@ extension AppModel {
         return URL(string: "https://\(hostname)")
     }
 
+    func dismissDNSConflict(for hostname: String) {
+        let cleaned = hostname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cleaned.isEmpty else { return }
+        if !settings.adminWebUI.dismissedDNSConflictHostnames.contains(cleaned) {
+            settings.adminWebUI.dismissedDNSConflictHostnames.append(cleaned)
+            saveSettings()
+        }
+    }
+
     func startAdminWebPublicAccessSetup(
         progress: @escaping @MainActor @Sendable (AdminWebPublicAccessSetupEvent) -> Void,
         forceReplaceDNS: Bool = false
@@ -1982,11 +2100,12 @@ extension AppModel {
         let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
         logs.append("Tunnel target: \(tunnelTarget)")
 
+        let isDismissed = settings.adminWebUI.dismissedDNSConflictHostnames.contains(hostname.lowercased())
         let dnsResult = try await dnsProvider.configureTunnelDNSRoute(
             hostname: hostname,
             tunnelTarget: tunnelTarget,
             zoneID: zone.id,
-            force: forceReplaceDNS
+            force: forceReplaceDNS || isDismissed
         )
 
         switch dnsResult {
@@ -2202,11 +2321,12 @@ extension AppModel {
         let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnel.id)
         logs.append("Tunnel target: \(tunnelTarget)")
 
+        let isDismissed = settings.adminWebUI.dismissedDNSConflictHostnames.contains(hostname.lowercased())
         let dnsResult = try await dnsProvider.configureTunnelDNSRoute(
             hostname: hostname,
             tunnelTarget: tunnelTarget,
             zoneID: zone.id,
-            force: forceReplaceDNS
+            force: forceReplaceDNS || isDismissed
         )
 
         switch dnsResult {

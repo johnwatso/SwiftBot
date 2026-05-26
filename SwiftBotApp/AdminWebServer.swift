@@ -461,6 +461,42 @@ struct AdminWebWikiSourceIDPatch: Codable {
     let sourceID: UUID
 }
 
+struct AdminWebAnnouncerPayload: Codable {
+    let configs: [AnnouncerVoiceChannelConfig]
+    let servers: [AdminWebSimpleOption]
+    let textChannelsByServer: [String: [AdminWebSimpleOption]]
+    let voiceChannelsByServer: [String: [AdminWebSimpleOption]]
+    let guildID: String
+    let voiceChannelID: String
+    let watchedTextChannelID: String
+    let preferredVoiceIdentifier: String
+    let textChannelSourceEnabled: Bool
+    let autoConnect: Bool
+}
+
+struct AdminWebAnnouncerConfigUpsertPatch: Codable {
+    let config: AnnouncerVoiceChannelConfig
+}
+
+struct AdminWebAnnouncerConfigTogglePatch: Codable {
+    let id: String
+    let enabled: Bool
+}
+
+struct AdminWebAnnouncerConfigDeletePatch: Codable {
+    let id: String
+}
+
+struct AdminWebAnnouncerSettingsPatch: Codable {
+    var guildID: String?
+    var voiceChannelID: String?
+    var watchedTextChannelID: String?
+    var preferredVoiceIdentifier: String?
+    var textChannelSourceEnabled: Bool?
+    var autoConnect: Bool?
+}
+
+
 struct AdminWebMediaSourcePayload: Codable {
     let id: String
     let nodeName: String
@@ -678,6 +714,11 @@ actor AdminWebServer {
     private var draftAutomation: (@Sendable (String, Automations.Category) async -> AdminWebAutomationDraftPayload)?
     private var welcomeFlowProvider: (@Sendable () async -> AdminWebWelcomeFlowPayload)?
     private var updateWelcomeFlow: (@Sendable (WelcomeFlowSettings) async -> Bool)?
+    private var announcerProvider: (@Sendable () async -> AdminWebAnnouncerPayload)?
+    private var upsertAnnouncerConfig: (@Sendable (AnnouncerVoiceChannelConfig) async -> Bool)?
+    private var deleteAnnouncerConfig: (@Sendable (String) async -> Bool)?
+    private var toggleAnnouncerConfig: (@Sendable (String, Bool) async -> Bool)?
+    private var updateAnnouncerSettings: (@Sendable (AdminWebAnnouncerSettingsPatch) async -> Bool)?
     private var patchyProvider: (@Sendable () async -> AdminWebPatchyPayload)?
     private var updatePatchyState: (@Sendable (AdminWebPatchyStatePatch) async -> Bool)?
     private var createPatchyTarget: (@Sendable () async -> PatchySourceTarget?)?
@@ -777,6 +818,11 @@ actor AdminWebServer {
         draftAutomation: @escaping @Sendable (String, Automations.Category) async -> AdminWebAutomationDraftPayload,
         welcomeFlowProvider: @escaping @Sendable () async -> AdminWebWelcomeFlowPayload,
         updateWelcomeFlow: @escaping @Sendable (WelcomeFlowSettings) async -> Bool,
+        announcerProvider: @escaping @Sendable () async -> AdminWebAnnouncerPayload,
+        upsertAnnouncerConfig: @escaping @Sendable (AnnouncerVoiceChannelConfig) async -> Bool,
+        deleteAnnouncerConfig: @escaping @Sendable (String) async -> Bool,
+        toggleAnnouncerConfig: @escaping @Sendable (String, Bool) async -> Bool,
+        updateAnnouncerSettings: @escaping @Sendable (AdminWebAnnouncerSettingsPatch) async -> Bool,
         patchyProvider: @escaping @Sendable () async -> AdminWebPatchyPayload,
         updatePatchyState: @escaping @Sendable (AdminWebPatchyStatePatch) async -> Bool,
         createPatchyTarget: @escaping @Sendable () async -> PatchySourceTarget?,
@@ -846,6 +892,11 @@ actor AdminWebServer {
         self.draftAutomation = draftAutomation
         self.welcomeFlowProvider = welcomeFlowProvider
         self.updateWelcomeFlow = updateWelcomeFlow
+        self.announcerProvider = announcerProvider
+        self.upsertAnnouncerConfig = upsertAnnouncerConfig
+        self.deleteAnnouncerConfig = deleteAnnouncerConfig
+        self.toggleAnnouncerConfig = toggleAnnouncerConfig
+        self.updateAnnouncerSettings = updateAnnouncerSettings
         self.patchyProvider = patchyProvider
         self.updatePatchyState = updatePatchyState
         self.createPatchyTarget = createPatchyTarget
@@ -1616,6 +1667,91 @@ actor AdminWebServer {
             let payload = await draftAutomation?(patch.prompt, patch.category)
                 ?? AdminWebAutomationDraftPayload(rule: nil, error: "Automations drafting is unavailable.", unavailableReason: nil)
             return codableResponse(payload)
+
+        case ("GET", "/api/announcer"):
+            guard authenticatedSession(for: request) != nil else {
+                return unauthorizedResponse()
+            }
+            if let payload = await announcerProvider?() {
+                return codableResponse(payload)
+            }
+            return jsonResponse(["error": "announcer_unavailable"], status: "503 Service Unavailable")
+
+        case ("POST", "/api/announcer/config/upsert"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAnnouncerConfigUpsertPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await upsertAnnouncerConfig?(patch.config) == true else {
+                return jsonResponse(["error": "upsert_failed"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "announcer.config.upsert", detail: "Upserted announcer configuration for channel \(patch.config.voiceChannelName)")
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/announcer/config/toggle"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAnnouncerConfigTogglePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await toggleAnnouncerConfig?(patch.id, patch.enabled) == true else {
+                return jsonResponse(["error": "toggle_failed"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "announcer.config.toggle", detail: "\(patch.enabled ? "Enabled" : "Disabled") announcer config ID \(patch.id)")
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/announcer/config/delete"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAnnouncerConfigDeletePatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await deleteAnnouncerConfig?(patch.id) == true else {
+                return jsonResponse(["error": "delete_failed"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "announcer.config.delete", detail: "Deleted announcer config ID \(patch.id)")
+            return jsonResponse(["ok": true])
+
+        case ("POST", "/api/announcer/settings"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            guard let patch = try? decoder.decode(AdminWebAnnouncerSettingsPatch.self, from: request.body) else {
+                return jsonResponse(["error": "invalid_payload"], status: "400 Bad Request")
+            }
+            guard await updateAnnouncerSettings?(patch) == true else {
+                return jsonResponse(["error": "update_failed"], status: "400 Bad Request")
+            }
+            audit(source: "webui", actor: actorLabel(session), action: "announcer.settings.update", detail: "Updated global announcer settings")
+            return jsonResponse(["ok": true])
 
         case ("GET", "/api/welcome-flow"):
             guard authenticatedSession(for: request) != nil else {

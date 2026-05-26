@@ -491,20 +491,22 @@ struct CloudflareDNSProvider: Sendable {
 
     enum TunnelDNSConflict: LocalizedError, Sendable {
         case existingCNAMEToOtherTarget(current: String)
+        case existingRecordOfOtherType(type: String, current: String)
 
         var errorDescription: String? {
             switch self {
             case .existingCNAMEToOtherTarget(let current):
-                return "This hostname already points to \(current). Override to replace it with the Cloudflare Tunnel route."
+                return "This hostname already points to \(current) (CNAME). Override to replace it with the Cloudflare Tunnel route."
+            case .existingRecordOfOtherType(let type, let current):
+                return "This hostname already has an existing \(type) record pointing to \(current). Override to replace it."
             }
         }
     }
 
     /// Ensures a CNAME record `hostname → tunnelTarget` exists in `zoneID`.
     /// - Skips if the correct CNAME already exists (Case 1).
-    /// - Deletes and replaces A/AAAA records automatically (Case 2).
-    /// - If `force` is false, throws `TunnelDNSConflict` for a CNAME to a different target (Case 3).
-    /// - If `force` is true, replaces the conflicting CNAME without prompting (Case 3 override).
+    /// - Throws TunnelDNSConflict for any existing conflicting record (A, AAAA, CNAME to other target) if force is false.
+    /// - If `force` is true, replaces the conflicting record without prompting.
     func configureTunnelDNSRoute(
         hostname: String,
         tunnelTarget: String,
@@ -524,6 +526,9 @@ struct CloudflareDNSProvider: Sendable {
                     // Case 3: CNAME to different target — prompt user unless forced
                     throw TunnelDNSConflict.existingCNAMEToOtherTarget(current: existing.content)
                 }
+            } else if !force {
+                // If another record type (A, AAAA, etc) exists and force is false, throw conflict warning
+                throw TunnelDNSConflict.existingRecordOfOtherType(type: type, current: existing.content)
             }
 
             // Case 2 / forced Case 3: delete and replace

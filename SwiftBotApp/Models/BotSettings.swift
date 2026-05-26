@@ -84,6 +84,7 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedCertificateFile: String = ""
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
+    var dismissedDNSConflictHostnames: [String] = []
 
     // OAuth Providers (Discord is active, others are archived/placeholder placeholders)
     var discordOAuth = OAuthProviderSettings()
@@ -135,6 +136,7 @@ struct AdminWebUISettings: Codable, Hashable {
         case redirectPath
         case restrictAccessToSpecificUsers
         case allowedUserIDs
+        case dismissedDNSConflictHostnames
         // Legacy keys for migration
         case bindHost
         case port
@@ -195,6 +197,7 @@ struct AdminWebUISettings: Codable, Hashable {
         allowedUserIDs = try container.decodeIfPresent([String].self, forKey: .allowedUserIDs) ?? []
         restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
             ?? !allowedUserIDs.isEmpty
+        dismissedDNSConflictHostnames = try container.decodeIfPresent([String].self, forKey: .dismissedDNSConflictHostnames) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -225,6 +228,7 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(redirectPath, forKey: .redirectPath)
         try container.encode(restrictAccessToSpecificUsers, forKey: .restrictAccessToSpecificUsers)
         try container.encode(allowedUserIDs, forKey: .allowedUserIDs)
+        try container.encode(dismissedDNSConflictHostnames, forKey: .dismissedDNSConflictHostnames)
     }
 
     var normalizedAllowedUserIDs: [String] {
