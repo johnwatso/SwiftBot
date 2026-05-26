@@ -229,11 +229,6 @@ struct AdminWebConfigPayload: Codable {
 
     struct AIBots: Codable {
         let localAIDMReplyEnabled: Bool
-        let preferredProvider: String
-        let openAIEnabled: Bool
-        let openAIModel: String
-        let openAIImageGenerationEnabled: Bool
-        let openAIImageMonthlyLimitPerUser: Int
     }
 
     struct WikiBridge: Codable {
@@ -278,11 +273,6 @@ struct AdminWebConfigPatch: Codable {
     var bugTrackingEnabled: Bool?
     var prefix: String?
     var localAIDMReplyEnabled: Bool?
-    var preferredAIProvider: String?
-    var openAIEnabled: Bool?
-    var openAIModel: String?
-    var openAIImageGenerationEnabled: Bool?
-    var openAIImageMonthlyLimitPerUser: Int?
     var wikiBridgeEnabled: Bool?
     var patchyMonitoringEnabled: Bool?
     var clusterMode: String?

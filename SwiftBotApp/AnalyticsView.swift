@@ -471,7 +471,7 @@ struct AnalyticsView: View {
                     insightTile(
                         title: "AI Usage Count",
                         value: "\(app.commandLog.filter { $0.command.localizedCaseInsensitiveContains("ai") }.count)",
-                        detail: "\(app.settings.preferredAIProvider.rawValue) provider selected",
+                        detail: app.appleIntelligenceOnline ? "Apple Intelligence online" : "Apple Intelligence offline",
                         symbol: "sparkles",
                         color: .purple
                     )

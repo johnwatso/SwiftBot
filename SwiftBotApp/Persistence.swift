@@ -72,7 +72,6 @@ actor ConfigStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var lastToken: String?
-    private var lastOpenAIAPIKey: String?
     private var lastAdminWebCloudflareToken: String?
     private var lastAdminWebPublicAccessTunnelToken: String?
     private var lastAdminWebLocalAuthPassword: String?
@@ -145,12 +144,12 @@ actor ConfigStore {
         }
         lastAdminWebPublicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken
 
-        if let storedKey = KeychainHelper.load(account: openAIAPIKeyAccount) {
-            settings.openAIAPIKey = storedKey
-        } else if !settings.openAIAPIKey.isEmpty {
-            KeychainHelper.save(settings.openAIAPIKey, account: openAIAPIKeyAccount)
+        // OpenAI API keys are no longer used. Purge the legacy keychain entry
+        // on first load after the Apple-only consolidation so secrets don't
+        // sit in the keychain indefinitely.
+        if KeychainHelper.load(account: openAIAPIKeyAccount) != nil {
+            KeychainHelper.delete(account: openAIAPIKeyAccount)
         }
-        lastOpenAIAPIKey = settings.openAIAPIKey
 
         return settings
     }
@@ -205,23 +204,12 @@ actor ConfigStore {
             lastAdminWebPublicAccessTunnelToken = trimmedTunnelToken
         }
 
-        let trimmedOpenAIKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedOpenAIKey != lastOpenAIAPIKey {
-            if trimmedOpenAIKey.isEmpty {
-                KeychainHelper.delete(account: openAIAPIKeyAccount)
-            } else {
-                KeychainHelper.save(trimmedOpenAIKey, account: openAIAPIKeyAccount)
-            }
-            lastOpenAIAPIKey = trimmedOpenAIKey
-        }
-
         // Always clear secrets from disk-stored settings.
         settingsToSave.token = ""
         settingsToSave.adminWebUI.discordOAuth.clientSecret = ""
         settingsToSave.adminWebUI.localAuthPassword = ""
         settingsToSave.adminWebUI.cloudflareAPIToken = ""
         settingsToSave.adminWebUI.publicAccessTunnelToken = ""
-        settingsToSave.openAIAPIKey = ""
         settingsToSave.clusterSharedSecret = ""
         settingsToSave.clusterMode = .standalone
         settingsToSave.clusterNodeName = Host.current().localizedName ?? "SwiftBot Node"

@@ -217,12 +217,6 @@ extension AppModel {
         await ruleStore.reloadFromDisk()
         await aiService.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled,
-            provider: settings.localAIProvider,
-            preferredProvider: settings.preferredAIProvider,
-            endpoint: localAIEndpointForService(),
-            model: settings.localAIModel,
-            openAIAPIKey: effectiveOpenAIAPIKey(),
-            openAIModel: settings.openAIModel,
             systemPrompt: settings.localAISystemPrompt
         )
         configurePatchyMonitoring()

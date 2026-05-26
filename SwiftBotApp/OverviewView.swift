@@ -134,10 +134,6 @@ struct OverviewView: View {
         commandLog.filter { $0.executionRoute == "Worker" || $0.executionRoute == "Remote" }.count
     }
 
-    private var aiProviderSummary: String {
-        settings.preferredAIProvider.rawValue
-    }
-
     private var enabledWikiSourceCount: Int {
         settings.wikiBot.sources.filter(\.enabled).count
     }

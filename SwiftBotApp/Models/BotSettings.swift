@@ -309,22 +309,10 @@ struct BotSettings: Codable, Hashable {
     /// Edited via the SwiftMesh cluster map's contextual menu.
     var clusterNodeIconOverrides: [String: String] = [:]
 
-    // Local AI reply settings for DMs and guild mentions.
+    // AI reply settings for DMs and guild mentions. SwiftBot uses Apple
+    // Intelligence (FoundationModels) exclusively; previous multi-provider
+    // fields are preserved in Archive/MultiProviderAI.swift.
     var localAIDMReplyEnabled: Bool = false
-    var localAIProvider: AIProvider = .appleIntelligence
-    var preferredAIProvider: AIProviderPreference = .apple
-    var localAIEndpoint: String = "http://127.0.0.1:1234/v1/chat/completions"
-    var localAIModel: String = "local-model"
-    var ollamaBaseURL: String = "http://localhost:11434"
-    var ollamaEnabled: Bool = false
-    var openAIEnabled: Bool = false
-    var openAIAPIKey: String = ""
-    var openAIModel: String = "gpt-4o-mini"
-    var openAIImageGenerationEnabled: Bool = true
-    var openAIImageModel: String = "gpt-image-1"
-    var openAIImageMonthlyLimitPerUser: Int = 5
-    var openAIImageMonthlyHardCap: Int = 100
-    var openAIImageUsageByUserMonth: [String: Int] = [:]
     /// Per-Discord-user IANA timezone identifier (e.g. "America/New_York")
     /// used to interpret natural-language times in `/timestamp`.
     /// Missing entries fall back to the bot host's `TimeZone.current`.
@@ -415,20 +403,6 @@ struct BotSettings: Codable, Hashable {
         case clusterLastHandoverTestOK
         case clusterNodeIconOverrides
         case localAIDMReplyEnabled
-        case localAIProvider
-        case preferredAIProvider
-        case localAIEndpoint
-        case localAIModel
-        case ollamaBaseURL
-        case ollamaEnabled
-        case openAIEnabled
-        case openAIAPIKey
-        case openAIModel
-        case openAIImageGenerationEnabled
-        case openAIImageModel
-        case openAIImageMonthlyLimitPerUser
-        case openAIImageMonthlyHardCap
-        case openAIImageUsageByUserMonth
         case devFeaturesEnabled
         case bugAutoFixEnabled
         case bugAutoFixTriggerEmoji
@@ -488,20 +462,6 @@ struct BotSettings: Codable, Hashable {
         clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
         clusterNodeIconOverrides = try container.decodeIfPresent([String: String].self, forKey: .clusterNodeIconOverrides) ?? [:]
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
-        localAIProvider = try container.decodeIfPresent(AIProvider.self, forKey: .localAIProvider) ?? .appleIntelligence
-        preferredAIProvider = try container.decodeIfPresent(AIProviderPreference.self, forKey: .preferredAIProvider) ?? .apple
-        localAIEndpoint = try container.decodeIfPresent(String.self, forKey: .localAIEndpoint) ?? "http://127.0.0.1:1234/v1/chat/completions"
-        localAIModel = try container.decodeIfPresent(String.self, forKey: .localAIModel) ?? "local-model"
-        ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://localhost:11434"
-        ollamaEnabled = try container.decodeIfPresent(Bool.self, forKey: .ollamaEnabled) ?? false
-        openAIEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIEnabled) ?? false
-        openAIAPIKey = try container.decodeIfPresent(String.self, forKey: .openAIAPIKey) ?? ""
-        openAIModel = try container.decodeIfPresent(String.self, forKey: .openAIModel) ?? "gpt-4o-mini"
-        openAIImageGenerationEnabled = try container.decodeIfPresent(Bool.self, forKey: .openAIImageGenerationEnabled) ?? true
-        openAIImageModel = try container.decodeIfPresent(String.self, forKey: .openAIImageModel) ?? "gpt-image-1"
-        openAIImageMonthlyLimitPerUser = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyLimitPerUser) ?? 5
-        openAIImageMonthlyHardCap = try container.decodeIfPresent(Int.self, forKey: .openAIImageMonthlyHardCap) ?? 100
-        openAIImageUsageByUserMonth = try container.decodeIfPresent([String: Int].self, forKey: .openAIImageUsageByUserMonth) ?? [:]
         devFeaturesEnabled = try container.decodeIfPresent(Bool.self, forKey: .devFeaturesEnabled) ?? false
         bugAutoFixEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixEnabled) ?? false
         bugAutoFixTriggerEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixTriggerEmoji) ?? "🤖"
@@ -556,21 +516,6 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterLastHandoverTestOK, forKey: .clusterLastHandoverTestOK)
         try container.encode(clusterNodeIconOverrides, forKey: .clusterNodeIconOverrides)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
-
-        try container.encode(localAIProvider, forKey: .localAIProvider)
-        try container.encode(preferredAIProvider, forKey: .preferredAIProvider)
-        try container.encode(localAIEndpoint, forKey: .localAIEndpoint)
-        try container.encode(localAIModel, forKey: .localAIModel)
-        try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
-        try container.encode(ollamaEnabled, forKey: .ollamaEnabled)
-        try container.encode(openAIEnabled, forKey: .openAIEnabled)
-        try container.encode(openAIAPIKey, forKey: .openAIAPIKey)
-        try container.encode(openAIModel, forKey: .openAIModel)
-        try container.encode(openAIImageGenerationEnabled, forKey: .openAIImageGenerationEnabled)
-        try container.encode(openAIImageModel, forKey: .openAIImageModel)
-        try container.encode(openAIImageMonthlyLimitPerUser, forKey: .openAIImageMonthlyLimitPerUser)
-        try container.encode(openAIImageMonthlyHardCap, forKey: .openAIImageMonthlyHardCap)
-        try container.encode(openAIImageUsageByUserMonth, forKey: .openAIImageUsageByUserMonth)
         try container.encode(devFeaturesEnabled, forKey: .devFeaturesEnabled)
         try container.encode(bugAutoFixEnabled, forKey: .bugAutoFixEnabled)
         try container.encode(bugAutoFixTriggerEmoji, forKey: .bugAutoFixTriggerEmoji)

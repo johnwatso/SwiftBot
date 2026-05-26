@@ -38,7 +38,6 @@ final class CommandProcessor {
         var sendEmbed: (String, [String: Any]) async -> Bool
         var generateHelpReply: ([Message], String) async -> String?
         var rollDice: (String) -> String?
-        var generateImageCommand: (String, String, String, String) async -> Bool
         var authorId: ([String: DiscordJSON]) -> String?
         var clusterCommand: (String, String) async -> Bool
         var setNotificationChannel: ([String: DiscordJSON], String) async -> Bool
@@ -133,10 +132,6 @@ final class CommandProcessor {
             return await dependencies.send(context.channelId, "🎱 \(responses.randomElement()!)")
         case "poll":
             return await dependencies.send(context.channelId, "📊 Poll created! Add reactions to vote.")
-        case "image", "imagine":
-            let prompt = tokens.dropFirst().joined(separator: " ")
-            let userId = dependencies.authorId(context.raw) ?? "unknown-user"
-            return await dependencies.generateImageCommand(prompt, userId, context.username, context.channelId)
         case "music":
             if tokens.count >= 2, ["help", "-h", "--help"].contains(tokens[1].lowercased()) {
                 return await dependencies.send(context.channelId, HelpRenderer.detailedMusicGuide(prefix: config.prefix))
@@ -325,11 +320,6 @@ final class CommandProcessor {
         case "notifystatus":
             let ok = await dependencies.notifyStatus(context.rawLikeMessage, context.channelId)
             return statusEmbed(title: "Notification Status", ok: ok)
-        case "image":
-            let prompt = Self.slashOptionString(named: "prompt", in: data) ?? ""
-            let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
-            let ok = await dependencies.generateImageCommand(prompt, userId, context.username, context.channelId)
-            return statusEmbed(title: "Image Generation", ok: ok)
         case "music":
             let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
             if let query = Self.slashOptionString(named: "query", in: data)?

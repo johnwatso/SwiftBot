@@ -34,22 +34,6 @@ struct HelpSettings: Codable, Hashable {
     var showAdvanced: Bool = false
 }
 
-enum AIProvider: String, Codable, CaseIterable, Identifiable {
-    case appleIntelligence = "Apple Intelligence"
-    case ollama = "Ollama"
-    case openAI = "OpenAI (ChatGPT)"
-
-    var id: String { rawValue }
-}
-
-enum AIProviderPreference: String, Codable, CaseIterable, Identifiable {
-    case apple = "Apple Intelligence"
-    case ollama = "Ollama"
-    case openAI = "OpenAI (ChatGPT)"
-
-    var id: String { rawValue }
-}
-
 enum MessageRole: String, Codable, Hashable, Sendable {
     case user
     case assistant

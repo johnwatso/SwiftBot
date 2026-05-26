@@ -94,11 +94,6 @@ final class RemoteBotProvider: BotDataProvider {
         s.autoStart = config.general.autoStart
 
         s.localAIDMReplyEnabled = config.aiBots.localAIDMReplyEnabled
-        s.preferredAIProvider = AIProviderPreference(rawValue: config.aiBots.preferredProvider) ?? .apple
-        s.openAIEnabled = config.aiBots.openAIEnabled
-        s.openAIModel = config.aiBots.openAIModel
-        s.openAIImageGenerationEnabled = config.aiBots.openAIImageGenerationEnabled
-        s.openAIImageMonthlyLimitPerUser = config.aiBots.openAIImageMonthlyLimitPerUser
 
         s.clusterMode = ClusterMode(rawValue: config.swiftMesh.mode) ?? .standalone
         s.clusterNodeName = config.swiftMesh.nodeName
@@ -143,11 +138,6 @@ final class RemoteBotProvider: BotDataProvider {
             slashCommandsEnabled: settings.slashCommandsEnabled,
             bugTrackingEnabled: settings.bugTrackingEnabled,
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
-            preferredAIProvider: settings.preferredAIProvider.rawValue,
-            openAIEnabled: settings.openAIEnabled,
-            openAIModel: settings.openAIModel,
-            openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
-            openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser,
             wikiBridgeEnabled: settings.wikiBot.isEnabled,
             patchyMonitoringEnabled: settings.patchy.monitoringEnabled,
             clusterMode: settings.clusterMode.rawValue,

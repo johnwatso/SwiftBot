@@ -382,7 +382,6 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 generateHelpReply: { _, _ in nil },
                 rollDice: { notation in notation == "1d6" ? "rolled" : nil },
-                generateImageCommand: { _, _, _, _ in true },
                 authorId: { raw in
                     guard let author = raw["author"] else { return "user-1" }
                     if case let .object(map) = author,

@@ -80,10 +80,7 @@ final class AppModel: ObservableObject {
     @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome?
     @Published var lastClusterStatusRefreshAt: Date?
     @Published var appleIntelligenceOnline = false
-    @Published var ollamaOnline = false
-    @Published var openAIOnline = false
     @Published var recentMediaCount24h = 0
-    @Published var ollamaDetectedModel: String?
     @Published var patchyDebugLogs: [String] = []
     @Published var patchyIsCycleRunning = false
     @Published var patchyLastCycleAt: Date?
@@ -484,14 +481,6 @@ final class AppModel: ObservableObject {
             mediaLibrarySettings = loadedMediaSettings
             var migrated = false
 
-            if loadedSettings.localAIEndpoint.contains("mac-studio.local") {
-                loadedSettings.localAIEndpoint = "http://127.0.0.1:1234/v1/chat/completions"
-                migrated = true
-            }
-            if loadedSettings.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                loadedSettings.ollamaBaseURL = "http://localhost:11434"
-                migrated = true
-            }
             if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
@@ -522,9 +511,6 @@ final class AppModel: ObservableObject {
                 await discordCache.replace(with: cachedDiscord)
                 await syncPublishedDiscordCacheFromService()
                 logs.append("Loaded cached Discord metadata (\(cachedDiscord.connectedServers.count) servers)")
-            }
-            if settings.localAIProvider == .ollama {
-                detectOllamaModel()
             }
             await refreshAIStatus()
             for target in settings.patchy.sourceTargets where target.source == .steam {
@@ -642,12 +628,6 @@ final class AppModel: ObservableObject {
             )
             await aiService.configureLocalAIDMReplies(
                 enabled: settings.localAIDMReplyEnabled,
-                provider: settings.localAIProvider,
-                preferredProvider: settings.preferredAIProvider,
-                endpoint: localAIEndpointForService(),
-                model: settings.localAIModel,
-                openAIAPIKey: effectiveOpenAIAPIKey(),
-                openAIModel: settings.openAIModel,
                 systemPrompt: settings.localAISystemPrompt
             )
             await cluster.applySettings(
@@ -873,12 +853,6 @@ final class AppModel: ObservableObject {
             if self.usesLocalRuntime {
                 await aiService.configureLocalAIDMReplies(
                     enabled: settings.localAIDMReplyEnabled,
-                    provider: settings.localAIProvider,
-                    preferredProvider: settings.preferredAIProvider,
-                    endpoint: localAIEndpointForService(),
-                    model: settings.localAIModel,
-                    openAIAPIKey: effectiveOpenAIAPIKey(),
-                    openAIModel: settings.openAIModel,
                     systemPrompt: settings.localAISystemPrompt
                 )
                 await applyClusterSettingsRuntime(
@@ -929,63 +903,8 @@ final class AppModel: ObservableObject {
 
     // MARK: - Media (see AppModel+Media.swift)
 
-    func detectOllamaModel() {
-        // Skip if Ollama is not enabled (prevents connection refused errors)
-        guard settings.ollamaEnabled else { return }
-        
-        let base = normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
-        Task {
-            guard let model = await aiService.detectOllamaModel(baseURL: base) else {
-                await MainActor.run {
-                    self.logs.append("⚠️ Ollama model auto-detect failed.")
-                }
-                await refreshAIStatus()
-                return
-            }
-
-            await MainActor.run {
-                if self.settings.localAIModel != model {
-                    self.settings.localAIModel = model
-                    self.saveSettings()
-                }
-                self.logs.append("✅ Ollama model detected: \(model)")
-            }
-            await refreshAIStatus()
-        }
-    }
-
     func refreshAIStatus() async {
-        let status = await aiService.currentAIStatus(
-            ollamaBaseURL: normalizedOllamaBaseURL(from: settings.ollamaBaseURL),
-            ollamaModelHint: settings.localAIModel,
-            openAIAPIKey: effectiveOpenAIAPIKey(),
-            skipOllama: !settings.ollamaEnabled
-        )
-        appleIntelligenceOnline = status.appleOnline
-        ollamaOnline = status.ollamaOnline
-        ollamaDetectedModel = status.ollamaModel
-        openAIOnline = status.openAIOnline
-    }
-
-    func normalizedOllamaBaseURL(from raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "http://localhost:11434" }
-        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-            return trimmed
-        }
-        return "http://\(trimmed)"
-    }
-
-    func localAIEndpointForService() -> String {
-        if settings.localAIProvider == .ollama {
-            return normalizedOllamaBaseURL(from: settings.ollamaBaseURL)
-        }
-        return settings.localAIEndpoint
-    }
-
-    func effectiveOpenAIAPIKey() -> String {
-        guard settings.openAIEnabled else { return "" }
-        return settings.openAIAPIKey
+        appleIntelligenceOnline = await aiService.currentAIStatus()
     }
 
     // MARK: - Patchy (see AppModel+Patchy.swift)

@@ -341,20 +341,10 @@ struct AppPreferencesSnapshot: Equatable {
     var adminAllowedUserIDs = ""
     var adminRedirectPath = ""
 
-    // AI Bots
+    // AI Bots (Apple Intelligence only — see Archive/MultiProviderAI.swift)
     var localAIDMReplyEnabled = false
     var useAIInGuildChannels = false
     var allowDMs = false
-    var preferredAIProvider: AIProviderPreference = .apple
-    var ollamaBaseURL = ""
-    var ollamaModel = ""
-    var ollamaEnabled = false
-    var openAIEnabled = false
-    var openAIAPIKey = ""
-    var openAIModel = ""
-    var openAIImageGenerationEnabled = false
-    var openAIImageModel = ""
-    var openAIImageMonthlyLimitPerUser = 0
     var localAISystemPrompt = ""
 
     // Developer & Bug Auto-Fix

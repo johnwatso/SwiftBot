@@ -27,11 +27,6 @@ private struct RemoteSettingsDraft: Equatable {
     var slashCommandsEnabled = true
     var bugTrackingEnabled = true
     var localAIDMReplyEnabled = false
-    var preferredProvider = AIProviderPreference.apple.rawValue
-    var openAIEnabled = false
-    var openAIModel = ""
-    var openAIImageGenerationEnabled = false
-    var openAIImageMonthlyLimitPerUser = 0
     var wikiBridgeEnabled = false
     var patchyMonitoringEnabled = false
     var clusterMode = ClusterMode.standalone.rawValue
@@ -49,11 +44,6 @@ private struct RemoteSettingsDraft: Equatable {
         slashCommandsEnabled = payload.commands.slashEnabled
         bugTrackingEnabled = payload.commands.bugTrackingEnabled
         localAIDMReplyEnabled = payload.aiBots.localAIDMReplyEnabled
-        preferredProvider = payload.aiBots.preferredProvider
-        openAIEnabled = payload.aiBots.openAIEnabled
-        openAIModel = payload.aiBots.openAIModel
-        openAIImageGenerationEnabled = payload.aiBots.openAIImageGenerationEnabled
-        openAIImageMonthlyLimitPerUser = payload.aiBots.openAIImageMonthlyLimitPerUser
         wikiBridgeEnabled = payload.wikiBridge.enabled
         patchyMonitoringEnabled = payload.patchy.monitoringEnabled
         clusterMode = payload.swiftMesh.mode
@@ -71,11 +61,6 @@ private struct RemoteSettingsDraft: Equatable {
             slashCommandsEnabled: slashCommandsEnabled,
             bugTrackingEnabled: bugTrackingEnabled,
             localAIDMReplyEnabled: localAIDMReplyEnabled,
-            preferredAIProvider: preferredProvider,
-            openAIEnabled: openAIEnabled,
-            openAIModel: openAIModel,
-            openAIImageGenerationEnabled: openAIImageGenerationEnabled,
-            openAIImageMonthlyLimitPerUser: openAIImageMonthlyLimitPerUser,
             wikiBridgeEnabled: wikiBridgeEnabled,
             patchyMonitoringEnabled: patchyMonitoringEnabled,
             clusterMode: clusterMode,
@@ -410,21 +395,7 @@ struct RemoteModeRootView: View {
                 }
 
                 PreferencesCard("AI + Integrations", systemImage: "sparkles.rectangle.stack.fill") {
-                    Toggle("Enable Local AI DM Replies", isOn: $settingsDraft.localAIDMReplyEnabled)
-                    Picker("Preferred Provider", selection: $settingsDraft.preferredProvider) {
-                        ForEach(AIProviderPreference.allCases, id: \.rawValue) { provider in
-                            Text(provider.rawValue).tag(provider.rawValue)
-                        }
-                    }
-                    Toggle("Enable OpenAI", isOn: $settingsDraft.openAIEnabled)
-                    TextField("OpenAI Model", text: $settingsDraft.openAIModel)
-                    Toggle("Enable Image Generation", isOn: $settingsDraft.openAIImageGenerationEnabled)
-                    Stepper(
-                        value: $settingsDraft.openAIImageMonthlyLimitPerUser,
-                        in: 0...500
-                    ) {
-                        Text("Monthly Image Limit Per User: \(settingsDraft.openAIImageMonthlyLimitPerUser)")
-                    }
+                    Toggle("Enable AI DM Replies (Apple Intelligence)", isOn: $settingsDraft.localAIDMReplyEnabled)
                     Toggle("Enable Lookup", isOn: $settingsDraft.wikiBridgeEnabled)
                     Toggle("Enable Patchy Monitoring", isOn: $settingsDraft.patchyMonitoringEnabled)
                 }

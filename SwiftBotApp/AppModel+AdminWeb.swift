@@ -92,16 +92,6 @@ extension AppModel {
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
             useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
             allowDMs: settings.behavior.allowDMs,
-            preferredAIProvider: settings.preferredAIProvider,
-            ollamaBaseURL: settings.ollamaBaseURL,
-            ollamaModel: settings.localAIModel,
-            ollamaEnabled: settings.ollamaEnabled,
-            openAIEnabled: settings.openAIEnabled,
-            openAIAPIKey: settings.openAIAPIKey,
-            openAIModel: settings.openAIModel,
-            openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
-            openAIImageModel: settings.openAIImageModel,
-            openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser,
             localAISystemPrompt: settings.localAISystemPrompt,
             devFeaturesEnabled: settings.devFeaturesEnabled,
             bugAutoFixEnabled: settings.bugAutoFixEnabled,
@@ -132,7 +122,6 @@ extension AppModel {
         let patchyEnabledTargetCount = settings.patchy.sourceTargets.filter(\.isEnabled).count
         let actionRuleCount = ruleStore.rules.count
         let enabledActionRuleCount = ruleStore.rules.filter(\.isEnabled).count
-        let aiProviderSummary = settings.preferredAIProvider.rawValue
         let clusterLeader = clusterNodes.first(where: { $0.role == .leader })?.hostname
             ?? clusterNodes.first?.hostname
             ?? "Unavailable"
@@ -181,7 +170,7 @@ extension AppModel {
             ),
             AdminWebMetricPayload(
                 title: "AI Bots",
-                value: aiProviderSummary,
+                value: appleIntelligenceOnline ? "Apple Intelligence online" : "Apple Intelligence offline",
                 subtitle: settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled"
             )
         ]
@@ -792,12 +781,7 @@ extension AppModel {
                 prefix: "/"
             ),
             aiBots: .init(
-                localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
-                preferredProvider: settings.preferredAIProvider.rawValue,
-                openAIEnabled: settings.openAIEnabled,
-                openAIModel: settings.openAIModel,
-                openAIImageGenerationEnabled: settings.openAIImageGenerationEnabled,
-                openAIImageMonthlyLimitPerUser: settings.openAIImageMonthlyLimitPerUser
+                localAIDMReplyEnabled: settings.localAIDMReplyEnabled
             ),
             wikiBridge: .init(
                 enabled: settings.wikiBot.isEnabled,
@@ -830,14 +814,6 @@ extension AppModel {
         if let value = patch.slashCommandsEnabled { settings.slashCommandsEnabled = value }
         if let value = patch.bugTrackingEnabled { settings.bugTrackingEnabled = value }
         if let value = patch.localAIDMReplyEnabled { settings.localAIDMReplyEnabled = value }
-        if let value = patch.preferredAIProvider,
-           let provider = AIProviderPreference(rawValue: value) {
-            settings.preferredAIProvider = provider
-        }
-        if let value = patch.openAIEnabled { settings.openAIEnabled = value }
-        if let value = patch.openAIModel { settings.openAIModel = value }
-        if let value = patch.openAIImageGenerationEnabled { settings.openAIImageGenerationEnabled = value }
-        if let value = patch.openAIImageMonthlyLimitPerUser { settings.openAIImageMonthlyLimitPerUser = max(0, value) }
         if let value = patch.wikiBridgeEnabled { settings.wikiBot.isEnabled = value }
         if let value = patch.patchyMonitoringEnabled { settings.patchy.monitoringEnabled = value }
         if let value = patch.clusterMode,
@@ -1311,7 +1287,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
+                        aiBots: .init(localAIDMReplyEnabled: false),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
                         swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: false, offloadWikiLookups: false),
@@ -1359,7 +1335,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        aiBots: .init(localAIDMReplyEnabled: false, preferredProvider: AIProviderPreference.apple.rawValue, openAIEnabled: false, openAIModel: "", openAIImageGenerationEnabled: false, openAIImageMonthlyLimitPerUser: 0),
+                        aiBots: .init(localAIDMReplyEnabled: false),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
                         swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: true, offloadWikiLookups: true),
