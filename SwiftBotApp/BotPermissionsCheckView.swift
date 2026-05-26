@@ -54,6 +54,9 @@ enum DiscordPermissionCatalog {
         .init(id: "sendthreads", bit: 38, name: "Send Messages in Threads",
               detail: "Reply inside threads — without this, the bot can read threads but not respond.",
               severity: .recommended),
+        .init(id: "createthreads", bit: 35, name: "Create Public Threads",
+              detail: "Create threads from messages — required for the playlist thread feature.",
+              severity: .recommended),
         .init(id: "threads", bit: 34, name: "Manage Threads",
               detail: "Required to archive stale support threads via Sweep.",
               severity: .optional),
@@ -125,6 +128,12 @@ struct DiscordGuildPermissions: Identifiable, Hashable {
     }
 }
 
+// MARK: - Channel Coverage
+
+struct DiscordChannelCoverage: Hashable {
+    let visibleTextChannels: Int
+}
+
 // MARK: - View
 
 struct BotPermissionsCheckView: View {
@@ -139,7 +148,10 @@ struct BotPermissionsCheckView: View {
     @State private var guilds: [DiscordGuildPermissions] = []
     @State private var expandedGuildID: String?
     @State private var confirmingForceRejoin: DiscordGuildPermissions?
+    @State private var confirmingAdminReinvite: DiscordGuildPermissions?
     @State private var isForceRejoining: Bool = false
+    @State private var channelCoverage: [String: DiscordChannelCoverage] = [:]
+    @State private var coverageLoading: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -183,6 +195,22 @@ struct BotPermissionsCheckView: View {
             Button("Cancel", role: .cancel) {}
         } message: { guild in
             Text("SwiftBot will leave \(guild.name), then Discord will open so you can re-authorise it with the correct permissions. The bot's existing role will be removed.")
+        }
+        .confirmationDialog(
+            "Re-invite with Administrator?",
+            isPresented: Binding(
+                get: { confirmingAdminReinvite != nil },
+                set: { if !$0 { confirmingAdminReinvite = nil } }
+            ),
+            presenting: confirmingAdminReinvite
+        ) { guild in
+            Button("Re-invite as Admin", role: .destructive) {
+                openAdminReinviteURL(for: guild)
+                confirmingAdminReinvite = nil
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { guild in
+            Text("Administrator grants the bot unrestricted access to all channels and actions in \(guild.name). Only do this if you trust the bot fully and your token is secure.")
         }
     }
 
@@ -360,6 +388,8 @@ struct BotPermissionsCheckView: View {
                 permissionList(title: "Missing recommended", flags: recommended, tone: .orange)
             }
 
+            channelAccessRow(guild: guild)
+
             if !essential.isEmpty || !recommended.isEmpty {
                 HStack(spacing: 8) {
                     Spacer()
@@ -536,6 +566,8 @@ struct BotPermissionsCheckView: View {
         botUsername = nil
         botID = nil
         guilds = []
+        channelCoverage = [:]
+        coverageLoading = []
 
         do {
             // Identity
@@ -550,6 +582,17 @@ struct BotPermissionsCheckView: View {
                 let rhsScore = rhs.missingEssential.count * 100 + rhs.missingRecommended.count
                 if lhsScore != rhsScore { return lhsScore > rhsScore }
                 return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            channelCoverage = [:]
+            coverageLoading = Set(self.guilds.map(\.id))
+            for guild in self.guilds {
+                let gid = guild.id
+                Task { @MainActor in
+                    if let cov = try? await fetchChannelCoverage(token: trimmed, guildID: gid) {
+                        channelCoverage[gid] = cov
+                    }
+                    coverageLoading.remove(gid)
+                }
             }
         } catch let nsError as NSError {
             switch nsError.code {
@@ -598,5 +641,94 @@ struct BotPermissionsCheckView: View {
             let isOwner = dict["owner"] as? Bool ?? false
             return DiscordGuildPermissions(id: id, name: name, permissionsRaw: perms, isOwner: isOwner)
         }
+    }
+
+    private func fetchChannelCoverage(token: String, guildID: String) async throws -> DiscordChannelCoverage {
+        guard let url = URL(string: "https://discord.com/api/v10/guilds/\(guildID)/channels") else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw NSError(domain: "BotPermissionsCheck", code: -1, userInfo: [:])
+        }
+        // Types 0 (text) and 5 (announcement) are message-bearing channels
+        let count = arr.filter { ($0["type"] as? Int).map { $0 == 0 || $0 == 5 } ?? false }.count
+        return DiscordChannelCoverage(visibleTextChannels: count)
+    }
+
+    // MARK: Channel Access Row
+
+    @ViewBuilder
+    private func channelAccessRow(guild: DiscordGuildPermissions) -> some View {
+        let guildID = guild.id
+        // VIEW_CHANNELS is bit 10
+        let hasViewChannel = guild.hasAdministrator || (guild.permissionsRaw & (1 << 10) != 0)
+
+        Divider().opacity(0.3)
+
+        if coverageLoading.contains(guildID) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text("Checking channel access…")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        } else if let coverage = channelCoverage[guildID] {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: hasViewChannel ? "rectangle.on.rectangle" : "eye.slash")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(hasViewChannel ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.red))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Bot can see \(coverage.visibleTextChannels) text channel\(coverage.visibleTextChannels == 1 ? "" : "s")")
+                        .font(.caption.weight(.medium))
+                    if guild.hasAdministrator {
+                        Text("Administrator — no channel restrictions apply.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else if hasViewChannel {
+                        Text("Server-level View Channel is set. Private channels (where @everyone can't view) still need the bot's role added directly — use Discord channel categories to do this in bulk. Or re-invite as Admin to read all channels unconditionally.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\"View Channels\" is missing at the server role level — this is why the bot can't read messages. Re-invite the bot with the correct permissions to fix this.")
+                            .font(.caption2)
+                            .foregroundStyle(.red.opacity(0.85))
+                    }
+                    if !guild.hasAdministrator {
+                        HStack {
+                            Spacer()
+                            Button {
+                                confirmingAdminReinvite = guild
+                            } label: {
+                                Label("Re-invite as Admin", systemImage: "crown")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .buttonBorderShape(.capsule)
+                            .help("Re-invites SwiftBot with Administrator permission so it can read every channel in \(guild.name) without needing to be added manually.")
+                        }
+                    }
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func openAdminReinviteURL(for guild: DiscordGuildPermissions) {
+        guard let botID, !botID.isEmpty else { return }
+        var components = URLComponents(string: "https://discord.com/oauth2/authorize")
+        components?.queryItems = [
+            URLQueryItem(name: "client_id", value: botID),
+            URLQueryItem(name: "scope", value: "bot applications.commands"),
+            URLQueryItem(name: "permissions", value: "8"),
+            URLQueryItem(name: "guild_id", value: guild.id),
+            URLQueryItem(name: "disable_guild_select", value: "true")
+        ]
+        guard let url = components?.url else { return }
+        NSWorkspace.shared.open(url)
     }
 }

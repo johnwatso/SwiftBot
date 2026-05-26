@@ -143,4 +143,27 @@ struct DiscordIdentityRESTClient {
             return (false, nil, nil)
         }
     }
+
+    func fetchBotGuilds(token: String) async -> [String]? {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var req = URLRequest(url: restBase.appendingPathComponent("users/@me/guilds"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(trimmed)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 10
+
+        do {
+            let (data, response) = try await identitySession.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                return []
+            }
+            return arr.compactMap { $0["id"] as? String }
+        } catch {
+            return nil
+        }
+    }
 }

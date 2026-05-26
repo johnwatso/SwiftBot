@@ -273,7 +273,6 @@ extension AppModel {
         }.count
         let activeTaskCount = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
             + (patchyIsCycleRunning ? 1 : 0)
-            + activeBugAutoFixMessageIDs.count
         let finishedExports = mediaExportJobs.filter { $0.status == .finished }.count
         let failedExports = mediaExportJobs.filter { $0.status == .failed }.count
         let activeExports = mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
@@ -887,20 +886,7 @@ extension AppModel {
                 adminOnly: name == "debug"
             )
         }
-
-        var commands = slashCommands
-        commands.append(
-            VisualCommand(
-                id: "mention-bug",
-                name: "bug",
-                usage: "@swiftbot bug (reply to a message)",
-                description: "Creates a tracked bug report in #swiftbot-dev and manages status via reactions.",
-                category: "Server",
-                surface: "mention",
-                aliases: [],
-                adminOnly: true
-            )
-        )
+        let commands = slashCommands
 
         let items = commands.sorted { lhs, rhs in
             if lhs.surface != rhs.surface {

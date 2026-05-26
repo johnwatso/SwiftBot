@@ -359,17 +359,6 @@ extension AppModel {
             isDirectMessage: isDMChannel
         ))
 
-        if isGuildTextChannel, isMentioningBot(map) {
-            let mentionText = contentWithoutBotMention(content)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            if mentionText == "bug" {
-                if settings.bugTrackingEnabled {
-                    await handleBugTrackCommand(raw: map, username: username, responseChannelId: channelId)
-                }
-                return
-            }
-        }
 
         if isGuildTextChannel,
            settings.localAIDMReplyEnabled,
@@ -424,8 +413,7 @@ extension AppModel {
     }
 
     func handleMessageReactionAdd(_ raw: DiscordJSON?) async {
-        guard case let .object(map)? = raw else { return }
-        await handleBugReactionAdd(raw: map)
+        // Archived: Bug tracking reactions handled in Archive/BugCommands.swift
     }
 
     func handleInteractionCreate(_ event: GatewayInteractionCreateEvent) async {
@@ -1605,6 +1593,7 @@ extension AppModel {
             }
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceJoined(guildId: guildId, userId: userId, username: displayName, channelId: next.channelId))
+                await handleAutoJoin(channelId: next.channelId, guildId: guildId, triggeringUserId: userId)
             }
         case .moved(let previous, let next, let startedAt):
             let elapsed = formatDuration(from: startedAt, to: now)
@@ -1652,6 +1641,7 @@ extension AppModel {
             let elapsedSec = Int(now.timeIntervalSince(startedAt))
             if allowPrimarySideEffects {
                 await eventBus.publish(VoiceLeft(guildId: guildId, userId: userId, username: displayName, channelId: previous.channelId, durationSeconds: elapsedSec))
+                await handleUntilEmptyCheck(leftChannelId: previous.channelId, guildId: guildId)
             }
         }
     }

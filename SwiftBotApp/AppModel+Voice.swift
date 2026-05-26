@@ -62,10 +62,6 @@ extension AppModel {
         guard let announcer = voiceAnnouncementService else { return nil }
         let watcher = TextChannelAnnouncer(announcer: announcer)
         textChannelAnnouncerStorage = watcher
-        let saved = settings.voice.watchedTextChannelID
-        if !saved.isEmpty {
-            Task { await watcher.setWatchedChannel(saved) }
-        }
         return watcher
     }
 
@@ -102,6 +98,7 @@ extension AppModel {
         let channelID = settings.voice.voiceChannelID
         guard !guildID.isEmpty, !channelID.isEmpty else {
             voiceConnectionStatus = .idle
+            deactivateAnnouncerSession()
             return
         }
         await connectVoice(guildID: guildID, channelID: channelID)
@@ -111,6 +108,7 @@ extension AppModel {
         // The main gateway has to be live before voice can negotiate.
         guard status == .running else {
             voiceConnectionStatus = .failed("Bot is offline — click Start Bot first.")
+            deactivateAnnouncerSession()
             return
         }
         if voiceConnectionStatus == .connected,
@@ -141,6 +139,7 @@ extension AppModel {
 
         if let preflightFailure = await voiceChannelPreflightFailure(channelID: channelID) {
             voiceConnectionStatus = .failed(preflightFailure)
+            deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: preflightFailure))
             return
         }
@@ -149,6 +148,7 @@ extension AppModel {
         guard didSendJoin else {
             let message = "Voice join failed before Discord acknowledged it: main gateway send was blocked or disconnected."
             voiceConnectionStatus = .failed(message)
+            deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
             return
         }
@@ -169,6 +169,7 @@ extension AppModel {
                     self.voicePendingServerEndpoint == nil) {
                     let message = "Timed out waiting for Discord VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE."
                     self.voiceConnectionStatus = .failed(message)
+                    self.deactivateAnnouncerSession()
                     self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
                 }
             }
@@ -189,6 +190,7 @@ extension AppModel {
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceConnectionStatus = .idle
+        deactivateAnnouncerSession()
     }
 
     /// Manually trigger an announcement (e.g. `/say` or the Test button in the
@@ -210,6 +212,7 @@ extension AppModel {
             ))
             return
         }
+        incrementSpokenToday()
         await announcer.enqueue(trimmed)
     }
 
@@ -219,6 +222,7 @@ extension AppModel {
     func speakLocallyPreview(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        incrementSpokenToday()
         let utterance = AVSpeechUtterance(string: trimmed)
         let preferredIdentifier = settings.voice.preferredVoiceIdentifier
         if !preferredIdentifier.isEmpty,
@@ -254,17 +258,52 @@ extension AppModel {
         }
     }
 
+    func handleAnnounceJoinSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
+        guard let guildID = guildId(from: raw), !guildID.isEmpty else {
+            return (false, "Use `/announce join` in a server channel.")
+        }
+        guard let userID = authorId(from: raw), !userID.isEmpty else {
+            return (false, "I couldn't identify who ran `/announce join`.")
+        }
+
+        let configuredChannels = settings.voice.announcerConfigs.filter {
+            $0.enabled && !$0.voiceChannelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !configuredChannels.isEmpty else {
+            return (false, "Announcer is not set up yet. Add an enabled voice channel configuration in SwiftBot first.")
+        }
+
+        guard let presence = activeVoice.first(where: { $0.guildId == guildID && $0.userId == userID }) else {
+            return (false, "Join a configured voice channel first, then run `/announce join` again.")
+        }
+        guard let config = configuredChannels.first(where: { $0.voiceChannelID == presence.channelId }) else {
+            return (false, "No enabled Announcer configuration matches your current voice channel.")
+        }
+
+        guard await activateAnnouncerConfig(config, guildID: guildID) else {
+            return (false, "The Announcer configuration for \(config.voiceChannelName) needs at least one readable text channel.")
+        }
+
+        await connectVoice(guildID: guildID, channelID: config.voiceChannelID)
+        if case let .failed(reason) = voiceConnectionStatus {
+            return (false, reason)
+        }
+        return (true, "Joining \(config.voiceChannelName) and reading the configured text feed.")
+    }
+
     /// Forward a `MESSAGE_CREATE` event to the text-channel announcer. Called
     /// from `handleMessageCreate` so we don't have to re-subscribe to the
     /// dispatcher.
     func forwardMessageToVoiceAnnouncer(_ event: GatewayMessageCreateEvent) async {
+        guard voiceConnectionStatus.isConnected else { return }
         guard settings.voice.textChannelSourceEnabled else { return }
         guard !settings.voice.watchedTextChannelID.isEmpty else { return }
         guard event.channelID == settings.voice.watchedTextChannelID else { return }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
         guard let watcher = textChannelAnnouncer else { return }
-        await watcher.handle(event)
+        let cachedDisplayName = await discordCache.userName(for: event.userID)
+        await watcher.handle(event, displayNameOverride: cachedDisplayName)
     }
 
     // MARK: - Gateway event handlers
@@ -354,6 +393,7 @@ extension AppModel {
             ))
         } catch {
             voiceConnectionStatus = .failed(error.localizedDescription)
+            deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connect failed: \(error.localizedDescription)"
@@ -365,6 +405,7 @@ extension AppModel {
         switch status {
         case .idle:
             voiceConnectionStatus = .idle
+            deactivateAnnouncerSession()
         case .connecting:
             voiceConnectionStatus = .connecting
         case .connected:
@@ -373,6 +414,7 @@ extension AppModel {
             voiceConnectionStatus = .disconnecting
         case .failed(let reason):
             voiceConnectionStatus = .failed(reason)
+            deactivateAnnouncerSession()
         }
     }
 
@@ -389,6 +431,21 @@ extension AppModel {
 
     private func persistSettingsIfPossible() {
         saveSettings()
+    }
+
+    private func firstReadableTextChannelID(for config: AnnouncerVoiceChannelConfig, guildID: String) -> String? {
+        let selectedNames = config.textChannels.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+        guard !selectedNames.isEmpty else { return nil }
+
+        let textChannels = availableTextChannelsByServer[guildID] ?? []
+        for selectedName in selectedNames {
+            if let match = textChannels.first(where: { $0.id == selectedName || $0.name == selectedName }) {
+                return match.id
+            }
+        }
+        return nil
     }
 
     private func voiceChannelPreflightFailure(channelID: String) async -> String? {
@@ -413,6 +470,178 @@ extension AppModel {
             }
             return "Voice join failed: channel preflight check failed (\(error.localizedDescription))."
         }
+    }
+
+    // MARK: - Auto-join / auto-disconnect
+
+    /// Called from the gateway whenever a member joins a voice channel.
+    /// Checks whether any enabled config with `autoJoin == true` matches the
+    /// channel and, if so, connects and arms the relevant disconnect strategy.
+    func handleAutoJoin(channelId: String, guildId: String, triggeringUserId: String) async {
+        // Never auto-join because of the bot's own presence update
+        guard triggeringUserId != botUserId else { return }
+        // Only act when the bot is online but not already in a voice channel
+        guard status == .running, !voiceConnectionStatus.isConnected else { return }
+
+        guard let config = settings.voice.announcerConfigs.first(where: {
+            $0.autoJoin && $0.voiceChannelID == channelId && $0.enabled
+        }) else { return }
+
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Auto-join triggered for \"\(config.name)\" — member joined \(config.voiceChannelName)."
+        ))
+        guard await activateAnnouncerConfig(config, guildID: guildId) else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Auto-join skipped for \"\(config.name)\" because no readable text channel is configured."
+            ))
+            return
+        }
+        await connectVoice(guildID: guildId, channelID: channelId)
+        scheduleAutoJoinIntro(channelID: channelId)
+
+        // Arm disconnect strategy
+        autoDisconnectTask?.cancel()
+        if config.connectionMode == .fixed {
+            let minutes = config.connectionMinutes
+            autoDisconnectTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Double(minutes) * 60))
+                guard !Task.isCancelled else { return }
+                await self?.autoDisconnect(reason: "Fixed duration (\(minutes) min) elapsed for \"\(config.name)\".")
+            }
+        }
+        // .untilEmpty is handled in handleUntilEmptyCheck below
+    }
+
+    private func activateAnnouncerConfig(_ config: AnnouncerVoiceChannelConfig, guildID: String) async -> Bool {
+        guard let textChannelID = firstReadableTextChannelID(for: config, guildID: guildID) else {
+            return false
+        }
+
+        settings.voice.guildID = guildID
+        settings.voice.voiceChannelID = config.voiceChannelID
+        settings.voice.watchedTextChannelID = textChannelID
+        settings.voice.textChannelSourceEnabled = true
+        persistSettingsIfPossible()
+        if let watcher = textChannelAnnouncer {
+            await watcher.setWatchedChannel(textChannelID)
+        }
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Announcer reading text channel \(textChannelID) for \"\(config.name)\"."
+        ))
+        return true
+    }
+
+    private func deactivateAnnouncerSession() {
+        var changed = false
+        if settings.voice.textChannelSourceEnabled {
+            settings.voice.textChannelSourceEnabled = false
+            changed = true
+        }
+        if !settings.voice.watchedTextChannelID.isEmpty {
+            settings.voice.watchedTextChannelID = ""
+            changed = true
+        }
+        if changed {
+            persistSettingsIfPossible()
+        }
+        if let watcher = textChannelAnnouncerStorage {
+            Task { await watcher.setWatchedChannel(nil) }
+        }
+    }
+
+    private func scheduleAutoJoinIntro(channelID: String) {
+        let text = randomAutoJoinIntro()
+        Task { [weak self] in
+            for _ in 0..<24 {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                guard self?.isVoiceConnected(to: channelID) == true else { continue }
+                await self?.speakAnnouncement(text)
+                return
+            }
+        }
+    }
+
+    private func randomAutoJoinIntro() -> String {
+        [
+            "SwiftBot here. I'll read announcements.",
+            "SwiftBot joined. Announcements are live.",
+            "Announcer is live.",
+            "SwiftBot online for announcements.",
+            "I'll read announcements here.",
+            "Announcement reader is on."
+        ].randomElement() ?? "SwiftBot joined. Announcements are live."
+    }
+
+    private func isVoiceConnected(to channelID: String) -> Bool {
+        voiceConnectionStatus.isConnected && voicePendingChannelID == channelID
+    }
+
+    /// Called from the gateway whenever a member leaves a voice channel.
+    /// If the bot is connected with `untilEmpty` mode and the channel is now
+    /// empty (no non-bot members), disconnects automatically.
+    func handleUntilEmptyCheck(leftChannelId: String, guildId: String) async {
+        guard voiceConnectionStatus.isConnected,
+              voicePendingChannelID == leftChannelId else { return }
+
+        guard let config = settings.voice.announcerConfigs.first(where: {
+            $0.voiceChannelID == leftChannelId && $0.enabled && $0.connectionMode == .untilEmpty
+        }) else { return }
+
+        // Check whether any non-bot members remain in the channel
+        let humanMembers = activeVoice.filter {
+            $0.channelId == leftChannelId && $0.userId != botUserId
+        }
+        guard humanMembers.isEmpty else { return }
+
+        await autoDisconnect(reason: "All members left \"\(config.name)\" — disconnecting (until-empty mode).")
+    }
+
+    private func autoDisconnect(reason: String) async {
+        autoDisconnectTask?.cancel()
+        autoDisconnectTask = nil
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: reason))
+        await disconnectVoice()
+    }
+
+    private func incrementSpokenToday() {
+        if !Calendar.current.isDateInToday(lastSpokenDate) {
+            messagesSpokenToday = 0
+        }
+        messagesSpokenToday += 1
+        lastSpokenDate = Date()
+    }
+
+    /// Fetches the most recent message from a text channel (looked up by display name) and
+    /// returns a speakable string in the form "Author says: content", or a fallback phrase.
+    func fetchLastMessageText(fromChannelNamed name: String) async -> String {
+        var channelID: String?
+        for channels in availableTextChannelsByServer.values {
+            if let match = channels.first(where: { $0.name == name }) {
+                channelID = match.id
+                break
+            }
+        }
+        guard let id = channelID else {
+            return "No channel named \(name) found. Make sure the bot is connected to Discord."
+        }
+        let messages = await fetchRecentMessages(channelId: id, limit: 1)
+        guard let message = messages.first else {
+            return "No recent messages in #\(name)."
+        }
+        guard case let .string(content) = message["content"],
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "The last message in #\(name) has no readable text."
+        }
+        var authorName = ""
+        if case let .object(author) = message["author"],
+           case let .string(username) = author["username"] {
+            authorName = username
+        }
+        return authorName.isEmpty ? content : "\(authorName) says: \(content)"
     }
 
     private func discordIntValue(for key: String, in map: [String: DiscordJSON]) -> Int? {

@@ -47,20 +47,18 @@ final class CommandProcessor {
         var canRunDebugCommand: ([String: DiscordJSON]) async -> Bool
         var refreshDebugSnapshot: () async -> Void
         var debugSummaryEmbed: () -> [String: Any]
-        var bugReportText: ([String: DiscordJSON]) -> String
         var weeklySummary: () -> String
         var fetchFinalsMeta: () async -> String?
         var resolveWikiCommand: (String) -> ResolvedWikiCommand?
         var defaultWikiCommand: () -> ResolvedWikiCommand?
         var performWikiLookup: (WikiCommand, WikiSource, String, String) async -> Bool
-        var handleLogABugSlash: ([String: DiscordJSON], String, String, String) async -> (ok: Bool, message: String)
-        var handleFeatureRequestSlash: ([String: DiscordJSON], String, String, String, String?) async -> (ok: Bool, message: String)
         var lookupFinalsWiki: (String) async -> FinalsWikiLookupResult?
         var runMusicLookup: (String?, String?, String?, String, String) async -> (ok: Bool, message: String)
         var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
         var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
         var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
         var sweepCommand: (String) async -> (ok: Bool, message: String)
+        var announceCommand: ([String: DiscordJSON]) async -> (ok: Bool, message: String)
         var lookupUserTimeZone: (String) -> String?
     }
 
@@ -184,8 +182,6 @@ final class CommandProcessor {
             }
             await dependencies.refreshDebugSnapshot()
             return await dependencies.sendEmbed(context.channelId, dependencies.debugSummaryEmbed())
-        case "bugreport":
-            return await dependencies.send(context.channelId, dependencies.bugReportText(context.raw))
         case "weekly":
             return await dependencies.send(context.channelId, dependencies.weeklySummary())
         case "meta":
@@ -293,34 +289,15 @@ final class CommandProcessor {
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
             let result = await dependencies.sweepCommand(action)
             return embed(title: "Sweep", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+        case "announce":
+            let action = Self.slashOptionString(named: "action", in: data) ?? "join"
+            guard action == "join" else {
+                return embed(title: "Announcer", description: "Usage: `/announce join`.", color: 15_790_767)
+            }
+            let result = await dependencies.announceCommand(context.rawLikeMessage)
+            return embed(title: "Announcer", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "weekly":
             return embed(title: "Weekly Summary", description: dependencies.weeklySummary())
-        case "bugreport":
-            return embed(title: "Bug Report", description: dependencies.bugReportText(context.rawLikeMessage))
-        case "logabug":
-            let errorText = Self.slashOptionString(named: "error", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !errorText.isEmpty else {
-                return embed(title: "Log a Bug", description: "Usage: `/logabug error:<what happened>`", color: 15_790_767)
-            }
-            let result = await dependencies.handleLogABugSlash(context.rawLikeMessage, context.username, context.channelId, errorText)
-            return embed(title: "Log a Bug", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
-        case "featurerequest":
-            let featureText = Self.slashOptionString(named: "feature", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let reasonText = Self.slashOptionString(named: "reason", in: data)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !featureText.isEmpty else {
-                return embed(title: "Feature Request", description: "Usage: `/featurerequest feature:<feature> [reason:<why>]`", color: 15_790_767)
-            }
-            let result = await dependencies.handleFeatureRequestSlash(
-                context.rawLikeMessage,
-                context.username,
-                context.channelId,
-                featureText,
-                reasonText
-            )
-            return embed(title: "Feature Request", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "debug":
             guard await dependencies.canRunDebugCommand(context.rawLikeMessage) else {
                 return embed(title: "Debug", description: "⛔ Restricted to server owners or admins.", color: 15_790_767)

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MeshPreferencesView: View {
     @EnvironmentObject var app: AppModel
@@ -9,6 +10,8 @@ struct MeshPreferencesView: View {
     /// Initialised from the saved values so a returning user with diverged
     /// ports sees the section already revealed.
     @State private var useSeparateLeaderPort: Bool = false
+    @State private var isCopyingJoinCode = false
+    @State private var justCopiedJoinCode = false
 
     private static let defaultListenPort = 38787
 
@@ -166,6 +169,47 @@ struct MeshPreferencesView: View {
                     Text("Must match across every node in the mesh. Click the eye to reveal, the copy icon to copy, or the refresh icon to generate a new token.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                }
+            }
+
+            if app.settings.clusterMode == .leader {
+                PreferencesCard("SwiftMesh Join Code", systemImage: "doc.on.clipboard") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Share this Join Code with standby or worker nodes to pair them automatically without typing hosts, ports, or secrets manually.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        Button {
+                            isCopyingJoinCode = true
+                            Task {
+                                if let code = await app.generateSwiftMeshJoinCode() {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(code, forType: .string)
+                                    app.logs.append("[SwiftMesh] Join code copied to clipboard!")
+                                    justCopiedJoinCode = true
+                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                    justCopiedJoinCode = false
+                                }
+                                isCopyingJoinCode = false
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isCopyingJoinCode {
+                                    ProgressView().controlSize(.small)
+                                    Text("Generating Join Code...")
+                                } else if justCopiedJoinCode {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                    Text("Join Code Copied!")
+                                } else {
+                                    Image(systemName: "doc.on.clipboard.fill")
+                                    Text("Copy SwiftMesh Join Code")
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(isCopyingJoinCode)
+                    }
                 }
             }
 

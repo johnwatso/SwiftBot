@@ -77,9 +77,6 @@ struct AdminWebServerConfigurationSection: View {
             && !s.localAuthUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !s.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return configured(s.discordOAuth)
-            || configured(s.appleOAuth)
-            || configured(s.steamOAuth)
-            || configured(s.githubOAuth)
             || localReady
     }
 
@@ -946,31 +943,6 @@ struct AdminWebAuthenticationSection: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } // devFeaturesEnabled (Local Fallback)
 
-            if app.settings.devFeaturesEnabled {
-                OAuthProviderCard(
-                    name: "Apple",
-                    icon: "apple.logo",
-                    color: .primary,
-                    settings: $app.settings.adminWebUI.appleOAuth,
-                    redirectURL: redirectURL(for: "apple")
-                )
-
-                OAuthProviderCard(
-                    name: "Steam",
-                    icon: "gamecontroller.fill",
-                    color: .blue,
-                    settings: $app.settings.adminWebUI.steamOAuth,
-                    redirectURL: redirectURL(for: "steam")
-                )
-
-                OAuthProviderCard(
-                    name: "GitHub",
-                    icon: "cat.fill",
-                    color: .primary,
-                    settings: $app.settings.adminWebUI.githubOAuth,
-                    redirectURL: redirectURL(for: "github")
-                )
-            }
 
             Divider()
                 .padding(.vertical, 4)
@@ -1012,6 +984,13 @@ struct OAuthProviderCard: View {
     @Binding var settings: OAuthProviderSettings
     let redirectURL: String
 
+    @State private var showingConfigPopover = false
+
+    private var isConfigured: Bool {
+        !settings.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !settings.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
@@ -1027,59 +1006,129 @@ struct OAuthProviderCard: View {
 
                 Spacer()
 
+                if settings.enabled {
+                    HStack(spacing: 8) {
+                        // Status Badge
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(isConfigured ? Color.green : Color.orange)
+                                .frame(width: 6, height: 6)
+                            Text(isConfigured ? "Configured" : "Incomplete")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(isConfigured ? .green : .orange)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill((isConfigured ? Color.green : Color.orange).opacity(0.12))
+                        )
+
+                        // Configure button that triggers the popover
+                        Button {
+                            showingConfigPopover = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .font(.body)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Configure \(name) credentials")
+                        .popover(isPresented: $showingConfigPopover, arrowEdge: .trailing) {
+                            providerSetupPopoverView
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                }
+
                 Toggle("", isOn: $settings.enabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
             }
             .padding(14)
-
-            if settings.enabled {
-                VStack(alignment: .leading, spacing: 14) {
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Client ID")
-                            .font(.caption.weight(.medium))
-                        TextField("Enter Client ID", text: $settings.clientID)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Client Secret")
-                            .font(.caption.weight(.medium))
-                        SecureField("Enter Client Secret", text: $settings.clientSecret)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Redirect URL")
-                            .font(.caption.weight(.medium))
-
-                        HStack(spacing: 8) {
-                            TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(true)
-
-                            Button {
-                                copyToClipboard(redirectURL)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(redirectURL.isEmpty || !settings.enabled)
-                            .help("Copy Redirect URL")
-                        }
-
-                        Text("Use this URL in your \(name) developer portal.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding([.horizontal, .bottom], 14)
-            }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .animation(.easeInOut(duration: 0.2), value: settings.enabled)
+        .onChange(of: settings.enabled) { _, newValue in
+            if newValue && !isConfigured {
+                showingConfigPopover = true
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: settings.enabled)
+        .animation(.easeInOut(duration: 0.2), value: isConfigured)
+    }
+
+    private var providerSetupPopoverView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(color)
+                Text("\(name) Authentication")
+                    .font(.headline.weight(.bold))
+                Spacer()
+            }
+
+            Divider()
+
+            // Client ID
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Client ID")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField("Enter Client ID", text: $settings.clientID)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            // Client Secret
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Client Secret")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                SecureField("Enter Client Secret", text: $settings.clientSecret)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            // Redirect URL
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Redirect URL")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(true)
+
+                    Button {
+                        copyToClipboard(redirectURL)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(redirectURL.isEmpty)
+                    .help("Copy Redirect URL")
+                }
+
+                Text("Use this Redirect URL in your \(name) developer portal.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            // Done Button
+            HStack {
+                Spacer()
+                Button("Done") {
+                    showingConfigPopover = false
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
     }
 
     private func copyToClipboard(_ value: String) {

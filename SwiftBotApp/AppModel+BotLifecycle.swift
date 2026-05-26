@@ -224,6 +224,16 @@ extension AppModel {
         return true
     }
 
+    /// Checks if the bot is currently in at least one server/guild.
+    func checkBotInAnyGuild() async -> Bool {
+        let token = normalizedDiscordToken(from: settings.token)
+        guard !token.isEmpty else { return false }
+        if let guilds = await identityRESTClient.fetchBotGuilds(token: token) {
+            return !guilds.isEmpty
+        }
+        return false
+    }
+
     /// Flips the onboarding gate after the user has explicitly confirmed they want to proceed.
     /// Persists settings through the Keychain path, then flips `isOnboardingComplete`.
     /// Must only be called after a successful `validateAndOnboard()`.

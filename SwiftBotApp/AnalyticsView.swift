@@ -1244,7 +1244,6 @@ struct AnalyticsView: View {
     private var concurrentTaskCount: Int {
         var count = app.mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
         count += app.patchyIsCycleRunning ? 1 : 0
-        count += app.activeBugAutoFixMessageIDs.count
         return count
     }
 
@@ -1721,7 +1720,6 @@ private enum AnalyticsAggregator {
 
         let activeTaskCount = app.mediaExportJobs.filter { $0.status == .queued || $0.status == .running }.count
             + (app.patchyIsCycleRunning ? 1 : 0)
-            + app.activeBugAutoFixMessageIDs.count
         let rollingEvents = app.events.filter { now.timeIntervalSince($0.timestamp) <= 300 }
         let healthState = healthState(
             status: app.status,

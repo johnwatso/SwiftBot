@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - SwiftMesh Setup View
 
@@ -7,217 +8,229 @@ struct SwiftMeshSetupView: View {
     let onBack: () -> Void
 
     @State private var step: MeshStep = .setup
-    /// Disclosure toggle for splitting Listen Port and Leader Port. Initialised
-    /// from the saved values so a user who returns to setup with diverged
-    /// ports sees the advanced section already revealed.
-    @State private var useSeparateLeaderPort: Bool = false
+    @State private var errorMessage: String?
+    @State private var bundle: SwiftMeshJoinBundle?
 
     private enum MeshStep {
         case setup, testing, confirmed, failed
     }
 
     var body: some View {
-        // Wrap the switch in a Group so the .onChange listener below stays
-        // mounted across every step. Previously the listener lived inside
-        // `meshSetupFields` and was unsubscribed the moment we switched to
-        // `.testing` — meaning the transition back to .confirmed/.failed
-        // never fired and the UI got stuck on "Testing connection…".
         Group {
             switch step {
-            case .setup:
-                meshSetupFields
+            case .setup, .failed:
+                entryView
+                    .transition(.opacity)
             case .testing:
                 testingView
+                    .transition(.opacity)
             case .confirmed:
                 confirmedView
-            case .failed:
-                failedView
+                    .transition(.opacity)
             }
         }
-        .onChange(of: app.workerConnectionTestInProgress) { _, inProgress in
-            guard step == .testing, !inProgress else { return }
-            step = app.workerConnectionTestIsSuccess ? .confirmed : .failed
-        }
+        .animation(.smooth(duration: 0.22), value: step)
     }
 
-    // MARK: - Setup Fields
+    // MARK: - Subviews
 
-    private var meshSetupFields: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Node Name", text: $app.settings.clusterNodeName)
-                .onboardingTextFieldStyle()
-                .frame(maxWidth: 560)
-
-            TextField("Cluster Host (e.g. 192.168.1.100 or server.example.com)", text: $app.settings.clusterLeaderAddress)
-                .onboardingTextFieldStyle()
-                .frame(maxWidth: 560)
-
-            HStack(spacing: 12) {
-                Text("Mesh Port")
-                    .font(.callout)
-                Spacer()
-                TextField("Port", text: Binding(
-                    get: { String(app.settings.clusterListenPort) },
-                    set: { newValue in
-                        guard let v = Int(newValue) else { return }
-                        app.settings.clusterListenPort = v
-                        // Keep the leader port mirrored unless the advanced
-                        // toggle is on (user is intentionally splitting ports
-                        // because the Primary is on the same machine or
-                        // behind a port-forward).
-                        if !useSeparateLeaderPort {
-                            app.settings.clusterLeaderPort = v
-                        }
+    private var entryView: some View {
+        VStack(spacing: 24) {
+            // Glowing mesh icon
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Color.accentColor)
+            }
+            
+            VStack(spacing: 8) {
+                Text("Join SwiftMesh")
+                    .font(.title2.weight(.bold))
+                
+                Text("Copy the Join Code from your Primary node's SwiftMesh dashboard, then click **Paste & Connect** below. SwiftMesh will automatically pair this standby node, test both local and public WAN routes, and optimize your configuration.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            .padding(.horizontal, 16)
+            
+            // Error banner if any
+            if let errorMsg = errorMessage {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Connection Failed")
+                            .font(.headline)
+                            .foregroundStyle(.red)
+                        Text(errorMsg)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
                     }
-                ))
-                .onboardingTextFieldStyle()
-                .frame(width: 110)
-            }
-            .frame(maxWidth: 560)
-
-            DisclosureGroup(isExpanded: $useSeparateLeaderPort) {
-                HStack(spacing: 12) {
-                    Text("Leader Port")
-                        .font(.callout)
                     Spacer()
-                    TextField("Port", text: Binding(
-                        get: { String(app.settings.clusterLeaderPort) },
-                        set: { if let v = Int($0) { app.settings.clusterLeaderPort = v } }
-                    ))
-                    .onboardingTextFieldStyle()
-                    .frame(width: 110)
                 }
-                .padding(.top, 4)
-                Text("Only needed when the Primary listens on a different port than this node (e.g. two SwiftBot instances on the same machine, or a NAT port-forward).")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                Text("Advanced: use a different port for outbound")
-                    .font(.callout)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.red.opacity(colorSchemeIntensity))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.red.opacity(0.35), lineWidth: 1)
+                )
+                .frame(maxWidth: 520)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
-            .onChange(of: useSeparateLeaderPort) { _, isOn in
-                // Collapsing snaps Leader Port back to Listen Port so the
-                // common-case invariant is restored.
-                if !isOn {
-                    app.settings.clusterLeaderPort = app.settings.clusterListenPort
-                }
-            }
-            .frame(maxWidth: 560, alignment: .leading)
-
-            RevealableSecretField(
-                text: $app.settings.clusterSharedSecret,
-                placeholder: "Mesh Token",
-                allowRegenerate: true
-            )
-            .frame(maxWidth: 560)
-
-            HStack(spacing: 12) {
-                Button(action: onBack) {
-                    Label("Back", systemImage: "chevron.left")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
+            
+            VStack(spacing: 12) {
                 Button {
-                    step = .testing
-                    app.testWorkerLeaderConnection()
+                    handlePasteAndConnect()
                 } label: {
-                    Label("Test Connection", systemImage: "antenna.radiowaves.left.and.right")
-                        .frame(minWidth: 200)
+                    Label("Paste & Connect", systemImage: "doc.on.clipboard.fill")
+                        .font(.headline)
+                        .frame(minWidth: 220)
                 }
                 .buttonStyle(GlassActionButtonStyle())
                 .controlSize(.large)
-                .disabled(app.settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                
+                HStack(spacing: 16) {
+                    Button(action: onBack) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    
+                    Text("•")
+                        .foregroundStyle(.tertiary)
+                    
+                    Button {
+                        app.settings.clusterMode = .standalone
+                        app.saveSettings()
+                        app.completeOnboarding()
+                    } label: {
+                        Label("Skip & Configure in Settings", systemImage: "arrow.right")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+                .font(.callout)
+                .padding(.top, 4)
             }
-            .frame(maxWidth: 560, alignment: .leading)
         }
-        .frame(maxWidth: 560)
+        .frame(maxWidth: 520)
         .onAppear {
             app.settings.launchMode = .swiftMeshClusterNode
-            // Reveal the advanced toggle if the saved configuration already
-            // has divergent ports — otherwise the user would lose visibility
-            // of why Leader Port differs.
-            useSeparateLeaderPort = app.settings.clusterLeaderPort != app.settings.clusterListenPort
         }
     }
-
-    // MARK: - Testing View
 
     private var testingView: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 20) {
             ProgressView()
-                .controlSize(.small)
-            Text("Testing connection…")
+                .controlSize(.large)
+            
+            Text(app.workerConnectionTestStatus)
+                .font(.headline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Testing SwiftMesh connection, please wait")
+        .frame(minHeight: 200)
     }
 
-    // MARK: - Confirmed View
-
     private var confirmedView: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 8) {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.title2)
-                    .accessibilityHidden(true)
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.green)
+            }
+            
+            VStack(spacing: 8) {
+                Text("SwiftMesh Paired!")
+                    .font(.title3.weight(.bold))
+                
                 Text(app.workerConnectionTestStatus)
                     .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-
+            .padding(.horizontal, 16)
+            
             Button {
                 app.saveSettings()
                 app.completeOnboarding()
             } label: {
                 Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
+                    .font(.headline)
                     .frame(minWidth: 200)
             }
-            .buttonStyle(GlassActionButtonStyle())
-            .controlSize(.large)
+            .onboardingGlassButton()
         }
+        .frame(minHeight: 200)
     }
 
-    // MARK: - Failed View
+    // MARK: - Helpers
 
-    private var failedView: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.title2)
-                    .accessibilityHidden(true)
-                Text(app.workerConnectionTestStatus)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var colorSchemeIntensity: Double {
+        colorScheme == .dark ? 0.08 : 0.04
+    }
+
+    private func handlePasteAndConnect() {
+        let pasteboard = NSPasteboard.general
+        guard let rawCode = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawCode.isEmpty else {
+            errorMessage = "Your clipboard is empty. Please copy a valid SwiftMesh join code first."
+            step = .failed
+            return
+        }
+
+        guard rawCode.contains("swiftmesh://join") || rawCode.count > 50 else {
+            errorMessage = "The text in your clipboard does not look like a valid SwiftMesh join code."
+            step = .failed
+            return
+        }
+
+        errorMessage = nil
+        
+        do {
+            let decoded = try app.decodeSwiftMeshJoinCode(rawCode)
+            self.bundle = decoded
+            
+            // Parse & apply settings
+            let result = app.applySwiftMeshJoinCode(rawCode)
+            guard result.ok else {
+                errorMessage = result.message
+                step = .failed
+                return
             }
-
-            HStack(spacing: 12) {
-                Button { step = .setup } label: {
-                    Label("Try Again", systemImage: "arrow.counterclockwise")
+            
+            step = .testing
+            
+            Task {
+                let success = await app.testWorkerJoinCodeConnection(
+                    addresses: decoded.leaderAddresses,
+                    port: decoded.leaderPort
+                )
+                
+                await MainActor.run {
+                    step = success ? .confirmed : .failed
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
-                Button {
-                    app.settings.clusterMode = .standalone
-                    app.saveSettings()
-                    app.completeOnboarding()
-                } label: {
-                    Label("Set Up Later (Limited Mode)", systemImage: "clock.arrow.2.circlepath")
-                        .frame(minWidth: 200)
-                }
-                .buttonStyle(GlassActionButtonStyle())
-                .controlSize(.large)
             }
-
-            Text("Limited Mode launches SwiftBot without Discord or SwiftMesh. Configure both from Settings after launch.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 560)
+        } catch {
+            errorMessage = error.localizedDescription
+            step = .failed
         }
     }
 }

@@ -185,6 +185,96 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(picks.first?.userId, "user-9")
     }
 
+    func testSlashAnnounceJoinRoutesAnnouncerCommand() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            announceCommand: { raw in
+                await recorder.recordAnnounce(raw: raw)
+                return (true, "Joining configured announcer.")
+            }
+        )
+
+        let response = await processor.executeSlashCommand(
+            command: "announce",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("action"),
+                        "value": .string("join")
+                    ])
+                ])
+            ],
+            context: .init(
+                channelId: "channel-1",
+                username: "Taylor",
+                rawLikeMessage: ["author": .object(["id": .string("user-9")])]
+            )
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Announcer")
+        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Joining configured announcer.")
+        let announces = await recorder.announces()
+        XCTAssertEqual(announces.count, 1)
+    }
+
+    func testSlashAnnounceRejectsUnknownAction() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            announceCommand: { _ in
+                XCTFail("Announce dependency should not be called for unsupported actions")
+                return (true, "")
+            }
+        )
+
+        let response = await processor.executeSlashCommand(
+            command: "announce",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("action"),
+                        "value": .string("leave")
+                    ])
+                ])
+            ],
+            context: .init(channelId: "channel-1", username: "Taylor", rawLikeMessage: [:])
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Announcer")
+        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join`.")
+    }
+
+    func testAnnounceJoinRequiresConfiguredChannel() async {
+        let app = AppModel()
+
+        let result = await app.handleAnnounceJoinSlash(raw: announceRaw(userID: "user-9", guildID: "guild-1"))
+
+        XCTAssertFalse(result.ok)
+        XCTAssertEqual(
+            result.message,
+            "Announcer is not set up yet. Add an enabled voice channel configuration in SwiftBot first."
+        )
+    }
+
+    func testAnnounceJoinRequiresUserInVoice() async {
+        let app = AppModel()
+        app.settings.voice.announcerConfigs = [
+            AnnouncerVoiceChannelConfig(
+                id: "config-1",
+                name: "General",
+                voiceChannelID: "voice-1",
+                voiceChannelName: "General",
+                textChannels: ["general"]
+            )
+        ]
+
+        let result = await app.handleAnnounceJoinSlash(raw: announceRaw(userID: "user-9", guildID: "guild-1"))
+
+        XCTAssertFalse(result.ok)
+        XCTAssertEqual(result.message, "Join a configured voice channel first, then run `/announce join` again.")
+    }
+
     func testFormattedWikiResponseIncludesDetectedFieldsWithoutSummary() {
         let app = AppModel()
         let source = WikiSource(
@@ -256,7 +346,10 @@ final class CommandProcessorTests: XCTestCase {
             }
             return nil
         },
-        defaultWikiCommand: @escaping () -> CommandProcessor.ResolvedWikiCommand? = { nil }
+        defaultWikiCommand: @escaping () -> CommandProcessor.ResolvedWikiCommand? = { nil },
+        announceCommand: @escaping ([String: DiscordJSON]) async -> (ok: Bool, message: String) = { _ in
+            (ok: true, message: "Announcer result")
+        }
     ) -> CommandProcessor {
         let catalog = CommandCatalog(
             entries: [
@@ -311,7 +404,6 @@ final class CommandProcessorTests: XCTestCase {
                         "description": "Snapshot"
                     ]
                 },
-                bugReportText: { _ in "Bug summary" },
                 weeklySummary: { "Weekly summary" },
                 fetchFinalsMeta: { "Meta summary" },
                 resolveWikiCommand: resolveWikiCommand,
@@ -325,8 +417,6 @@ final class CommandProcessorTests: XCTestCase {
                     )
                     return true
                 },
-                handleLogABugSlash: { _, _, _, _ in (true, "Logged") },
-                handleFeatureRequestSlash: { _, _, _, _, _ in (true, "Requested") },
                 lookupFinalsWiki: { _ in nil },
                 runMusicLookup: { query, title, artist, userID, channelID in
                     await recorder.recordMusicLookup(
@@ -351,9 +441,17 @@ final class CommandProcessorTests: XCTestCase {
                 sweepCommand: { _ in
                     (ok: true, message: "Sweep result")
                 },
+                announceCommand: announceCommand,
                 lookupUserTimeZone: { _ in nil }
             )
         )
+    }
+
+    private func announceRaw(userID: String, guildID: String) -> [String: DiscordJSON] {
+        [
+            "guild_id": .string(guildID),
+            "author": .object(["id": .string(userID), "username": .string("Taylor")])
+        ]
     }
 }
 
@@ -363,6 +461,7 @@ private actor CommandRecorder {
     private var lookups: [(command: String, source: String, query: String, channelId: String)] = []
     private var musicLookupRecords: [(query: String?, title: String?, artist: String?, userId: String, channelId: String)] = []
     private var musicPickRecords: [(selection: Int, userId: String, channelId: String)] = []
+    private var announceRecords: [[String: DiscordJSON]] = []
 
     func recordMessage(channelId: String, content: String) {
         messages.append((channelId, content))
@@ -382,6 +481,10 @@ private actor CommandRecorder {
 
     func recordMusicPick(selection: Int, userId: String, channelId: String) {
         musicPickRecords.append((selection, userId, channelId))
+    }
+
+    func recordAnnounce(raw: [String: DiscordJSON]) {
+        announceRecords.append(raw)
     }
 
     func sentMessages() -> [(channelId: String, content: String)] {
@@ -407,5 +510,9 @@ private actor CommandRecorder {
 
     func musicPicks() -> [(selection: Int, userId: String, channelId: String)] {
         musicPickRecords
+    }
+
+    func announces() -> [[String: DiscordJSON]] {
+        announceRecords
     }
 }

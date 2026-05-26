@@ -26,19 +26,26 @@ actor TextChannelAnnouncer {
     var watchedChannel: String? { watchedChannelID }
 
     /// Hook to call from `GatewayEventDispatcher.onMessageCreate`.
-    func handle(_ event: GatewayMessageCreateEvent) async {
+    func handle(_ event: GatewayMessageCreateEvent, displayNameOverride: String? = nil) async {
         guard let watched = watchedChannelID, event.channelID == watched else { return }
-        guard let spoken = formattedSpeech(for: event) else { return }
+        guard let spoken = formattedSpeech(for: event, displayNameOverride: displayNameOverride) else { return }
         await announcer.enqueue(spoken)
     }
 
     // MARK: - Formatting
 
-    private func formattedSpeech(for event: GatewayMessageCreateEvent) -> String? {
+    private func formattedSpeech(for event: GatewayMessageCreateEvent, displayNameOverride: String?) -> String? {
         let body = readableBody(for: event)
         guard let body, !body.isEmpty else { return nil }
         guard body.count <= Self.maxLength else { return nil }
-        let author = event.username.isEmpty ? "Someone" : event.username
+        let override = displayNameOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let author = if !override.isEmpty {
+            override
+        } else if !event.displayName.isEmpty {
+            event.displayName
+        } else {
+            "Someone"
+        }
         return "\(author): \(body)"
     }
 
