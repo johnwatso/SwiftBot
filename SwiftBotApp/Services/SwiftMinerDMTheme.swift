@@ -62,6 +62,7 @@ struct SwiftMinerDMTheme: Sendable {
     var setupStep2: String = "Sign in to Twitch"
     var setupStep3: String = "Enter the code below"
     var setupExpiresLabel: String = "⏱️ Expires"
+    var setupExpiredHint: String = "If the time above shows in the past, run `/miner action:setup` again to get a fresh code."
 
     var reauthDescription: String = "Your Twitch connection needs refreshing. This usually happens when Twitch expires your login session."
     var reauthWhyLabel: String = "❓ Why this happened"

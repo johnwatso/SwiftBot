@@ -46,8 +46,17 @@ enum SwiftMinerDMEmbedPrimitives {
                 "inline": false
             ]
         }
-        let preview = games.prefix(8).map { "• \($0)" }.joined(separator: "\n")
-        let extra = games.count > 8 ? "\n• …and \(games.count - 8) more" : ""
+        // Rank the top 8 with medal emoji for positions 1–3 and bold rank
+        // numbers for 4–8. Hierarchy makes the "what gets mined first" answer
+        // scannable at a glance instead of a flat bullet list.
+        let medals = ["🥇", "🥈", "🥉"]
+        let preview = games.prefix(8).enumerated().map { index, game -> String in
+            if index < medals.count {
+                return "\(medals[index]) **\(index + 1).** \(game)"
+            }
+            return "**\(index + 1).** \(game)"
+        }.joined(separator: "\n")
+        let extra = games.count > 8 ? "\n…and \(games.count - 8) more" : ""
         return [
             "name": theme.prioritisationSectionLabel,
             "value": preview + extra,
@@ -207,9 +216,12 @@ enum SwiftMinerDMEmbedBuilders {
         // text when SwiftMiner only supplied a relative duration.
         if let expiresAt = activationExpiresAt {
             let unix = Int(expiresAt.timeIntervalSince1970)
+            // Discord keeps rendering `<t:UNIX:R>` after expiry ("5 minutes
+            // ago"), which confuses users staring at a long-stale DM. Append a
+            // hint so the next action is obvious without forcing them to guess.
             fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
                 title: theme.setupExpiresLabel,
-                value: "This code expires <t:\(unix):R>."
+                value: "This code expires <t:\(unix):R>.\n\(theme.setupExpiredHint)"
             ))
         } else if let minutes = activationExpiresInMinutes, minutes > 0 {
             fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
