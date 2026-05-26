@@ -5,12 +5,12 @@ extension AppModel {
     /// Evaluate the live rule set against `event` and execute each match.
     func fireAutomations(for event: VoiceRuleEvent) async {
         let snapshot = automationStore.rules
-        let matches = automationEngine.evaluate(event: event, in: snapshot)
+        let matches = automationService.evaluate(event: event, in: snapshot)
         guard !matches.isEmpty else { return }
         let tok = settings.token
         let token: String? = tok.isEmpty ? nil : tok
         for rule in matches {
-            await automationEngine.execute(rule: rule, event: event, token: token)
+            await automationService.execute(rule: rule, event: event, token: token)
         }
     }
 
@@ -49,8 +49,8 @@ extension AppModel {
     }
 
     /// Build the engine. Called once via the lazy property on AppModel.
-    func buildAutomationEngine() -> AutomationEngine {
-        let deps = AutomationEngine.Dependencies(
+    func buildAutomationService() -> AutomationService {
+        let deps = AutomationService.Dependencies(
             sendMessage: { [weak self] c, m, t in
                 try await self?.service.sendMessage(channelId: c, content: m, token: t)
             },
@@ -126,6 +126,6 @@ extension AppModel {
                 Task { @MainActor [weak self] in self?.logs.append(msg) }
             }
         )
-        return AutomationEngine(aiService: aiService, dependencies: deps)
+        return AutomationService(aiService: aiService, dependencies: deps)
     }
 }

@@ -114,7 +114,7 @@ final class DiscordAIServiceTests: XCTestCase {
             joinedAt: nil
         )
 
-        let reply = await service.generateRuleActionAIReply(
+        let reply = await service.generateStepAIReply(
             prompt: "   ",
             event: event,
             serverName: "Guild",

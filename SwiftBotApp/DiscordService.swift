@@ -12,6 +12,12 @@ actor DiscordService {
         outputAllowed = allowed
     }
 
+    #if DEBUG
+    func setBotTokenForTesting(_ token: String) {
+        botToken = token
+    }
+    #endif
+
     private let discordLogger = Logger(subsystem: "com.swiftbot", category: "discord")
 
     private let gatewayURL = URL(string: "wss://gateway.discord.gg/?v=10&encoding=json")!
@@ -19,7 +25,7 @@ actor DiscordService {
     private let session: URLSession
     private let identitySession: URLSession
     private var botToken: String?
-    private var automationEngine: AutomationEngine?
+    private var automationService: AutomationService?
     private var automationSnapshotProvider: (@Sendable () async -> [Automations.Rule])?
     private var voiceRuleStateStore = VoiceRuleStateStore()
     private var voiceChannelNamesByGuild: [String: [String: String]] = [:]
@@ -125,8 +131,8 @@ actor DiscordService {
         await onPayload?(payload)
     }
 
-    func setAutomationEngine(_ engine: AutomationEngine, store: AutomationStore) {
-        automationEngine = engine
+    func setAutomationService(_ engine: AutomationService, store: AutomationStore) {
+        automationService = engine
         automationSnapshotProvider = { @Sendable in await store.snapshot() }
     }
 
@@ -140,7 +146,7 @@ actor DiscordService {
 
     /// Checks if a message was already handled by rule actions (prevents duplicate AI replies)
     func wasMessageHandledByRules(messageId: String) async -> Bool {
-        guard let engine = automationEngine else { return false }
+        guard let engine = automationService else { return false }
         return await engine.wasMessageHandledByRules(messageId: messageId)
     }
 
@@ -569,7 +575,7 @@ actor DiscordService {
         }
 
         guard let event else { return }
-        guard let engine = automationEngine,
+        guard let engine = automationService,
               let provider = automationSnapshotProvider else { return }
 
         let snapshot = await provider()

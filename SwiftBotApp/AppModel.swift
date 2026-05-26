@@ -200,7 +200,7 @@ final class AppModel: ObservableObject {
     let certificateManager = CertificateManager()
     let tunnelProvider: any TunnelProvider = TunnelManager.shared
     let clusterStatusService = ClusterStatusPollingService()
-    lazy var automationEngine: AutomationEngine = buildAutomationEngine()
+    lazy var automationService: AutomationService = buildAutomationService()
     let wikiContextCache = WikiContextCache()
     var guildOwnerIdByGuild: [String: String] = [:]
     var serviceCallbacksConfigured = false
@@ -543,7 +543,7 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            await service.setAutomationEngine(automationEngine, store: automationStore)
+            await service.setAutomationService(automationService, store: automationStore)
             await MainActor.run { automationStore.load() }
             await service.setHistoryProvider { [weak self] scope in
                 guard let self else { return [] }

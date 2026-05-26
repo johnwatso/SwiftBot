@@ -6,7 +6,7 @@ import OSLog
 /// Two responsibilities, kept in one actor since they share state:
 ///   1. `evaluate(event:in:)` — pure filter. Returns rules whose trigger matches.
 ///   2. `execute(rule:event:token:)` — runs the rule's ordered Steps.
-actor AutomationEngine {
+actor AutomationService {
 
     // MARK: - Dependencies
 
@@ -218,7 +218,7 @@ actor AutomationEngine {
             let channelName = event.isDirectMessage
                 ? "Direct Message"
                 : await dependencies.resolveChannelName(event.triggerGuildId, event.triggerChannelId ?? event.channelId)
-            let aiOutput = await aiService.generateRuleActionAIReply(
+            let aiOutput = await aiService.generateStepAIReply(
                 prompt: renderedPrompt,
                 event: event,
                 serverName: await dependencies.resolveGuildName(event.triggerGuildId),

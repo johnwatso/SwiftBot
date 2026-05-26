@@ -493,7 +493,7 @@ actor DiscordAIService {
         return await generateReply(messages: messages, systemPrompt: finalSystemPrompt, stripSpeakerPrefixFor: nil)
     }
 
-    func generateRuleActionAIReply(
+    func generateStepAIReply(
         prompt: String,
         event: VoiceRuleEvent,
         serverName: String?,
