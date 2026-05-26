@@ -564,17 +564,33 @@ actor DiscordService {
         // Prevent standby nodes from executing rule actions
         guard outputAllowed else { return }
 
-        let event: VoiceRuleEvent?
-        switch payload.t {
-        case "VOICE_STATE_UPDATE":
-            event = parseVoiceRuleEvent(from: payload.d)
-        case "MESSAGE_CREATE":
-            event = parseMessageRuleEvent(from: payload.d)
-        default:
-            event = nil
-        }
+        // VOICE_STATE_UPDATE rules stay here because parsing requires a
+        // stateful diff against `voiceRuleStateStore` — the rule event encodes
+        // join/move/leave transitions that can't be recovered from the raw
+        // payload alone. MESSAGE_CREATE rules moved to
+        // `processMessageRuleEvent(event:channelType:)`, called from AppModel
+        // with the already-parsed `GatewayMessageCreateEvent`.
+        guard payload.t == "VOICE_STATE_UPDATE",
+              let event = parseVoiceRuleEvent(from: payload.d) else { return }
 
-        guard let event else { return }
+        await fireRules(for: event)
+    }
+
+    /// Evaluate and execute MESSAGE_CREATE rules against an already-parsed
+    /// gateway event. Callers (AppModel) supply the resolved channel type so
+    /// rules see the same `isDirectMessage` value as the surrounding handler.
+    /// Lifted out of the gateway re-parse path to keep MESSAGE_CREATE on a
+    /// single JSON pass.
+    func processMessageRuleEvent(
+        event: GatewayMessageCreateEvent,
+        channelType: Int?
+    ) async {
+        guard outputAllowed else { return }
+        let ruleEvent = makeMessageRuleEvent(from: event, channelType: channelType)
+        await fireRules(for: ruleEvent)
+    }
+
+    private func fireRules(for event: VoiceRuleEvent) async {
         guard let engine = automationService,
               let provider = automationSnapshotProvider else { return }
 
@@ -583,6 +599,42 @@ actor DiscordService {
         for rule in matches {
             await engine.execute(rule: rule, event: event, token: botToken)
         }
+    }
+
+    private func makeMessageRuleEvent(
+        from event: GatewayMessageCreateEvent,
+        channelType: Int?
+    ) -> VoiceRuleEvent {
+        let guildId = event.guildID ?? ""
+        let authorIsBot: Bool = {
+            if case let .bool(isBot)? = event.author["bot"] { return isBot }
+            return false
+        }()
+        let isDirectMessage = (channelType == 1 || channelType == 3)
+
+        return VoiceRuleEvent(
+            kind: .message,
+            guildId: guildId,
+            userId: event.userID,
+            username: event.username,
+            channelId: event.channelID,
+            fromChannelId: nil,
+            toChannelId: nil,
+            durationSeconds: nil,
+            messageContent: event.content,
+            messageId: event.messageID,
+            mediaFileName: nil,
+            mediaRelativePath: nil,
+            mediaSourceName: nil,
+            mediaNodeName: nil,
+            triggerMessageId: event.messageID,
+            triggerChannelId: event.channelID,
+            triggerGuildId: guildId,
+            triggerUserId: event.userID,
+            isDirectMessage: isDirectMessage,
+            authorIsBot: authorIsBot,
+            joinedAt: nil
+        )
     }
 
     private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
@@ -674,60 +726,6 @@ actor DiscordService {
                 joinedAt: nil
             )
         }
-    }
-
-    private func parseMessageRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
-        guard case let .object(map)? = raw,
-              case let .string(messageId)? = map["id"],
-              case let .object(author)? = map["author"],
-              case let .string(userId)? = author["id"],
-              case let .string(username)? = author["username"],
-              case let .string(content)? = map["content"],
-              case let .string(channelId)? = map["channel_id"]
-        else { return nil }
-
-        let authorIsBot: Bool = {
-            if case let .bool(isBot)? = author["bot"] { return isBot }
-            return false
-        }()
-
-        let guildId: String = {
-            if case let .string(gid)? = map["guild_id"] { return gid }
-            return ""
-        }()
-        let channelType = resolvedMessageChannelType(from: map, channelId: channelId)
-        let isDirectMessage = (channelType == 1 || channelType == 3)
-
-        return VoiceRuleEvent(
-            kind: .message,
-            guildId: guildId,
-            userId: userId,
-            username: username,
-            channelId: channelId,
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: content,
-            messageId: messageId,
-            mediaFileName: nil,
-            mediaRelativePath: nil,
-            mediaSourceName: nil,
-            mediaNodeName: nil,
-            triggerMessageId: messageId,
-            triggerChannelId: channelId,
-            triggerGuildId: guildId,
-            triggerUserId: userId,
-            isDirectMessage: isDirectMessage,
-            authorIsBot: authorIsBot,
-            joinedAt: nil
-        )
-    }
-
-    private func resolvedMessageChannelType(from map: [String: DiscordJSON], channelId: String) -> Int? {
-        if case let .int(type)? = map["channel_type"] {
-            return type
-        }
-        return channelTypeById[channelId]
     }
 
     func sendDM(userId: String, content: String) async throws {

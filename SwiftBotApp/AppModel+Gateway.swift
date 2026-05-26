@@ -271,6 +271,13 @@ extension AppModel {
             fallbackUsername: username
         )
 
+        // Rules fire before the announcer/AI paths so `wasMessageHandledByRules`
+        // can short-circuit a downstream AI reply. Previously DiscordService
+        // re-parsed the raw payload to build this same rule event; now we hand
+        // it the already-parsed gateway event to keep MESSAGE_CREATE on one
+        // JSON pass.
+        await service.processMessageRuleEvent(event: event, channelType: channelType)
+
         // Voice announcer: read configured text channel aloud. This sits
         // before the bot-message guard because the announcer enforces its
         // own self-message skip (see `forwardMessageToVoiceAnnouncer`).
