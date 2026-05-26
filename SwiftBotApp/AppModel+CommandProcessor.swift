@@ -48,15 +48,6 @@ extension AppModel {
                 rollDice: { [weak self] notation in
                     self?.rollDice(notation) ?? ""
                 },
-                generateImageCommand: { [weak self] prompt, userId, username, channelId in
-                    guard let self else { return false }
-                    return await self.generateImageCommand(
-                        prompt: prompt,
-                        userId: userId,
-                        username: username,
-                        channelId: channelId
-                    )
-                },
                 authorId: { [weak self] raw in
                     self?.authorId(from: raw) ?? ""
                 },

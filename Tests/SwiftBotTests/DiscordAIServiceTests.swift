@@ -25,33 +25,15 @@ final class DiscordAIServiceTests: XCTestCase {
         }
     }
 
-    func testGenerateSmartDMReplyUsesFirstSuccessfulEngine() async {
-        // With parallel racing, all engines run simultaneously and the first
-        // non-nil result wins. Only openAI returns a value here, so the
-        // result is deterministic regardless of which engine finishes first.
+    func testGenerateSmartDMReplyUsesAppleIntelligenceEngine() async {
         let recorder = CallRecorder()
         let service = DiscordAIService(
-            engineFactory: { _, _ in
-                DiscordAIService.EngineSet(
-                    apple: StubEngine(name: "apple", reply: nil, recorder: recorder),
-                    ollama: StubEngine(name: "ollama", reply: nil, recorder: recorder),
-                    openAI: StubEngine(name: "openAI", reply: "openai fallback", recorder: recorder)
-                )
-            },
-            ollamaModelResolver: { _, _ in nil },
-            openAIProbe: { _, _ in false },
-            appleAvailability: { false },
-            openAIImageGenerator: { _, _, _ in nil }
+            engineFactory: { _ in StubEngine(name: "apple", reply: "hello from apple", recorder: recorder) },
+            appleAvailability: { true }
         )
 
         await service.configureLocalAIDMReplies(
             enabled: true,
-            provider: .appleIntelligence,
-            preferredProvider: .apple,
-            endpoint: "http://localhost:11434",
-            model: "llama3",
-            openAIAPIKey: "key",
-            openAIModel: "gpt-4o-mini",
             systemPrompt: "You are helpful."
         )
 
@@ -67,27 +49,16 @@ final class DiscordAIServiceTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(reply, "openai fallback")
-        // All engines race in parallel — verify all were invoked
+        XCTAssertEqual(reply, "hello from apple")
         let calls = await recorder.snapshot()
-        XCTAssertTrue(calls.contains("apple"))
-        XCTAssertTrue(calls.contains("openAI"))
+        XCTAssertEqual(calls, ["apple"])
     }
 
-    func testGenerateRuleActionAIReplyRejectsEmptyPromptWithoutInvokingEngines() async {
+    func testGenerateStepAIReplyRejectsEmptyPromptWithoutInvokingEngine() async {
         let recorder = CallRecorder()
         let service = DiscordAIService(
-            engineFactory: { _, _ in
-                DiscordAIService.EngineSet(
-                    apple: StubEngine(name: "apple", reply: "unused", recorder: recorder),
-                    ollama: StubEngine(name: "ollama", reply: "unused", recorder: recorder),
-                    openAI: StubEngine(name: "openAI", reply: "unused", recorder: recorder)
-                )
-            },
-            ollamaModelResolver: { _, _ in nil },
-            openAIProbe: { _, _ in false },
-            appleAvailability: { false },
-            openAIImageGenerator: { _, _, _ in nil }
+            engineFactory: { _ in StubEngine(name: "apple", reply: "unused", recorder: recorder) },
+            appleAvailability: { true }
         )
 
         let event = VoiceRuleEvent(
@@ -126,38 +97,21 @@ final class DiscordAIServiceTests: XCTestCase {
         XCTAssertEqual(calls, [])
     }
 
-    func testCurrentAIStatusUsesInjectedProbes() async {
-        let service = DiscordAIService(
-            engineFactory: { _, _ in
-                DiscordAIService.EngineSet(
-                    apple: StubEngine(name: "apple", reply: nil, recorder: CallRecorder()),
-                    ollama: StubEngine(name: "ollama", reply: nil, recorder: CallRecorder()),
-                    openAI: StubEngine(name: "openAI", reply: nil, recorder: CallRecorder())
-                )
-            },
-            ollamaModelResolver: { baseURL, preferredModel in
-                XCTAssertEqual(baseURL, "http://localhost:11434")
-                XCTAssertEqual(preferredModel, "llama3")
-                return "llama3:latest"
-            },
-            openAIProbe: { apiKey, baseURL in
-                XCTAssertEqual(apiKey, "secret")
-                XCTAssertEqual(baseURL, "https://api.openai.com")
-                return true
-            },
-            appleAvailability: { true },
-            openAIImageGenerator: { _, _, _ in nil }
+    func testCurrentAIStatusReportsAppleAvailability() async {
+        let recorder = CallRecorder()
+        let onlineService = DiscordAIService(
+            engineFactory: { _ in StubEngine(name: "apple", reply: nil, recorder: recorder) },
+            appleAvailability: { true }
+        )
+        let offlineService = DiscordAIService(
+            engineFactory: { _ in StubEngine(name: "apple", reply: nil, recorder: recorder) },
+            appleAvailability: { false }
         )
 
-        let status = await service.currentAIStatus(
-            ollamaBaseURL: "localhost:11434",
-            ollamaModelHint: "llama3",
-            openAIAPIKey: "secret"
-        )
+        let online = await onlineService.currentAIStatus()
+        let offline = await offlineService.currentAIStatus()
 
-        XCTAssertTrue(status.appleOnline)
-        XCTAssertTrue(status.ollamaOnline)
-        XCTAssertEqual(status.ollamaModel, "llama3:latest")
-        XCTAssertTrue(status.openAIOnline)
+        XCTAssertTrue(online)
+        XCTAssertFalse(offline)
     }
 }

@@ -113,15 +113,8 @@ extension AppModel {
             await conversationStore.appendIfNotExists(message)
         }
 
-        // Merge image usage counts
-        if let remoteUsage = payload.imageUsage {
-            for (key, count) in remoteUsage {
-                let current = settings.openAIImageUsageByUserMonth[key] ?? 0
-                if count > current {
-                    settings.openAIImageUsageByUserMonth[key] = count
-                }
-            }
-        }
+        // Image-usage merge removed with /image command. Ignore any
+        // payload.imageUsage from older nodes still in the mesh.
 
         if let lastID = payload.conversations.last?.id {
             localLastMergedRecordID = lastID
@@ -162,31 +155,11 @@ extension AppModel {
         await handleMeshSync(payload)
     }
 
-    /// Leader: push current image usage map to all nodes.
-    func pushImageUsageToAllNodes() async {
-        guard settings.clusterMode == .leader else { return }
-        let nodes = await cluster.registeredNodeInfo()
-        guard !nodes.isEmpty else { return }
-        let currentTerm = await cluster.currentLeaderTerm()
-
-        let payload = MeshSyncPayload(
-            conversations: [],
-            imageUsage: settings.openAIImageUsageByUserMonth,
-            leaderTerm: currentTerm
-        )
-
-        for (_, baseURL) in nodes {
-            _ = await cluster.pushConversationsToSingleNode(baseURL, payload)
-        }
-    }
-
     func handleMeshRequest(type: String) async -> Data? {
         switch type {
         case "wiki-cache":
             let all = await wikiContextCache.allEntries()
             return try? JSONEncoder().encode(all)
-        case "image-usage":
-            return try? JSONEncoder().encode(settings.openAIImageUsageByUserMonth)
         case "config-files":
             return await store.exportMeshSyncedFiles(
                 excludingFileNames: Set([

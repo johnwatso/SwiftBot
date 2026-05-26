@@ -178,123 +178,6 @@ extension AppModel {
         return components?.url?.absoluteString ?? "https://music.apple.com/"
     }
 
-    func generateImageCommand(
-        prompt: String,
-        userId: String,
-        username: String,
-        channelId: String
-    ) async -> Bool {
-        let cleanedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedPrompt.isEmpty else {
-            return await send(channelId, "🎨 Usage: `/image prompt:<prompt>`")
-        }
-
-        guard settings.openAIImageGenerationEnabled else {
-            return await send(channelId, "🛑 Image generation is disabled in AI settings.")
-        }
-
-        guard settings.openAIEnabled else {
-            return await send(channelId, "🛑 OpenAI provider is disabled in AI settings.")
-        }
-
-        let apiKey = settings.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !apiKey.isEmpty else {
-            return await send(channelId, "⚠️ OpenAI API key is not configured. Set it in AI Bots settings.")
-        }
-
-        let model = settings.openAIImageModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "gpt-image-1"
-            : settings.openAIImageModel.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let limit = max(0, settings.openAIImageMonthlyLimitPerUser)
-        let hardCap = max(limit, settings.openAIImageMonthlyHardCap)
-        let usageKey = imageUsageKey(userID: userId)
-        let used = settings.openAIImageUsageByUserMonth[usageKey] ?? 0
-
-        if limit > 0, used >= limit {
-            return await send(
-                channelId,
-                "🧾 Monthly image limit reached (\(used)/\(limit)). Try again next month or increase the limit in settings."
-            )
-        }
-
-        // Aggregate mesh-wide total usage for this month
-        let currentMonthPrefix = usageKey.prefix(7) // "YYYY-MM"
-        let totalMonthlyUsage = settings.openAIImageUsageByUserMonth
-            .filter { $0.key.hasPrefix(currentMonthPrefix) }
-            .reduce(0) { $0 + $1.value }
-
-        if hardCap > 0, totalMonthlyUsage >= hardCap {
-            return await send(
-                channelId,
-                "🛑 Mesh-wide hard cap for image generation reached (\(totalMonthlyUsage)/\(hardCap)). Please contact the administrator."
-            )
-        }
-
-        let placeholderText = "🎨 Generating image for @\(username)…"
-        let placeholderId = await sendMessageReturningID(channelId: channelId, content: placeholderText)
-
-        guard let imageData = await aiService.generateOpenAIImage(prompt: cleanedPrompt, apiKey: apiKey, model: model) else {
-            if let placeholderId {
-                _ = await editMessage(channelId: channelId, messageId: placeholderId, content: "❌ Image generation failed. Please try a different prompt.")
-            } else {
-                _ = await send(channelId, "❌ Image generation failed. Please try a different prompt.")
-            }
-            return false
-        }
-
-        pruneOldImageUsageMonths()
-        settings.openAIImageUsageByUserMonth[usageKey] = used + 1
-        _ = await persistSettings()
-
-        // SwiftMesh: broadcast updated usage to other nodes
-        if settings.clusterMode == .leader {
-            await pushImageUsageToAllNodes()
-        }
-
-        let summary = "✅ Generated with `\(model)` • \(used + 1)/\(limit > 0 ? limit : (used + 1)) this month"
-        let filename = "swiftbot-image-\(Int(Date().timeIntervalSince1970)).png"
-
-        if let placeholderId,
-           await editMessageWithImage(
-                channelId: channelId,
-                messageId: placeholderId,
-                content: summary,
-                imageData: imageData,
-                filename: filename
-           ) {
-            return true
-        }
-
-        return await sendMessageWithImage(
-            channelId: channelId,
-            content: summary,
-            imageData: imageData,
-            filename: filename
-        )
-    }
-
-    func imageUsageKey(userID: String, now: Date = Date()) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM"
-        return "\(formatter.string(from: now)):\(userID)"
-    }
-
-    func pruneOldImageUsageMonths(now: Date = Date()) {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM"
-        let currentMonth = formatter.string(from: now)
-        settings.openAIImageUsageByUserMonth = settings.openAIImageUsageByUserMonth.filter { key, _ in
-            key.hasPrefix("\(currentMonth):")
-        }
-    }
-
     struct ResolvedWikiCommand {
         let source: WikiSource
         let command: WikiCommand
@@ -609,7 +492,7 @@ extension AppModel {
         }()
 
         let uptimeText = uptime?.text ?? "--"
-        let aiProvider = settings.preferredAIProvider.rawValue
+        let aiProvider = "Apple Intelligence"
         let wikiEnabled = settings.wikiBot.isEnabled ? "on" : "off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "on" : "off"
         let activeRules = ruleStore.rules.filter(\.isEnabled).count
@@ -671,7 +554,7 @@ extension AppModel {
         }()
 
         let uptimeText = uptime?.text ?? "--"
-        let aiProvider = settings.preferredAIProvider.rawValue
+        let aiProvider = "Apple Intelligence"
         let wikiEnabled = settings.wikiBot.isEnabled ? "On" : "Off"
         let patchyEnabled = settings.patchy.monitoringEnabled ? "On" : "Off"
         let activeRules = ruleStore.rules.filter(\.isEnabled).count
