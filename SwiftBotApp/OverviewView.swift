@@ -481,8 +481,8 @@ struct OverviewView: View {
             ),
             MetricWidgetGroup(
                 id: "aiBots",
-                title: "AI Bots",
-                symbol: "sparkles.rectangle.stack.fill",
+                title: "AI",
+                symbol: "apple.intelligence",
                 widgets: AIBotsDashboardSummary.metrics(app: app)
             ),
             MetricWidgetGroup(
