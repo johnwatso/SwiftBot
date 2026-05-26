@@ -103,13 +103,13 @@ struct PipelineContext {
 | `AppModel+Gateway.swift` | Gateway event parsing and dispatch |
 | `AppModel+AI.swift` | AI provider routing and response generation |
 | `DiscordService.swift` | Discord WebSocket gateway + REST API actor. Rule action execution. AI replies. Wiki lookup. |
-| `Models.swift` | All data types: Rule, RuleAction, Condition, TriggerType, ActionType, BlockCategory, ContextVariable, EventBus, RuleEngine, RuleStore, BotSettings, GuildSettings. |
+| `SwiftBotApp/Models/` | Directory containing modular data models: `Automations.swift` (rules), `BotSettings.swift` (config), `EventBus.swift` (pub/sub), `ClusterModels.swift` (mesh). |
 | `ClusterCoordinator.swift` | SwiftMesh cluster: leader election, health monitoring, replication, failover |
 | `Persistence.swift` | ConfigStore, RuleConfigStore, DiscordCacheStore, SwiftMeshConfigStore, MeshCursorStore (all actors). Keychain for secrets. |
 | `AdminWebServer.swift` | HTTP REST API for web admin UI. Discord OAuth. |
-| `VoiceActionsView.swift` | 3-pane rule editor UI (rule list + block library + canvas). **Claude's primary file.** |
-| `VoiceRuleListView.swift` | Rule list panel with empty state onboarding |
-| `EmptyRuleOnboardingView.swift` | Ghost placeholder shown when a rule has no blocks yet |
+| `AutomationsView.swift` | The Automations/Moderation tab: Rule list, template catalog, Natural Language drafting box. |
+| `AutomationRuleEditor.swift` | Sheet-style rule editor: configure trigger, polymorphic filters, and sequential steps. |
+| `EmptyRuleOnboardingView.swift` | Ghost placeholder shown when a rule has no steps yet |
 | `Sources/UpdateEngine` | Standalone Swift package: vendor-agnostic update detection used by Patchy |
 
 ### Storage
@@ -178,54 +178,37 @@ All UI in SwiftBot **must** follow:
 
 ## 6. Rule Builder System
 
-### 3-Pane View Architecture
+### Automations Tab View Layout
 
 ```
-VoiceWorkspaceView (split-pane layout)
-├── RuleListView (220–320px)             — VoiceRuleListView.swift
-│   ├── isLoading → ProgressView()
-│   ├── rules.isEmpty → RuleListEmptyStateView ("No Rules Yet")
-│   └── normal → RuleRowView list
-└── RuleEditorView                       — VoiceActionsView.swift
-    ├── Block Library pane (250–300px)
-    │   └── RuleBuilderLibraryView (ScrollViewReader + ScrollView)
-    │       ├── [Triggers]  .id("library-triggers")
-    │       ├── [Filters]
-    │       ├── [Message Modifiers]
-    │       ├── [AI Blocks]
-    │       ├── [Actions]
-    │       ├── [Moderation]
-    │       └── [Utilities]
-    └── Canvas pane
-        ├── Rule name TextField
-        ├── ValidationBannerView (errors/warnings)
-        └── if rule.isEmptyRule
-            → EmptyRuleOnboardingView (ghost placeholder, pulsing arrow)
-            else
-            → 4-section pipeline canvas
+AutomationsView (tab content panel)
+├── Read-only Banner (shown only on Failover nodes)
+└── ScrollView
+    ├── Metrics Row (Grid of summary cards: Rules, Enabled, Triggers, Apple Intelligence status)
+    ├── Natural Language drafting section (TextField box + "Create with AI" button)
+    ├── Template Catalog (Horizontal ScrollView of preset cards like welcome templates)
+    └── Rules List section
+        ├── Enabled/Disabled toggle, category symbols/tints
+        └── Action buttons: Add rule button -> opens sheet with default trigger/step
 ```
 
-### New Rule Onboarding Flow
+### Sheet-Style Rule Editor View Layout
 
 ```
-1. ruleStore.addNewRule() → Rule.empty() { trigger: nil, actions: [] }
-2. RuleListEmptyStateView → "Create First Rule" button
-3. RuleEditorView.isEmptyRule == true → EmptyRuleOnboardingView ghost card
-4. .onAppear: if !hasSeenRuleOnboarding → FirstRuleOnboardingCard sheet
-   ├── "Create Example Rule" → hello world rule, marks onboarding seen
-   └── "Start Empty" → guidedStep = .trigger (amber highlight on Trigger section)
-5. User adds trigger → guidedStep = .action (mint highlight on Action section)
-6. User adds action → guidedStep = .none, canvas shows normally
+AutomationRuleEditor (modal sheet)
+├── Hero Header (displays rule category icon, Edit/New label, and context-dependent description)
+├── ScrollView (form sections enclosed in standard Apple-design cards)
+│   ├── Form Section: Name (TextField name + Enabled Toggle switch)
+│   ├── Form Section: WHEN this happens (Trigger kind Picker + commandName field if slashCommand)
+│   ├── Form Section: IF these conditions match (Flat card list of active polymorphic filters + Add condition Menu)
+│   └── Form Section: THEN do these steps (Step card list + Add step Menu with categorized presets)
+└── Footer Bar (Cancel button + Save/Create button)
 ```
 
-### Key Rule Computed Properties
+### Validations & Custom Inputs
 
-```swift
-var isEmptyRule: Bool          // trigger == nil && conditions.isEmpty && actions.isEmpty
-var triggerSummary: String     // "No trigger set" if nil
-var validationIssues: [ValidationIssue]
-var processedActions: [RuleAction]   // runtime migration: legacy booleans → modifier blocks
-```
+- **Validation:** Save/Create button is gated by rule name non-emptiness and presence of at least 1 action step (`rule.steps.isEmpty == false`).
+- **Autocompletes:** Text input areas for message content, AI prompts, log text, or webhooks use `VariableAutocompleteField` providing inline suggestions for context tokens (e.g. `{username}`, `{channelName}`).
 
 ---
 
@@ -269,30 +252,43 @@ This file does not assign permanent file owners. Treat any historical ownership 
 
 ## 9. Data Types Quick Reference
 
-### Rule
+### Automations.Rule
 ```swift
-struct Rule: Identifiable, Codable, Equatable {
-    var trigger: TriggerType?        // nil = unconfigured (valid state)
-    var conditions: [Condition] = [] // filter blocks
-    var modifiers: [RuleAction] = [] // modifier blocks
-    var actions: [RuleAction] = []   // action blocks (empty = valid state)
-    var isEnabled: Bool = true
+struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
+    var id: String
+    var name: String
+    var enabled: Bool
+    var category: Category
+    var trigger: Trigger
+    var filterLogic: FilterLogic
+    var filters: [Filter]
+    var steps: [Step]
 }
-static func empty() -> Rule { Rule(trigger: nil, actions: []) }
 ```
 
-### TriggerType (7 cases)
-`userJoinedVoice` · `userLeftVoice` · `userMovedVoice` · `messageContains` · `memberJoined` · `reactionAdded` · `slashCommand`
+### TriggerKind (10 cases)
+`userJoinedVoice` · `userLeftVoice` · `userMovedVoice` · `messageCreated` · `memberJoined` · `memberLeft` · `reactionAdded` · `slashCommand` · `mediaAdded`
 
-### ActionType by Category
-- **Messaging:** `sendMessage`, `replyToMessage`, `sendDM`, `deleteMessage`, `addReaction`
-- **Modifiers:** `replyToTrigger`, `mentionUser`, `mentionRole`, `sendToDM`, `sendToChannel`
-- **AI:** `generateAIResponse` → stores output in `{ai.response}`
-- **Moderation:** `addRole`, `removeRole`, `timeoutMember`, `kickMember`, `moveMember`
-- **Utility:** `createChannel`, `webhook`, `addLogEntry`, `setStatus`, `delay`, `setVariable`, `randomChoice`
+### FilterKind (17 cases)
+- **Scope:** `inChannel`, `directMessage`
+- **User:** `userIsOneOf`, `userHasAnyRole`, `userHasAllRoles`, `userHasNoneOfRoles`
+- **Message Content:** `messageContains`, `messageContainsAny`, `messageEquals`, `messageDoesNotContain`, `messageMatchesRegex`, `messageIsReply`
+- **Author:** `fromBot`
+- **Voice:** `minVoiceDurationSeconds`
+- **Reaction:** `reactionEmoji`
+- **Media:** `mediaSource`
 
-### ContextVariable (20 tokens)
-`{user}` `{user.id}` `{user.name}` `{user.nickname}` `{user.mention}` `{message}` `{message.id}` `{channel}` `{channel.id}` `{channel.name}` `{guild}` `{guild.id}` `{guild.name}` `{voice.channel}` `{voice.channel.id}` `{reaction}` `{reaction.emoji}` `{duration}` `{memberCount}` `{ai.response}`
+### StepKind (6 cases)
+`sendMessage` · `modifyMember` · `modifyMessage` · `log` · `webhook` · `delay`
+
+### MemberOp (5 cases)
+`addRole` · `removeRole` · `timeout` · `kick` · `moveVoice`
+
+### MessageOp (2 cases)
+`delete` · `react`
+
+### Automations.Variable (12 tokens)
+`{username}` `{userId}` `{userMention}` `{channelName}` `{channelId}` `{guildName}` `{guildId}` `{message}` `{messageId}` `{duration}` `{mediaFile}` `{mediaSource}`
 
 ---
 
