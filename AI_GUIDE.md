@@ -230,47 +230,38 @@ private func handleMyEvent(_ raw: DiscordJSON?) {
 
 ### Adding a Rule Trigger Type
 
-**Location:** `RootView.swift` → `TriggerType` enum
+**Location:** `SwiftBotApp/Models/Automations.swift` → `TriggerKind` enum
 
 ```swift
-enum TriggerType: String, Codable, CaseIterable, Identifiable {
+enum TriggerKind: String, Codable, Hashable, Sendable, CaseIterable {
     // ... existing cases
-    case myNewTrigger = "My New Trigger"
-    
-    var id: String { rawValue }
-    var symbol: String {
-        switch self {
-        // ... existing cases
-        case .myNewTrigger: return "bolt.fill"
-        }
-    }
+    case myNewTrigger
 }
 ```
 
-**Update rule engine:** In `Models.swift` → `RuleEngine.matchesTrigger()`:
+**Then:**
+1. Update `TriggerKind.visibleCases(for:)` if the trigger should only appear under specific categories (e.g. automation vs moderation).
+2. Define UI labels in `AutomationsView.swift` inside the `AutomationLabels.trigger(_:)` helper.
+3. Add corresponding icons and colors inside `ruleSymbol(_:)` and `ruleTint(_:)` in `AutomationsView.swift`.
+4. Fire evaluations in the event handlers of `AppModel` or `DiscordService` by routing the matching event to the rule engine.
+
+### Adding a Rule Action Type (Step Kind)
+
+**Location:** `SwiftBotApp/Models/Automations.swift` → `StepKind` enum
+
 ```swift
-case (.myNewTrigger, .myEventKind):
-    return true
-```
-
-### Adding a Rule Action Type
-
-**Location:** `RootView.swift` → `ActionType` enum
-
-```swift
-enum ActionType: String, Codable, CaseIterable, Identifiable {
+enum StepKind: String, Codable, Hashable, Sendable, CaseIterable {
     // ... existing cases
-    case myAction = "My Action"
-    
-    var id: String { rawValue }
+    case myAction
 }
 ```
 
-**Implement action:** In `DiscordService.swift` → `execute(action:for:)`:
-```swift
-case .myAction:
-    // Perform action
-```
+**Then:**
+1. Define any new parameter fields needed for the step in the `Automations.Step` struct in `Automations.swift`.
+2. Add the action as a preset inside `stepPresets(for:)` in `AutomationRuleEditor.swift` to make it selectable.
+3. Build the UI form controls for your step configuration inside `stepFields(index:)` in `AutomationRuleEditor.swift`.
+4. Register its label inside `AutomationLabels.stepKind(_:)` in `AutomationsView.swift`.
+5. Implement the execution logic inside `DiscordService.swift`'s async execution loop.
 
 ## Coding Standards & Safety (March 2026)
 
@@ -280,6 +271,9 @@ To ensure production stability and maintainable test coverage, follow these rule
 - **❌ No release logic inside `#if DEBUG`:** Logic required for the production application to function must not be gated by `#if DEBUG`. If you need to override values for testing, use `TaskLocal`, environment variables, or dedicated test-only extensions in a separate file.
 - **✅ Test Helpers Location:** All automated test helpers and unit-test-only code should be located in the `Tests/SwiftBotTests` target or in files explicitly excluded from the production build.
 - **✅ Diagnostic Features:** User-initiated diagnostic features (like "Test Connection" in the UI) are production features. Name them accordingly (e.g., `runTestConnection()`, `performHealthProbe()`) to distinguish them from unit test helpers.
+- **✅ 100% Swift Native Architecture:** Keep the application fully native. Avoid introducing web technologies, heavy cross-platform abstractions, or non-native UI patterns. Use SwiftUI and standard Apple frameworks. Leverage pre-existing Swift projects and native technologies where possible.
+- **✅ Guard Against Feature Drift (Modular/Integration Policy):** If a feature starts to drift too far from the original design and core responsibilities of SwiftBot (a native Discord bot manager), avoid cluttering the core app. Look at moving the feature to its own standalone app or package, and integrate it into SwiftBot via clean integration points/APIs (similar to how `SwiftMiner` is integrated).
+- **✅ Standalone Packaging & Dependency Bundling Rule:** SwiftBot must be designed and built as a standalone, self-contained application. Do not require or expect users to install command-line dependencies (e.g., via Homebrew) or run shell setup scripts. Any external tool or executable must be bundled directly inside the application bundle (similar to the way the Cloudflare Tunnel `cloudflared` binary is bundled inside the app's `Resources` directory).
 
 ## SwiftMesh Stabilization (March 2026)
 

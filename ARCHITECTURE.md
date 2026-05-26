@@ -50,19 +50,14 @@ This document provides a high-level overview of the SwiftBot application archite
   - Shared AI prompt/message composition path for consistent local reply behavior
 
 ### 4. Data Models
-- **File:** `Models.swift`
-- **Contains:**
-  - **EventBus System:** Event protocol, EventBus class, SubscriptionToken
-  - **Events:** VoiceJoined, VoiceLeft, MessageReceived
-  - **Settings Models:** BotSettings, GuildSettings
-  - **UI Models:** ActivityEvent, CommandLogEntry, VoiceMemberPresence
-  - **Gateway:** GatewayPayload, DiscordJSON
-  - **Rules:** VoiceRuleEvent (used by rule engine)
-  - **Plugin System:** BotPlugin protocol, PluginManager, WeeklySummaryPlugin
-- **File:** `RootView.swift`
-- **Contains:**
-  - **Rule Models:** Rule, RuleAction, Condition, TriggerType, ActionType
-  - **UI Components:** All SwiftUI views
+- **Directory:** `SwiftBotApp/Models/` (Modular structure)
+- **Files & Contents:**
+  - `Automations.swift` — Unified step-based automation rule, trigger, and filter data models.
+  - `BotSettings.swift` — Core system and user preferences (non-sensitive preferences persist to `settings.json`).
+  - `ClusterModels.swift` — Core data transfer objects, heartbeats, and cluster states for SwiftMesh.
+  - `EventBus.swift` — Event protocol, type-safe Pub/Sub event bus, and tokens.
+  - `RuleEngineModels.swift` — Core rule matching and evaluation states.
+  - `AppSharedTypes.swift` / `BotStateModels.swift` / `GatewayModels.swift` — Platform diagnostic, logging, and gateway payloads.
 
 ### 5. Persistence
 - **File:** `Persistence.swift`
@@ -76,17 +71,23 @@ This document provides a high-level overview of the SwiftBot application archite
 - **Class:** `MeshCursorStore` (actor) - Durable SwiftMesh replication cursor storage (`mesh-cursors.json`)
 
 ### 6. User Interface
-- **File:** `RootView.swift`
-- **Main View:** `RootView` - `NavigationSplitView` container
+- **Main View:** `RootView` - A modern, responsive multi-section `NavigationSplitView` container styled under standard macOS HIG.
 - **Sidebar Sections:**
-  - **Overview** - Activity feed, stats, server info
-  - **Patchy** - SourceTarget monitor panel with grouped targets and modal editor
-  - **Actions** - Rule builder (HSplitView: list + editor)
-  - **Commands** - Command history log
-  - **Logs** - System logs with auto-scroll
-  - **Settings** - Bot token, prefix, cluster and AI settings
-  - **AI Bots** - AI bot configuration panel
-  - **Status** - Gateway stats, voice presence
+  - **Dashboard:** `OverviewView` (high-level bot status, activity events feed, performance metrics)
+  - **Workflows:**
+    - `CommandsView` (slash command configurations and routing)
+    - `AutomationsView` (unified general automated rule builder, NL drafting, templates catalog)
+    - `ModerationView` (moderation-specific rules and enforcement policies)
+  - **Services:**
+    - `PatchyView` (source-target monitors for updates with grouped list and custom modal target editor)
+    - `SweepView` (channel housekeeping and automated message cleanup policies)
+    - `WikiBridgeView` (external knowledge bases and keyword commands mapping)
+    - `RecordingsView` (audio logs and transient recorded captures)
+  - **System:**
+    - `AIBotsView` (Apple Intelligence, OpenAI, and Ollama engine routing settings)
+    - `AnalyticsView` (server and user engagement graphs and statistics)
+    - `ActivityLogView` (live, auto-scrolled debug logs)
+    - `SwiftMeshView` (cluster node status, heartbeat stats, term logs, failover controls)
 
 ### 7. UpdateEngine Package + Patchy Runtime Use
 - **Path:** `Sources/UpdateEngine`
@@ -327,13 +328,27 @@ SwiftBot.xcodeproj
 └── SwiftBot (target)
     ├── SwiftBotApp.swift (entry point)
     ├── AppModel.swift (main state)
-    ├── Models.swift (data models + EventBus + plugins)
-    ├── DiscordService.swift (Discord API)
-    ├── ClusterCoordinator.swift (SwiftMesh cluster + HTTP server)
-    ├── Persistence.swift (storage)
-    ├── RootView.swift (all UI)
-    └── Resources/
-        └── AppIcon.png
+    ├── DiscordService.swift (Discord API communication actor)
+    ├── ClusterCoordinator.swift (SwiftMesh cluster HTTP server and replication orchestration)
+    ├── Persistence.swift (durable actor stores for configs/rules/cursors/cache)
+    ├── HelpEngine.swift (built-in manual commands indexer)
+    ├── SwiftBotApp/
+    │   ├── Models/
+    │   │   ├── Automations.swift (IFTTT step-based rules and variables models)
+    │   │   ├── BotSettings.swift (non-sensitive preferences)
+    │   │   ├── ClusterModels.swift (mesh data types)
+    │   │   ├── EventBus.swift (event hub engine)
+    │   │   └── RuleEngineModels.swift (matching models)
+    │   ├── Services/
+    │   │   ├── CommandProcessor.swift (bot slash and manual commands processing)
+    │   │   ├── DiscordIdentityRESTClient.swift (identities parsing)
+    │   │   ├── GatewayEventDispatcher.swift (WebSocket routing)
+    │   │   └── TextChannelAnnouncer.swift (outbound announcer)
+    │   ├── Security/
+    │   ├── Resources/
+    │   │   └── cloudflared (bundled dependency for Cloudflare Tunnel)
+    │   └── [Views].swift (RootView, AutomationsView, AutomationRuleEditor, OverviewView, etc.)
+    └── Sources/UpdateEngine (nested isolated update monitor package)
 ```
 
 ## Testing Strategy
@@ -407,36 +422,29 @@ SwiftBot.xcodeproj
 - Requires bot token with appropriate intents (37,767)
 - No OAuth flow (manual token entry)
 
----
-
-**Last Updated:** 2026-03-05  
+**Last Updated:** 2026-05-26  
 **Maintained By:** AI Assistant  
 **Purpose:** Context for code modifications and architectural decisions
 
+---
 
+## Implemented Core Subsystems (Shipped 2026)
 
-## Proposed Extensions (March 2026)
+All previously planned extensions have been successfully integrated as core subsystems:
 
-### 1. API Diagnostics & Debugging
-- **Logic**: Add `validateToken()` to `DiscordService` performing a GET to `/users/@me`.
-- **State**: `AppModel` to publish `lastPing`, `rateLimitRemaining`, and `gatewayStatus`.
-- **UI**: New `DiagnosticsPanel` in `RootView` with real-time health indicators.
+### 1. API Diagnostics & Debugging (Shipped)
+- **Features:** Gateway/REST diagnostics, latency monitoring, privilege permissions verification, rate-limit warnings, and gateway events charts.
+- **Components:** `DiagnosticsPanel`, gateway metrics tracking in `AppModel.swift` and `OverviewView.swift`.
 
-### 2. Welcome Automation (Member & Voice)
-- **Triggers**: Extend `TriggerType` with `memberJoin`, `voiceJoin`, and `voiceLeave`.
-- **Events**: New `MemberJoined` event in `Models.swift` published via `GUILD_MEMBER_ADD` gateway dispatch.
-- **Actions**: Template-based messaging support for welcome/log channels.
+### 2. Welcome & Member Automations (Shipped)
+- **Features:** Integrated voice channel, member join/leave, reaction added, and slash command triggers in the general automations system.
+- **Components:** `AutomationsView.swift` and `AutomationRuleEditor.swift` rule configurations.
 
-### 3. Onboarding Splash Screen
-- **Flow**: `OnboardingView` presented when `settings.botToken` is empty.
-- **Features**: Token validation step + Dynamic OAuth2 Invite Link generation (permissions bitmask 274877991936 (Baseline)).
+### 3. Onboarding Splash Flow (Shipped)
+- **Features:** A seamless `OnboardingView` that guides the user through token setup, privileged intent checks, permissions verification, and dynamic OAuth2 bot invite link generation.
 
-### 4. Dynamic Beta App Icon
+### 4. Dynamic Beta App Icon (Shipped)
+- **Features:** Automatic Dock icon runtime swaps (`NSApp.applicationIconImage`) based on `-beta` build environment checks.
 
-### 5. Analytics & Context-Aware AI Replies (Proposed)
-- **Store**: New `AnalyticsStore` (actor-backed JSON) tracking per-member join/leave/first-seen history.
-- **Rules**: Extend `TriggerType` with member join/leave predicates and `ActionType` with `generateAIReply`.
-- **Pipeline**: `PromptComposer` enriched with analytics context (e.g., "days since last seen").
-
-- **Mechanism**: Runtime Dock icon swap using `NSApp.applicationIconImage`.
-- **Detection**: Build name string check (`-beta`) or `CFBundleVersion` parsing.
+### 5. Analytics & Context-Aware AI (Shipped)
+- **Features:** Engagement and message volume analytics tracking (`AnalyticsView.swift`), unified AI reply generation leveraging local LLMs and Apple Intelligence, and context variables parsing.

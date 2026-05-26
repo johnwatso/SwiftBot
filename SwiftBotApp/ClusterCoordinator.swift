@@ -61,7 +61,7 @@ actor ClusterCoordinator {
     /// the old 4s interval caused excessive load on the primary and overlapping
     /// requests that contributed to CFNetwork timer races.
     private let workerRegistrationIntervalNanoseconds: UInt64 = 30_000_000_000
-    private let registrationStaleAfter: TimeInterval = 45
+    private let registrationStaleAfter: TimeInterval = 90
     static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
     static let maxSyncBatchSize: Int = 500
@@ -2400,7 +2400,7 @@ actor ClusterCoordinator {
                 let status: ClusterNodeHealthStatus
                 if !recentlySeen {
                     status = .disconnected
-                } else if age <= (registrationStaleAfter / 3) {
+                } else if age <= (registrationStaleAfter / 2) {
                     status = .healthy
                 } else {
                     status = .degraded
