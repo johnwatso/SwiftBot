@@ -640,7 +640,7 @@ extension AppModel {
             "AI Provider: \(aiProvider)",
             "Lookup: \(wikiEnabled)",
             "Patchy Monitoring: \(patchyEnabled)",
-            "Action Rules: \(activeRules)/\(ruleStore.rules.count)",
+            "Automations: \(activeRules)/\(ruleStore.rules.count)",
             "SwiftMesh Connected Nodes: \(connectedNodes.count)/\(clusterNodes.count)",
             "SwiftMesh Registered Workers: \(registeredWorkersDebugCount)",
             "SwiftMesh Worker Heartbeats: \(registeredWorkersDebugSummary)",
@@ -708,7 +708,7 @@ extension AppModel {
             ],
             [
                 "name": "Features",
-                "value": "AI: `\(aiProvider)`\nLookup: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nRules: `\(activeRules)/\(ruleStore.rules.count)`",
+                "value": "AI: `\(aiProvider)`\nLookup: `\(wikiEnabled)`\nPatchy: `\(patchyEnabled)`\nAutomations: `\(activeRules)/\(ruleStore.rules.count)`",
                 "inline": true
             ],
             [

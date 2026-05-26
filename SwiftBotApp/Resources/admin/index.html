@@ -5500,7 +5500,7 @@
       const system = document.getElementById('analyticsSystem');
       if (system) {
         const metrics = new Map((data.metrics || []).map(metric => [metric.id, metric]));
-        const rows = ['commands-today', 'active-workflows', 'recordings-watched', 'clips-exported']
+        const rows = ['commands-today', 'active-automations', 'recordings-watched', 'clips-exported']
           .map(id => metrics.get(id))
           .filter(Boolean);
         system.innerHTML = rows.map(metric => `

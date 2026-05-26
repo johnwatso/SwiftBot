@@ -337,8 +337,8 @@ extension AppModel {
                 tone: failedCommandsToday > 0 ? "warning" : "usage"
             ),
             AdminWebAnalyticsMetricPayload(
-                id: "active-workflows",
-                title: "Active Workflows",
+                id: "active-automations",
+                title: "Active Automations",
                 value: "\(enabledRuleCount)",
                 detail: patchyIsCycleRunning ? "Patchy running now" : "Rule engine ready",
                 trend: automationFailures > 0 ? "\(automationFailures) automation warnings" : "Automation nominal",

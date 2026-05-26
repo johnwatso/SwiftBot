@@ -48,8 +48,8 @@ struct AnalyticsView: View {
         snapshot.system.commandSuccessRate
     }
 
-    private var activeWorkflowCount: Int {
-        snapshot.system.activeWorkflowCount
+    private var activeAutomationCount: Int {
+        snapshot.system.activeAutomationCount
     }
 
     private var eventQueueLoad: Double {
@@ -134,7 +134,7 @@ struct AnalyticsView: View {
 
     private var automationSuccessRateText: String {
         let failures = snapshot.system.failedAutomationCount
-        let total = max(snapshot.system.activeWorkflowCount + failures, 1)
+        let total = max(snapshot.system.activeAutomationCount + failures, 1)
         let rate = Double(max(total - failures, 0)) / Double(total)
         return "\(Int((rate * 100).rounded()))%"
     }
@@ -671,8 +671,8 @@ struct AnalyticsView: View {
                         color: .blue
                     )
                     compactSignal(
-                        title: "Active Workflows",
-                        value: "\(activeWorkflowCount)",
+                        title: "Active Automations",
+                        value: "\(activeAutomationCount)",
                         detail: snapshot.system.automationDetail,
                         color: .teal
                     )
@@ -1545,7 +1545,7 @@ private struct AnalyticsSystemMetrics: Codable, Equatable {
     let failedCommandsToday: Int
     let commandsRunLifetime: Int
     let commandSuccessRate: Double
-    let activeWorkflowCount: Int
+    let activeAutomationCount: Int
     let automationRunsToday: Int
     let failedAutomationCount: Int
     let gatewayEventCount: Int
@@ -1559,7 +1559,7 @@ private struct AnalyticsSystemMetrics: Codable, Equatable {
         failedCommandsToday: 0,
         commandsRunLifetime: 0,
         commandSuccessRate: 1,
-        activeWorkflowCount: 0,
+        activeAutomationCount: 0,
         automationRunsToday: 0,
         failedAutomationCount: 0,
         gatewayEventCount: 0,
@@ -1751,7 +1751,7 @@ private enum AnalyticsAggregator {
             failedCommandsToday: app.commandLog.filter { Calendar.current.isDateInToday($0.time) && !$0.ok }.count,
             commandsRunLifetime: app.stats.commandsRun,
             commandSuccessRate: commandSuccessRate,
-            activeWorkflowCount: app.ruleStore.rules.filter(\.isEnabled).count,
+            activeAutomationCount: app.ruleStore.rules.filter(\.isEnabled).count,
             automationRunsToday: app.patchyLastCycleAt.map { Calendar.current.isDateInToday($0) ? 1 : 0 } ?? 0,
             failedAutomationCount: automationFailures,
             gatewayEventCount: app.gatewayEventCount,
@@ -2165,11 +2165,11 @@ private enum OperationalInsightsEngine {
 
     private static func automationCoverageInsight(_ context: OperationalInsightContext) -> OperationalInsight? {
         let enabledRules = context.rules.filter(\.isEnabled)
-        let configuredActions = enabledRules.reduce(0) { $0 + actionableBlockCount(in: $1) }
-        let activeWorkflowCount = enabledRules.count
-        guard configuredActions > 0 || context.patchyEnabledTargetCount > 0 else { return nil }
+        let configuredSteps = enabledRules.reduce(0) { $0 + actionableBlockCount(in: $1) }
+        let activeAutomationCount = enabledRules.count
+        guard configuredSteps > 0 || context.patchyEnabledTargetCount > 0 else { return nil }
 
-        let body = "\(configuredActions) automation action\(configuredActions == 1 ? "" : "s") are armed across \(activeWorkflowCount) live workflow\(activeWorkflowCount == 1 ? "" : "s")."
+        let body = "\(configuredSteps) automation step\(configuredSteps == 1 ? "" : "s") are armed across \(activeAutomationCount) live automation\(activeAutomationCount == 1 ? "" : "s")."
         let note: String
         if context.patchyEnabledTargetCount > 0 {
             note = "Patchy is watching \(context.patchyEnabledTargetCount) of \(context.patchyTotalTargetCount) configured target\(context.patchyTotalTargetCount == 1 ? "" : "s")."
@@ -2182,8 +2182,8 @@ private enum OperationalInsightsEngine {
             title: "Automation footprint",
             body: body,
             symbol: "wand.and.stars.inverse",
-            tone: configuredActions >= 6 ? .healthy : .info,
-            weight: configuredActions + activeWorkflowCount,
+            tone: configuredSteps >= 6 ? .healthy : .info,
+            weight: configuredSteps + activeAutomationCount,
             note: note
         )
     }
@@ -2424,14 +2424,14 @@ private enum OperationalInsightsEngine {
             tone = context.system.failedAutomationCount > 0 ? .warning : .healthy
         }
 
-        let enabledWorkflowCount = context.rules.filter { $0.isEnabled }.count
+        let enabledAutomationCount = context.rules.filter { $0.isEnabled }.count
         let note: String?
         if context.system.failedAutomationCount > 0 {
             note = "\(context.system.failedAutomationCount) automation failure\(context.system.failedAutomationCount == 1 ? "" : "s") need attention."
         } else if context.patchyEnabledTargetCount > 0 {
             note = "\(context.patchyEnabledTargetCount) Patchy target\(context.patchyEnabledTargetCount == 1 ? "" : "s") are enabled."
         } else {
-            note = "\(enabledWorkflowCount) workflow\(enabledWorkflowCount == 1 ? "" : "s") currently enabled."
+            note = "\(enabledAutomationCount) automation\(enabledAutomationCount == 1 ? "" : "s") currently enabled."
         }
 
         return OperationalInsight(
