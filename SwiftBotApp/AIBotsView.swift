@@ -67,7 +67,7 @@ struct AIBotsView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("AI Bots")
+                Text("AI")
                     .font(.title2.weight(.semibold))
                 HStack(spacing: 6) {
                     Circle()
@@ -88,7 +88,7 @@ struct AIBotsView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "apple.logo")
+                    Image(systemName: "apple.intelligence")
                         .font(.title3)
                     Text("Apple Intelligence")
                         .font(.headline)
@@ -165,10 +165,10 @@ enum AIBotsDashboardSummary {
     static func primaryMetric(app: AppModel, id: String = "aiBots") -> DashboardMetricDescriptor {
         DashboardMetricDescriptor(
             id: id,
-            title: "AI Bots",
-            value: "Apple",
-            subtitle: app.appleIntelligenceOnline ? "Online" : "Offline",
-            symbol: "sparkles",
+            title: "AI",
+            value: app.appleIntelligenceOnline ? "Online" : "Offline",
+            subtitle: app.settings.localAIDMReplyEnabled ? "DM replies on" : "DM replies off",
+            symbol: "apple.intelligence",
             detail: "Guild AI \(app.settings.behavior.useAIInGuildChannels ? "On" : "Off")",
             color: .purple,
             appleIntelligenceGlowEnabled: true
@@ -182,7 +182,7 @@ enum AIBotsDashboardSummary {
             title: "Apple Intelligence",
             value: app.appleIntelligenceOnline ? "Online" : "Offline",
             subtitle: "Primary engine",
-            symbol: "sparkles",
+            symbol: "apple.intelligence",
             detail: "System-native AI",
             color: app.appleIntelligenceOnline ? .green : .secondary,
             appleIntelligenceGlowEnabled: true

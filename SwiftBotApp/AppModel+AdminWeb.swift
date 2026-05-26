@@ -169,7 +169,7 @@ extension AppModel {
                 subtitle: "\(actionRuleCount) total rules"
             ),
             AdminWebMetricPayload(
-                title: "AI Bots",
+                title: "AI",
                 value: appleIntelligenceOnline ? "Apple Intelligence online" : "Apple Intelligence offline",
                 subtitle: settings.localAIDMReplyEnabled ? "DM replies enabled" : "DM replies disabled"
             )
