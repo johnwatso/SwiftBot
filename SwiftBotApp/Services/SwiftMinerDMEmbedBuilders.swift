@@ -168,6 +168,7 @@ enum SwiftMinerDMEmbedBuilders {
         discordName: String?,
         activationCode: String?,
         activationExpiresInMinutes: Int?,
+        activationExpiresAt: Date? = nil,
         activationURL: String?,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
@@ -200,7 +201,17 @@ enum SwiftMinerDMEmbedBuilders {
             fields.append(SwiftMinerDMEmbedPrimitives.makeActivationCodeField(code: code, theme: theme))
         }
 
-        if let minutes = activationExpiresInMinutes, minutes > 0 {
+        // Prefer the absolute instant: Discord renders `<t:UNIX:R>` as a
+        // live-updating "in 29 minutes" string and keeps counting down even if
+        // the user opens the DM hours later. Fall back to the legacy minute
+        // text when SwiftMiner only supplied a relative duration.
+        if let expiresAt = activationExpiresAt {
+            let unix = Int(expiresAt.timeIntervalSince1970)
+            fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+                title: theme.setupExpiresLabel,
+                value: "This code expires <t:\(unix):R>."
+            ))
+        } else if let minutes = activationExpiresInMinutes, minutes > 0 {
             fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
                 title: theme.setupExpiresLabel,
                 value: "This code expires in \(minutes) minute\(minutes == 1 ? "" : "s")."

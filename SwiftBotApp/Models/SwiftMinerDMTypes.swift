@@ -46,6 +46,10 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let priorityGames: [String]
     let activationCode: String?
     let activationExpiresInMinutes: Int?
+    /// Absolute expiry instant. When present, takes precedence over
+    /// `activationExpiresInMinutes` so Discord renders a live-updating
+    /// `<t:UNIX:R>` relative timestamp instead of a frozen-at-send minute count.
+    let activationExpiresAt: Date?
     let activationURL: String?
     let affectedGame: String?
     let campaignName: String?
@@ -61,6 +65,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         priorityGames: [String] = [],
         activationCode: String? = nil,
         activationExpiresInMinutes: Int? = nil,
+        activationExpiresAt: Date? = nil,
         activationURL: String? = nil,
         affectedGame: String? = nil,
         campaignName: String? = nil,
@@ -74,6 +79,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.priorityGames = priorityGames
         self.activationCode = activationCode
         self.activationExpiresInMinutes = activationExpiresInMinutes
+        self.activationExpiresAt = activationExpiresAt
         self.activationURL = activationURL
         self.affectedGame = affectedGame
         self.campaignName = campaignName
@@ -90,6 +96,11 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.priorityGames = try container.decodeIfPresent([String].self, forKey: .priorityGames) ?? []
         self.activationCode = try container.decodeIfPresent(String.self, forKey: .activationCode)
         self.activationExpiresInMinutes = try container.decodeIfPresent(Int.self, forKey: .activationExpiresInMinutes)
+        if let iso = try container.decodeIfPresent(String.self, forKey: .activationExpiresAt) {
+            self.activationExpiresAt = ISO8601DateFormatter().date(from: iso)
+        } else {
+            self.activationExpiresAt = nil
+        }
         self.activationURL = try container.decodeIfPresent(String.self, forKey: .activationURL)
         self.affectedGame = try container.decodeIfPresent(String.self, forKey: .affectedGame)
         self.campaignName = try container.decodeIfPresent(String.self, forKey: .campaignName)
@@ -105,6 +116,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case priorityGames = "priority_games"
         case activationCode = "activation_code"
         case activationExpiresInMinutes = "activation_expires_in_minutes"
+        case activationExpiresAt = "activation_expires_at"
         case activationURL = "activation_url"
         case affectedGame = "affected_game"
         case campaignName = "campaign_name"
