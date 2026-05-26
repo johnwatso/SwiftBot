@@ -144,7 +144,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case commands = "Commands"
     case activity = "Activity"
     case wikiBridge = "Lookup"
-    case aiBots = "AI"
+    case aiBots = "Apple Intelligence"
     case voice = "Announcer"
     case recordings = "Recordings"
     case analytics = "Analytics"
