@@ -600,8 +600,12 @@ struct AnalyticsView: View {
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .frame(height: 188)
-                .background(.black.opacity(0.018), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .background(.black.opacity(0.018), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 HStack(spacing: 0) {
                     ForEach(dailyActivity) { item in
@@ -643,10 +647,10 @@ struct AnalyticsView: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(.primary.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -869,9 +873,16 @@ struct AnalyticsView: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.055))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(white: 1.0, opacity: 0.05), lineWidth: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(tint.opacity(0.20), lineWidth: 1)
         )
     }
@@ -897,9 +908,9 @@ struct AnalyticsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
-        .background(Color.primary.opacity(0.030), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(Color.primary.opacity(0.030), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(color.opacity(0.14), lineWidth: 1)
         )
     }
@@ -947,10 +958,10 @@ struct AnalyticsView: View {
             }
         }
         .padding(9)
-        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.026), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(.primary.opacity(0.055), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.055), lineWidth: 1)
         )
     }
 
@@ -978,7 +989,14 @@ struct AnalyticsView: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
-        .background(color.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(color.opacity(0.055))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(white: 1.0, opacity: 0.05), lineWidth: 1)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(color.opacity(0.14), lineWidth: 1)
@@ -1023,15 +1041,15 @@ struct AnalyticsView: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
-                    .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Color.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
         }
         .padding(8)
-        .background(Color.primary.opacity(0.020), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(Color.primary.opacity(0.020), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(.primary.opacity(0.045), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.045), lineWidth: 1)
         )
     }
 
@@ -1097,11 +1115,11 @@ struct AnalyticsView: View {
         .padding(.vertical, 7)
         .background(
             AnyShapeStyle(Color.primary.opacity(hoveredUserID == user.id ? 0.050 : 0.028)),
-            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(rank == 1 ? Color.accentColor.opacity(0.18) : .primary.opacity(0.055), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(rank == 1 ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.055), lineWidth: 1)
         )
         .onHover { isHovering in
             hoveredUserID = isHovering ? user.id : nil

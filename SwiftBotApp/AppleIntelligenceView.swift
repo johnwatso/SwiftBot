@@ -173,19 +173,23 @@ struct AppleIntelligenceView: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(Color.primary.opacity(0.035))
                     )
             }
             .padding(12)
             .frame(minHeight: 166, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.04))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? personality.tint.opacity(0.08) : Color.primary.opacity(0.04))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(white: 1.0, opacity: 0.06), lineWidth: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isSelected ? personality.tint.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -314,15 +318,15 @@ struct AppleIntelligenceView: View {
                 .controlSize(.mini)
                 .labelsHidden()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.03))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -353,15 +357,15 @@ struct AppleIntelligenceView: View {
                 .padding(.vertical, 3)
                 .background(.green.opacity(0.12), in: Capsule())
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.03))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -427,12 +431,16 @@ struct AppleIntelligenceView: View {
         .padding(10)
         .frame(minHeight: 84, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(white: 1.0, opacity: 0.05), lineWidth: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -650,21 +658,21 @@ struct MemoryOverviewView: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.primary.opacity(0.03))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                     )
                 } else {
                     ForEach(viewModel.summaries.prefix(10)) { summary in
                         HStack(spacing: 12) {
                             Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.caption.weight(.semibold))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(.indigo)
-                                .frame(width: 18)
+                               .font(.caption.weight(.semibold))
+                               .symbolRenderingMode(.hierarchical)
+                               .foregroundStyle(.indigo)
+                               .frame(width: 18)
                             Text(viewModel.displayName(for: summary))
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(1)
@@ -678,12 +686,12 @@ struct MemoryOverviewView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color.primary.opacity(0.03))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
                         )
                     }
                 }
