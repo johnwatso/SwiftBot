@@ -8399,9 +8399,9 @@
           <label class="switch"><input id="setAutoStart" type="checkbox" ${cfg.general.autoStart ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
         </div>
         <div class="commands-toggle-card">
-          <span class="label">AI Provider</span>
-          <span class="value">${cfg.aiBots.preferredProvider || 'apple'}</span>
-          <div class="command-desc">Primary provider for replies</div>
+          <span class="label">AI</span>
+          <span class="value">Apple Intelligence</span>
+          <div class="command-desc">On-device replies</div>
         </div>
         <div class="commands-toggle-card">
           <span class="label">Web UI URL</span>
@@ -8419,13 +8419,9 @@
         </section>
 
         <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="bot"></i> AI Bots</div>
+          <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Apple Intelligence</div>
           <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.aiBots.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Enable OpenAI</div><div class="desc">Allow OpenAI provider for responses.</div></div><label class="switch"><input id="setAiOpenAI" type="checkbox" ${cfg.aiBots.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">Enable OpenAI Images</div><div class="desc">Allow image generation fallback.</div></div><label class="switch"><input id="setAiImages" type="checkbox" ${cfg.aiBots.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Provider</label><select id="setAiProvider" class="field-select"><option value="apple" ${cfg.aiBots.preferredProvider === 'apple' ? 'selected' : ''}>Apple</option><option value="ollama" ${cfg.aiBots.preferredProvider === 'ollama' ? 'selected' : ''}>Ollama</option><option value="openAI" ${cfg.aiBots.preferredProvider === 'openAI' ? 'selected' : ''}>OpenAI</option></select></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Model</label><input id="setAiModel" class="field-input" value="${(cfg.aiBots.openAIModel || '').replaceAll('"', '&quot;')}"></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Image Limit / User</label><input id="setAiImageLimit" class="field-input" type="number" min="0" value="${cfg.aiBots.openAIImageMonthlyLimitPerUser}"></div>
+          <div class="info-row"><span class="label">Engine</span><span class="value">Apple Intelligence (on-device)</span></div>
         </section>
 
         <section class="settings-panel glass">
@@ -8453,11 +8449,6 @@
       panels.querySelector('#setCmdSlash')?.addEventListener('change', e => saveConfigPatch({ slashCommandsEnabled: e.target.checked }));
       panels.querySelector('#setCmdBug')?.addEventListener('change', e => saveConfigPatch({ bugTrackingEnabled: e.target.checked }));
       panels.querySelector('#setAiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
-      panels.querySelector('#setAiOpenAI')?.addEventListener('change', e => saveConfigPatch({ openAIEnabled: e.target.checked }));
-      panels.querySelector('#setAiImages')?.addEventListener('change', e => saveConfigPatch({ openAIImageGenerationEnabled: e.target.checked }));
-      panels.querySelector('#setAiProvider')?.addEventListener('change', e => saveConfigPatch({ preferredAIProvider: e.target.value }));
-      panels.querySelector('#setAiModel')?.addEventListener('blur', e => saveConfigPatch({ openAIModel: e.target.value }));
-      panels.querySelector('#setAiImageLimit')?.addEventListener('change', e => saveConfigPatch({ openAIImageMonthlyLimitPerUser: Number(e.target.value || 0) }));
       panels.querySelector('#setWikiEnabled')?.addEventListener('change', e => saveConfigPatch({ wikiBridgeEnabled: e.target.checked }));
       panels.querySelector('#setPatchyEnabled')?.addEventListener('change', e => saveConfigPatch({ patchyMonitoringEnabled: e.target.checked }));
       panels.querySelector('#setMeshSave')?.addEventListener('click', () => {
@@ -8563,14 +8554,9 @@
 
       top.innerHTML = `
         <div class="commands-toggle-card">
-          <span class="label">Primary Provider</span>
-          <span class="value">${cfg.preferredProvider || 'apple'}</span>
-          <div class="command-desc">Current routing preference</div>
-        </div>
-        <div class="commands-toggle-card">
-          <span class="label">OpenAI</span>
-          <span class="value">${cfg.openAIEnabled ? 'Enabled' : 'Disabled'}</span>
-          <div class="command-desc">${cfg.openAIModel || 'No model set'}</div>
+          <span class="label">Engine</span>
+          <span class="value">Apple Intelligence</span>
+          <div class="command-desc">On-device, system model</div>
         </div>
         <div class="commands-toggle-card">
           <span class="label">Session</span>
@@ -8583,23 +8569,10 @@
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="sliders"></i> Runtime</div>
           <div class="setting-row"><div class="left"><div class="title">DM AI Replies</div><div class="desc">Automatically reply in direct messages.</div></div><label class="switch"><input id="aiDm" type="checkbox" ${cfg.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">OpenAI Provider</div><div class="desc">Enable OpenAI fallback and direct use.</div></div><label class="switch"><input id="aiOpenAI" type="checkbox" ${cfg.openAIEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-          <div class="setting-row"><div class="left"><div class="title">OpenAI Images</div><div class="desc">Allow image generation requests.</div></div><label class="switch"><input id="aiImages" type="checkbox" ${cfg.openAIImageGenerationEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
-        </section>
-        <section class="settings-panel glass">
-          <div class="panel-title"><i class="lucide" data-lucide="brain"></i> Model Settings</div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Preferred Provider</label><select id="aiProvider" class="field-select"><option value="apple" ${cfg.preferredProvider === 'apple' ? 'selected' : ''}>Apple</option><option value="ollama" ${cfg.preferredProvider === 'ollama' ? 'selected' : ''}>Ollama</option><option value="openAI" ${cfg.preferredProvider === 'openAI' ? 'selected' : ''}>OpenAI</option></select></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">OpenAI Model</label><input id="aiModel" class="field-input" value="${(cfg.openAIModel || '').replaceAll('"', '&quot;')}"></div>
-          <div class="setting-inline"><label class="field-label" style="margin:0;">Image Limit / User</label><input id="aiImageLimit" class="field-input" type="number" min="0" value="${cfg.openAIImageMonthlyLimitPerUser}"></div>
         </section>
       `;
 
       panels.querySelector('#aiDm')?.addEventListener('change', e => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
-      panels.querySelector('#aiOpenAI')?.addEventListener('change', e => saveConfigPatch({ openAIEnabled: e.target.checked }));
-      panels.querySelector('#aiImages')?.addEventListener('change', e => saveConfigPatch({ openAIImageGenerationEnabled: e.target.checked }));
-      panels.querySelector('#aiProvider')?.addEventListener('change', e => saveConfigPatch({ preferredAIProvider: e.target.value }));
-      panels.querySelector('#aiModel')?.addEventListener('blur', e => saveConfigPatch({ openAIModel: e.target.value }));
-      panels.querySelector('#aiImageLimit')?.addEventListener('change', e => saveConfigPatch({ openAIImageMonthlyLimitPerUser: Number(e.target.value || 0) }));
     }
 
     function renderActivityView() {
@@ -9875,13 +9848,11 @@
           break;
         case 'aibots':
           primaryRows = [
-            { label: 'Primary', value: config.aiBots.preferredProvider },
-            { label: 'DM Replies', value: config.aiBots.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' },
-            { label: 'OpenAI', value: config.aiBots.openAIEnabled ? 'Enabled' : 'Disabled' }
+            { label: 'Engine', value: 'Apple Intelligence' },
+            { label: 'DM Replies', value: config.aiBots.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' }
           ];
           secondaryRows = [
-            { label: 'OpenAI Model', value: config.aiBots.openAIModel || '-' },
-            { label: 'Image Limit / User', value: String(config.aiBots.openAIImageMonthlyLimitPerUser) }
+            { label: 'Runs', value: 'On-device' }
           ];
           break;
         case 'settings':
@@ -10010,11 +9981,9 @@
       } else if (view === 'aibots') {
         controls.innerHTML = `
           <div class="control-row"><span class="control-label">Enable DM AI Replies</span><input id="cfgDmAiEnabled" type="checkbox" ${config.aiBots.localAIDMReplyEnabled ? 'checked' : ''}></div>
-          <div class="control-row"><span class="control-label">Enable OpenAI</span><input id="cfgOpenAIEnabled" type="checkbox" ${config.aiBots.openAIEnabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgDmAiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
-        controls.querySelector('#cfgOpenAIEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ openAIEnabled: e.target.checked }));
       } else if (view === 'diagnostics' || view === 'activity') {
         controls.innerHTML = `<div class="placeholder">Read-only runtime feed mirrors native diagnostics/activity surfaces.</div>`;
         eventsNode.prepend(controls);
