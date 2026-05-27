@@ -157,6 +157,7 @@
 		AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */; };
 		ACE122B57907AC0B3FBD616F /* VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F319382F183BB1612580B30 /* VoicePresenceStore.swift */; };
 		AD9012C5FF1EBF90EBAFBE4E /* AppModel+Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E6BEFD3FAD135FEA5C5BDD /* AppModel+Automations.swift */; };
+		AF5002376232E1FACDA7DB1B /* SwiftMinerE2EIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */; };
 		B05A581D1D38DD1E658FB806 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 7551369833EB21380EB8B404 /* SwiftSoup */; };
 		B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */; };
 		B0787CF87C490A51456F573B /* UpdateItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788B16C5C9EE07B0145A0E82 /* UpdateItem.swift */; };
@@ -269,6 +270,7 @@
 		44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesPreferencesView.swift; sourceTree = "<group>"; };
 		45A7F34F7FFB7E1B2BD1C889 /* SwiftMinerDMEmbedBuilders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMEmbedBuilders.swift; sourceTree = "<group>"; };
 		460C93A6D305EACF834AA7E4 /* DiscordGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGatewayConnection.swift; sourceTree = "<group>"; };
+		4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerE2EIntegrationTests.swift; sourceTree = "<group>"; };
 		462957555B9B4E41B5C92EFB /* VoiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceProtocol.swift; sourceTree = "<group>"; };
 		46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		497A71EBDE92BC874E86B34F /* SwiftMinerDMStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMStyle.swift; sourceTree = "<group>"; };
@@ -604,6 +606,7 @@
 				4D7439BDA54C341126F5A30C /* SwiftMinerDMSenderTests.swift */,
 				F6021CBD3F4619EC59B0A894 /* SwiftMinerDMStateTests.swift */,
 				C30594CFC06F0AC68516A696 /* SwiftMinerDMThemeTests.swift */,
+				4622FDCA8F04C6BA993CBEFA /* SwiftMinerE2EIntegrationTests.swift */,
 				216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */,
 				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
@@ -1062,6 +1065,7 @@
 				5F1C394CB812F1D2B78DB256 /* SwiftMinerDMSenderTests.swift in Sources */,
 				BD64632310BA8934F5467656 /* SwiftMinerDMStateTests.swift in Sources */,
 				EE1D37D9128E8C74FD1B37CC /* SwiftMinerDMThemeTests.swift in Sources */,
+				AF5002376232E1FACDA7DB1B /* SwiftMinerE2EIntegrationTests.swift in Sources */,
 				A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */,
 				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
 				B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */,

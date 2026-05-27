@@ -22,6 +22,9 @@ final class AppModel: ObservableObject {
     @Published var auditLog: [AuditLogEntry] = []
     private let auditLogCap = 500
 
+    @Published var automationLog: [AutomationLogEntry] = []
+    private let automationLogCap = 500
+
     /// Append an audit event. Capped at `auditLogCap` (oldest dropped). Safe to
     /// call from any actor; hops to the main actor for the publish.
     nonisolated func recordAudit(
@@ -42,6 +45,31 @@ final class AppModel: ObservableObject {
             self.auditLog.append(entry)
             if self.auditLog.count > self.auditLogCap {
                 self.auditLog.removeFirst(self.auditLog.count - self.auditLogCap)
+            }
+            self.persistAnalyticsRuntime()
+        }
+    }
+
+    nonisolated func recordAutomationRun(
+        ruleId: String,
+        ruleName: String,
+        eventKind: String,
+        triggerUser: String,
+        stepsCount: Int,
+        status: String
+    ) {
+        let entry = AutomationLogEntry(
+            ruleId: ruleId,
+            ruleName: ruleName,
+            eventKind: eventKind,
+            triggerUser: triggerUser,
+            stepsCount: stepsCount,
+            status: status
+        )
+        Task { @MainActor in
+            self.automationLog.insert(entry, at: 0)
+            if self.automationLog.count > self.automationLogCap {
+                self.automationLog.removeLast(self.automationLog.count - self.automationLogCap)
             }
             self.persistAnalyticsRuntime()
         }
@@ -162,7 +190,7 @@ final class AppModel: ObservableObject {
 
     /// Shared session for general Discord REST API calls (gateway, guild, message operations).
     /// Uses default configuration for connection pooling and reuse.
-    let discordRESTSession = URLSession(configuration: .default)
+    var discordRESTSession = URLSession(configuration: .default)
 
     /// Dedicated session for Discord identity/token validation calls.
     /// Uses ephemeral configuration: no disk cache, no credential storage, short timeout.
@@ -380,7 +408,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    init() {
+    init(discordRESTSession: URLSession? = nil) {
+        if let customSession = discordRESTSession {
+            self.discordRESTSession = customSession
+        }
         self.pluginManager = PluginManager(bus: eventBus)
         if let store = try? JSONVersionStore(fileURL: PatchyRuntime.checkerStoreURL()) {
             self.patchyChecker = UpdateChecker(store: store)
@@ -1087,6 +1118,7 @@ final class AppModel: ObservableObject {
         voiceLog = snapshot.voiceLog
         auditLog = snapshot.auditLog
         patchyLastCycleAt = snapshot.patchyLastCycleAt
+        automationLog = snapshot.automationLog ?? []
     }
 
     func persistAnalyticsRuntime() {
@@ -1095,7 +1127,8 @@ final class AppModel: ObservableObject {
             commandLog: commandLog,
             voiceLog: voiceLog,
             auditLog: auditLog,
-            patchyLastCycleAt: patchyLastCycleAt
+            patchyLastCycleAt: patchyLastCycleAt,
+            automationLog: automationLog
         )
         Task {
             await analyticsRuntimeStore.save(snapshot)

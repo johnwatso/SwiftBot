@@ -124,6 +124,16 @@ extension AppModel {
             },
             log: { [weak self] msg in
                 Task { @MainActor [weak self] in self?.logs.append(msg) }
+            },
+            recordAutomationRun: { [weak self] ruleId, ruleName, eventKind, triggerUser, stepsCount, status in
+                self?.recordAutomationRun(
+                    ruleId: ruleId,
+                    ruleName: ruleName,
+                    eventKind: eventKind,
+                    triggerUser: triggerUser,
+                    stepsCount: stepsCount,
+                    status: status
+                )
             }
         )
         return AutomationService(aiService: aiService, dependencies: deps)
