@@ -23,41 +23,40 @@ struct WebUIPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
     var body: some View {
-        PreferencesTabContainer {
-            if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
+        SettingsForm(
+            readOnlyBannerText: app.isFailoverManagedNode
+                ? "Read-only on Failover nodes. These settings sync from Primary."
+                : nil
+        ) {
+            Section {
+                AdminWebServerConfigurationSection()
+            } header: {
+                Label("Admin Web UI", systemImage: "macwindow")
+            } footer: {
+                Text("Enable the local web dashboard to manage SwiftBot from your browser.")
             }
 
-            VStack(alignment: .leading, spacing: 24) {
-                PreferencesCard(
-                    "Admin Web UI",
-                    systemImage: "macwindow",
-                    subtitle: "Enable the local web dashboard to manage SwiftBot from your browser."
-                ) {
-                    AdminWebServerConfigurationSection()
-                }
+            Section {
+                InternetAccessConfigurationSection()
+            } header: {
+                Label("Internet Access", systemImage: "network")
+            } footer: {
+                Text("Expose your dashboard securely over the internet via Cloudflare Tunnel.")
+            }
 
-                PreferencesCard(
-                    "Internet Access",
-                    systemImage: "network",
-                    subtitle: "Expose your dashboard securely over the internet via Cloudflare Tunnel."
-                ) {
-                    InternetAccessConfigurationSection()
-                }
+            Section {
+                AdminWebAuthenticationSection()
+            } header: {
+                Label("Authentication", systemImage: "person.badge.key")
+            } footer: {
+                Text("Control who can sign in to your dashboard with Discord.")
+            }
 
-                PreferencesCard(
-                    "Authentication",
-                    systemImage: "person.badge.key",
-                    subtitle: "Control who can sign in to your dashboard with Discord."
-                ) {
-                    AdminWebAuthenticationSection()
-                }
-
+            Section {
                 AdminWebLaunchControls(usesGlassActionStyle: false)
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
+        .preferencesCardDisabled(when: app.isFailoverManagedNode)
     }
 }
 
@@ -933,7 +932,7 @@ struct AdminWebAuthenticationSection: View {
                 redirectURL: app.adminWebDiscordRedirectURL()
             )
 
-            if app.settings.devFeaturesEnabled {
+#if DEBUG
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: "lock.shield")
@@ -980,7 +979,7 @@ struct AdminWebAuthenticationSection: View {
             }
             .padding(14)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } // devFeaturesEnabled (Local Fallback)
+            #endif // DEBUG (Local Fallback)
 
 
             Divider()

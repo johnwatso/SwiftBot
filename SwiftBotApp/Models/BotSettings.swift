@@ -317,29 +317,7 @@ struct BotSettings: Codable, Hashable {
     /// used to interpret natural-language times in `/timestamp`.
     /// Missing entries fall back to the bot host's `TimeZone.current`.
     var userTimezones: [String: String] = [:]
-    var devFeaturesEnabled: Bool = false
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixEnabled: Bool = false
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixTriggerEmoji: String = "🤖"
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixCommandTemplate: String = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixRepoPath: String = ""
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixGitBranch: String = "main"
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixVersionBumpEnabled: Bool = true
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixPushEnabled: Bool = true
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixRequireApproval: Bool = true
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixApproveEmoji: String = "🚀"
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixRejectEmoji: String = "🛑"
-    @available(*, deprecated, message: "Archived/Unused")
-    var bugAutoFixAllowedUsernames: [String] = []
+
     var aiMemoryNotes: [AIMemoryNote] = []
     var localAISystemPrompt: String = "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
     var behavior = BotBehaviorSettings()
@@ -403,18 +381,6 @@ struct BotSettings: Codable, Hashable {
         case clusterLastHandoverTestOK
         case clusterNodeIconOverrides
         case localAIDMReplyEnabled
-        case devFeaturesEnabled
-        case bugAutoFixEnabled
-        case bugAutoFixTriggerEmoji
-        case bugAutoFixCommandTemplate
-        case bugAutoFixRepoPath
-        case bugAutoFixGitBranch
-        case bugAutoFixVersionBumpEnabled
-        case bugAutoFixPushEnabled
-        case bugAutoFixRequireApproval
-        case bugAutoFixApproveEmoji
-        case bugAutoFixRejectEmoji
-        case bugAutoFixAllowedUsernames
         case aiMemoryNotes
         case localAISystemPrompt
         case behavior
@@ -462,18 +428,6 @@ struct BotSettings: Codable, Hashable {
         clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
         clusterNodeIconOverrides = try container.decodeIfPresent([String: String].self, forKey: .clusterNodeIconOverrides) ?? [:]
         localAIDMReplyEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAIDMReplyEnabled) ?? false
-        devFeaturesEnabled = try container.decodeIfPresent(Bool.self, forKey: .devFeaturesEnabled) ?? false
-        bugAutoFixEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixEnabled) ?? false
-        bugAutoFixTriggerEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixTriggerEmoji) ?? "🤖"
-        bugAutoFixCommandTemplate = try container.decodeIfPresent(String.self, forKey: .bugAutoFixCommandTemplate) ?? "codex exec \"$SWIFTBOT_BUG_PROMPT\""
-        bugAutoFixRepoPath = try container.decodeIfPresent(String.self, forKey: .bugAutoFixRepoPath) ?? ""
-        bugAutoFixGitBranch = try container.decodeIfPresent(String.self, forKey: .bugAutoFixGitBranch) ?? "main"
-        bugAutoFixVersionBumpEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixVersionBumpEnabled) ?? true
-        bugAutoFixPushEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixPushEnabled) ?? true
-        bugAutoFixRequireApproval = try container.decodeIfPresent(Bool.self, forKey: .bugAutoFixRequireApproval) ?? true
-        bugAutoFixApproveEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixApproveEmoji) ?? "🚀"
-        bugAutoFixRejectEmoji = try container.decodeIfPresent(String.self, forKey: .bugAutoFixRejectEmoji) ?? "🛑"
-        bugAutoFixAllowedUsernames = try container.decodeIfPresent([String].self, forKey: .bugAutoFixAllowedUsernames) ?? []
         aiMemoryNotes = try container.decodeIfPresent([AIMemoryNote].self, forKey: .aiMemoryNotes) ?? []
         localAISystemPrompt = try container.decodeIfPresent(String.self, forKey: .localAISystemPrompt) ?? "You are a friendly, casual Discord bot. Keep replies short and conversational — 1 to 3 sentences max unless asked for detail. Use contractions naturally. Don't restate what the user said. Don't open every reply the same way. Match the energy of the conversation." // swiftlint:disable:this line_length
         behavior = try container.decodeIfPresent(BotBehaviorSettings.self, forKey: .behavior) ?? BotBehaviorSettings()
@@ -516,18 +470,6 @@ struct BotSettings: Codable, Hashable {
         try container.encode(clusterLastHandoverTestOK, forKey: .clusterLastHandoverTestOK)
         try container.encode(clusterNodeIconOverrides, forKey: .clusterNodeIconOverrides)
         try container.encode(localAIDMReplyEnabled, forKey: .localAIDMReplyEnabled)
-        try container.encode(devFeaturesEnabled, forKey: .devFeaturesEnabled)
-        try container.encode(bugAutoFixEnabled, forKey: .bugAutoFixEnabled)
-        try container.encode(bugAutoFixTriggerEmoji, forKey: .bugAutoFixTriggerEmoji)
-        try container.encode(bugAutoFixCommandTemplate, forKey: .bugAutoFixCommandTemplate)
-        try container.encode(bugAutoFixRepoPath, forKey: .bugAutoFixRepoPath)
-        try container.encode(bugAutoFixGitBranch, forKey: .bugAutoFixGitBranch)
-        try container.encode(bugAutoFixVersionBumpEnabled, forKey: .bugAutoFixVersionBumpEnabled)
-        try container.encode(bugAutoFixPushEnabled, forKey: .bugAutoFixPushEnabled)
-        try container.encode(bugAutoFixRequireApproval, forKey: .bugAutoFixRequireApproval)
-        try container.encode(bugAutoFixApproveEmoji, forKey: .bugAutoFixApproveEmoji)
-        try container.encode(bugAutoFixRejectEmoji, forKey: .bugAutoFixRejectEmoji)
-        try container.encode(bugAutoFixAllowedUsernames, forKey: .bugAutoFixAllowedUsernames)
         try container.encode(aiMemoryNotes, forKey: .aiMemoryNotes)
         try container.encode(localAISystemPrompt, forKey: .localAISystemPrompt)
         try container.encode(behavior, forKey: .behavior)

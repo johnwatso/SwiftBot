@@ -92,19 +92,7 @@ extension AppModel {
             localAIDMReplyEnabled: settings.localAIDMReplyEnabled,
             useAIInGuildChannels: settings.behavior.useAIInGuildChannels,
             allowDMs: settings.behavior.allowDMs,
-            localAISystemPrompt: settings.localAISystemPrompt,
-            devFeaturesEnabled: settings.devFeaturesEnabled,
-            bugAutoFixEnabled: settings.bugAutoFixEnabled,
-            bugAutoFixTriggerEmoji: settings.bugAutoFixTriggerEmoji,
-            bugAutoFixCommandTemplate: settings.bugAutoFixCommandTemplate,
-            bugAutoFixRepoPath: settings.bugAutoFixRepoPath,
-            bugAutoFixGitBranch: settings.bugAutoFixGitBranch,
-            bugAutoFixVersionBumpEnabled: settings.bugAutoFixVersionBumpEnabled,
-            bugAutoFixPushEnabled: settings.bugAutoFixPushEnabled,
-            bugAutoFixRequireApproval: settings.bugAutoFixRequireApproval,
-            bugAutoFixApproveEmoji: settings.bugAutoFixApproveEmoji,
-            bugAutoFixRejectEmoji: settings.bugAutoFixRejectEmoji,
-            bugAutoFixAllowedUsernames: settings.bugAutoFixAllowedUsernames.joined(separator: ", ")
+            localAISystemPrompt: settings.localAISystemPrompt
         )
     }
 
@@ -1224,7 +1212,13 @@ extension AppModel {
             allowedUserIDs: settings.adminWebUI.restrictAccessToSpecificUsers
                 ? settings.adminWebUI.normalizedAllowedUserIDs
                 : [],
-            devFeaturesEnabled: settings.devFeaturesEnabled
+            devFeaturesEnabled: {
+                #if DEBUG
+                return true
+                #else
+                return false
+                #endif
+            }()
         )
 
         let runtimeState = await adminWebServer.configure(
