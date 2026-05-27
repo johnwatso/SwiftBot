@@ -61,28 +61,17 @@ final class DiscordAIServiceTests: XCTestCase {
             appleAvailability: { true }
         )
 
-        let event = VoiceRuleEvent(
-            kind: .message,
-            guildId: "guild",
-            userId: "user",
-            username: "Taylor",
-            channelId: "channel",
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: nil,
-            messageId: nil,
-            mediaFileName: nil,
-            mediaRelativePath: nil,
-            mediaSourceName: nil,
-            mediaNodeName: nil,
-            triggerMessageId: nil,
-            triggerChannelId: nil,
-            triggerGuildId: "guild",
-            triggerUserId: "user",
-            isDirectMessage: false,
-            authorIsBot: false,
-            joinedAt: nil
+        let event = SwiftBotEvent.message(
+            SwiftBotEvent.MessagePayload(
+                guildId: "guild",
+                userId: "user",
+                username: "Taylor",
+                channelId: "channel",
+                messageId: "message",
+                content: "How do I join?",
+                isDirectMessage: false,
+                authorIsBot: false
+            )
         )
 
         let reply = await service.generateStepAIReply(

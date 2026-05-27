@@ -590,7 +590,7 @@ actor DiscordService {
         await fireRules(for: ruleEvent)
     }
 
-    private func fireRules(for event: VoiceRuleEvent) async {
+    private func fireRules(for event: SwiftBotEvent) async {
         guard let engine = automationService,
               let provider = automationSnapshotProvider else { return }
 
@@ -604,7 +604,7 @@ actor DiscordService {
     private func makeMessageRuleEvent(
         from event: GatewayMessageCreateEvent,
         channelType: Int?
-    ) -> VoiceRuleEvent {
+    ) -> SwiftBotEvent {
         let guildId = event.guildID ?? ""
         let authorIsBot: Bool = {
             if case let .bool(isBot)? = event.author["bot"] { return isBot }
@@ -612,32 +612,21 @@ actor DiscordService {
         }()
         let isDirectMessage = (channelType == 1 || channelType == 3)
 
-        return VoiceRuleEvent(
-            kind: .message,
-            guildId: guildId,
-            userId: event.userID,
-            username: event.username,
-            channelId: event.channelID,
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: event.content,
-            messageId: event.messageID,
-            mediaFileName: nil,
-            mediaRelativePath: nil,
-            mediaSourceName: nil,
-            mediaNodeName: nil,
-            triggerMessageId: event.messageID,
-            triggerChannelId: event.channelID,
-            triggerGuildId: guildId,
-            triggerUserId: event.userID,
-            isDirectMessage: isDirectMessage,
-            authorIsBot: authorIsBot,
-            joinedAt: nil
+        return SwiftBotEvent.message(
+            SwiftBotEvent.MessagePayload(
+                guildId: guildId,
+                userId: event.userID,
+                username: event.username,
+                channelId: event.channelID,
+                messageId: event.messageID,
+                content: event.content,
+                isDirectMessage: isDirectMessage,
+                authorIsBot: authorIsBot
+            )
         )
     }
 
-    private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> VoiceRuleEvent? {
+    private func parseVoiceRuleEvent(from raw: DiscordJSON?) -> SwiftBotEvent? {
         guard case let .object(map)? = raw,
               case let .string(userId)? = map["user_id"],
               case let .string(guildId)? = map["guild_id"]
@@ -654,76 +643,29 @@ actor DiscordService {
         case .ignored:
             return nil
         case .joined(let channelID):
-            return VoiceRuleEvent(
-                kind: .join,
+            return SwiftBotEvent.join(
                 guildId: guildId,
                 userId: userId,
                 username: username,
-                channelId: channelID,
-                fromChannelId: nil,
-                toChannelId: channelID,
-                durationSeconds: nil,
-                messageContent: nil,
-                messageId: nil,
-                mediaFileName: nil,
-                mediaRelativePath: nil,
-                mediaSourceName: nil,
-                mediaNodeName: nil,
-                triggerMessageId: nil,
-                triggerChannelId: nil,
-                triggerGuildId: guildId,
-                triggerUserId: userId,
-                isDirectMessage: false,
-                authorIsBot: nil,
-                joinedAt: nil
+                channelId: channelID
             )
         case .moved(let fromChannelID, let toChannelID, let durationSeconds):
-            return VoiceRuleEvent(
-                kind: .move,
+            return SwiftBotEvent.move(
                 guildId: guildId,
                 userId: userId,
                 username: username,
                 channelId: toChannelID,
                 fromChannelId: fromChannelID,
                 toChannelId: toChannelID,
-                durationSeconds: durationSeconds,
-                messageContent: nil,
-                messageId: nil,
-                mediaFileName: nil,
-                mediaRelativePath: nil,
-                mediaSourceName: nil,
-                mediaNodeName: nil,
-                triggerMessageId: nil,
-                triggerChannelId: nil,
-                triggerGuildId: guildId,
-                triggerUserId: userId,
-                isDirectMessage: false,
-                authorIsBot: nil,
-                joinedAt: nil
+                durationSeconds: durationSeconds
             )
         case .left(let channelID, let durationSeconds):
-            return VoiceRuleEvent(
-                kind: .leave,
+            return SwiftBotEvent.leave(
                 guildId: guildId,
                 userId: userId,
                 username: username,
                 channelId: channelID,
-                fromChannelId: channelID,
-                toChannelId: nil,
-                durationSeconds: durationSeconds,
-                messageContent: nil,
-                messageId: nil,
-                mediaFileName: nil,
-                mediaRelativePath: nil,
-                mediaSourceName: nil,
-                mediaNodeName: nil,
-                triggerMessageId: nil,
-                triggerChannelId: nil,
-                triggerGuildId: guildId,
-                triggerUserId: userId,
-                isDirectMessage: false,
-                authorIsBot: nil,
-                joinedAt: nil
+                durationSeconds: durationSeconds
             )
         }
     }

@@ -803,28 +803,16 @@ extension AppModel {
     }
 
     private func handleMediaAddedEvent(item: MediaLibraryItem, nodeName: String) async {
-        let event = VoiceRuleEvent(
-            kind: .mediaAdded,
-            guildId: nodeName,
-            userId: botUserId ?? "0",
-            username: nodeName,
-            channelId: "",
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: item.fileName,
-            messageId: item.id,
-            mediaFileName: item.fileName,
-            mediaRelativePath: item.relativePath,
-            mediaSourceName: item.sourceName,
-            mediaNodeName: nodeName,
-            triggerMessageId: nil,
-            triggerChannelId: nil,
-            triggerGuildId: nodeName,
-            triggerUserId: botUserId ?? "0",
-            isDirectMessage: false,
-            authorIsBot: nil,
-            joinedAt: nil
+        let event = SwiftBotEvent.mediaAdded(
+            SwiftBotEvent.MediaPayload(
+                guildId: nodeName,
+                userId: botUserId ?? "0",
+                username: nodeName,
+                fileName: item.fileName,
+                relativePath: item.relativePath,
+                sourceName: item.sourceName,
+                nodeName: nodeName
+            )
         )
 
         await fireAutomations(for: event)
