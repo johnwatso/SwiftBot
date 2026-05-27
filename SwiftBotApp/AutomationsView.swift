@@ -573,7 +573,7 @@ enum AutomationDashboardSummary {
             )
         ]
 
-        metrics.append(AIBotsDashboardSummary.appleIntelligenceMetric(app: app, id: "\(idPrefix)-apple-intelligence"))
+        metrics.append(AppleIntelligenceDashboardSummary.appleIntelligenceMetric(app: app, id: "\(idPrefix)-apple-intelligence"))
         return metrics
     }
 }

@@ -279,8 +279,8 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 > Not in original roadmap.
 
 - [x] ~~Strip dead OpenAI image-gen toggles from `SwiftBotApp/Resources/admin/index.html`~~ — cleaned up; three dead UI clusters removed, replaced with single Apple Intelligence panels.
-- [ ] Decide fate of `FoundationModelsSpikeTests` — flaky on Apple's on-device model (fails ~half the time on latency or quality). Either loosen thresholds, mark expected-flaky, or remove.
-- [ ] Consider renaming internal `case aiBots`, `struct AIBotsView`, JSON key `aiBots:` to match the user-facing "Apple Intelligence" name. Skipped during the surface rename because the JSON key is a wire contract with the admin web UI.
+- [x] ~~Decide fate of `FoundationModelsSpikeTests`~~ — removed. Was a P1.1 milestone gate for the Apple Intelligence decision; that decision is made, ongoing latency/quality belongs in telemetry not a CI gate. Preserved in git history.
+- [x] ~~Rename internal `case aiBots`, `struct AIBotsView`, JSON key `aiBots:`~~ — done. Swift symbols → `appleIntelligence` / `AppleIntelligenceView` / `AppleIntelligenceDashboardSummary`; AdminWeb JSON field → `appleIntelligence`; admin HTML JS updated to match. File renamed `AIBotsView.swift` → `AppleIntelligenceView.swift`.
 
 ---
 
@@ -298,7 +298,8 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 | `b9daeba` | "AI Bots" → "AI" rename + `apple.intelligence` SF Symbol. |
 | `981fc7e` + `50619f9` | Apple Intelligence UI revamp + personality picker + `fadingEdges`/shared UI primitives (user). |
 | `75d712d` | Add `ROADMAP.md` to repo + AI_CONTEXT requires keeping it current. |
-| _next_ | Admin HTML cleanup — strip dead OpenAI/Ollama/image-gen panels from `Resources/admin/index.html`. |
+| `03b85db` | Admin HTML cleanup — stripped dead OpenAI/Ollama/image-gen panels and selectors. |
+| _next_ | Drop `FoundationModelsSpikeTests` + rename internal `aiBots` → `appleIntelligence` across Swift, JSON, and admin HTML. |
 
 **Key decisions**
 

@@ -43,7 +43,7 @@ private struct RemoteSettingsDraft: Equatable {
         commandsEnabled = payload.commands.enabled
         slashCommandsEnabled = payload.commands.slashEnabled
         bugTrackingEnabled = payload.commands.bugTrackingEnabled
-        localAIDMReplyEnabled = payload.aiBots.localAIDMReplyEnabled
+        localAIDMReplyEnabled = payload.appleIntelligence.localAIDMReplyEnabled
         wikiBridgeEnabled = payload.wikiBridge.enabled
         patchyMonitoringEnabled = payload.patchy.monitoringEnabled
         clusterMode = payload.swiftMesh.mode

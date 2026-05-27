@@ -7033,7 +7033,7 @@
         return;
       }
       if (currentView === 'aibots') {
-        renderAIBotsView();
+        renderAppleIntelligenceView();
         return;
       }
       if (currentView === 'recordings') {
@@ -8420,7 +8420,7 @@
 
         <section class="settings-panel glass">
           <div class="panel-title"><i class="lucide" data-lucide="sparkles"></i> Apple Intelligence</div>
-          <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.aiBots.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
+          <div class="setting-row"><div class="left"><div class="title">Enable DM AI Replies</div><div class="desc">Allow automatic AI responses in DMs.</div></div><label class="switch"><input id="setAiDm" type="checkbox" ${cfg.appleIntelligence.localAIDMReplyEnabled ? 'checked' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label></div>
           <div class="info-row"><span class="label">Engine</span><span class="value">Apple Intelligence (on-device)</span></div>
         </section>
 
@@ -8543,12 +8543,12 @@
       });
     }
 
-    function renderAIBotsView() {
+    function renderAppleIntelligenceView() {
       if (!dashboardConfig || !dashboardStatus || !dashboardOverview) return;
       const top = document.getElementById('aibotsTop');
       const panels = document.getElementById('aibotsPanels');
       if (!top || !panels) return;
-      const cfg = dashboardConfig.aiBots;
+      const cfg = dashboardConfig.appleIntelligence;
       const metrics = dashboardOverview.metrics || [];
       const aiMetric = metrics.find(item => (item.title || '').toLowerCase().includes('ai'));
 
@@ -9849,7 +9849,7 @@
         case 'aibots':
           primaryRows = [
             { label: 'Engine', value: 'Apple Intelligence' },
-            { label: 'DM Replies', value: config.aiBots.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' }
+            { label: 'DM Replies', value: config.appleIntelligence.localAIDMReplyEnabled ? 'Enabled' : 'Disabled' }
           ];
           secondaryRows = [
             { label: 'Runs', value: 'On-device' }
@@ -9980,7 +9980,7 @@
         });
       } else if (view === 'aibots') {
         controls.innerHTML = `
-          <div class="control-row"><span class="control-label">Enable DM AI Replies</span><input id="cfgDmAiEnabled" type="checkbox" ${config.aiBots.localAIDMReplyEnabled ? 'checked' : ''}></div>
+          <div class="control-row"><span class="control-label">Enable DM AI Replies</span><input id="cfgDmAiEnabled" type="checkbox" ${config.appleIntelligence.localAIDMReplyEnabled ? 'checked' : ''}></div>
         `;
         eventsNode.prepend(controls);
         controls.querySelector('#cfgDmAiEnabled')?.addEventListener('change', async (e) => saveConfigPatch({ localAIDMReplyEnabled: e.target.checked }));
@@ -10178,7 +10178,7 @@
         userprefs.classList.add('hidden');
         voice.classList.add('hidden');
         section.classList.add('hidden');
-        renderAIBotsView();
+        renderAppleIntelligenceView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'AI Bots';
         setMessage('', '');
       } else if (view === 'recordings') {
