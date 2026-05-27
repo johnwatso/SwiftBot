@@ -198,7 +198,7 @@ Voice summaries still need separate work (no transcription infra yet).
 - [x] ~~AI summarisation~~ — `aiTransform` step with a summarisation prompt.
 - [x] ~~AI moderation transforms~~ — `aiTransform` with a rewrite prompt, followed by `sendMessage` using `{ai_output}`.
 - [x] ~~AI notification condensation~~ — `aiTransform` on webhook content.
-- [ ] AI voice summaries — still open; needs voice transcription infra first.
+- [x] ~~AI voice summaries~~ — **out of scope for now**. Would require inbound Discord voice capture (no decoder/RTP-receive today, only outbound), a transcription pipeline (no `Speech` / `SpeechAnalyzer` / whisper integration), and a real consent UX surface (per-session opt-in, recording indicator, jurisdiction handling). The summarisation step itself is trivial once a transcript exists, but the three layers below it are a separate product decision.
 - [x] ~~AI context extraction~~ — `aiTransform` with an extraction prompt, downstream steps reference `{ai_output}`.
 
 > **Known follow-up:** the rule simulator's step-trace index alignment is

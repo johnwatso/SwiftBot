@@ -38,27 +38,35 @@ final class VoiceTTSSource: @unchecked Sendable {
     /// Synthesize `text` and return one fully-rendered AVAudioPCMBuffer in the
     /// pipeline's target format (48 kHz, stereo, interleaved Float32).
     func render(text: String, voice: AVSpeechSynthesisVoice?) async throws -> AVAudioPCMBuffer {
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = voice ?? Self.preferredEnglishVoice()
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-
+        // AVSpeechSynthesizer's internal accessibility setup must run on the
+        // main thread. Creating/driving it from a background actor triggers
+        // "unsafeForcedSync called from Swift Concurrent context" faults in
+        // AXCoreUtilities, so set the synthesizer up on the MainActor.
+        let format = targetFormat
+        let resolvedVoice = voice ?? Self.preferredEnglishVoice()
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAudioPCMBuffer, Error>) in
-            let synthesizer = AVSpeechSynthesizer()
-            let collector = SynthesisCollector(targetFormat: targetFormat) { result in
-                switch result {
-                case .success(let buffer):
-                    continuation.resume(returning: buffer)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
+            Task { @MainActor in
+                let utterance = AVSpeechUtterance(string: text)
+                utterance.voice = resolvedVoice
+                utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+                utterance.pitchMultiplier = 1.0
+                utterance.volume = 1.0
+
+                let synthesizer = AVSpeechSynthesizer()
+                let collector = SynthesisCollector(targetFormat: format) { result in
+                    switch result {
+                    case .success(let buffer):
+                        continuation.resume(returning: buffer)
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                    _ = synthesizer // keep alive until completion
                 }
-                _ = synthesizer // keep alive until completion
+                synthesizer.write(utterance) { buffer in
+                    collector.append(buffer)
+                }
+                // The completion of `write` is signalled by an empty buffer.
             }
-            synthesizer.write(utterance) { buffer in
-                collector.append(buffer)
-            }
-            // The completion of `write` is signalled by an empty buffer.
         }
     }
 }
