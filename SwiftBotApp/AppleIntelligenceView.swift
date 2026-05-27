@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AppleIntelligenceView: View {
     @EnvironmentObject var app: AppModel
-    @State private var baselineSettings = AppPreferencesSnapshot()
 
     private var selectedPersonality: AppleIntelligencePersonality {
         AppleIntelligencePersonality.matching(prompt: app.settings.localAISystemPrompt)
@@ -15,10 +14,6 @@ struct AppleIntelligenceView: View {
         if app.settings.localAIDMReplyEnabled { return "DMs Enabled" }
         if app.settings.behavior.useAIInGuildChannels { return "Mentions Only" }
         return "Paused"
-    }
-
-    private var hasUnsavedChanges: Bool {
-        currentSettingsSnapshot != baselineSettings
     }
 
     private var currentSettingsSnapshot: AppPreferencesSnapshot {
@@ -54,23 +49,12 @@ struct AppleIntelligenceView: View {
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .overlay(alignment: .bottomTrailing) {
-            if hasUnsavedChanges && !app.isFailoverManagedNode {
-                StickySaveButton(label: "Save Apple Intelligence", systemImage: "square.and.arrow.down.fill") {
-                    app.saveSettings()
-                    withAnimation {
-                        baselineSettings = currentSettingsSnapshot
-                    }
-                }
-                .padding(.trailing, 22)
-                .padding(.bottom, 18)
-            }
-        }
         .task {
             await app.refreshAIStatus()
         }
-        .onAppear {
-            baselineSettings = currentSettingsSnapshot
+        .onChange(of: currentSettingsSnapshot) { _, _ in
+            guard !app.isFailoverManagedNode else { return }
+            app.saveSettings()
         }
     }
 
@@ -246,7 +230,7 @@ struct AppleIntelligenceView: View {
         let threadStatus: CapabilityStatus = threadActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
 
         return AutomationsSection(title: "Capabilities", symbol: "square.grid.2x2") {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170, maximum: 240), spacing: 10)], spacing: 10) {
                 capabilityCard(
                     title: "Replies",
                     description: "Answers DMs and mentions using the selected personality.",
@@ -389,6 +373,14 @@ struct AppleIntelligenceView: View {
             case .off: return .secondary
             }
         }
+
+        var symbol: String {
+            switch self {
+            case .active: return "checkmark.circle.fill"
+            case .ready: return "circle.dashed"
+            case .off: return "pause.circle.fill"
+            }
+        }
     }
 
     private func capabilityCard(
@@ -410,26 +402,27 @@ struct AppleIntelligenceView: View {
                 .frame(width: 30, height: 30)
                 .background(Circle().fill(iconColor.opacity(0.14)))
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(status.label)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(badgeColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(badgeColor.opacity(0.12), in: Capsule())
-                }
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
                 Text(description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(3, reservesSpace: true)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
         }
         .padding(10)
-        .frame(minHeight: 84, alignment: .topLeading)
+        .frame(minHeight: 104, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: status.symbol)
+                .font(.caption.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(badgeColor)
+                .padding(8)
+                .accessibilityLabel(Text(status.label))
+        }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
