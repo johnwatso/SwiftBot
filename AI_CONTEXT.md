@@ -1,7 +1,7 @@
 # SwiftBot — AI Agent Context
 > **START HERE.** Read this file before making any changes to the SwiftBot codebase.
 > This is the single authoritative reference for AI agents (Claude, Gemini, Kimi, Codex).
-> See also: `ARCHITECTURE.md` (technical deep-dive), `AI_GUIDE.md` (common tasks & patterns).
+> See also: `ARCHITECTURE.md` (technical deep-dive), `AI_GUIDE.md` (common tasks & patterns), `ROADMAP.md` (live priorities + session log — **update as you work**).
 
 ---
 
@@ -299,6 +299,7 @@ struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
 - [ ] No regressions in unrelated features
 - [ ] If `project.yml` changed, regenerate with `xcodegen`
 - [ ] If versioning or release metadata changed, verify `project.yml`, `SwiftBot.xcodeproj/project.pbxproj`, and `docs/` stay aligned
+- [ ] **Update `ROADMAP.md`** — tick off any item this work closed, strike items that became invalid, and add a one-line entry under the session log with the commit hash(es) and key decisions. Don't let the roadmap drift out of sync with the codebase.
 
 ---
 
