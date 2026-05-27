@@ -66,6 +66,11 @@ actor TunnelManager: TunnelProvider {
     private var nextStartIsRestart = false
     private var logger: (@MainActor @Sendable (String) -> Void)?
     private var statusHandler: (@MainActor @Sendable (AdminWebPublicAccessRuntimeStatus) -> Void)?
+    private var consecutiveFailures = 0
+    private var lastRegistrationError: String?
+    /// Stop auto-restarting after this many consecutive failures so the loop
+    /// doesn't burn CPU forever when the tunnel credential is bad.
+    private static let maxConsecutiveFailures = 5
 
     func configure(
         _ configuration: TunnelRuntimeConfiguration?,
@@ -92,6 +97,12 @@ actor TunnelManager: TunnelProvider {
             return
         }
 
+        // Fresh configuration ⇒ reset the failure counter so a corrected token
+        // gets a full retry budget.
+        if previousConfiguration != configuration {
+            consecutiveFailures = 0
+            lastRegistrationError = nil
+        }
         await stop(clearDesiredConfiguration: false)
         await startProcess(using: configuration)
     }
@@ -160,16 +171,18 @@ actor TunnelManager: TunnelProvider {
             let outputPipe = Pipe()
             process.standardOutput = outputPipe
             process.standardError = outputPipe
-            outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
                 let data = handle.availableData
-                guard !data.isEmpty else { return }
+                guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
                 #if DEBUG
-                if let output = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                   !output.isEmpty {
-                    self.osLogger.debug("TunnelManager: \(output)")
+                let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    self?.osLogger.debug("TunnelManager: \(trimmed)")
                 }
                 #endif
+                Task { [weak self] in
+                    await self?.handleCloudflaredOutput(output, publicURL: configuration.publicURL)
+                }
             }
 
             process.terminationHandler = { [weak self] terminatedProcess in
@@ -187,10 +200,12 @@ actor TunnelManager: TunnelProvider {
             } else {
                 await logger?("Cloudflare tunnel running")
             }
+            // Don't claim `.enabled` until cloudflared actually registers with
+            // the edge — see handleCloudflaredOutput.
             await publishStatus(.init(
-                state: .enabled,
+                state: .enabling,
                 publicURL: configuration.publicURL,
-                detail: "Traffic is routed securely through Cloudflare Tunnel."
+                detail: "Connecting to Cloudflare edge…"
             ))
         } catch {
             await publishStatus(.init(
@@ -199,6 +214,29 @@ actor TunnelManager: TunnelProvider {
                 detail: error.localizedDescription
             ))
             await logger?("⚠️ Tunnel failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleCloudflaredOutput(_ output: String, publicURL: String) async {
+        // cloudflared logs "Registered tunnel connection" once a connection is
+        // accepted by the edge — that's our signal we're really live.
+        if output.contains("Registered tunnel connection") {
+            if consecutiveFailures != 0 || lastRegistrationError != nil {
+                consecutiveFailures = 0
+                lastRegistrationError = nil
+            }
+            await publishStatus(.init(
+                state: .enabled,
+                publicURL: publicURL,
+                detail: "Traffic is routed securely through Cloudflare Tunnel."
+            ))
+            return
+        }
+        // Cloudflare's edge rejected the tunnel — almost always a stale or
+        // wrong token, or a tunnel that has been deleted on the dashboard.
+        if output.contains("error registering the connection")
+            || output.contains("Register tunnel error from server side") {
+            lastRegistrationError = "Cloudflare rejected the tunnel registration. The tunnel token may be invalid, revoked, or for a deleted tunnel — check the Cloudflare Zero Trust dashboard."
         }
     }
 
@@ -220,16 +258,34 @@ actor TunnelManager: TunnelProvider {
             return
         }
 
-        await logger?("⚠️ Cloudflare tunnel stopped unexpectedly")
+        consecutiveFailures += 1
+
+        if consecutiveFailures >= Self.maxConsecutiveFailures {
+            let detail = lastRegistrationError
+                ?? "Cloudflare tunnel failed to start after \(consecutiveFailures) attempts."
+            await logger?("⚠️ \(detail)")
+            await publishStatus(.init(
+                state: .error,
+                publicURL: currentConfiguration.publicURL,
+                detail: detail
+            ))
+            return
+        }
+
+        let detail = lastRegistrationError
+            ?? "Cloudflare tunnel stopped unexpectedly. Restarting…"
+        await logger?("⚠️ \(detail)")
         await publishStatus(.init(
             state: .error,
             publicURL: currentConfiguration.publicURL,
-            detail: "Cloudflare tunnel stopped unexpectedly. Restarting…"
+            detail: detail
         ))
 
+        // Exponential backoff: 2s, 4s, 8s, 16s, …
+        let delaySeconds = min(30, 1 << consecutiveFailures)
         restartTask?.cancel()
         restartTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
             guard !Task.isCancelled else { return }
             await self?.markNextStartAsRestart()
             await self?.startProcess(using: currentConfiguration)
