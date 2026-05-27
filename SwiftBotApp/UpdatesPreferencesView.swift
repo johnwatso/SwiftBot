@@ -5,15 +5,24 @@ struct UpdatesPreferencesView: View {
     @EnvironmentObject var updater: AppUpdater
 
     var body: some View {
-        PreferencesTabContainer {
-            if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
-            }
-
-            PreferencesCard("Software Updates", systemImage: "arrow.clockwise") {
-                HStack(spacing: 8) {
-                    updateChannelOption(.stable)
-                    updateChannelOption(.beta)
+        SettingsForm(
+            readOnlyBannerText: app.isFailoverManagedNode
+                ? "Read-only on Failover nodes. These settings sync from Primary."
+                : nil
+        ) {
+            Section {
+                LabeledContent("Update Channel") {
+                    Picker("Update Channel", selection: Binding(
+                        get: { updater.selectedChannel },
+                        set: { updater.setUpdateChannel($0) }
+                    )) {
+                        ForEach(AppUpdater.UpdateChannel.allCases, id: \.self) { channel in
+                            Text(channel.label).tag(channel)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 200)
                 }
 
                 if updater.selectedChannel == .beta {
@@ -22,43 +31,28 @@ struct UpdatesPreferencesView: View {
                         .foregroundStyle(.orange)
                 }
 
-                Button("Check for Updates...") {
-                    updater.checkForUpdates()
+                LabeledContent("Check for Updates") {
+                    Button("Check Now…") {
+                        updater.checkForUpdates()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!updater.canCheckForUpdates)
                 }
-                .buttonStyle(.bordered)
-                .disabled(!updater.canCheckForUpdates)
 
                 if !updater.isConfigured {
                     Text("Set `SUFeedURL` and `SUPublicEDKey` in the app target build settings to enable Sparkle updates.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Label("Software Updates", systemImage: "arrow.clockwise")
+            } footer: {
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                    Text("Version \(version) (Build \(build))")
+                }
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
-    }
-
-    @ViewBuilder
-    private func updateChannelOption(_ channel: AppUpdater.UpdateChannel) -> some View {
-        let isSelected = updater.selectedChannel == channel
-        Button {
-            updater.setUpdateChannel(channel)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: channel.symbolName)
-                Text(channel.label)
-            }
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? .white.opacity(0.42) : .white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
-        )
+        .preferencesCardDisabled(when: app.isFailoverManagedNode)
     }
 }

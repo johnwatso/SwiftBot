@@ -460,15 +460,34 @@ struct PreferencesTabContainer<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .padding(.bottom, 84)
+            .padding(14)
+            .padding(.bottom, 32)
         }
         .fadingEdges(top: 16, bottom: 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+enum PreferencesCardDensity {
+    case standard
+    case compact
+
+    var padding: CGFloat {
+        switch self {
+        case .standard: return 20
+        case .compact: return 14
+        }
+    }
+
+    var innerSpacing: CGFloat {
+        switch self {
+        case .standard: return 18
+        case .compact: return 12
+        }
     }
 }
 
@@ -476,23 +495,26 @@ struct PreferencesCard<Content: View>: View {
     let title: String
     let systemImage: String?
     let subtitle: String?
+    let density: PreferencesCardDensity
     let content: Content
 
     init(
         _ title: String,
         systemImage: String? = nil,
         subtitle: String? = nil,
+        density: PreferencesCardDensity = .compact,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.systemImage = systemImage
         self.subtitle = subtitle
+        self.density = density
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: density.innerSpacing) {
+            VStack(alignment: .leading, spacing: 4) {
                 if let systemImage {
                     SettingsSectionHeader(title: title, systemImage: systemImage)
                 } else {
@@ -511,13 +533,104 @@ struct PreferencesCard<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
+        .padding(.vertical, density.padding * 0.4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-        )
+    }
+}
+
+/// Leading-label / trailing-control row. Use inside PreferencesCard for
+/// dense, scannable forms. The label column has a fixed width so adjacent
+/// rows align cleanly; pass `caption` for the small helper text that would
+/// otherwise sit underneath a stacked field.
+struct PreferencesFormRow<Control: View>: View {
+    let label: String
+    let caption: String?
+    let labelWidth: CGFloat
+    let control: Control
+
+    init(
+        _ label: String,
+        caption: String? = nil,
+        labelWidth: CGFloat = 160,
+        @ViewBuilder control: () -> Control
+    ) {
+        self.label = label
+        self.caption = caption
+        self.labelWidth = labelWidth
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.subheadline.weight(.medium))
+                .frame(width: labelWidth, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                control
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let caption, !caption.isEmpty {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+}
+
+/// Single-line toggle row: label left, switch trailing. Replaces the
+/// HStack { Text; Spacer; Toggle } pattern repeated across preferences.
+struct PreferencesInlineToggle: View {
+    let title: String
+    let caption: String?
+    @Binding var isOn: Bool
+
+    init(_ title: String, caption: String? = nil, isOn: Binding<Bool>) {
+        self.title = title
+        self.caption = caption
+        self._isOn = isOn
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Toggle("", isOn: $isOn)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            if let caption, !caption.isEmpty {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct PreferencesCardDisabledModifier: ViewModifier {
+    let isDisabled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.62 : 1)
+    }
+}
+
+extension View {
+    /// Standard treatment for a PreferencesCard that should be read-only —
+    /// disables interaction and dims to 62% opacity. Replaces the
+    /// `.disabled(x).opacity(x ? 0.62 : 1)` pair repeated across tabs.
+    func preferencesCardDisabled(when isDisabled: Bool) -> some View {
+        modifier(PreferencesCardDisabledModifier(isDisabled: isDisabled))
     }
 }
 
@@ -533,6 +646,180 @@ struct PreferencesReadOnlyBanner: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 2)
+    }
+}
+
+// MARK: - Phase 2 settings primitives
+// SwiftMiner-style status surface, badges, inline actions, and a Form-friendly
+// container. Each preferences tab is moving toward a single status row at the
+// top + native grouped Form sections below.
+
+/// Compact status surface for the top of a preferences tab. Mirrors
+/// SwiftMiner's pattern: tinted icon · title + subtitle · trailing accessory.
+/// Drop the `accessory` slot to omit the trailing element.
+struct SettingsStatusRow<Accessory: View>: View {
+    let systemImage: String
+    let tint: Color
+    let title: String
+    let subtitle: String?
+    let accessory: Accessory
+
+    init(
+        systemImage: String,
+        tint: Color = .accentColor,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
+        self.systemImage = systemImage
+        self.tint = tint
+        self.title = title
+        self.subtitle = subtitle
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 30, height: 30)
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(tint)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            accessory
+        }
+    }
+}
+
+/// Small inline status pill — e.g. "HTTPS · ON". Use multiple in an HStack to
+/// build a status strip ("HTTPS · Cloudflare · Public URL · Auth").
+struct SettingsStatusBadge: View {
+    let systemImage: String?
+    let label: String
+    let tint: Color
+
+    init(_ label: String, systemImage: String? = nil, tint: Color = .secondary) {
+        self.label = label
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+    }
+}
+
+/// Utility action button — small, capsule-bordered, with optional icon.
+/// Replaces the giant "Open in Browser"-style CTAs.
+struct SettingsInlineAction: View {
+    let title: String
+    let systemImage: String?
+    let action: () -> Void
+
+    init(_ title: String, systemImage: String? = nil, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            if let systemImage {
+                Label(title, systemImage: systemImage)
+            } else {
+                Text(title)
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .buttonBorderShape(.capsule)
+    }
+}
+
+/// Form-friendly wrapper for a preferences tab. Renders a native macOS
+/// grouped Form, applies consistent insets, and shows the failover read-only
+/// banner above the form when requested. Use as:
+///
+///     SettingsForm(readOnlyBannerText: app.isFailoverManagedNode ? "..." : nil) {
+///         Section { ... }
+///         Section { ... }
+///     }
+struct SettingsForm<Content: View>: View {
+    let readOnlyBannerText: String?
+    let content: Content
+
+    init(
+        readOnlyBannerText: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.readOnlyBannerText = readOnlyBannerText
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let readOnlyBannerText {
+                PreferencesReadOnlyBanner(text: readOnlyBannerText)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+            }
+            Form {
+                content
+            }
+            .formStyle(.grouped)
+            .padding(.horizontal, 24)
+            .padding(.top, 10)
+            .padding(.bottom, 20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Secondary caption row used beneath form controls. Mirrors SwiftMiner's
+/// `SettingsSecondaryText` so prefs no longer scatter
+/// `Text(...).font(.caption).foregroundStyle(.secondary)` inline.
+struct SettingsSecondaryText: View {
+    let text: String
+    var tint: Color = .secondary
+
+    init(_ text: String, tint: Color = .secondary) {
+        self.text = text
+        self.tint = tint
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(tint)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 1)
     }
 }
 

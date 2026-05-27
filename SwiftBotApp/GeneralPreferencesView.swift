@@ -5,8 +5,6 @@ struct GeneralPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
     @State private var showRunSetupPrompt = false
-
-    // Discord Authentication State (Moved from Discord tab)
     @State private var showToken = false
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
@@ -18,33 +16,65 @@ struct GeneralPreferencesView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var mediaSummaryText: String {
+    private var recordingsSummary: String {
         let sources = app.mediaLibrarySettings.sources
+        if sources.isEmpty { return "No folders configured" }
         let enabled = sources.filter(\.isEnabled).count
-        return sources.isEmpty
-            ? "No recording libraries configured on this node yet."
-            : "\(enabled)/\(sources.count) recording sources enabled on this node."
+        return "\(enabled) of \(sources.count) enabled"
+    }
+
+    private var statusTint: Color {
+        if !canGenerateInviteLink { return .secondary }
+        switch app.status {
+        case .running: return .green
+        case .connecting, .reconnecting: return .orange
+        case .stopped: return .secondary
+        }
+    }
+
+    private var statusTitle: String {
+        if !canGenerateInviteLink { return "Not configured" }
+        switch app.status {
+        case .running: return "Connected to Discord"
+        case .connecting: return "Connecting…"
+        case .reconnecting: return "Reconnecting…"
+        case .stopped: return "Bot stopped"
+        }
+    }
+
+    private var statusSubtitle: String {
+        if !canGenerateInviteLink {
+            return "Add a Discord bot token below to get started."
+        }
+        return app.status == .running
+            ? "Auto-start is \(app.settings.autoStart ? "on" : "off")."
+            : "Use the toolbar to start the bot."
     }
 
     var body: some View {
-        PreferencesTabContainer {
-            if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
+        SettingsForm(
+            readOnlyBannerText: app.isFailoverManagedNode
+                ? "Read-only on Failover nodes. These settings sync from Primary."
+                : nil
+        ) {
+            Section {
+                SettingsStatusRow(
+                    systemImage: app.status == .running ? "checkmark.circle.fill" : "bolt.horizontal.circle",
+                    tint: statusTint,
+                    title: statusTitle,
+                    subtitle: statusSubtitle
+                ) {
+                    Toggle("", isOn: $app.settings.autoStart)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .help(app.settings.autoStart ? "Disable auto-start" : "Enable auto-start")
+                }
             }
 
-            PreferencesCard("General", systemImage: "gearshape") {
-                Toggle("Start Bot Automatically", isOn: $app.settings.autoStart)
-                    .toggleStyle(.switch)
-            }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
-
-            PreferencesCard("Discord Authentication", systemImage: "message") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Bot Token")
-                        .font(.subheadline.weight(.medium))
-
-                    HStack {
+            Section {
+                LabeledContent("Bot Token") {
+                    HStack(spacing: 6) {
                         Group {
                             if showToken {
                                 TextField("Token", text: $app.settings.token)
@@ -52,101 +82,94 @@ struct GeneralPreferencesView: View {
                                 SecureField("Token", text: $app.settings.token)
                             }
                         }
-                        .textFieldStyle(.plain)
+                        .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
+                        .frame(minWidth: 220)
 
-                        HStack(spacing: 8) {
+                        Button {
+                            showToken.toggle()
+                        } label: {
+                            Image(systemName: showToken ? "eye.slash" : "eye")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(showToken ? "Hide token" : "Show token")
+
+                        if !app.settings.token.isEmpty {
                             Button {
-                                showToken.toggle()
+                                showingClearTokenConfirmation = true
                             } label: {
-                                Image(systemName: showToken ? "eye.slash" : "eye")
-                                    .foregroundStyle(.secondary)
+                                Image(systemName: "xmark.circle.fill")
                             }
-                            .buttonStyle(.plain)
-
-                            if !app.settings.token.isEmpty {
-                                Button {
-                                    showingClearTokenConfirmation = true
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove token")
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(.white.opacity(0.1), lineWidth: 1)
-                    )
-                    .frame(maxWidth: 560)
-
-                    Text("Obtain this from the Discord Developer Portal.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Button {
-                        showingPermissionsCheck = true
-                    } label: {
-                        Label("Check Permissions", systemImage: "checkmark.shield")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .buttonBorderShape(.capsule)
-                    .disabled(!canGenerateInviteLink)
-                    .help("Inspect what the bot can do in each connected server.")
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Invite Bot")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 10) {
-                        Button {
+                LabeledContent("Invite Bot") {
+                    HStack(spacing: 6) {
+                        SettingsInlineAction("Copy Link", systemImage: "doc.on.doc") {
                             Task { await copyInviteLink() }
-                        } label: {
-                            Label("Copy Invite Link", systemImage: "doc.on.doc")
                         }
-                        .buttonStyle(.bordered)
+                        .disabled(!canGenerateInviteLink || inviteActionInProgress)
 
-                        Button {
+                        SettingsInlineAction("Open", systemImage: "arrow.up.right.square") {
                             Task { await openInviteLink() }
-                        } label: {
-                            Label("Open Invite Link", systemImage: "arrow.up.forward.square")
                         }
-                        .buttonStyle(.bordered)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(!canGenerateInviteLink || inviteActionInProgress)
+                        .disabled(!canGenerateInviteLink || inviteActionInProgress)
 
-                    if !canGenerateInviteLink {
-                        Text("Bot token required to generate invite link.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        SettingsInlineAction("Check Permissions", systemImage: "checkmark.shield") {
+                            showingPermissionsCheck = true
+                        }
+                        .disabled(!canGenerateInviteLink)
                     }
                 }
-
-                if app.isFailoverManagedNode {
-                    Text("This node is in Failover mode. Authentication settings are managed by the Primary node.")
+            } header: {
+                Text("Discord")
+            } footer: {
+                if !canGenerateInviteLink {
+                    Text("Create a bot in the Discord Developer Portal and paste its token to enable these actions.")
                         .font(.caption)
-                        .foregroundStyle(.orange)
-                        .padding(.top, 4)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
 
-            PreferencesCard("Setup", systemImage: "wand.and.stars") {
-                Button(role: .none) {
+            Section {
+                LabeledContent("Recordings") {
+                    Text(recordingsSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach($app.mediaLibrarySettings.sources) { $source in
+                    RecordingSourceRow(source: $source) {
+                        app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
+                    }
+                }
+
+                Button {
+                    app.mediaLibrarySettings.sources.append(MediaLibrarySource())
+                } label: {
+                    Label("Add Folder", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+            } header: {
+                Text("Recordings")
+            } footer: {
+                Text("Folders are local to this Mac and surfaced inside the shared Web UI media browser.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Button {
                     showRunSetupPrompt = true
                 } label: {
-                    Label("Run Setup Wizard", systemImage: "wand.and.stars")
+                    Label("Run Setup Wizard…", systemImage: "wand.and.stars")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
                 .confirmationDialog(
                     "Run setup again?",
                     isPresented: $showRunSetupPrompt,
@@ -155,90 +178,11 @@ struct GeneralPreferencesView: View {
                     Button("Start Setup", role: .destructive) { app.isOnboardingComplete = false }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("This will take you back to the initial configuration screens.")
+                    Text("Returns you to the initial configuration screens. Existing settings are preserved.")
                 }
-
-                Text("Reopen the guided setup flow if you need to reconfigure Discord or SwiftMesh.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Setup")
             }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
-
-            PreferencesCard("Recordings", systemImage: "video") {
-                Text("Configure node-local recording folders that appear in the shared WebUI media browser.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(mediaSummaryText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach($app.mediaLibrarySettings.sources) { $source in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                TextField("Source Name", text: $source.name)
-                                    .textFieldStyle(.roundedBorder)
-                                Toggle("", isOn: $source.isEnabled)
-                                    .toggleStyle(.switch)
-                                    .labelsHidden()
-                                Button(role: .destructive) {
-                                    if let index = app.mediaLibrarySettings.sources.firstIndex(where: { $0.id == source.id }) {
-                                        app.mediaLibrarySettings.sources.remove(at: index)
-                                    }
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.bordered)
-                            }
-
-                            HStack {
-                                TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
-                                    .textFieldStyle(.roundedBorder)
-                                Button {
-                                    let panel = NSOpenPanel()
-                                    panel.canChooseFiles = false
-                                    panel.canChooseDirectories = true
-                                    panel.allowsMultipleSelection = false
-                                    panel.prompt = "Choose"
-                                    if panel.runModal() == .OK, let url = panel.url {
-                                        source.rootPath = url.path
-                                    }
-                                } label: {
-                                    Image(systemName: "folder")
-                                }
-                                .buttonStyle(.bordered)
-                            }
-
-                            TextField(
-                                "mp4, mov, m4v",
-                                text: Binding(
-                                    get: { source.allowedExtensions.joined(separator: ", ") },
-                                    set: { rawValue in
-                                        source.allowedExtensions = rawValue
-                                            .split(separator: ",")
-                                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                            .filter { !$0.isEmpty }
-                                    }
-                                )
-                            )
-                            .textFieldStyle(.roundedBorder)
-                        }
-                        .padding(12)
-                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-
-                    Button {
-                        app.mediaLibrarySettings.sources.append(MediaLibrarySource())
-                    } label: {
-                        Label("Add Source", systemImage: "plus")
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-            .disabled(app.isFailoverManagedNode)
-            .opacity(app.isFailoverManagedNode ? 0.62 : 1)
         }
         .alert("Remove Bot Token?", isPresented: $showingClearTokenConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -251,6 +195,7 @@ struct GeneralPreferencesView: View {
         .sheet(isPresented: $showingPermissionsCheck) {
             BotPermissionsCheckView(token: app.settings.token)
         }
+        .preferencesCardDisabled(when: app.isFailoverManagedNode)
         .overlay(alignment: .topTrailing) {
             if let transientToastMessage {
                 Text(transientToastMessage)
@@ -312,6 +257,59 @@ struct GeneralPreferencesView: View {
                     transientToastMessage = nil
                 }
             }
+        }
+    }
+}
+
+private struct RecordingSourceRow: View {
+    @Binding var source: MediaLibrarySource
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Toggle("", isOn: $source.isEnabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Source name", text: $source.name)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline.weight(.medium))
+
+                HStack(spacing: 4) {
+                    Image(systemName: "folder")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    TextField("/Volumes/NAS/GameCaptures", text: $source.rootPath)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            Button {
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.allowsMultipleSelection = false
+                panel.prompt = "Choose"
+                if panel.runModal() == .OK, let url = panel.url {
+                    source.rootPath = url.path
+                }
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .help("Choose folder")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove folder")
         }
     }
 }

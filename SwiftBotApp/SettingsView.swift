@@ -26,16 +26,6 @@ struct GeneralSettingsView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var developerFeaturesBinding: Binding<Bool> {
-        Binding(
-            get: { app.settings.devFeaturesEnabled },
-            set: { newValue in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    app.settings.devFeaturesEnabled = newValue
-                }
-            }
-        )
-    }
 
     private var swiftMeshSummaryLines: [String] {
         let role = app.settings.clusterMode == .standalone ? "Disabled" : app.settings.clusterMode.displayName
@@ -203,11 +193,6 @@ struct GeneralSettingsView: View {
                     webUIContent
                 }
 
-                if app.settings.devFeaturesEnabled {
-                    bugAutoFixSection
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .disabled(isFailoverManagedNode)
-                }
 
                 VStack(alignment: .leading, spacing: 16) {
                     sectionTitle("Software Updates", symbol: "arrow.triangle.2.circlepath")

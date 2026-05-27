@@ -341,25 +341,11 @@ struct AppPreferencesSnapshot: Equatable {
     var adminAllowedUserIDs = ""
     var adminRedirectPath = ""
 
-    // AI Bots (Apple Intelligence only — see Archive/MultiProviderAI.swift)
+    // AI Bots (Apple Intelligence only)
     var localAIDMReplyEnabled = false
     var useAIInGuildChannels = false
     var allowDMs = false
     var localAISystemPrompt = ""
-
-    // Developer & Bug Auto-Fix
-    var devFeaturesEnabled = false
-    var bugAutoFixEnabled = false
-    var bugAutoFixTriggerEmoji = "🤖"
-    var bugAutoFixCommandTemplate = "codex exec \"$SWIFTBOT_BUG_PROMPT\""
-    var bugAutoFixRepoPath = ""
-    var bugAutoFixGitBranch = "main"
-    var bugAutoFixVersionBumpEnabled = true
-    var bugAutoFixPushEnabled = true
-    var bugAutoFixRequireApproval = true
-    var bugAutoFixApproveEmoji = "🚀"
-    var bugAutoFixRejectEmoji = "🛑"
-    var bugAutoFixAllowedUsernames = ""
 }
 
 struct MeshSyncedFilesPayload: Codable, Hashable {

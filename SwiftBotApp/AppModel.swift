@@ -370,7 +370,11 @@ final class AppModel: ObservableObject {
     }
 
     var remoteControlFeatureEnabled: Bool {
-        isBetaBuild && settings.devFeaturesEnabled
+        #if DEBUG
+        return isBetaBuild
+        #else
+        return false
+        #endif
     }
 
     var canSwitchDashboardViewMode: Bool {
