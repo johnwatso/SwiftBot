@@ -113,7 +113,7 @@ Status of each — no per-item work needed:
 
 > Genuinely open — **biggest Priority 2 lift**.
 
-- [ ] Replace `VoiceRuleEvent` with a typed `SwiftBotEvent` enum — biggest blast radius. Today's `VoiceRuleEvent` is one type with ~18 optional fields covering message/voice/member/media. An enum with associated values per case would be cleaner.
+- [x] Replace `VoiceRuleEvent` with a typed `SwiftBotEvent` enum — biggest blast radius. Today's `VoiceRuleEvent` is one type with ~18 optional fields covering message/voice/member/media. An enum with associated values per case is cleaner and now fully implemented.
 - [ ] Create typed trigger system
 - [ ] Create typed modifiers/actions
 - [ ] Create execution context model
@@ -290,6 +290,7 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 | Commit | Summary |
 |---|---|
+| `_refactor_` | Refactored overloaded `VoiceRuleEvent` struct to type-safe `SwiftBotEvent` enum with bridge properties. Conformed to SwiftLint associated values count rule. |
 | `dae7c01` | Terminology cleanup: "Workflows" → "Automations", `RuleAction` → step naming. `AutomationEngine` → `AutomationService`. |
 | `6357bc0` | DM testing (8/8) + absolute expiry timestamp support in setup DM. |
 | `1d3bd71` | DM polish: priority game medals + expired-code hint. |
@@ -303,6 +304,7 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 **Key decisions**
 
+- **Bypassed SwiftLint associated values limit via sub-payloads** — Grouped associated values of `.message` and `.mediaAdded` into `MessagePayload` and `MediaPayload` structs, keeping case counts within SwiftLint’s `enum_case_associated_values_count` limits while maintaining type safety.
 - **AI multi-provider removed by design** — Apple Intelligence is always present on the macOS 26 target, no API keys, no billing. Trade-off accepted: no fallback if Apple model regresses or is offline.
 - **EventBus Phase 2 deferred (YAGNI)** — the cascade in `handleMessageCreate` is chain-of-responsibility, not fan-out. Bus subscribers don't model exclusive branches well. Revisit when a 3rd genuine subscriber emerges.
 - **Roadmap revised in place** — many original items were either already done (MainActor reduction, EventBus existence, parser structure), based on misdiagnoses (duplicated rule eval), or removed by the Apple-only design change (provider racing, etc.).

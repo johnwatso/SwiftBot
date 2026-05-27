@@ -58,10 +58,39 @@ enum DiscordJSON: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - Voice Rule Event
+// MARK: - SwiftBot Event
 
-struct VoiceRuleEvent: Sendable {
-    enum Kind {
+enum SwiftBotEvent: Sendable {
+    struct MessagePayload: Sendable {
+        let guildId: String
+        let userId: String
+        let username: String
+        let channelId: String
+        let messageId: String
+        let content: String
+        let isDirectMessage: Bool
+        let authorIsBot: Bool
+    }
+
+    struct MediaPayload: Sendable {
+        let guildId: String
+        let userId: String
+        let username: String
+        let fileName: String
+        let relativePath: String?
+        let sourceName: String?
+        let nodeName: String
+    }
+
+    case join(guildId: String, userId: String, username: String, channelId: String)
+    case leave(guildId: String, userId: String, username: String, channelId: String, durationSeconds: Int)
+    case move(guildId: String, userId: String, username: String, channelId: String, fromChannelId: String, toChannelId: String, durationSeconds: Int)
+    case message(MessagePayload)
+    case memberJoin(guildId: String, userId: String, username: String, joinedAt: Date?)
+    case memberLeave(guildId: String, userId: String, username: String)
+    case mediaAdded(MediaPayload)
+
+    enum Kind: Sendable {
         case join
         case leave
         case move
@@ -71,27 +100,175 @@ struct VoiceRuleEvent: Sendable {
         case mediaAdded
     }
 
-    let kind: Kind
-    let guildId: String
-    let userId: String
-    let username: String
-    let channelId: String
-    let fromChannelId: String?
-    let toChannelId: String?
-    let durationSeconds: Int?
-    let messageContent: String?
-    let messageId: String?
-    let mediaFileName: String?
-    let mediaRelativePath: String?
-    let mediaSourceName: String?
-    let mediaNodeName: String?
-    let triggerMessageId: String?
-    let triggerChannelId: String?
-    let triggerGuildId: String
-    let triggerUserId: String
-    let isDirectMessage: Bool
-    let authorIsBot: Bool?
-    let joinedAt: Date?
+    var kind: Kind {
+        switch self {
+        case .join: return .join
+        case .leave: return .leave
+        case .move: return .move
+        case .message: return .message
+        case .memberJoin: return .memberJoin
+        case .memberLeave: return .memberLeave
+        case .mediaAdded: return .mediaAdded
+        }
+    }
+
+    var guildId: String {
+        switch self {
+        case .join(let g, _, _, _): return g
+        case .leave(let g, _, _, _, _): return g
+        case .move(let g, _, _, _, _, _, _): return g
+        case .message(let p): return p.guildId
+        case .memberJoin(let g, _, _, _): return g
+        case .memberLeave(let g, _, _): return g
+        case .mediaAdded(let p): return p.guildId
+        }
+    }
+
+    var userId: String {
+        switch self {
+        case .join(_, let u, _, _): return u
+        case .leave(_, let u, _, _, _): return u
+        case .move(_, let u, _, _, _, _, _): return u
+        case .message(let p): return p.userId
+        case .memberJoin(_, let u, _, _): return u
+        case .memberLeave(_, let u, _): return u
+        case .mediaAdded(let p): return p.userId
+        }
+    }
+
+    var username: String {
+        switch self {
+        case .join(_, _, let name, _): return name
+        case .leave(_, _, let name, _, _): return name
+        case .move(_, _, let name, _, _, _, _): return name
+        case .message(let p): return p.username
+        case .memberJoin(_, _, let name, _): return name
+        case .memberLeave(_, _, let name): return name
+        case .mediaAdded(let p): return p.username
+        }
+    }
+
+    var channelId: String {
+        switch self {
+        case .join(_, _, _, let c): return c
+        case .leave(_, _, _, let c, _): return c
+        case .move(_, _, _, let c, _, _, _): return c
+        case .message(let p): return p.channelId
+        case .memberJoin: return ""
+        case .memberLeave: return ""
+        case .mediaAdded: return ""
+        }
+    }
+
+    var fromChannelId: String? {
+        switch self {
+        case .move(_, _, _, _, let from, _, _): return from
+        case .leave(_, _, _, let from, _): return from
+        default: return nil
+        }
+    }
+
+    var toChannelId: String? {
+        switch self {
+        case .join(_, _, _, let to): return to
+        case .move(_, _, _, _, _, let to, _): return to
+        default: return nil
+        }
+    }
+
+    var durationSeconds: Int? {
+        switch self {
+        case .leave(_, _, _, _, let d): return d
+        case .move(_, _, _, _, _, _, let d): return d
+        default: return nil
+        }
+    }
+
+    var messageContent: String? {
+        switch self {
+        case .message(let p): return p.content
+        case .mediaAdded(let p): return p.fileName
+        default: return nil
+        }
+    }
+
+    var messageId: String? {
+        switch self {
+        case .message(let p): return p.messageId
+        default: return nil
+        }
+    }
+
+    var mediaFileName: String? {
+        switch self {
+        case .mediaAdded(let p): return p.fileName
+        default: return nil
+        }
+    }
+
+    var mediaRelativePath: String? {
+        switch self {
+        case .mediaAdded(let p): return p.relativePath
+        default: return nil
+        }
+    }
+
+    var mediaSourceName: String? {
+        switch self {
+        case .mediaAdded(let p): return p.sourceName
+        default: return nil
+        }
+    }
+
+    var mediaNodeName: String? {
+        switch self {
+        case .mediaAdded(let p): return p.nodeName
+        default: return nil
+        }
+    }
+
+    var triggerMessageId: String? {
+        switch self {
+        case .message(let p): return p.messageId
+        default: return nil
+        }
+    }
+
+    var triggerChannelId: String? {
+        switch self {
+        case .message(let p): return p.channelId
+        default: return nil
+        }
+    }
+
+    var triggerGuildId: String {
+        return guildId
+    }
+
+    var triggerUserId: String {
+        return userId
+    }
+
+    var isDirectMessage: Bool {
+        switch self {
+        case .message(let p): return p.isDirectMessage
+        default: return false
+        }
+    }
+
+    var authorIsBot: Bool? {
+        switch self {
+        case .message(let p): return p.authorIsBot
+        default: return nil
+        }
+    }
+
+    var joinedAt: Date? {
+        switch self {
+        case .memberJoin(_, _, _, let date): return date
+        default: return nil
+        }
+    }
 }
 
 // MARK: - Pipeline Context

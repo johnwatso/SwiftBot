@@ -193,7 +193,7 @@ actor DiscordAIService {
 
     func generateStepAIReply(
         prompt: String,
-        event: VoiceRuleEvent,
+        event: SwiftBotEvent,
         serverName: String?,
         channelName: String
     ) async -> String? {

@@ -63,7 +63,7 @@ actor AutomationService {
 
     /// Returns the enabled rules whose Trigger and Filter set match `event`.
     /// Pure — no side effects, no actor state read.
-    nonisolated func evaluate(event: VoiceRuleEvent, in rules: [Automations.Rule]) -> [Automations.Rule] {
+    nonisolated func evaluate(event: SwiftBotEvent, in rules: [Automations.Rule]) -> [Automations.Rule] {
         rules.filter { rule in
             guard rule.enabled else { return false }
             guard Self.triggerMatches(rule.trigger, event: event) else { return false }
@@ -71,7 +71,7 @@ actor AutomationService {
         }
     }
 
-    private nonisolated static func triggerMatches(_ trigger: Automations.Trigger, event: VoiceRuleEvent) -> Bool {
+    private nonisolated static func triggerMatches(_ trigger: Automations.Trigger, event: SwiftBotEvent) -> Bool {
         switch (trigger.kind, event.kind) {
         case (.userJoinedVoice, .join),
              (.userLeftVoice, .leave),
@@ -92,7 +92,7 @@ actor AutomationService {
     private nonisolated static func filtersMatch(
         _ filters: [Automations.Filter],
         logic: Automations.FilterLogic,
-        event: VoiceRuleEvent
+        event: SwiftBotEvent
     ) -> Bool {
         guard !filters.isEmpty else { return true }
         switch logic {
@@ -103,7 +103,7 @@ actor AutomationService {
 
     private nonisolated static func filterMatches(
         _ filter: Automations.Filter,
-        event: VoiceRuleEvent
+        event: SwiftBotEvent
     ) -> Bool {
         switch filter.kind {
         case .inChannel:
@@ -176,7 +176,7 @@ actor AutomationService {
     // MARK: - Execution
 
     /// Runs every Step in `rule.steps` in order against `event`.
-    func execute(rule: Automations.Rule, event: VoiceRuleEvent, token: String?) async {
+    func execute(rule: Automations.Rule, event: SwiftBotEvent, token: String?) async {
         guard let token else { return }
         var ctx = ExecutionContext(event: event)
 
@@ -190,7 +190,7 @@ actor AutomationService {
     }
 
     private struct ExecutionContext {
-        let event: VoiceRuleEvent
+        let event: SwiftBotEvent
         var eventHandled: Bool = false
     }
 
@@ -275,7 +275,7 @@ actor AutomationService {
 
     private func sendToFirstAvailable(
         _ content: String,
-        event: VoiceRuleEvent,
+        event: SwiftBotEvent,
         fallback: String?,
         token: String,
         ctx: inout ExecutionContext
@@ -286,7 +286,7 @@ actor AutomationService {
         ctx.eventHandled = true
     }
 
-    private nonisolated func defaultSendTarget(for event: VoiceRuleEvent) -> Automations.SendTarget {
+    private nonisolated func defaultSendTarget(for event: SwiftBotEvent) -> Automations.SendTarget {
         switch event.kind {
         case .message: return .replyToTrigger
         case .memberJoin, .memberLeave: return .directMessage
@@ -356,7 +356,7 @@ actor AutomationService {
 
     // MARK: - Variable substitution
 
-    private func render(_ template: String, event: VoiceRuleEvent) async -> String {
+    private func render(_ template: String, event: SwiftBotEvent) async -> String {
         guard !template.isEmpty else { return "" }
 
         let channelId = event.channelId

@@ -3,7 +3,7 @@ import Foundation
 extension AppModel {
 
     /// Evaluate the live rule set against `event` and execute each match.
-    func fireAutomations(for event: VoiceRuleEvent) async {
+    func fireAutomations(for event: SwiftBotEvent) async {
         let snapshot = automationStore.rules
         let matches = automationService.evaluate(event: event, in: snapshot)
         guard !matches.isEmpty else { return }

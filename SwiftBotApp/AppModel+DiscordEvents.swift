@@ -92,27 +92,10 @@ extension AppModel {
         guard !result.isDuplicate, !result.isBurstSuppressed else { return }
 
         // Rule-based execution: evaluate any enabled "Member Joined" trigger rules.
-        let ruleEvent = VoiceRuleEvent(
-            kind: .memberJoin,
+        let ruleEvent = SwiftBotEvent.memberJoin(
             guildId: event.guildID,
             userId: event.userID,
             username: result.safeUsername,
-            channelId: "",
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: nil,
-            messageId: nil,
-            mediaFileName: nil,
-            mediaRelativePath: nil,
-            mediaSourceName: nil,
-            mediaNodeName: nil,
-            triggerMessageId: nil,
-            triggerChannelId: nil,
-            triggerGuildId: event.guildID,
-            triggerUserId: event.userID,
-            isDirectMessage: false,
-            authorIsBot: nil,
             joinedAt: event.joinedAt
         )
         await fireAutomations(for: ruleEvent)
@@ -155,28 +138,10 @@ extension AppModel {
 
         let username = event.username
 
-        let ruleEvent = VoiceRuleEvent(
-            kind: .memberLeave,
+        let ruleEvent = SwiftBotEvent.memberLeave(
             guildId: guildId,
             userId: userId,
-            username: username,
-            channelId: "",
-            fromChannelId: nil,
-            toChannelId: nil,
-            durationSeconds: nil,
-            messageContent: nil,
-            messageId: nil,
-            mediaFileName: nil,
-            mediaRelativePath: nil,
-            mediaSourceName: nil,
-            mediaNodeName: nil,
-            triggerMessageId: nil,
-            triggerChannelId: nil,
-            triggerGuildId: guildId,
-            triggerUserId: userId,
-            isDirectMessage: false,
-            authorIsBot: nil,
-            joinedAt: nil
+            username: username
         )
 
         await fireAutomations(for: ruleEvent)
