@@ -920,6 +920,16 @@ struct AutomationRuleEditor: View {
 
         case .delay:
             intRow(label: "Seconds", value: $rule.steps[index].delaySeconds)
+
+        case .aiTransform:
+            multilineRow(label: "AI prompt",
+                         value: $rule.steps[index].aiPrompt,
+                         placeholder: "Summarise this in one sentence: {message}")
+            Text("Result is available to later steps as **{ai_output}**.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 122)
+                .padding(.top, -4)
         }
     }
 
@@ -1415,6 +1425,7 @@ extension AutomationRuleEditor {
         case .log: return .purple
         case .webhook: return .teal
         case .delay: return .gray
+        case .aiTransform: return .indigo
         }
     }
 
@@ -1434,6 +1445,7 @@ extension AutomationRuleEditor {
         case .log: return "doc.text.fill"
         case .webhook: return "network"
         case .delay: return "hourglass"
+        case .aiTransform: return "apple.intelligence"
         }
     }
 
