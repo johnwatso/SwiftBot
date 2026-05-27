@@ -113,11 +113,11 @@ Status of each — no per-item work needed:
 
 > Genuinely open — **biggest Priority 2 lift**.
 
-- [x] Replace `VoiceRuleEvent` with a typed `SwiftBotEvent` enum — biggest blast radius. Today's `VoiceRuleEvent` is one type with ~18 optional fields covering message/voice/member/media. An enum with associated values per case is cleaner and now fully implemented.
+- [x] Replace `VoiceRuleEvent` with a typed `SwiftBotEvent` enum — completed and mapped across Gateway, AppModel, and AutomationService pipelines.
 - [ ] Create typed trigger system
 - [ ] Create typed modifiers/actions
-- [ ] Create execution context model
-- [ ] Add diagnostics system
+- [x] Create execution context model — implemented detailed execution context collecting diagnostic steps and errors.
+- [x] Add diagnostics system — added structured step-level throw-capture and error logging.
 
 ### Execution Features
 
@@ -126,8 +126,8 @@ Status of each — no per-item work needed:
 - [ ] Add rule simulation mode
 - [ ] Add execution tracing
 - [ ] Add rule validation
-- [ ] Add execution history
-- [ ] Add structured failure reporting
+- [x] Add execution history — implemented capped `automationLog` persistent execution ledger of 500 entries under `AppModel` and `Persistence`.
+- [x] Add structured failure reporting — automated step failure capture and diagnostic details log recording.
 
 ---
 
@@ -252,13 +252,12 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 ## End-to-End Validation
 
-> Genuinely open, heavy infra. Would build a fake SwiftMiner webhook server in tests to exercise the full DM lifecycle.
-
-- [ ] Localhost integration tests
-- [ ] Webhook delivery tests
-- [ ] Retry validation
-- [ ] Idempotency validation
-- [ ] Activation flow validation
+- [x] Localhost integration tests — built `SwiftMinerE2EIntegrationTests` simulating loopback webhooks.
+- [x] Webhook delivery tests — verified signature HMAC checks and REST projections lookup.
+- [x] Retry validation — verified and covered retries and fail-overs.
+- [x] Idempotency validation — verified idempotency.
+- [x] Activation flow validation — fully tested user drop claim and Opportunity available flows.
+- [x] Mock REST session injection — enabled injecting custom configurations/MockURLProtocols into AppModel REST pipelines to perfectly isolate test execution and prevent standby output blockage.
 
 ---
 
@@ -300,7 +299,10 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 | `981fc7e` + `50619f9` | Apple Intelligence UI revamp + personality picker + `fadingEdges`/shared UI primitives (user). |
 | `75d712d` | Add `ROADMAP.md` to repo + AI_CONTEXT requires keeping it current. |
 | `03b85db` | Admin HTML cleanup — stripped dead OpenAI/Ollama/image-gen panels and selectors. |
-| _next_ | Drop `FoundationModelsSpikeTests` + rename internal `aiBots` → `appleIntelligence` across Swift, JSON, and admin HTML. |
+| `_next_` | Purged `FoundationModelsSpikeTests` + renamed internal `aiBots` → `appleIntelligence` across Swift, JSON, and admin HTML. |
+| `_ledger_` | Implemented persistent automation execution log history (`automationLog` array capped at 500 entries). |
+| `_harness_` | Constructed isolated E2E webhook DM integration test harness with isolation and mock URLSession injection. |
+| `_purge_` | Cleaned up all stale comment references to `VoiceRuleEvent`. |
 
 **Key decisions**
 
