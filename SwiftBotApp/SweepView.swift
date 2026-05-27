@@ -1454,7 +1454,9 @@ private struct SweepContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
+            .padding(.top, 16)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .disabled(app.isFailoverManagedNode)
@@ -1498,8 +1500,7 @@ private struct SweepContentView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Sweep")
-                    .font(.title2.weight(.semibold))
+                ViewSectionHeader(title: "Sweep", symbol: "rectangle.stack.fill.badge.minus")
                 HStack(spacing: 6) {
                     Circle()
                         .fill(service.state.tone)
@@ -2439,6 +2440,7 @@ struct SweepPolicyEditor: View {
                 .padding(.vertical, 20)
                 .animation(.easeInOut(duration: 0.18), value: tryRunReport?.id)
             }
+            .fadingEdges(top: 16, bottom: 20)
 
             footerBar
         }
@@ -3002,6 +3004,7 @@ private struct SweepPreviewSheet: View {
                 }
                 .padding(20)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .background(.regularMaterial)
         .frame(minWidth: 560, idealWidth: 660, minHeight: 480, idealHeight: 600)

@@ -91,6 +91,8 @@ struct SwiftMeshView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
+            .padding(.top, 16)
+            .fadingEdges(top: 16, bottom: 20)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -144,8 +146,7 @@ struct SwiftMeshView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("SwiftMesh")
-                    .font(.title2.weight(.semibold))
+                ViewSectionHeader(title: "SwiftMesh", symbol: "point.3.filled.connected.trianglepath.dotted")
                 HStack(spacing: 6) {
                     Circle()
                         .fill(headerStatusColor)

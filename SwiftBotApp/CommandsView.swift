@@ -250,8 +250,10 @@ struct CommandsView: View {
                     }
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.bottom, 2)
+            .padding(.top, 16)
         }
+        .fadingEdges(top: 16, bottom: 20)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 

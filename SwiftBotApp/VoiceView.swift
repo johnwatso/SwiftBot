@@ -35,7 +35,9 @@ struct VoiceView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
+                .padding(.top, 16)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .disabled(app.isFailoverManagedNode)
@@ -71,8 +73,7 @@ struct VoiceView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Announcer")
-                    .font(.title2.weight(.bold))
+                ViewSectionHeader(title: "Announcer", symbol: "speaker.wave.2.bubble.fill")
                 Text("Context-aware spoken Discord feeds")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -803,6 +804,7 @@ private struct AnnouncerConfigSheet: View {
                 }
                 .padding(20)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(minWidth: 480, idealWidth: 520, minHeight: 560, idealHeight: 660)
     }

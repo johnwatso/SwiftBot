@@ -178,6 +178,7 @@ struct DashboardSidebar: View {
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
                 .padding(.top, 34)
+                .fadingEdges(top: 16, bottom: 20)
 
                 Group {
                     if !isPrimaryServiceRunning {

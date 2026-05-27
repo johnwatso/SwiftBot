@@ -323,16 +323,25 @@ struct ActivityLogView: View {
         // Entries are sorted newest-first. Anchoring the scroll to the top edge
         // keeps the most recent row visible when new entries arrive, instead of
         // letting the list bump down and hide the new row off-screen.
-        List(visibleEntries) { entry in
-            ActivityRow(entry: entry)
-                .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
-                .listRowSeparator(.visible, edges: .bottom)
-                .listRowSeparatorTint(.secondary.opacity(0.14))
+        List {
+            Color.clear
+                .frame(height: 10)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
+
+            ForEach(visibleEntries) { entry in
+                ActivityRow(entry: entry)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
+                    .listRowSeparator(.visible, edges: .bottom)
+                    .listRowSeparatorTint(.secondary.opacity(0.14))
+                    .listRowBackground(Color.clear)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .defaultScrollAnchor(.top)
+        .fadingEdges(top: 16, bottom: 20)
     }
 
     private var emptyState: some View {

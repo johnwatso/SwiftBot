@@ -92,8 +92,7 @@ struct PatchyView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Patchy")
-                    .font(.title2.weight(.semibold))
+                ViewSectionHeader(title: "Patchy", symbol: "square.and.arrow.down.badge.checkmark.fill")
                 HStack(spacing: 6) {
                     Circle()
                         .fill(app.settings.patchy.monitoringEnabled ? Color.green : Color.gray)
@@ -289,8 +288,10 @@ struct PatchyView: View {
                     }
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.bottom, 2)
+            .padding(.top, 16)
         }
+        .fadingEdges(top: 16, bottom: 20)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 

@@ -46,8 +46,10 @@ struct AIBotsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
+                .padding(.top, 16)
                 .frame(maxWidth: .infinity)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .disabled(app.isFailoverManagedNode)
         .opacity(app.isFailoverManagedNode ? 0.62 : 1)
@@ -74,8 +76,7 @@ struct AIBotsView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("Apple Intelligence")
-                .font(.title2.weight(.bold))
+            ViewSectionHeader(title: "Apple Intelligence", symbol: "apple.intelligence")
             Label(app.appleIntelligenceOnline ? "Online" : "Offline",
                   systemImage: app.appleIntelligenceOnline ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .font(.caption.weight(.semibold))
@@ -228,50 +229,54 @@ struct AIBotsView: View {
     }
 
     private var capabilitiesSection: some View {
-        AutomationsSection(title: "Capabilities", symbol: "square.grid.2x2") {
+        let repliesActive = app.settings.localAIDMReplyEnabled || app.settings.behavior.useAIInGuildChannels
+        let summariesActive = app.settings.patchy.sourceTargets.contains { $0.isEnabled && $0.summarizeWithAppleIntelligence }
+        let announcerActive = app.settings.voice.textChannelSourceEnabled && !app.settings.voice.watchedTextChannelID.isEmpty && app.voiceConnectionStatus.isConnected
+        let moderationActive = app.automationStore.rules.contains { $0.category == .moderation && $0.enabled }
+        let threadActive = app.memoryViewModel.totalMessages > 0
+
+        let repliesStatus: CapabilityStatus = repliesActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
+        let summariesStatus: CapabilityStatus = summariesActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
+        let announcerStatus: CapabilityStatus = announcerActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
+        let moderationStatus: CapabilityStatus = moderationActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
+        let threadStatus: CapabilityStatus = threadActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
+
+        return AutomationsSection(title: "Capabilities", symbol: "square.grid.2x2") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
                 capabilityCard(
                     title: "Replies",
                     description: "Answers DMs and mentions using the selected personality.",
                     symbol: "bubble.left.and.text.bubble.right.fill",
                     tint: .blue,
-                    isEnabled: app.settings.localAIDMReplyEnabled
-                        || app.settings.behavior.useAIInGuildChannels,
-                    binding: Binding(
-                        get: { app.settings.localAIDMReplyEnabled || app.settings.behavior.useAIInGuildChannels },
-                        set: { newValue in
-                            app.settings.localAIDMReplyEnabled = newValue
-                            app.settings.behavior.useAIInGuildChannels = newValue
-                        }
-                    )
+                    status: repliesStatus
                 )
                 capabilityCard(
                     title: "Summaries",
                     description: "Creates concise on-device summaries for long updates.",
                     symbol: "doc.text.magnifyingglass",
                     tint: .indigo,
-                    isEnabled: app.appleIntelligenceOnline
+                    status: summariesStatus
                 )
                 capabilityCard(
                     title: "Voice Announcer",
                     description: "Prepares concise text for voice announcement flows.",
                     symbol: "speaker.wave.2.fill",
                     tint: .orange,
-                    isEnabled: app.appleIntelligenceOnline
+                    status: announcerStatus
                 )
                 capabilityCard(
                     title: "Moderation Assist",
                     description: "Supports moderation rules that use generated context.",
                     symbol: "shield.checkered",
                     tint: .red,
-                    isEnabled: app.automationStore.rules.contains { $0.category == .moderation && $0.enabled }
+                    status: moderationStatus
                 )
                 capabilityCard(
                     title: "Thread Catch-up",
                     description: "Uses remembered context to make replies less repetitive.",
                     symbol: "text.line.first.and.arrowtriangle.forward",
                     tint: .green,
-                    isEnabled: app.memoryViewModel.totalMessages > 0
+                    status: threadStatus
                 )
             }
         }
@@ -360,32 +365,57 @@ struct AIBotsView: View {
         )
     }
 
+    private enum CapabilityStatus {
+        case active
+        case ready
+        case off
+
+        var label: String {
+            switch self {
+            case .active: return "Active"
+            case .ready: return "Ready"
+            case .off: return "Off"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .active: return .green
+            case .ready: return .blue
+            case .off: return .secondary
+            }
+        }
+    }
+
     private func capabilityCard(
         title: String,
         description: String,
         symbol: String,
         tint: Color,
-        isEnabled: Bool,
-        binding: Binding<Bool>? = nil
+        status: CapabilityStatus
     ) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        let isAvailable = status != .off
+        let iconColor = isAvailable ? tint : .secondary
+        let badgeColor = status.color
+
+        return HStack(alignment: .top, spacing: 10) {
             Image(systemName: symbol)
                 .font(.title3.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(isEnabled ? tint : .secondary)
+                .foregroundStyle(iconColor)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill((isEnabled ? tint : Color.secondary).opacity(0.14)))
+                .background(Circle().fill(iconColor.opacity(0.14)))
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
-                    Text(isEnabled ? "Ready" : "Off")
+                    Text(status.label)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isEnabled ? .green : .secondary)
+                        .foregroundStyle(badgeColor)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background((isEnabled ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
+                        .background(badgeColor.opacity(0.12), in: Capsule())
                 }
                 Text(description)
                     .font(.caption)
@@ -393,12 +423,6 @@ struct AIBotsView: View {
                     .lineLimit(2, reservesSpace: true)
             }
             Spacer(minLength: 8)
-            if let binding {
-                Toggle("", isOn: binding)
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-            }
         }
         .padding(10)
         .frame(minHeight: 84, alignment: .topLeading)
