@@ -780,7 +780,7 @@ extension AppModel {
                 bugTrackingEnabled: settings.bugTrackingEnabled,
                 prefix: "/"
             ),
-            aiBots: .init(
+            appleIntelligence: .init(
                 localAIDMReplyEnabled: settings.localAIDMReplyEnabled
             ),
             wikiBridge: .init(
@@ -1287,7 +1287,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        aiBots: .init(localAIDMReplyEnabled: false),
+                        appleIntelligence: .init(localAIDMReplyEnabled: false),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
                         swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: false, offloadWikiLookups: false),
@@ -1335,7 +1335,7 @@ extension AppModel {
                 guard let model = self else {
                     return AdminWebConfigPayload(
                         commands: .init(enabled: true, prefixEnabled: false, slashEnabled: true, bugTrackingEnabled: true, prefix: "/"),
-                        aiBots: .init(localAIDMReplyEnabled: false),
+                        appleIntelligence: .init(localAIDMReplyEnabled: false),
                         wikiBridge: .init(enabled: false, enabledSources: 0, totalSources: 0),
                         patchy: .init(monitoringEnabled: false, enabledTargets: 0, totalTargets: 0),
                         swiftMesh: .init(mode: ClusterMode.standalone.rawValue, nodeName: "SwiftBot", leaderAddress: "", listenPort: 38787, offloadAIReplies: true, offloadWikiLookups: true),

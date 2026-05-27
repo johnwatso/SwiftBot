@@ -480,10 +480,10 @@ struct OverviewView: View {
                 widgets: overviewSystemMetrics
             ),
             MetricWidgetGroup(
-                id: "aiBots",
-                title: "AI",
+                id: "appleIntelligence",
+                title: "Apple Intelligence",
                 symbol: "apple.intelligence",
-                widgets: AIBotsDashboardSummary.metrics(app: app)
+                widgets: AppleIntelligenceDashboardSummary.metrics(app: app)
             ),
             MetricWidgetGroup(
                 id: "swiftMesh",
@@ -606,7 +606,7 @@ struct OverviewView: View {
     }
 
     private var defaultMetricIDs: [String] {
-        let defaults = ["aiBots", "status", "inVoice"]
+        let defaults = ["appleIntelligence", "status", "inVoice"]
         let availableIDs = Set(availableMetricWidgets.map(\.id))
         return defaults.filter { availableIDs.contains($0) }
     }

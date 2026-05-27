@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct AIBotsView: View {
+struct AppleIntelligenceView: View {
     @EnvironmentObject var app: AppModel
     @State private var baselineSettings = AppPreferencesSnapshot()
 
@@ -437,11 +437,11 @@ struct AIBotsView: View {
     }
 }
 
-enum AIBotsDashboardSummary {
+enum AppleIntelligenceDashboardSummary {
     @MainActor
     static func metrics(app: AppModel) -> [DashboardMetricDescriptor] {
         [
-            primaryMetric(app: app, id: "aiBots"),
+            primaryMetric(app: app, id: "appleIntelligence"),
             DashboardMetricDescriptor(
                 id: "ai-replies",
                 title: "Replies",
@@ -462,7 +462,7 @@ enum AIBotsDashboardSummary {
     }
 
     @MainActor
-    static func primaryMetric(app: AppModel, id: String = "aiBots") -> DashboardMetricDescriptor {
+    static func primaryMetric(app: AppModel, id: String = "appleIntelligence") -> DashboardMetricDescriptor {
         DashboardMetricDescriptor(
             id: id,
             title: "Apple Intelligence",

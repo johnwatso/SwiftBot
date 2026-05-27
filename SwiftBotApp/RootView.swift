@@ -87,7 +87,7 @@ struct UnifiedRootView: View {
         case .commands: CommandsView()
         case .activity: ActivityLogView()
         case .wikiBridge: WikiBridgeView()
-        case .aiBots: AIBotsView()
+        case .appleIntelligence: AppleIntelligenceView()
         case .voice: VoiceView()
         case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
@@ -169,7 +169,7 @@ struct DashboardSidebar: View {
                     }
 
                     Section("System") {
-                        sidebarListRow(.aiBots)
+                        sidebarListRow(.appleIntelligence)
                         sidebarListRow(.analytics)
                         sidebarListRow(.activity)
                         sidebarListRow(.swiftMesh)

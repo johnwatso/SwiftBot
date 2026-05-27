@@ -93,7 +93,7 @@ final class RemoteBotProvider: BotDataProvider {
         s.bugTrackingEnabled = config.commands.bugTrackingEnabled
         s.autoStart = config.general.autoStart
 
-        s.localAIDMReplyEnabled = config.aiBots.localAIDMReplyEnabled
+        s.localAIDMReplyEnabled = config.appleIntelligence.localAIDMReplyEnabled
 
         s.clusterMode = ClusterMode(rawValue: config.swiftMesh.mode) ?? .standalone
         s.clusterNodeName = config.swiftMesh.nodeName

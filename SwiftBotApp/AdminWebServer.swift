@@ -227,7 +227,7 @@ struct AdminWebConfigPayload: Codable {
         let prefix: String
     }
 
-    struct AIBots: Codable {
+    struct AppleIntelligence: Codable {
         let localAIDMReplyEnabled: Bool
     }
 
@@ -259,7 +259,7 @@ struct AdminWebConfigPayload: Codable {
     }
 
     let commands: Commands
-    let aiBots: AIBots
+    let appleIntelligence: AppleIntelligence
     let wikiBridge: WikiBridge
     let patchy: Patchy
     let swiftMesh: SwiftMesh
