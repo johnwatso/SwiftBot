@@ -28,7 +28,7 @@ This directory serves as a preservation vault for deprecated or removed features
   4. Post the generated git diff and summary to the Discord thread.
   5. Wait for approval: reacting with `🚀` would automatically commit and push the changes to GitHub to trigger the CI build; reacting with `🛑` aborted the session.
 * **Why it was removed**:
-  The feature presented a substantial security risk by allowing external Discord interactions to execute local shell commands and push to the codebase. Modern agentic pipelines (like Antigravity) handle pairing and debugging offline and in isolated, controlled environments, making native in-Discord bot writing obsolete.
+      The feature was originally introduced during an early experimental phase of SwiftBot, when in-Discord automation and AI-assisted repository workflows were still being explored. Over time, the functionality saw little practical use, and SwiftBot evolved toward more mature and maintainable development workflows. During later security auditing, the system was also flagged for exposing unnecessary security risks due to its ability to execute local shell commands and perform repository actions through Discord interactions. Modern offline and agentic tooling now provides safer, isolated environments for automated debugging and code generation, making direct Discord-driven repository modification unnecessary.
 * **Original Integration Points**:
   * `AppModel.swift` & `AppModel+Commands.swift` (session orchestration and reaction routing)
   * `BotSettings.swift` (configuration preferences for trigger emojis and templates)

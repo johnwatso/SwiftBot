@@ -81,14 +81,16 @@ struct AutomationsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                metricTileRow
-                naturalLanguageSection
-                templatesSection
-                rulesListSection
+                    metricTileRow
+                    naturalLanguageSection
+                    templatesSection
+                    rulesListSection
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .padding(.top, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .disabled(app.isFailoverManagedNode)
@@ -116,8 +118,7 @@ struct AutomationsView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(copy.title)
-                .font(.title2.weight(.bold))
+            ViewSectionHeader(title: copy.title, symbol: copy.headerIcon)
             Spacer()
             if !app.automationDrafter.isAvailable {
                 Label("AI unavailable", systemImage: "exclamationmark.triangle.fill")

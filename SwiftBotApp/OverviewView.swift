@@ -679,7 +679,9 @@ struct OverviewView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
+            .padding(.top, 16)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {

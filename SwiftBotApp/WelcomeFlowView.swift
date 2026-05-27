@@ -231,20 +231,28 @@ struct WelcomeFlowView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if app.isFailoverManagedNode {
-                    PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
-                }
-                metrics
-                welcomeRuleBuilderSurface
+        VStack(alignment: .leading, spacing: 12) {
+            header
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
+            if app.isFailoverManagedNode {
+                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
+                    .padding(.horizontal, 20)
             }
-            .frame(maxWidth: 880, alignment: .leading)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 20)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    metrics
+                    welcomeRuleBuilderSurface
+                }
+                .frame(maxWidth: 880, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .padding(.top, 16)
+            }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .disabled(app.isFailoverManagedNode)
@@ -274,8 +282,7 @@ struct WelcomeFlowView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("Welcome Flow")
-                .font(.title2.weight(.bold))
+            ViewSectionHeader(title: "Welcome Flow", symbol: "person.crop.circle.badge.plus")
             Label(app.settings.welcomeFlow.handlesMemberJoin ? "Active" : "Paused",
                   systemImage: app.settings.welcomeFlow.handlesMemberJoin ? "checkmark.circle.fill" : "pause.circle.fill")
                 .font(.caption.weight(.semibold))
@@ -572,6 +579,7 @@ struct WelcomeFlowView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 18)
             }
+            .fadingEdges(top: 16, bottom: 20)
 
             VStack(spacing: 0) {
                 Divider().opacity(0.45)
@@ -1014,6 +1022,7 @@ struct WelcomeFlowView: View {
                     previewBubble(label: "Direct Message", message: dmPreviewMessage)
                 }
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .padding(20)
         .frame(width: 460, height: 420)

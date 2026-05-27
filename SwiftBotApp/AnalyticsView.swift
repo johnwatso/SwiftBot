@@ -200,7 +200,9 @@ struct AnalyticsView: View {
                     }
                 }
                 .padding(.bottom, 16)
+                .padding(.top, 16)
             }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)

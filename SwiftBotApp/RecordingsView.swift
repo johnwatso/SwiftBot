@@ -39,13 +39,15 @@ struct RecordingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                librarySummary
-                gameLibrarySection
-                recentlyAddedSection
+                    librarySummary
+                    gameLibrarySection
+                    recentlyAddedSection
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .padding(.top, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            }
+            .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task { await refresh() }
@@ -67,8 +69,7 @@ struct RecordingsView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Recordings")
-                    .font(.title2.weight(.semibold))
+                ViewSectionHeader(title: "Recordings", symbol: "video.fill")
                 HStack(spacing: 6) {
                     Circle()
                         .fill(headerStatusColor)

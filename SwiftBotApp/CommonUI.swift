@@ -467,6 +467,7 @@ struct PreferencesTabContainer<Content: View>: View {
             .padding(20)
             .padding(.bottom, 84)
         }
+        .fadingEdges(top: 16, bottom: 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -617,3 +618,50 @@ struct RevealableSecretField: View {
         return String(bytes.map { alphabet[Int($0) % alphabet.count] })
     }
 }
+
+// MARK: - Premium Scroll Edge Fading
+
+struct FadingEdgesModifier: ViewModifier {
+    var top: CGFloat = 20
+    var bottom: CGFloat = 20
+
+    func body(content: Content) -> some View {
+        content
+            .mask(
+                VStack(spacing: 0) {
+                    if top > 0 {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .black, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: top)
+                    }
+
+                    Color.black
+
+                    if bottom > 0 {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: bottom)
+                    }
+                }
+            )
+    }
+}
+
+extension View {
+    func fadingEdges(top: CGFloat = 20, bottom: CGFloat = 20) -> some View {
+        modifier(FadingEdgesModifier(top: top, bottom: bottom))
+    }
+}
+
