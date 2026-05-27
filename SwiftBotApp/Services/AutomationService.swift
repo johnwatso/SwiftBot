@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-/// Matches and executes Automations.Rule against incoming VoiceRuleEvents.
+/// Matches and executes Automations.Rule against incoming SwiftBotEvents.
 ///
 /// Two responsibilities, kept in one actor since they share state:
 ///   1. `evaluate(event:in:)` — pure filter. Returns rules whose trigger matches.
@@ -28,6 +28,7 @@ actor AutomationService {
         let resolveChannelName: @Sendable (_ guildId: String, _ channelId: String) async -> String
         let resolveGuildName: @Sendable (_ guildId: String) async -> String?
         let log: @Sendable (_ message: String) -> Void
+        let recordAutomationRun: @Sendable (_ ruleId: String, _ ruleName: String, _ eventKind: String, _ triggerUser: String, _ stepsCount: Int, _ status: String) -> Void
     }
 
     private let aiService: DiscordAIService
@@ -118,7 +119,7 @@ actor AutomationService {
             return pool.isEmpty || pool.contains(event.userId)
 
         case .userHasAnyRole, .userHasAllRoles, .userHasNoneOfRoles:
-            // Member role state isn't plumbed through VoiceRuleEvent yet,
+            // Member role state isn't plumbed through SwiftBotEvent yet,
             // so role filters always pass. Surface this in the UI as
             // "currently informational" until we wire it up.
             return true
@@ -151,7 +152,7 @@ actor AutomationService {
                 .firstMatch(in: hay, range: NSRange(hay.startIndex..., in: hay)) != nil
 
         case .messageIsReply:
-            // VoiceRuleEvent doesn't carry reply state yet; treat as
+            // SwiftBotEvent doesn't carry reply state yet; treat as
             // unknown → pass when expected true, fail when expected false.
             // Will be accurate once parseMessageRuleEvent surfaces it.
             return filter.boolValue ?? true
@@ -187,11 +188,29 @@ actor AutomationService {
         if ctx.eventHandled, let msgId = event.triggerMessageId {
             markHandled(msgId)
         }
+
+        let statusString: String = {
+            if ctx.errors.isEmpty {
+                return "Success"
+            } else {
+                return "Failed: " + ctx.errors.joined(separator: " | ")
+            }
+        }()
+
+        dependencies.recordAutomationRun(
+            rule.id,
+            rule.name,
+            event.kind.rawValue,
+            event.username,
+            rule.steps.count,
+            statusString
+        )
     }
 
     private struct ExecutionContext {
         let event: SwiftBotEvent
         var eventHandled: Bool = false
+        var errors: [String] = []
     }
 
     private func runStep(_ step: Automations.Step, ctx: inout ExecutionContext, token: String) async {
@@ -203,9 +222,9 @@ actor AutomationService {
         case .modifyMessage:
             await runModifyMessage(step, ctx: &ctx, token: token)
         case .log:
-            await runLog(step, ctx: ctx)
+            await runLog(step, ctx: &ctx)
         case .webhook:
-            await runWebhook(step, ctx: ctx)
+            await runWebhook(step, ctx: &ctx)
         case .delay:
             let s = max(0, step.delaySeconds ?? 0)
             if s > 0 { try? await Task.sleep(nanoseconds: UInt64(s) * 1_000_000_000) }
@@ -249,8 +268,12 @@ actor AutomationService {
                         "fail_if_not_exists": false
                     ]
                 ]
-                _ = try? await dependencies.sendPayloadMessage(cid, payload, token)
-                ctx.eventHandled = true
+                do {
+                    _ = try await dependencies.sendPayloadMessage(cid, payload, token)
+                    ctx.eventHandled = true
+                } catch {
+                    ctx.errors.append("sendPayloadMessage failed: \(error.localizedDescription)")
+                }
             } else {
                 await sendToFirstAvailable(rawContent, event: event, fallback: step.channelId, token: token, ctx: &ctx)
             }
@@ -258,18 +281,30 @@ actor AutomationService {
         case .sameChannel:
             let cid = event.triggerChannelId ?? event.channelId
             guard !cid.isEmpty else { return }
-            try? await dependencies.sendMessage(cid, rawContent, token)
-            ctx.eventHandled = true
+            do {
+                try await dependencies.sendMessage(cid, rawContent, token)
+                ctx.eventHandled = true
+            } catch {
+                ctx.errors.append("sendMessage failed: \(error.localizedDescription)")
+            }
 
         case .directMessage:
             guard !event.userId.isEmpty else { return }
-            try? await dependencies.sendDM(event.userId, rawContent)
-            ctx.eventHandled = true
+            do {
+                try await dependencies.sendDM(event.userId, rawContent)
+                ctx.eventHandled = true
+            } catch {
+                ctx.errors.append("sendDM failed: \(error.localizedDescription)")
+            }
 
         case .specificChannel:
             guard let cid = step.channelId, !cid.isEmpty else { return }
-            try? await dependencies.sendMessage(cid, rawContent, token)
-            ctx.eventHandled = true
+            do {
+                try await dependencies.sendMessage(cid, rawContent, token)
+                ctx.eventHandled = true
+            } catch {
+                ctx.errors.append("sendMessage failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -282,8 +317,12 @@ actor AutomationService {
     ) async {
         let cid = event.triggerChannelId ?? fallback ?? event.channelId
         guard !cid.isEmpty else { return }
-        try? await dependencies.sendMessage(cid, content, token)
-        ctx.eventHandled = true
+        do {
+            try await dependencies.sendMessage(cid, content, token)
+            ctx.eventHandled = true
+        } catch {
+            ctx.errors.append("sendMessage failed: \(error.localizedDescription)")
+        }
     }
 
     private nonisolated func defaultSendTarget(for event: SwiftBotEvent) -> Automations.SendTarget {
@@ -304,18 +343,38 @@ actor AutomationService {
         switch op {
         case .addRole:
             guard let rid = step.roleId, !rid.isEmpty else { return }
-            _ = try? await dependencies.addRole(event.guildId, event.userId, rid, token)
+            do {
+                _ = try await dependencies.addRole(event.guildId, event.userId, rid, token)
+            } catch {
+                ctx.errors.append("addRole failed: \(error.localizedDescription)")
+            }
         case .removeRole:
             guard let rid = step.roleId, !rid.isEmpty else { return }
-            _ = try? await dependencies.removeRole(event.guildId, event.userId, rid, token)
+            do {
+                _ = try await dependencies.removeRole(event.guildId, event.userId, rid, token)
+            } catch {
+                ctx.errors.append("removeRole failed: \(error.localizedDescription)")
+            }
         case .timeout:
             let s = max(1, step.timeoutSeconds ?? 60)
-            _ = try? await dependencies.timeoutMember(event.guildId, event.userId, s, token)
+            do {
+                _ = try await dependencies.timeoutMember(event.guildId, event.userId, s, token)
+            } catch {
+                ctx.errors.append("timeoutMember failed: \(error.localizedDescription)")
+            }
         case .kick:
-            _ = try? await dependencies.kickMember(event.guildId, event.userId, step.kickReason ?? "", token)
+            do {
+                _ = try await dependencies.kickMember(event.guildId, event.userId, step.kickReason ?? "", token)
+            } catch {
+                ctx.errors.append("kickMember failed: \(error.localizedDescription)")
+            }
         case .moveVoice:
             guard let cid = step.targetVoiceChannelId, !cid.isEmpty else { return }
-            _ = try? await dependencies.moveMember(event.guildId, event.userId, cid, token)
+            do {
+                _ = try await dependencies.moveMember(event.guildId, event.userId, cid, token)
+            } catch {
+                ctx.errors.append("moveMember failed: \(error.localizedDescription)")
+            }
         }
         ctx.eventHandled = true
     }
@@ -330,17 +389,25 @@ actor AutomationService {
 
         switch op {
         case .delete:
-            _ = try? await dependencies.deleteMessage(cid, mid, token)
+            do {
+                _ = try await dependencies.deleteMessage(cid, mid, token)
+            } catch {
+                ctx.errors.append("deleteMessage failed: \(error.localizedDescription)")
+            }
         case .react:
             guard let emoji = step.reactEmoji, !emoji.isEmpty else { return }
-            _ = try? await dependencies.addReaction(cid, mid, emoji, token)
+            do {
+                _ = try await dependencies.addReaction(cid, mid, emoji, token)
+            } catch {
+                ctx.errors.append("addReaction failed: \(error.localizedDescription)")
+            }
         }
         ctx.eventHandled = true
     }
 
     // MARK: - Step: log
 
-    private func runLog(_ step: Automations.Step, ctx: ExecutionContext) async {
+    private func runLog(_ step: Automations.Step, ctx: inout ExecutionContext) async {
         let text = await render(step.logText ?? "", event: ctx.event)
         guard !text.isEmpty else { return }
         dependencies.log(text)
@@ -348,10 +415,14 @@ actor AutomationService {
 
     // MARK: - Step: webhook
 
-    private func runWebhook(_ step: Automations.Step, ctx: ExecutionContext) async {
+    private func runWebhook(_ step: Automations.Step, ctx: inout ExecutionContext) async {
         guard let url = step.webhookUrl, !url.isEmpty else { return }
         let body = await render(step.webhookContent ?? "", event: ctx.event)
-        _ = try? await dependencies.sendWebhook(url, body)
+        do {
+            _ = try await dependencies.sendWebhook(url, body)
+        } catch {
+            ctx.errors.append("sendWebhook failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Variable substitution

@@ -27,6 +27,7 @@ struct AnalyticsRuntimeSnapshot: Codable {
     var voiceLog: [VoiceEventLogEntry] = []
     var auditLog: [AuditLogEntry] = []
     var patchyLastCycleAt: Date?
+    var automationLog: [AutomationLogEntry]?
 }
 
 actor AnalyticsRuntimeStore {

@@ -317,3 +317,35 @@ struct GuildRole: Identifiable, Hashable, Codable {
     let name: String
     let permissions: String?
 }
+
+struct AutomationLogEntry: Identifiable, Hashable, Codable {
+    let id: UUID
+    let ruleId: String
+    let ruleName: String
+    let timestamp: Date
+    let eventKind: String
+    let triggerUser: String
+    let stepsCount: Int
+    let status: String
+
+    init(
+        id: UUID = UUID(),
+        ruleId: String,
+        ruleName: String,
+        timestamp: Date = Date(),
+        eventKind: String,
+        triggerUser: String,
+        stepsCount: Int,
+        status: String
+    ) {
+        self.id = id
+        self.ruleId = ruleId
+        self.ruleName = ruleName
+        self.timestamp = timestamp
+        self.eventKind = eventKind
+        self.triggerUser = triggerUser
+        self.stepsCount = stepsCount
+        self.status = status
+    }
+}
+

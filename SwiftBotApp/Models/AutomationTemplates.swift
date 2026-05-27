@@ -185,7 +185,7 @@ struct AutomationTemplate: Identifiable, Hashable {
     // Focus on templates that map cleanly to moderation actions the engine
     // can execute today: delete, DM, timeout, kick, and local audit logging.
     // Avoid role-filter examples until member role state is plumbed through
-    // VoiceRuleEvent; those filters are currently informational in the UI.
+    // SwiftBotEvent; those filters are currently informational in the UI.
 
     static let moderationCatalog: [AutomationTemplate] = [
 

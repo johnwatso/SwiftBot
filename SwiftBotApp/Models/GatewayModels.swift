@@ -90,7 +90,7 @@ enum SwiftBotEvent: Sendable {
     case memberLeave(guildId: String, userId: String, username: String)
     case mediaAdded(MediaPayload)
 
-    enum Kind: Sendable {
+    enum Kind: String, Sendable {
         case join
         case leave
         case move

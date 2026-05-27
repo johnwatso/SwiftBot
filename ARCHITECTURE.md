@@ -135,7 +135,7 @@ Gateway Event
     ↓
 DiscordService.processRuleActionsIfNeeded()
     ↓
-DiscordService.parseVoiceRuleEvent() / parseMessageRuleEvent()
+DiscordService.parseVoiceRuleEvent() / parseMessageRuleEvent() (yielding SwiftBotEvent)
     ↓
 RuleEngine.evaluateRules(event) [MainActor]
     ↓
