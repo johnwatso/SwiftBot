@@ -114,8 +114,9 @@ Status of each — no per-item work needed:
 > Genuinely open — **biggest Priority 2 lift**.
 
 - [x] Replace `VoiceRuleEvent` with a typed `SwiftBotEvent` enum — completed and mapped across Gateway, AppModel, and AutomationService pipelines.
-- [ ] Create typed trigger system
-- [ ] Create typed modifiers/actions
+- [x] ~~Create typed trigger system~~ — completed typed trigger system with validation and range checks.
+- [x] ~~Create typed modifiers/actions~~ — expanded filter kinds with messageContainsSpamLink, messageCapsPercentage, and messageMentionsCount moderation filters.
+- [x] ~~Enforce execution category precedence~~ — implemented strict separating precedence where moderation rules run first, and destructive actions bypass subsequent automation rule execution.
 - [x] Create execution context model — implemented detailed execution context collecting diagnostic steps and errors.
 - [x] Add diagnostics system — added structured step-level throw-capture and error logging.
 
@@ -123,9 +124,9 @@ Status of each — no per-item work needed:
 
 > Genuinely open.
 
-- [ ] Add rule simulation mode
-- [ ] Add execution tracing
-- [ ] Add rule validation
+- [x] ~~Add rule simulation mode~~ — completed in-memory dry-run evaluation engine and interactive trace views.
+- [x] ~~Add execution tracing~~ — completed step-level trace tracking with checkmarks and timelines.
+- [x] ~~Add rule validation~~ — completed detailed range validation in Trigger.validate.
 - [x] Add execution history — implemented capped `automationLog` persistent execution ledger of 500 entries under `AppModel` and `Persistence`.
 - [x] Add structured failure reporting — automated step failure capture and diagnostic details log recording.
 
@@ -303,6 +304,8 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 | `_ledger_` | Implemented persistent automation execution log history (`automationLog` array capped at 500 entries). |
 | `_harness_` | Constructed isolated E2E webhook DM integration test harness with isolation and mock URLSession injection. |
 | `_purge_` | Cleaned up all stale comment references to `VoiceRuleEvent`. |
+| `_precedence_` | Implemented Typed Trigger System (Option 2) and Spam Moderation Filters (Option 3) with strict moderation execution precedence and full SwiftUI editor integrations. |
+| `_simulation_` | Implemented Rule Simulation & Execution Tracing (dry-run engine, simulation fields, and Tahoe-style simulation view). |
 
 **Key decisions**
 

@@ -1605,6 +1605,24 @@ actor AdminWebServer {
                 return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
             }
 
+        case ("POST", "/api/automations/validate"):
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard validateCSRF(session: session, request: request) else {
+                return jsonResponse(["error": "csrf_mismatch"], status: "403 Forbidden")
+            }
+            do {
+                let patch = try decoder.decode(AdminWebAutomationRulePatch.self, from: request.body)
+                try patch.validate()
+                return jsonResponse(["ok": true])
+            } catch {
+                return jsonResponse(["error": "validation_failed", "message": error.localizedDescription], status: "400 Bad Request")
+            }
+
         case ("POST", "/api/automations/delete"):
             guard let session = authenticatedSession(for: request) else {
                 return unauthorizedResponse()

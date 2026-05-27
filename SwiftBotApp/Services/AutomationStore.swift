@@ -99,6 +99,12 @@ final class AutomationStore {
         scheduleSave()
     }
 
+    #if DEBUG
+    func setRulesForTesting(_ rules: [Automations.Rule]) {
+        self.rules = rules
+    }
+    #endif
+
     /// Snapshot for the engine to evaluate against off-main.
     nonisolated func snapshot() async -> [Automations.Rule] {
         await MainActor.run { self.rules }

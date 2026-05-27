@@ -5,12 +5,35 @@ extension AppModel {
     /// Evaluate the live rule set against `event` and execute each match.
     func fireAutomations(for event: SwiftBotEvent) async {
         let snapshot = automationStore.rules
-        let matches = automationService.evaluate(event: event, in: snapshot)
-        guard !matches.isEmpty else { return }
         let tok = settings.token
         let token: String? = tok.isEmpty ? nil : tok
-        for rule in matches {
+
+        // 1. Separate moderation rules and automation rules
+        let moderationRules = snapshot.filter { $0.category == .moderation }
+        let automationRules = snapshot.filter { $0.category == .automation }
+
+        // 2. Evaluate and execute moderation rules first
+        let moderationMatches = automationService.evaluate(event: event, in: moderationRules)
+        var messageWasModerated = false
+
+        for rule in moderationMatches {
             await automationService.execute(rule: rule, event: event, token: token)
+            
+            // If the rule performs destructive action, mark it as moderated to cancel standard automations
+            if rule.steps.contains(where: { step in
+                (step.kind == .modifyMessage && step.messageOp == .delete) ||
+                (step.kind == .modifyMember && (step.memberOp == .timeout || step.memberOp == .kick))
+            }) {
+                messageWasModerated = true
+            }
+        }
+
+        // 3. Evaluate and execute standard automation rules only if not moderated
+        if !messageWasModerated {
+            let automationMatches = automationService.evaluate(event: event, in: automationRules)
+            for rule in automationMatches {
+                await automationService.execute(rule: rule, event: event, token: token)
+            }
         }
     }
 
