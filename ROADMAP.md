@@ -278,7 +278,7 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 > Not in original roadmap.
 
-- [ ] Strip dead OpenAI image-gen toggles from `SwiftBotApp/Resources/admin/index.html` (left behind by the Apple-only consolidation; will render as undefined until cleaned).
+- [x] ~~Strip dead OpenAI image-gen toggles from `SwiftBotApp/Resources/admin/index.html`~~ — cleaned up; three dead UI clusters removed, replaced with single Apple Intelligence panels.
 - [ ] Decide fate of `FoundationModelsSpikeTests` — flaky on Apple's on-device model (fails ~half the time on latency or quality). Either loosen thresholds, mark expected-flaky, or remove.
 - [ ] Consider renaming internal `case aiBots`, `struct AIBotsView`, JSON key `aiBots:` to match the user-facing "Apple Intelligence" name. Skipped during the surface rename because the JSON key is a wire contract with the admin web UI.
 
@@ -296,8 +296,9 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 | `16a238e` | MESSAGE_CREATE single-parse pipeline (Priority 1 Phase 1). |
 | `c2c1b10` | Apple-only AI consolidation (–1051 LOC net). OpenAI/Ollama/image-gen archived. |
 | `b9daeba` | "AI Bots" → "AI" rename + `apple.intelligence` SF Symbol. |
-
-Subsequent product polish to "Apple Intelligence" + personality picker by user — uncommitted at end of session.
+| `981fc7e` + `50619f9` | Apple Intelligence UI revamp + personality picker + `fadingEdges`/shared UI primitives (user). |
+| `75d712d` | Add `ROADMAP.md` to repo + AI_CONTEXT requires keeping it current. |
+| _next_ | Admin HTML cleanup — strip dead OpenAI/Ollama/image-gen panels from `Resources/admin/index.html`. |
 
 **Key decisions**
 
