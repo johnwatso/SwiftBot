@@ -55,7 +55,7 @@ struct AutomationRuleEditor: View {
         var defaultMessageContent = "Hello world!"
         if rule.filters.contains(where: { $0.kind == .messageContainsSpamLink }) {
             defaultMessageContent = "FREE-DISCORD-NITRO PHISHING LINK HERE: HTTPS://GIFT-NITRO.COM"
-        } else if let capsFilter = rule.filters.first(where: { $0.kind == .messageCapsPercentage }) {
+        } else if rule.filters.contains(where: { $0.kind == .messageCapsPercentage }) {
             defaultMessageContent = "HELLO WORLD THIS IS A LOUD SHOUTING MESSAGE"
         } else if let mentionsFilter = rule.filters.first(where: { $0.kind == .messageMentionsCount }) {
             let count = mentionsFilter.intValue ?? 5
@@ -491,11 +491,16 @@ struct AutomationRuleEditor: View {
     private func filterMenuOrder(for kind: Automations.TriggerKind) -> [Automations.FilterKind] {
         switch kind {
         case .messageCreated:
-            return [.inChannel, .directMessage, .messageContains, .messageContainsAny,
-                    .messageEquals, .messageDoesNotContain, .messageMatchesRegex,
-                    .messageIsReply, .fromBot, .userIsOneOf,
-                    .userHasAnyRole, .userHasAllRoles, .userHasNoneOfRoles,
-                    .messageContainsSpamLink, .messageCapsPercentage, .messageMentionsCount]
+            var list: [Automations.FilterKind] = [
+                .inChannel, .directMessage, .messageContains, .messageContainsAny,
+                .messageEquals, .messageDoesNotContain, .messageMatchesRegex,
+                .messageIsReply, .fromBot, .userIsOneOf,
+                .userHasAnyRole, .userHasAllRoles, .userHasNoneOfRoles
+            ]
+            if rule.category == .moderation {
+                list.append(contentsOf: [.messageContainsSpamLink, .messageCapsPercentage, .messageMentionsCount])
+            }
+            return list
         case .userJoinedVoice, .userLeftVoice, .userMovedVoice:
             return [.inChannel, .minVoiceDurationSeconds, .userIsOneOf,
                     .userHasAnyRole, .userHasAllRoles, .userHasNoneOfRoles]
@@ -589,27 +594,40 @@ struct AutomationRuleEditor: View {
     // MARK: - Steps editor
 
     private var stepsEditor: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let pipelineColor: Color = Color.accentColor
+        return VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(rule.steps.enumerated()), id: \.element.id) { idx, _ in
                 stepCard(index: idx)
             }
-            HStack {
-                Menu {
-                    ForEach(stepPresets(for: rule.category), id: \.id) { preset in
-                        Button {
+            
+            // Add step button picker
+            Menu {
+                ForEach(stepPresets(for: rule.category), id: \.id) { preset in
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             rule.steps.append(preset.step)
-                        } label: {
-                            Label(preset.title, systemImage: preset.symbol)
                         }
+                    } label: {
+                        Label(preset.title, systemImage: preset.symbol)
                     }
-                } label: {
-                    Label("Add step", systemImage: "plus.circle")
-                        .font(.subheadline)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                Spacer()
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Add step")
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(pipelineColor)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(pipelineColor.opacity(0.08))
+                )
             }
+            .menuStyle(.borderlessButton)
+            .padding(.top, 4)
         }
     }
 
@@ -713,29 +731,93 @@ struct AutomationRuleEditor: View {
         }
     }
 
+    private func visibleStepKinds(for category: Automations.Category) -> [Automations.StepKind] {
+        switch category {
+        case .automation:
+            return [.sendMessage, .delay, .log, .webhook]
+        case .moderation:
+            return [.sendMessage, .modifyMember, .modifyMessage, .log, .webhook, .delay]
+        }
+    }
+
     @ViewBuilder
     private func stepCard(index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Step \(index + 1)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            // Header Row
+            HStack(spacing: 8) {
+                // Operation icon badge
+                Image(systemName: stepIcon(for: rule.steps[index].kind))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(stepAccentColor(for: rule.steps[index].kind))
+                    .frame(width: 22, height: 22)
+                    .background(stepAccentColor(for: rule.steps[index].kind).opacity(0.12))
+                    .clipShape(Circle())
+                
+                Text("Step \(index + 1): \(AutomationLabels.stepKind(rule.steps[index].kind))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                
                 Spacer()
+                
+                // Reorder controls
+                HStack(spacing: 4) {
+                    Button {
+                        moveStep(from: index, to: index - 1)
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 20, height: 20)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(index == 0)
+                    .help("Move step up")
+                    
+                    Button {
+                        moveStep(from: index, to: index + 1)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 20, height: 20)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(index == rule.steps.count - 1)
+                    .help("Move step down")
+                }
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 4)
+                
+                // Delete button
                 if rule.steps.count > 1 {
                     Button {
-                        rule.steps.remove(at: index)
+                        deleteStep(at: index)
                     } label: {
-                        Image(systemName: "minus.circle")
-                            .foregroundStyle(.secondary)
+                        Image(systemName: "trash")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.red.opacity(0.8))
+                            .frame(width: 22, height: 22)
+                            .background(Color.red.opacity(0.06))
+                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .help("Remove step")
                 }
             }
+            .padding(.bottom, 4)
 
             formRow(label: "Action") {
-                Picker("", selection: $rule.steps[index].kind) {
-                    ForEach(Automations.StepKind.allCases, id: \.self) { kind in
+                Picker("", selection: Binding(
+                    get: { rule.steps[index].kind },
+                    set: { newKind in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            rule.steps[index].kind = newKind
+                        }
+                    }
+                )) {
+                    ForEach(visibleStepKinds(for: rule.category), id: \.self) { kind in
                         Text(AutomationLabels.stepKind(kind)).tag(kind)
                     }
                 }
@@ -745,14 +827,18 @@ struct AutomationRuleEditor: View {
 
             stepFields(index: index)
         }
-        .padding(12)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(stepCardBackground(for: rule.steps[index].kind))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(white: 1.0, opacity: 0.06), lineWidth: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(stepCardBorder(for: rule.steps[index].kind), lineWidth: 1)
         )
     }
 
@@ -1200,7 +1286,7 @@ extension AutomationRuleEditor {
 
         if rule.filters.contains(where: { $0.kind == .messageContainsSpamLink }) {
             testMessageContent = "FREE-DISCORD-NITRO PHISHING LINK HERE: HTTPS://GIFT-NITRO.COM"
-        } else if let capsFilter = rule.filters.first(where: { $0.kind == .messageCapsPercentage }) {
+        } else if rule.filters.contains(where: { $0.kind == .messageCapsPercentage }) {
             testMessageContent = "HELLO WORLD THIS IS A LOUD SHOUTING MESSAGE"
         } else if let mentionsFilter = rule.filters.first(where: { $0.kind == .messageMentionsCount }) {
             let count = mentionsFilter.intValue ?? 5
@@ -1318,6 +1404,52 @@ extension AutomationRuleEditor {
                 self.simulationResult = res
                 self.isShowingSimulation = true
             }
+        }
+    }
+
+    private func stepAccentColor(for kind: Automations.StepKind) -> Color {
+        switch kind {
+        case .sendMessage: return .blue
+        case .modifyMember: return .red
+        case .modifyMessage: return .orange
+        case .log: return .purple
+        case .webhook: return .teal
+        case .delay: return .gray
+        }
+    }
+
+    private func stepCardBackground(for kind: Automations.StepKind) -> Color {
+        stepAccentColor(for: kind).opacity(0.04)
+    }
+
+    private func stepCardBorder(for kind: Automations.StepKind) -> Color {
+        stepAccentColor(for: kind).opacity(0.12)
+    }
+
+    private func stepIcon(for kind: Automations.StepKind) -> String {
+        switch kind {
+        case .sendMessage: return "bubble.left.and.bubble.right.fill"
+        case .modifyMember: return "person.badge.shield.checkmark.fill"
+        case .modifyMessage: return "square.and.pencil"
+        case .log: return "doc.text.fill"
+        case .webhook: return "network"
+        case .delay: return "hourglass"
+        }
+    }
+
+    private func moveStep(from src: Int, to dest: Int) {
+        guard dest >= 0 && dest < rule.steps.count else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.76)) {
+            let temp = rule.steps[src]
+            rule.steps[src] = rule.steps[dest]
+            rule.steps[dest] = temp
+        }
+    }
+
+    private func deleteStep(at index: Int) {
+        guard index >= 0 && index < rule.steps.count else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            rule.steps.remove(at: index)
         }
     }
 }
