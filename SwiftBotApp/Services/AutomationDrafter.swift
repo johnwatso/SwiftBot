@@ -227,6 +227,9 @@ final class AutomationDrafter {
              .directMessage,
              .fromBot:                  return f.boolValue != nil
         case .minVoiceDurationSeconds:  return (f.intValue ?? 0) > 0
+        case .messageContainsSpamLink:  return true
+        case .messageCapsPercentage,
+             .messageMentionsCount:     return (f.intValue ?? 0) > 0
         }
     }
 

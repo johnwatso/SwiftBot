@@ -74,17 +74,48 @@ actor AutomationService {
 
     private nonisolated static func triggerMatches(_ trigger: Automations.Trigger, event: SwiftBotEvent) -> Bool {
         switch (trigger.kind, event.kind) {
-        case (.userJoinedVoice, .join),
-             (.userLeftVoice, .leave),
-             (.userMovedVoice, .move),
-             (.messageCreated, .message),
-             (.memberJoined, .memberJoin),
-             (.memberLeft, .memberLeave),
-             (.mediaAdded, .mediaAdded):
+        case (.userJoinedVoice, .join):
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
             return true
-        case (.reactionAdded, _), (.slashCommand, _):
-            // Not yet emitted by gateway plumbing; future-proofed.
-            return false
+        case (.userLeftVoice, .leave):
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
+            if let threshold = trigger.voiceDurationThreshold {
+                guard (event.durationSeconds ?? 0) >= threshold else { return false }
+            }
+            return true
+        case (.userMovedVoice, .move):
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
+            return true
+        case (.messageCreated, .message):
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
+            return true
+        case (.memberJoined, .memberJoin):
+            return true
+        case (.memberLeft, .memberLeave):
+            return true
+        case (.mediaAdded, .mediaAdded):
+            if let cid = trigger.channelId, !cid.isEmpty {
+                guard event.channelId == cid else { return false }
+            }
+            return true
+        case (.reactionAdded, _):
+            if let emoji = trigger.reactionEmoji, !emoji.isEmpty {
+                return (event.messageContent ?? "") == emoji
+            }
+            return true
+        case (.slashCommand, _):
+            if let name = trigger.commandName, !name.isEmpty {
+                return (event.messageContent ?? "").hasPrefix("/\(name)")
+            }
+            return true
         default:
             return false
         }
@@ -171,6 +202,28 @@ actor AutomationService {
         case .mediaSource:
             let target = filter.text ?? ""
             return target.isEmpty || event.mediaSourceName == target
+
+        case .messageContainsSpamLink:
+            let content = (event.messageContent ?? "").lowercased()
+            let spamKeywords = ["free-discord-nitro", "discord.gift", "gift-nitro", "steam-promo", "crypto-drop", "free-nitro"]
+            let containsSpamKeyword = spamKeywords.contains { content.contains($0) }
+            let hasUrl = content.contains("http://") || content.contains("https://") || content.contains("www.")
+            return hasUrl && containsSpamKeyword
+
+        case .messageCapsPercentage:
+            let content = event.messageContent ?? ""
+            let letters = content.filter { $0.isLetter }
+            guard !letters.isEmpty else { return false }
+            let caps = letters.filter { $0.isUppercase }
+            let percentage = (caps.count * 100) / letters.count
+            let threshold = filter.intValue ?? 70
+            return percentage >= threshold
+
+        case .messageMentionsCount:
+            let content = event.messageContent ?? ""
+            let pings = content.components(separatedBy: "<@").count - 1
+            let threshold = filter.intValue ?? 5
+            return pings >= threshold
         }
     }
 
@@ -456,5 +509,142 @@ actor AutomationService {
         if h > 0 { return "\(h)h \(m)m" }
         if m > 0 { return "\(m)m \(sec)s" }
         return "\(sec)s"
+    }
+
+    /// Safely dry-runs and traces rule matching and step execution entirely in-memory.
+    func simulate(rule: Automations.Rule, event: SwiftBotEvent) async -> Automations.SimulationResult {
+        // 1. Check trigger
+        let triggerMatched = Self.triggerMatches(rule.trigger, event: event)
+        
+        // 2. Evaluate filters and record traces
+        var filterTraces: [Automations.FilterTrace] = []
+        var filtersMatched = true
+        
+        for filter in rule.filters {
+            let matched = Self.filterMatches(filter, event: event)
+            
+            // Generate detailed trace info
+            let detail: String = {
+                switch filter.kind {
+                case .messageCapsPercentage:
+                    let content = event.messageContent ?? ""
+                    let letters = content.filter { $0.isLetter }
+                    if letters.isEmpty {
+                        return "0% caps (no letters in message)"
+                    } else {
+                        let caps = letters.filter { $0.isUppercase }
+                        let pct = (caps.count * 100) / letters.count
+                        return "\(pct)% caps (threshold \(filter.intValue ?? 70)%)"
+                    }
+                case .messageMentionsCount:
+                    let content = event.messageContent ?? ""
+                    let pings = content.components(separatedBy: "<@").count - 1
+                    return "\(pings) ping(s) (threshold \(filter.intValue ?? 5))"
+                case .messageContainsSpamLink:
+                    let content = event.messageContent ?? ""
+                    let spamKeywords = ["free-discord-nitro", "discord.gift", "gift-nitro", "steam-promo", "crypto-drop", "free-nitro"]
+                    let hasKeyword = spamKeywords.contains { content.lowercased().contains($0) }
+                    let hasUrl = content.contains("http://") || content.contains("https://") || content.contains("www.")
+                    return "Link: \(hasUrl ? "yes" : "no"), Spam Keyword: \(hasKeyword ? "yes" : "no")"
+                default:
+                    return matched ? "Filter matched criteria" : "Filter did not match criteria"
+                }
+            }()
+            
+            filterTraces.append(Automations.FilterTrace(filterId: filter.id, kind: filter.kind, matched: matched, detail: detail))
+            
+            if !matched && rule.filterLogic == .all {
+                filtersMatched = false
+            }
+        }
+        
+        if rule.filterLogic == .any && !rule.filters.isEmpty {
+            filtersMatched = filterTraces.contains { $0.matched }
+        }
+        
+        // 3. Dry-run steps if overall trigger and filters passed
+        var stepTraces: [Automations.StepTrace] = []
+        let shouldExecute = triggerMatched && (rule.filters.isEmpty || filtersMatched)
+        
+        if shouldExecute {
+            let accumulator = SimTraceAccumulator()
+            
+            let dryRunDeps = AutomationService.Dependencies(
+                sendMessage: { c, m, t in
+                    accumulator.appendStep(kind: .sendMessage, detail: "Would send message to channel/user: \"\(m)\"")
+                },
+                sendPayloadMessage: { c, p, t in
+                    accumulator.appendStep(kind: .sendMessage, detail: "Would send rich embed/payload message")
+                },
+                sendDM: { u, c in
+                    accumulator.appendStep(kind: .sendMessage, detail: "Would send DM to user \(u): \"\(c)\"")
+                },
+                addReaction: { c, m, e, t in
+                    accumulator.appendStep(kind: .modifyMessage, detail: "Would add reaction \(e) to message \(m)")
+                },
+                deleteMessage: { c, m, t in
+                    accumulator.appendStep(kind: .modifyMessage, detail: "Would delete message \(m)")
+                },
+                addRole: { g, u, r, t in
+                    accumulator.appendStep(kind: .modifyMember, detail: "Would add role \(r) to user \(u)")
+                },
+                removeRole: { g, u, r, t in
+                    accumulator.appendStep(kind: .modifyMember, detail: "Would remove role \(r) from user \(u)")
+                },
+                timeoutMember: { g, u, s, t in
+                    accumulator.appendStep(kind: .modifyMember, detail: "Would timeout user \(u) for \(s) seconds")
+                },
+                kickMember: { g, u, reason, t in
+                    accumulator.appendStep(kind: .modifyMember, detail: "Would kick user \(u) (reason: \(reason))")
+                },
+                moveMember: { g, u, c, t in
+                    accumulator.appendStep(kind: .modifyMember, detail: "Would move user \(u) to voice channel \(c)")
+                },
+                sendWebhook: { url, c in
+                    accumulator.appendStep(kind: .webhook, detail: "Would POST to webhook: \(url)")
+                },
+                resolveChannelName: { _, _ in "simulated-channel" },
+                resolveGuildName: { _ in "simulated-guild" },
+                log: { _ in },
+                recordAutomationRun: { _, _, _, _, _, _ in }
+            )
+            
+            let simService = AutomationService(aiService: self.aiService, dependencies: dryRunDeps)
+            await simService.execute(rule: rule, event: event, token: "sim-token")
+            
+            let ranSteps = accumulator.steps
+            for (index, step) in rule.steps.enumerated() {
+                let detail = index < ranSteps.count ? ranSteps[index].detail : "Step skipped or failed"
+                stepTraces.append(Automations.StepTrace(stepId: step.id, kind: step.kind, executed: index < ranSteps.count, detail: detail))
+            }
+        } else {
+            for step in rule.steps {
+                stepTraces.append(Automations.StepTrace(stepId: step.id, kind: step.kind, executed: false, detail: "Step bypassed (filters/trigger did not match)"))
+            }
+        }
+        
+        return Automations.SimulationResult(
+            triggerMatched: triggerMatched,
+            filtersMatched: filtersMatched || rule.filters.isEmpty,
+            filterTraces: filterTraces,
+            stepTraces: stepTraces
+        )
+    }
+}
+
+private final class SimTraceAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _steps: [Automations.StepTrace] = []
+    
+    var steps: [Automations.StepTrace] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _steps
+    }
+    
+    func appendStep(kind: Automations.StepKind, detail: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        _steps.append(Automations.StepTrace(stepId: UUID().uuidString, kind: kind, executed: true, detail: detail))
     }
 }

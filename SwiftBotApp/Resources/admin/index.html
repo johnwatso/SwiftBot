@@ -6114,11 +6114,36 @@
       const title = (isNew ? 'New ' : 'Edit ') + titleText;
       showModal(title, '<div id="automationEditorBody"></div>', `
         <button class="secondary-action" type="button" data-action="hideModal">Cancel</button>
+        <button id="automationEditorValidate" class="secondary-action" type="button" style="margin-right:auto;"><i class="lucide" data-lucide="check-circle-2"></i> Validate Rule</button>
+        <span id="automationValidationFeedback" style="margin-right:12px; font-size:14px; display:flex; align-items:center; gap:4px;"></span>
         <button id="automationEditorSave" class="primary-action" type="button">${isNew ? 'Create' : 'Save'}</button>
       `);
       document.querySelector('.modal-overlay')?.classList.add('automation-editor-modal');
       renderAutomationEditorBody();
       document.getElementById('automationEditorSave')?.addEventListener('click', saveAutomationFromEditor);
+      document.getElementById('automationEditorValidate')?.addEventListener('click', async () => {
+        const feedback = document.getElementById('automationValidationFeedback');
+        const btn = document.getElementById('automationEditorValidate');
+        if (!feedback) return;
+        feedback.innerHTML = '<span style="color:var(--muted)">Checking...</span>';
+        if (btn) btn.disabled = true;
+        try {
+          const r = automationEditorState.rule;
+          r.category = automationEditorState.category;
+          const payload = await postJSON('/api/automations/validate', { rule: r });
+          if (payload.error) {
+            feedback.innerHTML = `<span style="color:#ef4444; display:flex; align-items:center; gap:4px;"><i class="lucide" data-lucide="alert-circle" style="width:16px;height:16px;"></i> ${escapeHTML(payload.message || 'Validation failed')}</span>`;
+          } else {
+            feedback.innerHTML = `<span style="color:#22c55e; display:flex; align-items:center; gap:4px;"><i class="lucide" data-lucide="check-circle" style="width:16px;height:16px;"></i> Valid!</span>`;
+          }
+          refreshIcons();
+        } catch (e) {
+          feedback.innerHTML = `<span style="color:#ef4444; display:flex; align-items:center; gap:4px;"><i class="lucide" data-lucide="alert-circle" style="width:16px;height:16px;"></i> ${escapeHTML(e.message || 'Error occurred')}</span>`;
+          refreshIcons();
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
     }
 
     async function saveAutomationFromEditor() {

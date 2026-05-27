@@ -132,10 +132,24 @@ enum Automations {
         @Guide(description: "For slashCommand: command name without the leading slash. Required when kind is slashCommand.")
         var commandName: String?
 
+        @Guide(description: "Specific channel ID to restrict this trigger. Optional.")
+        var channelId: String?
+
+        @Guide(description: "For reactionAdded: Restrict to specific emoji string. Optional.")
+        var reactionEmoji: String?
+
+        @Guide(description: "For userLeftVoice: Restrict to voice duration threshold (seconds). Optional.")
+        var voiceDurationThreshold: Int?
+
         func validate() throws {
             if kind == .slashCommand {
                 guard let name = commandName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
                     throw ValidationError.invalidValue("Command name is required for slashCommand triggers")
+                }
+            }
+            if let threshold = voiceDurationThreshold {
+                guard threshold >= 0 && threshold <= 86400 else {
+                    throw ValidationError.outOfRange("voiceDurationThreshold", min: 0, max: 86400)
                 }
             }
         }
@@ -168,6 +182,10 @@ enum Automations {
         case reactionEmoji              // text
         // Media
         case mediaSource                // text
+        // Moderation
+        case messageContainsSpamLink
+        case messageCapsPercentage
+        case messageMentionsCount
     }
 
     @Generable
@@ -238,6 +256,18 @@ enum Automations {
                 if let value = intValue {
                     if value < 0 || value > 86400 {
                         throw ValidationError.outOfRange("minVoiceDurationSeconds", min: 0, max: 86400)
+                    }
+                }
+            case .messageCapsPercentage:
+                if let val = intValue {
+                    guard val >= 0 && val <= 100 else {
+                        throw ValidationError.outOfRange("Caps Percentage", min: 0, max: 100)
+                    }
+                }
+            case .messageMentionsCount:
+                if let val = intValue {
+                    guard val >= 0 else {
+                        throw ValidationError.invalidValue("Mentions Count threshold must be non-negative")
                     }
                 }
             default:
@@ -448,5 +478,30 @@ enum Automations {
                 return kind == .mediaAdded
             }
         }
+    }
+
+    // MARK: - Simulation Trace Models
+
+    struct FilterTrace: Sendable, Hashable, Identifiable {
+        var id: String { filterId }
+        let filterId: String
+        let kind: FilterKind
+        let matched: Bool
+        let detail: String
+    }
+
+    struct StepTrace: Sendable, Hashable, Identifiable {
+        var id: String { stepId }
+        let stepId: String
+        let kind: StepKind
+        let executed: Bool
+        let detail: String
+    }
+
+    struct SimulationResult: Sendable, Hashable {
+        let triggerMatched: Bool
+        let filtersMatched: Bool
+        let filterTraces: [FilterTrace]
+        let stepTraces: [StepTrace]
     }
 }

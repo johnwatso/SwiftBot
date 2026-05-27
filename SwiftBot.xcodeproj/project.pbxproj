@@ -62,6 +62,7 @@
 		3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */; };
 		3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */; };
 		403C97BE65696647F37FFD89 /* IntelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316BE5EE23ADB08FD4042070 /* IntelService.swift */; };
+		408F2E17E2FF0510DEFCF083 /* AutomationModerationPrecedenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */; };
 		40EEEB0FC47E27A70C5D25AF /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 7C341BA99920552C7CDA9D24 /* Sparkle */; };
 		42CC415A501766D93A846E6A /* Validation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC86E9EDB97C17969DD1C543 /* Validation.swift */; };
 		440F6A5F62FD1B7714FD1A2E /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E1C9365566CEC38D0E39EB /* KeychainHelper.swift */; };
@@ -104,6 +105,7 @@
 		7071FF33C237742C35AB7082 /* AppModel+DiscordParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB16BA645CAAD2D3A17C6F /* AppModel+DiscordParsers.swift */; };
 		71042A6C7A95C021D36E560A /* VoiceAnnouncementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4024E7F93A1C1B1CBAE9326 /* VoiceAnnouncementService.swift */; };
 		7132DFC658401903B85DC61D /* CertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D3D1ABFC5B176C108B7B6E /* CertificateManager.swift */; };
+		7355A17718A2988368B57B15 /* AutomationSimulationResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99733ADA9B7F9D15F0AD7046 /* AutomationSimulationResultView.swift */; };
 		749CCBC0FB596535E6607CC8 /* DiscordGatewayConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0CCC8915E394F8D53ED2DA /* DiscordGatewayConnectionTests.swift */; };
 		77A6A8DB1F994205038B1F55 /* AppModel+SwiftMiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C860E3F668A714ABB7F68FD5 /* AppModel+SwiftMiner.swift */; };
 		7894B179A8B556313CC7492A /* AppModel+Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5716A5F63D0211A0DA067364 /* AppModel+Gateway.swift */; };
@@ -225,6 +227,7 @@
 		036C9C8FBD2486BF819C94DA /* AppleIntelligenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceView.swift; sourceTree = "<group>"; };
 		03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
 		065E8C11350B1294C20F9B3A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
+		094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationModerationPrecedenceTests.swift; sourceTree = "<group>"; };
 		09A613E717FA199F6B39B864 /* SwiftMinerDMTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMTheme.swift; sourceTree = "<group>"; };
 		0C62599CD5D11338B087201C /* MusicLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLookupService.swift; sourceTree = "<group>"; };
 		0D7E1662299F69697912A63E /* AppModel+Cluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Cluster.swift"; sourceTree = "<group>"; };
@@ -340,6 +343,7 @@
 		97466782EAB305E42E2C8AF9 /* VoiceTTSSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTTSSource.swift; sourceTree = "<group>"; };
 		985814A00309DEBC6C7FD35F /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		98AA7F8CD81396418AA0127D /* LogExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogExporter.swift; sourceTree = "<group>"; };
+		99733ADA9B7F9D15F0AD7046 /* AutomationSimulationResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationSimulationResultView.swift; sourceTree = "<group>"; };
 		99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryIndexer.swift; sourceTree = "<group>"; };
 		9A22C5009D34D5F98076D3B7 /* VoiceRuleStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRuleStateStore.swift; sourceTree = "<group>"; };
 		9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+SlashCommandHelpers.swift"; sourceTree = "<group>"; };
@@ -471,6 +475,7 @@
 				A55E2CDD13174C72BDB79094 /* AppModelTypes.swift */,
 				A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */,
 				CC98A5A9812AFE464E8BAA60 /* AutomationRuleEditor.swift */,
+				99733ADA9B7F9D15F0AD7046 /* AutomationSimulationResultView.swift */,
 				9BE65BE47F3B3C264E33D6D6 /* AutomationsView.swift */,
 				2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */,
 				4ECDF94EFD14E6193471D909 /* ClusterCoordinator.swift */,
@@ -583,6 +588,7 @@
 			children = (
 				1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */,
 				6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */,
+				094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */,
 				69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */,
 				DC995D5DD1A67363B7BD7FAA /* ClusterSecurityTests.swift */,
 				1F85AB8F509718DB2F217253 /* ClusterSettingsTests.swift */,
@@ -905,6 +911,7 @@
 				F43FB976BAE0B5AFD14E5F9D /* AutomationExamples.swift in Sources */,
 				0B3E386152E7CA31DCAEFFE1 /* AutomationRuleEditor.swift in Sources */,
 				1E23CF1921F2EB2EB6C32268 /* AutomationService.swift in Sources */,
+				7355A17718A2988368B57B15 /* AutomationSimulationResultView.swift in Sources */,
 				8CDB781DCA15471FF89ABCAD /* AutomationStore.swift in Sources */,
 				451C12B27652124C3E40329B /* AutomationTemplates.swift in Sources */,
 				A19AE8F43B9B8CFB90BE7638 /* Automations.swift in Sources */,
@@ -1042,6 +1049,7 @@
 			files = (
 				FC3942D9BA9BA24CC48B7F8E /* AdminWebOAuthTests.swift in Sources */,
 				E0E054077447FB570AB8C3E7 /* AppOutputGuardTests.swift in Sources */,
+				408F2E17E2FF0510DEFCF083 /* AutomationModerationPrecedenceTests.swift in Sources */,
 				12DF9B6154580191B21A8ABD /* CertificateManagerTests.swift in Sources */,
 				90A5AD4EDB92E31FEE9C2707 /* ClusterSecurityTests.swift in Sources */,
 				104A917CA018BB5341E26C7D /* ClusterSettingsTests.swift in Sources */,
