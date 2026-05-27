@@ -146,6 +146,7 @@
 		9AC1DDF0CBE7C89586CB079D /* AppModel+Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7962859CFEF723E67BD800C /* AppModel+Media.swift */; };
 		9C5DCB5C183F3BCFF236095E /* AMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87A43A58BBA036A9646BCAC /* AMDService.swift */; };
 		9C70C57B9C4A44DC95FB0C56 /* SteamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBC0B8ABE120213D32A8F9F /* SteamService.swift */; };
+		9D0628EF8EB7D0F6972B5A84 /* AutomationAITransformTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */; };
 		9D8268E43E33B6ADEDDCFD7E /* CommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC9C07D51639D96FE0038EA /* CommandProcessor.swift */; };
 		A03E7AB8F0B643B3271F1968 /* SwiftMinerDMEmbedBuilders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A7F34F7FFB7E1B2BD1C889 /* SwiftMinerDMEmbedBuilders.swift */; };
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
@@ -226,6 +227,7 @@
 		031F4D5F167A067542123F0C /* RemoteBotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteBotProvider.swift; sourceTree = "<group>"; };
 		036C9C8FBD2486BF819C94DA /* AppleIntelligenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceView.swift; sourceTree = "<group>"; };
 		03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordPreferencesView.swift; sourceTree = "<group>"; };
+		0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAITransformTests.swift; sourceTree = "<group>"; };
 		065E8C11350B1294C20F9B3A /* CommonUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonUI.swift; sourceTree = "<group>"; };
 		094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationModerationPrecedenceTests.swift; sourceTree = "<group>"; };
 		09A613E717FA199F6B39B864 /* SwiftMinerDMTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMTheme.swift; sourceTree = "<group>"; };
@@ -588,6 +590,7 @@
 			children = (
 				1A7976746ADE42B5041F7EB7 /* AdminWebOAuthTests.swift */,
 				6E2884042287AF3A3D8D33B6 /* AppOutputGuardTests.swift */,
+				0532EE77F8EED50E6594AF49 /* AutomationAITransformTests.swift */,
 				094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */,
 				69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */,
 				DC995D5DD1A67363B7BD7FAA /* ClusterSecurityTests.swift */,
@@ -1049,6 +1052,7 @@
 			files = (
 				FC3942D9BA9BA24CC48B7F8E /* AdminWebOAuthTests.swift in Sources */,
 				E0E054077447FB570AB8C3E7 /* AppOutputGuardTests.swift in Sources */,
+				9D0628EF8EB7D0F6972B5A84 /* AutomationAITransformTests.swift in Sources */,
 				408F2E17E2FF0510DEFCF083 /* AutomationModerationPrecedenceTests.swift in Sources */,
 				12DF9B6154580191B21A8ABD /* CertificateManagerTests.swift in Sources */,
 				90A5AD4EDB92E31FEE9C2707 /* ClusterSecurityTests.swift in Sources */,

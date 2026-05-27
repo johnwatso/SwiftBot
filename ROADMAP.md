@@ -189,11 +189,22 @@ Status of each — no per-item work needed:
 
 > All routed through Apple Intelligence.
 
-- [ ] AI summarisation
-- [ ] AI moderation transforms
-- [ ] AI notification condensation
-- [ ] AI voice summaries
-- [ ] AI context extraction
+A single `StepKind.aiTransform` step covers summarisation, moderation
+rewrites, notification condensation, and context extraction by prompt
+design — they're all "give Apple Intelligence a prompt, store the reply."
+Output flows to later steps via the `{ai_output}` template token.
+Voice summaries still need separate work (no transcription infra yet).
+
+- [x] ~~AI summarisation~~ — `aiTransform` step with a summarisation prompt.
+- [x] ~~AI moderation transforms~~ — `aiTransform` with a rewrite prompt, followed by `sendMessage` using `{ai_output}`.
+- [x] ~~AI notification condensation~~ — `aiTransform` on webhook content.
+- [ ] AI voice summaries — still open; needs voice transcription infra first.
+- [x] ~~AI context extraction~~ — `aiTransform` with an extraction prompt, downstream steps reference `{ai_output}`.
+
+> **Known follow-up:** the rule simulator's step-trace index alignment is
+> already off for `log`/`delay` steps (they fire no dependency callbacks);
+> `aiTransform` inherits the same pre-existing mis-report. Separate sim
+> refactor task — does not affect production execution.
 
 ---
 

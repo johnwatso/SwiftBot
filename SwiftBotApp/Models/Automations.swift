@@ -286,6 +286,12 @@ enum Automations {
         case log
         case webhook
         case delay
+        /// Runs Apple Intelligence with `aiPrompt`. Result is stored in the
+        /// execution context's `aiOutput` and exposed to subsequent steps as
+        /// the `{ai_output}` template token. Only the most-recent
+        /// `aiTransform` step in a rule's pipeline contributes — running a
+        /// second `aiTransform` overwrites the first.
+        case aiTransform
     }
 
     @Generable
@@ -418,6 +424,11 @@ enum Automations {
                         throw ValidationError.outOfRange("timeoutSeconds", min: 0, max: 2419200)
                     }
                 }
+            case .aiTransform:
+                let trimmed = (aiPrompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    throw ValidationError.invalidValue("AI Transform requires a prompt")
+                }
             default:
                 break
             }
@@ -439,6 +450,7 @@ enum Automations {
         case duration       = "{duration}"
         case mediaFile      = "{mediaFile}"
         case mediaSource    = "{mediaSource}"
+        case aiOutput       = "{ai_output}"
 
         static var allTokens: [String] { allCases.map(\.rawValue) }
 
@@ -456,6 +468,7 @@ enum Automations {
             case .duration:    return "Voice session duration"
             case .mediaFile:   return "Media file name"
             case .mediaSource: return "Media source"
+            case .aiOutput:    return "Most recent AI step output"
             }
         }
 
@@ -476,6 +489,10 @@ enum Automations {
                     || kind == .userMovedVoice
             case .mediaFile, .mediaSource:
                 return kind == .mediaAdded
+            case .aiOutput:
+                // Always applicable — populated at step-run time by an
+                // `aiTransform` step earlier in the same rule's pipeline.
+                return true
             }
         }
     }

@@ -264,6 +264,10 @@ actor AutomationService {
         let event: SwiftBotEvent
         var eventHandled: Bool = false
         var errors: [String] = []
+        /// Result of the most recent `aiTransform` step. Read by `{ai_output}`
+        /// token substitution in any later step. Nil until an aiTransform step
+        /// runs; overwritten by any subsequent aiTransform step.
+        var aiOutput: String?
     }
 
     private func runStep(_ step: Automations.Step, ctx: inout ExecutionContext, token: String) async {
@@ -281,6 +285,8 @@ actor AutomationService {
         case .delay:
             let s = max(0, step.delaySeconds ?? 0)
             if s > 0 { try? await Task.sleep(nanoseconds: UInt64(s) * 1_000_000_000) }
+        case .aiTransform:
+            await runAITransform(step, ctx: &ctx)
         }
     }
 
@@ -292,7 +298,7 @@ actor AutomationService {
         // Resolve content: aiPrompt takes precedence if set.
         let rawContent: String
         if let prompt = step.aiPrompt, !prompt.isEmpty {
-            let renderedPrompt = await render(prompt, event: event)
+            let renderedPrompt = await render(prompt, event: event, aiOutput: ctx.aiOutput)
             let channelName = event.isDirectMessage
                 ? "Direct Message"
                 : await dependencies.resolveChannelName(event.triggerGuildId, event.triggerChannelId ?? event.channelId)
@@ -304,7 +310,7 @@ actor AutomationService {
             ) ?? "(AI did not return a response)"
             rawContent = aiOutput
         } else {
-            rawContent = await render(step.content ?? "", event: event)
+            rawContent = await render(step.content ?? "", event: event, aiOutput: ctx.aiOutput)
         }
 
         let target = step.sendTarget ?? defaultSendTarget(for: event)
@@ -461,7 +467,7 @@ actor AutomationService {
     // MARK: - Step: log
 
     private func runLog(_ step: Automations.Step, ctx: inout ExecutionContext) async {
-        let text = await render(step.logText ?? "", event: ctx.event)
+        let text = await render(step.logText ?? "", event: ctx.event, aiOutput: ctx.aiOutput)
         guard !text.isEmpty else { return }
         dependencies.log(text)
     }
@@ -470,7 +476,7 @@ actor AutomationService {
 
     private func runWebhook(_ step: Automations.Step, ctx: inout ExecutionContext) async {
         guard let url = step.webhookUrl, !url.isEmpty else { return }
-        let body = await render(step.webhookContent ?? "", event: ctx.event)
+        let body = await render(step.webhookContent ?? "", event: ctx.event, aiOutput: ctx.aiOutput)
         do {
             _ = try await dependencies.sendWebhook(url, body)
         } catch {
@@ -478,9 +484,37 @@ actor AutomationService {
         }
     }
 
+    // MARK: - Step: aiTransform
+
+    private func runAITransform(_ step: Automations.Step, ctx: inout ExecutionContext) async {
+        let prompt = (step.aiPrompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else {
+            ctx.errors.append("aiTransform: prompt was empty; step skipped")
+            return
+        }
+
+        let event = ctx.event
+        let renderedPrompt = await render(prompt, event: event, aiOutput: ctx.aiOutput)
+        let channelName = event.isDirectMessage
+            ? "Direct Message"
+            : await dependencies.resolveChannelName(event.triggerGuildId, event.triggerChannelId ?? event.channelId)
+        let reply = await aiService.generateStepAIReply(
+            prompt: renderedPrompt,
+            event: event,
+            serverName: await dependencies.resolveGuildName(event.triggerGuildId),
+            channelName: channelName
+        )
+        // Store regardless of success: a nil reply collapses {ai_output} to
+        // "" downstream, matching the convention used by missing event tokens.
+        ctx.aiOutput = reply
+        if reply == nil {
+            ctx.errors.append("aiTransform: Apple Intelligence returned no response")
+        }
+    }
+
     // MARK: - Variable substitution
 
-    private func render(_ template: String, event: SwiftBotEvent) async -> String {
+    private func render(_ template: String, event: SwiftBotEvent, aiOutput: String? = nil) async -> String {
         guard !template.isEmpty else { return "" }
 
         let channelId = event.channelId
@@ -500,6 +534,7 @@ actor AutomationService {
         out = out.replacingOccurrences(of: Automations.Variable.duration.rawValue, with: formatDuration(event.durationSeconds))
         out = out.replacingOccurrences(of: Automations.Variable.mediaFile.rawValue, with: event.mediaFileName ?? "")
         out = out.replacingOccurrences(of: Automations.Variable.mediaSource.rawValue, with: event.mediaSourceName ?? "")
+        out = out.replacingOccurrences(of: Automations.Variable.aiOutput.rawValue, with: aiOutput ?? "")
         return out
     }
 

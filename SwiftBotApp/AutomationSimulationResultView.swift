@@ -289,6 +289,7 @@ struct AutomationSimulationResultView: View {
         case .log: return "Write to System Log"
         case .webhook: return "Call Webhook"
         case .delay: return "Wait"
+        case .aiTransform: return "AI Transform (Apple Intelligence)"
         }
     }
 }

@@ -521,6 +521,7 @@ enum AutomationLabels {
         case .log:           return "Write to the log"
         case .webhook:       return "Call a webhook"
         case .delay:         return "Wait"
+        case .aiTransform:   return "AI transform"
         }
     }
 
