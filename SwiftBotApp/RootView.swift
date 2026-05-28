@@ -198,6 +198,7 @@ struct DashboardSidebar: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .help(startStopHelpText)
                     } else {
                         Button {
                             Task { await app.stopBot() }
@@ -207,6 +208,7 @@ struct DashboardSidebar: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.secondary)
+                        .help(startStopHelpText)
                     }
                 }
                 .controlSize(.large)
@@ -282,11 +284,30 @@ struct DashboardSidebar: View {
     }
 
     private var startButtonTitle: String {
-        app.settings.clusterMode == .worker ? "Start Worker" : "Start Bot"
+        switch app.settings.clusterMode {
+        case .worker: return "Start Worker"
+        case .standby: return "Start Failover Watch"
+        default: return "Start Bot"
+        }
     }
 
     private var stopButtonTitle: String {
-        app.settings.clusterMode == .worker ? "Stop Worker" : "Stop Bot"
+        switch app.settings.clusterMode {
+        case .worker: return "Stop Worker"
+        case .standby: return "Stop Failover Watch"
+        default: return "Stop Bot"
+        }
+    }
+
+    private var startStopHelpText: String {
+        switch app.settings.clusterMode {
+        case .standby:
+            return "Connects to Discord in passive mode and watches the Primary. The bot does not send messages until this node is promoted to Primary."
+        case .worker:
+            return "Joins the cluster as a Worker. Runs offloaded jobs dispatched by the Primary."
+        default:
+            return "Starts the SwiftBot Discord gateway connection."
+        }
     }
 }
 

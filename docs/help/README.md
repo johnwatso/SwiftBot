@@ -17,6 +17,7 @@
 | [Install](INSTALL.md) | Downloading and installing SwiftBot, requirements, update channels (stable/beta), and release vs. development build notes. |
 | [Bot Setup](BOT_SETUP.md) | Creating the Discord application, copying the bot token, enabling intents, configuring OAuth2 for the Web UI, registering redirect URIs, and troubleshooting common Discord errors. |
 | [Web UI Setup](WEB_UI_SETUP.md) | Local-only vs public access for the Admin Web UI. Cloudflare Tunnel walkthrough (recommended), custom reverse proxy via Override Public Base URL, why port forwarding isn't supported, and troubleshooting. |
+| [SwiftMesh](SWIFTMESH.md) | Failover and worker-offload clustering. Roles, what (if anything) to port-forward, generating and applying Join Codes from the macOS app or WebUI, rotating the shared secret, and troubleshooting. |
 
 ---
 
