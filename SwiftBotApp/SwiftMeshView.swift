@@ -61,6 +61,13 @@ struct SwiftMeshView: View {
                     }
                 } else {
                     SwiftMeshSection(title: "Cluster Map", symbol: "point.3.connected.trianglepath.dotted") {
+                        if app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                            ClusterMapHandoverNotice(
+                                isActive: app.clusterSnapshot.isHandoverTestActive,
+                                scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
+                                endsAt: app.clusterSnapshot.handoverTestEndsAt
+                            )
+                        }
                         if topologyNodes.isEmpty {
                             PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
                         } else {
@@ -1889,6 +1896,64 @@ struct HandoverTestStandbyBanner: View {
         let f = DateFormatter()
         f.dateFormat = "h:mm:ss a"
         return f.string(from: date)
+    }
+}
+
+/// Inline notice rendered inside the Cluster Map section while a handover
+/// test is scheduled or in progress, so the user knows the role labels and
+/// connection states they're seeing are transient — not a real failover or a
+/// confused topology.
+struct ClusterMapHandoverNotice: View {
+    let isActive: Bool
+    let scheduledAt: Date?
+    let endsAt: Date?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.left.arrow.right.circle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(headline)
+                    .font(.caption.weight(.semibold))
+                detailLine
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+        .padding(.bottom, 4)
+    }
+
+    private var headline: String {
+        isActive ? "Handover Test in progress" : "Handover Test scheduled"
+    }
+
+    @ViewBuilder
+    private var detailLine: some View {
+        if isActive, let endsAt {
+            HStack(spacing: 3) {
+                Text("Roles are temporarily swapped. Auto-reclaim in")
+                Text(endsAt, style: .timer)
+            }
+        } else if !isActive, let scheduledAt {
+            HStack(spacing: 3) {
+                Text("Starts in")
+                Text(scheduledAt, style: .timer)
+                Text("— roles will swap briefly.")
+            }
+        } else {
+            Text("Roles are temporarily swapped during the test.")
+        }
     }
 }
 
