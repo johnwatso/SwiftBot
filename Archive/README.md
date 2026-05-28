@@ -13,6 +13,7 @@ This directory serves as a preservation vault for deprecated or removed features
 | [`FeatureRequestCommand.swift`](file:///Users/john/Documents/GitHub/SwiftBot/Archive/FeatureRequestCommand.swift) | **In-Discord Feature Requests** | Slash command (`/featurerequest`) allowing users to request bot features and track status via reactions. | Consolidated to GitHub Discussions and dedicated feedback boards for better organization and milestone management. | May 26, 2026 |
 | [`MultiProviderAI.swift`](file:///Users/john/Documents/GitHub/SwiftBot/Archive/MultiProviderAI.swift) | **Multi-Provider AI & DALL-E** | OpenAI, Ollama, provider racing (fastest engine wins), and image generation (`/image`). | Consolidated on native **Apple Intelligence** to eliminate API billing management, local host requirements, and REST latency. | May 27, 2026 |
 | [`UnusedAuthProviders.swift`](file:///Users/john/Documents/GitHub/SwiftBot/Archive/UnusedAuthProviders.swift) | **Secondary WebUI Auth** | OAuth configurations and UI forms for Apple, Steam, and GitHub sign-ins. | Consolidated entirely on **Discord OAuth**, which is native to bot management and role-based permissions. | May 26, 2026 |
+| [`PreferencesViewLegacy.swift`](file:///Users/john/Documents/GitHub/SwiftBot/Archive/PreferencesViewLegacy.swift) | **Legacy Preferences Window** | Original monolithic Preferences UI built from ultra-thin-material disclosure cards (`GeneralSettingsView` + `SettingsDisclosureCard`). | Superseded by the SwiftMiner-style `SettingsForm` + `Section` layout split across per-tab files. Still referenced model fields (`bugAutoFixEnabled`, `devFeaturesEnabled`) that were also removed. | May 28, 2026 |
 
 ---
 
@@ -98,6 +99,20 @@ This directory serves as a preservation vault for deprecated or removed features
 * **Original Integration Points**:
   * `WebUIPreferencesView.swift` (OAuth configuration card sections)
   * `Models/BotSettings.swift` (credentials storage)
+
+---
+
+### 6. Legacy Preferences Window (`PreferencesViewLegacy.swift`)
+
+* **Functionality**:
+  The original SwiftBot Preferences UI: a single monolithic window built from a `GeneralSettingsView` host plus a stack of `SettingsDisclosureCard` blocks rendered against an `ultraThinMaterial` background with `RoundedRectangle` borders. Each card (General, SwiftMesh, Web UI, Recordings, Advanced, Bug Auto-Fix, etc.) was expanded/collapsed via `@AppStorage`-persisted disclosure state and used a custom `sectionTitle` / `settingsToggleRow` / `settingsSubsectionTitle` micro-DSL declared inline at the bottom of the file.
+* **Why it was removed**:
+  Superseded by the SwiftMiner-style preferences layout introduced in commit **`48aa357` — "Refactor preferences UI; dev features DEBUG-only"**. The new layout splits each tab into its own file (`GeneralPreferencesView`, `MeshPreferencesView`, `WebUIPreferencesView`, `UpdatesPreferencesView`, `AdvancedPreferencesView`, `SwiftMinerPreferencesView`, `DiscordPreferencesView`) hosted by `PreferencesView.swift`, and standardises on the native macOS grouped `Form` look via the `SettingsForm` / `Section` primitives in `CommonUI.swift`. The legacy file also still referenced model fields that the same refactor removed from `BotSettings` (`bugAutoFixEnabled`, `devFeaturesEnabled`), so it could no longer compile.
+* **Original Integration Points**:
+  * `SwiftBotApp.swift` / `AppDelegate` (preferences scene hosting the legacy window — pre-refactor)
+  * `BotSettings.swift` (`bugAutoFixEnabled`, `devFeaturesEnabled`, and other now-removed fields)
+  * `AppUpdater` (update-channel UI rendered inside the legacy General card)
+  * `CommonUI.swift` (older glass-card modifiers, now replaced by `SettingsForm` + `Section`)
 
 ---
 

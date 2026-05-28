@@ -3,7 +3,6 @@ import SwiftUI
 
 struct SwiftMinerPreferencesView: View {
     @EnvironmentObject var app: AppModel
-    @State private var swiftMinerPairingToken = ""
     @State private var swiftMinerPairingMessage: String?
     @State private var swiftMinerPairingSucceeded = false
 
@@ -110,37 +109,17 @@ struct SwiftMinerPreferencesView: View {
     private var pairingSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Pairing Bundle")
-                        .font(.system(size: 13, weight: .medium))
-                    TextField("Paste from SwiftMiner", text: $swiftMinerPairingToken)
-                        .textFieldStyle(.roundedBorder)
-                }
-
                 HStack(spacing: 10) {
                     Button {
-                        applyToken(swiftMinerPairingToken)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "link")
-                            Text("Pair with SwiftMiner")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .disabled(swiftMinerPairingToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button {
                         let token = NSPasteboard.general.string(forType: .string) ?? ""
-                        swiftMinerPairingToken = token
                         applyToken(token)
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "doc.on.clipboard")
-                            Text("Paste and Pair")
+                            Text("Paste & Pair with SwiftMiner")
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
 
                     Spacer(minLength: 0)
@@ -168,12 +147,15 @@ struct SwiftMinerPreferencesView: View {
     }
 
     private func applyToken(_ token: String) {
-        let result = app.applySwiftMinerPairingToken(token)
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            swiftMinerPairingSucceeded = false
+            swiftMinerPairingMessage = "Clipboard is empty. Copy the pairing bundle from SwiftMiner first."
+            return
+        }
+        let result = app.applySwiftMinerPairingToken(trimmed)
         swiftMinerPairingSucceeded = result.ok
         swiftMinerPairingMessage = result.message
-        if result.ok {
-            swiftMinerPairingToken = ""
-        }
     }
 
     // MARK: - Onboarding Info

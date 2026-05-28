@@ -326,37 +326,12 @@ struct InternetAccessConfigurationSection: View {
                         Text("Cloudflare API Token")
                             .font(.subheadline.weight(.medium))
 
-                        HStack(spacing: 8) {
-                            SecureField("Token with DNS:Edit and Tunnel:Edit permissions", text: $app.settings.adminWebUI.cloudflareAPIToken)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(app.settings.adminWebUI.internetAccessEnabled)
-                                .onChange(of: app.settings.adminWebUI.cloudflareAPIToken) { _, _ in
-                                    hasVerifiedToken = false
-                                    availableZones = []
-                                    app.settings.adminWebUI.selectedZoneID = ""
-                                }
+                        cloudflareTokenControl
 
-                            if !hasVerifiedToken {
-                                Button {
-                                    verifyToken()
-                                } label: {
-                                    if isVerifyingToken {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Text("Verify")
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(isVerifyingToken || app.settings.adminWebUI.cloudflareAPIToken.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
-                            } else {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                        }
-
-                        Text("Stored securely in your macOS Keychain.")
+                        Text("Stored securely in your macOS Keychain. The token needs DNS:Edit and Tunnel:Edit permissions.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -609,6 +584,108 @@ struct InternetAccessConfigurationSection: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var cloudflareTokenControl: some View {
+        let tokenIsSet = !app.settings.adminWebUI.cloudflareAPIToken
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let locked = app.settings.adminWebUI.internetAccessEnabled
+
+        if tokenIsSet && (hasVerifiedToken || locked) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(verifiedCloudflareTokenLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 6)
+
+                Button("Replace…") {
+                    replaceCloudflareToken()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(locked)
+            }
+        } else if tokenIsSet {
+            HStack(spacing: 8) {
+                Button {
+                    verifyToken()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isVerifyingToken {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "checkmark.shield")
+                        }
+                        Text(isVerifyingToken ? "Verifying…" : "Verify Saved Token")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isVerifyingToken)
+
+                Button("Replace…") {
+                    replaceCloudflareToken()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isVerifyingToken)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Button {
+                    pasteAndVerifyCloudflareToken()
+                } label: {
+                    HStack(spacing: 6) {
+                        if isVerifyingToken {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        Text(isVerifyingToken ? "Verifying…" : "Paste & Verify Token")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isVerifyingToken)
+            }
+        }
+    }
+
+    private var verifiedCloudflareTokenLabel: String {
+        let zone = app.settings.adminWebUI.selectedZoneName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return zone.isEmpty ? "Token verified" : "Token verified for \(zone)"
+    }
+
+    private func pasteAndVerifyCloudflareToken() {
+        let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
+        let trimmed = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            setupFeedback = InternetAccessFeedback(
+                status: .warning,
+                message: "Clipboard is empty. Copy your Cloudflare API token first."
+            )
+            return
+        }
+        app.settings.adminWebUI.cloudflareAPIToken = trimmed
+        hasVerifiedToken = false
+        availableZones = []
+        app.settings.adminWebUI.selectedZoneID = ""
+        verifyToken()
+    }
+
+    private func replaceCloudflareToken() {
+        app.settings.adminWebUI.cloudflareAPIToken = ""
+        hasVerifiedToken = false
+        availableZones = []
+        app.settings.adminWebUI.selectedZoneID = ""
+        app.settings.adminWebUI.selectedZoneName = ""
     }
 
     private func verifyToken() {

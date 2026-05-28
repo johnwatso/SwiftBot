@@ -497,22 +497,31 @@ extension AppModel {
     // MARK: - SwiftMesh Join Code Support
 
     /// Fetches the public WAN IP address of the primary node asynchronously.
+    /// Tries a couple of endpoints so a single provider being slow or blocked
+    /// doesn't silently drop the WAN address from the generated Join Code.
     func fetchPublicIPAddress() async -> String? {
-        guard let url = URL(string: "https://api.ipify.org") else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 3.0 // 3.0-second timeout to prevent UI blocking
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let ip, !ip.isEmpty {
+        let endpoints = [
+            URL(string: "https://api.ipify.org")!,
+            URL(string: "https://ifconfig.me/ip")!,
+            URL(string: "https://icanhazip.com")!
+        ]
+        for url in endpoints {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5.0
+            request.setValue("SwiftBot/1.0", forHTTPHeaderField: "User-Agent")
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200,
+                   let ip = String(data: data, encoding: .utf8)?
+                       .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !ip.isEmpty {
                     return ip
                 }
+            } catch {
+                continue
             }
-            return nil
-        } catch {
-            return nil
         }
+        return nil
     }
 
     /// Fetches all active local IPv4 interface addresses (Wi-Fi/Ethernet en0, en1, etc.).
@@ -549,15 +558,17 @@ extension AppModel {
     func generateSwiftMeshJoinCode() async -> String? {
         var addresses = [String]()
 
-        // Add local LAN IPs first (prioritizing local network pairing)
-        addresses.append(contentsOf: getLocalIPAddresses())
+        // Local LAN IPs first — preferred when pairing on the same network.
+        let lanAddresses = getLocalIPAddresses()
+        addresses.append(contentsOf: lanAddresses)
 
-        // Add public WAN IP next
-        if let publicIP = await fetchPublicIPAddress() {
-            addresses.append(publicIP)
+        // Public WAN IP next — used by standby nodes off-LAN.
+        let wanAddress = await fetchPublicIPAddress()
+        if let wanAddress, !addresses.contains(wanAddress) {
+            addresses.append(wanAddress)
         }
 
-        // Add configured leader address if not already present and not a loopback
+        // Add configured leader address if not already present and not a loopback.
         let configured = settings.clusterLeaderAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !configured.isEmpty && configured != "localhost" && configured != "127.0.0.1" {
             if !addresses.contains(configured) {
@@ -565,18 +576,27 @@ extension AppModel {
             }
         }
 
-        // Fallback to loopback if empty
         if addresses.isEmpty {
             addresses.append("127.0.0.1")
         }
 
+        let port = settings.clusterListenPort
         let sharedSecret = ensureSwiftMeshSharedSecret()
 
         let bundle = SwiftMeshJoinBundle(
             leaderAddresses: addresses,
-            leaderPort: settings.clusterListenPort,
+            leaderPort: port,
             sharedSecret: sharedSecret
         )
+
+        // Surface what's in the code so the user can see at a glance whether
+        // both LAN and WAN routes are included.
+        let lanSummary = lanAddresses.isEmpty ? "none" : lanAddresses.joined(separator: ", ")
+        let wanSummary = wanAddress ?? "unavailable (public IP lookup failed)"
+        logs.append("[SwiftMesh] Join Code generated — LAN: \(lanSummary); WAN: \(wanSummary); port: \(port).")
+        if wanAddress == nil {
+            logs.append("[SwiftMesh] ⚠️ Public IP lookup failed — Join Code will only work for standby nodes on the same LAN. Check internet access and try again.")
+        }
 
         guard let data = try? JSONEncoder().encode(bundle) else { return nil }
         let b64 = data.base64EncodedString()
@@ -707,12 +727,61 @@ extension AppModel {
         return success
     }
 
+    /// Decodes an incoming `swiftmesh://join?b=...` deep link and routes it to
+    /// the right surface:
+    ///
+    /// - Mid-onboarding: stash the raw code so `OnboardingRootView` can switch
+    ///   to the SwiftMesh setup step and auto-apply it — no extra window.
+    /// - Post-onboarding: stash a pending request so `RootView` shows a
+    ///   confirmation sheet before applying. Never auto-apply post-onboarding;
+    ///   a malicious link could otherwise silently repoint this node.
+    @MainActor
+    @discardableResult
+    func handleSwiftMeshDeepLink(_ url: URL) -> Bool {
+        guard url.scheme == "swiftmesh", url.host == "join" else { return false }
+        let raw = url.absoluteString
+        do {
+            let bundle = try decodeSwiftMeshJoinCode(raw)
+            if isOnboardingComplete {
+                pendingSwiftMeshJoin = PendingSwiftMeshJoin(rawCode: raw, bundle: bundle)
+                logs.append("[SwiftMesh] Received join code via deep link; awaiting confirmation.")
+            } else {
+                pendingMeshOnboardingCode = raw
+                logs.append("[SwiftMesh] Received join code via deep link; routing through onboarding.")
+            }
+            return true
+        } catch {
+            logs.append("[SwiftMesh] Ignoring invalid join deep link: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Generates a fresh shared secret, invalidating any previously distributed
+    /// Join Codes. Existing connected workers will need to re-pair.
+    @MainActor
+    func rotateSwiftMeshSharedSecret() {
+        let generated = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        settings.clusterSharedSecret = generated
+        saveSettings()
+        logs.append("[SwiftMesh] Rotated shared secret — existing Join Codes are now invalid.")
+    }
 }
 
 struct SwiftMeshJoinBundle: Codable {
     let leaderAddresses: [String]
     let leaderPort: Int
     let sharedSecret: String
+}
+
+/// Pending deep-link join request, presented as a confirmation sheet in `RootView`.
+struct PendingSwiftMeshJoin: Identifiable, Equatable {
+    let id = UUID()
+    let rawCode: String
+    let bundle: SwiftMeshJoinBundle
+
+    static func == (lhs: PendingSwiftMeshJoin, rhs: PendingSwiftMeshJoin) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 enum SwiftMeshJoinError: LocalizedError {

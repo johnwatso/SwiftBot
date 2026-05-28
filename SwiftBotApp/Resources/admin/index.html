@@ -9516,6 +9516,21 @@
             <button id="meshRefresh" class="mini-btn" type="button"><i class="lucide" data-lucide="refresh-cw"></i> Refresh</button>
           </div>
         </section>
+        ${mesh.mode === 'Leader' ? `
+        <section class="settings-panel glass">
+          <div class="panel-title"><i class="lucide" data-lucide="key-round"></i> Pairing — Add a Node</div>
+          <div class="setting-row">
+            <div class="left">
+              <div class="title">Join Code</div>
+              <div class="desc">Copy on this Mac and paste in SwiftMesh preferences on the standby, or use Open in SwiftBot if you're on the standby's browser. To rotate the shared secret, use SwiftMesh preferences in the macOS app.</div>
+            </div>
+          </div>
+          <div id="meshJoinFeedback" class="placeholder hidden" style="margin-top:6px;"></div>
+          <div class="mesh-config-actions">
+            <button id="meshJoinCopy" class="mini-btn" type="button"><i class="lucide" data-lucide="copy"></i> Copy Join Code</button>
+            <button id="meshJoinOpen" class="mini-btn" type="button"><i class="lucide" data-lucide="external-link"></i> Open in SwiftBot</button>
+          </div>
+        </section>` : ''}
       `;
 
       panels.querySelector('#meshSave')?.addEventListener('click', () => {
@@ -9533,6 +9548,59 @@
         await Promise.all([loadOverview(), loadConfig(), loadStatus(), loadMediaData()]);
         renderSwiftMeshView();
       });
+
+      const joinFeedback = panels.querySelector('#meshJoinFeedback');
+      const joinCopy = panels.querySelector('#meshJoinCopy');
+      const joinOpen = panels.querySelector('#meshJoinOpen');
+
+      const showJoinFeedback = (message, isError = false) => {
+        if (!joinFeedback) return;
+        joinFeedback.textContent = message;
+        joinFeedback.classList.remove('hidden');
+        joinFeedback.style.color = isError ? 'var(--danger,#d33)' : '';
+        if (!isError) {
+          setTimeout(() => joinFeedback.classList.add('hidden'), 2500);
+        }
+      };
+
+      const fetchJoinCode = async () => {
+        const res = await fetch('/api/swiftmesh/join-code', { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Failed to fetch Join Code (${res.status}).`);
+        }
+        const data = await res.json();
+        if (!data.code) throw new Error('Server returned an empty Join Code.');
+        return data.code;
+      };
+
+      joinCopy?.addEventListener('click', async () => {
+        joinCopy.disabled = true;
+        try {
+          const code = await fetchJoinCode();
+          await navigator.clipboard.writeText(code);
+          showJoinFeedback('Join Code copied to clipboard. Paste it in SwiftMesh preferences on the standby Mac.');
+        } catch (e) {
+          showJoinFeedback(String(e.message || e), true);
+        } finally {
+          joinCopy.disabled = false;
+        }
+      });
+
+      joinOpen?.addEventListener('click', async () => {
+        joinOpen.disabled = true;
+        try {
+          const code = await fetchJoinCode();
+          // The swiftmesh:// scheme is registered by the macOS app, which shows
+          // a confirmation sheet before applying. Safe to launch directly.
+          window.location.href = code;
+        } catch (e) {
+          showJoinFeedback(String(e.message || e), true);
+        } finally {
+          joinOpen.disabled = false;
+        }
+      });
+
 
       const mapNode = panels.querySelector('#meshTopologyMap');
       const emptyNode = panels.querySelector('#meshTopologyEmpty');

@@ -107,6 +107,15 @@ final class AppModel: ObservableObject {
     @Published var workerConnectionTestInProgress = false
     @Published var workerConnectionTestOutcome: WorkerConnectionTestOutcome?
     @Published var lastClusterStatusRefreshAt: Date?
+    /// Set when a `swiftmesh://join?b=...` deep link arrives **after** the user
+    /// has finished onboarding. Drives the confirmation sheet shown by
+    /// `RootView` — never auto-apply, since a malicious link could otherwise
+    /// silently repoint this node.
+    @Published var pendingSwiftMeshJoin: PendingSwiftMeshJoin?
+    /// Set when a join deep link arrives **during** onboarding. Drives the
+    /// onboarding root to switch to the SwiftMesh setup step and auto-apply
+    /// the code so the user lands directly in the join flow.
+    @Published var pendingMeshOnboardingCode: String?
     @Published var appleIntelligenceOnline = false
     @Published var recentMediaCount24h = 0
     @Published var patchyDebugLogs: [String] = []

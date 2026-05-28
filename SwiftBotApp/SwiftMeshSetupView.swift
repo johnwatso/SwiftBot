@@ -10,6 +10,10 @@ struct SwiftMeshSetupView: View {
     @State private var step: MeshStep = .setup
     @State private var errorMessage: String?
     @State private var bundle: SwiftMeshJoinBundle?
+    @State private var autoContinueSecondsRemaining: Int = 0
+    @State private var autoContinueTask: Task<Void, Never>?
+
+    private static let autoContinueSeconds = 10
 
     private enum MeshStep {
         case setup, testing, confirmed, failed
@@ -51,7 +55,7 @@ struct SwiftMeshSetupView: View {
                 Text("Join SwiftMesh")
                     .font(.title2.weight(.bold))
                 
-                Text("Copy the Join Code from your Primary node's SwiftMesh dashboard, then click **Paste & Connect** below. SwiftMesh will automatically pair this standby node, test both local and public WAN routes, and optimize your configuration.")
+                Text("Grab the Join Code from your Primary node — either from **SwiftMesh preferences** in the Mac app, or from the **SwiftMesh** tab in the Primary's WebUI (Copy or Open in SwiftBot). Then click **Paste & Connect** below. SwiftMesh tests both local and public WAN routes and saves the one that works.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -127,6 +131,10 @@ struct SwiftMeshSetupView: View {
         .frame(maxWidth: 520)
         .onAppear {
             app.settings.launchMode = .swiftMeshClusterNode
+            consumePendingDeepLinkCodeIfAny()
+        }
+        .onChange(of: app.pendingMeshOnboardingCode) { _, _ in
+            consumePendingDeepLinkCodeIfAny()
         }
     }
 
@@ -202,28 +210,39 @@ struct SwiftMeshSetupView: View {
             return
         }
 
+        applyJoinCode(rawCode)
+    }
+
+    /// If a `swiftmesh://join` deep link arrived before this view appeared,
+    /// auto-run the same flow as Paste & Connect using the deep-link code.
+    private func consumePendingDeepLinkCodeIfAny() {
+        guard let raw = app.pendingMeshOnboardingCode else { return }
+        app.pendingMeshOnboardingCode = nil
+        applyJoinCode(raw)
+    }
+
+    private func applyJoinCode(_ rawCode: String) {
         errorMessage = nil
-        
+
         do {
             let decoded = try app.decodeSwiftMeshJoinCode(rawCode)
             self.bundle = decoded
-            
-            // Parse & apply settings
+
             let result = app.applySwiftMeshJoinCode(rawCode)
             guard result.ok else {
                 errorMessage = result.message
                 step = .failed
                 return
             }
-            
+
             step = .testing
-            
+
             Task {
                 let success = await app.testWorkerJoinCodeConnection(
                     addresses: decoded.leaderAddresses,
                     port: decoded.leaderPort
                 )
-                
+
                 await MainActor.run {
                     step = success ? .confirmed : .failed
                 }

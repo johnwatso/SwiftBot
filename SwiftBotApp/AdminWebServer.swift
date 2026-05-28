@@ -749,6 +749,7 @@ actor AdminWebServer {
     private var startBot: (@Sendable () async -> Bool)?
     private var stopBot: (@Sendable () async -> Bool)?
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
+    private var generateSwiftMeshJoinCode: (@Sendable () async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [AdminWebDiscordUser])?
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
@@ -853,6 +854,7 @@ actor AdminWebServer {
         startBot: @escaping @Sendable () async -> Bool,
         stopBot: @escaping @Sendable () async -> Bool,
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
+        generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         discordUsersProvider: @escaping @Sendable () async -> [AdminWebDiscordUser],
         swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
@@ -927,6 +929,7 @@ actor AdminWebServer {
         self.startBot = startBot
         self.stopBot = stopBot
         self.refreshSwiftMesh = refreshSwiftMesh
+        self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.discordUsersProvider = discordUsersProvider
         self.swiftMinerTestDMSender = swiftMinerTestDMSender
@@ -2423,6 +2426,24 @@ actor AdminWebServer {
             _ = await refreshSwiftMesh?()
             await logger?("Admin Web UI requested SwiftMesh refresh")
             return jsonResponse(["ok": true])
+        case ("GET", "/api/swiftmesh/join-code"):
+            // The Join Code embeds the leader's shared secret, so treat it as
+            // a bearer credential: admin-only, generated on demand (never cached),
+            // and audit-logged so a leak can be traced.
+            guard let session = authenticatedSession(for: request) else {
+                return unauthorizedResponse()
+            }
+            guard requireRole(.admin, session: session) else {
+                return forbiddenResponse()
+            }
+            guard let code = await generateSwiftMeshJoinCode?(), !code.isEmpty else {
+                return jsonResponse(
+                    ["error": "unavailable", "message": "Join Code is only available on Primary nodes."],
+                    status: "409 Conflict"
+                )
+            }
+            audit(source: "Web Config", actor: actorLabel(session), action: "Viewed SwiftMesh Join Code")
+            return jsonResponse(["code": code])
 
         // MARK: - OAuth Authentication
         //

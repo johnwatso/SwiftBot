@@ -1,3 +1,37 @@
+// MARK: - Archived Legacy Preferences Window (Deprecated / Removed)
+// Preserved here in case we ever want to bring back the monolithic
+// ultra-thin-material cards layout for the Preferences window.
+//
+// Original file: SwiftBotApp/SettingsView.swift
+// Replaced by:   SwiftBotApp/PreferencesView.swift (TabView shell) plus
+//                per-tab files (GeneralPreferencesView.swift,
+//                MeshPreferencesView.swift, WebUIPreferencesView.swift,
+//                UpdatesPreferencesView.swift, AdvancedPreferencesView.swift,
+//                SwiftMinerPreferencesView.swift, DiscordPreferencesView.swift)
+//                using the SettingsForm + Section primitives in CommonUI.swift.
+//
+// Why archived:
+// - Superseded by the SettingsForm-based preferences UI in the
+//   "Refactor preferences UI; dev features DEBUG-only" commit (48aa357).
+// - Still referenced removed model fields (bugAutoFixEnabled,
+//   devFeaturesEnabled) which were also dropped from BotSettings in
+//   that commit.
+// - The legacy disclosure-card layout no longer matches the SwiftMiner-
+//   style grouped Form look adopted across the app.
+//
+// Original integration points:
+// - Hosted directly by an NSWindow created by the preferences scene in
+//   AppDelegate / SwiftBotApp.swift (pre-refactor)
+// - Depended on BotSettings fields that have since been removed
+// - Used SettingsDisclosureCard, sectionTitle/settingsToggleRow helpers
+//   that were unique to this file
+//
+// The original source follows, commented out so it stays as reference
+// without being compiled.
+
+import Foundation
+
+/*
 import SwiftUI
 import AppKit
 
@@ -713,3 +747,5 @@ private struct SettingsDisclosureCard<Content: View>: View {
         )
     }
 }
+
+*/

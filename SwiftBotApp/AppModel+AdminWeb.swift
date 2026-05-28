@@ -1750,6 +1750,13 @@ extension AppModel {
                 _ = await MainActor.run { model.refreshClusterStatus() }
                 return true
             },
+            generateSwiftMeshJoinCode: { [weak self] in
+                guard let model = self else { return nil }
+                // Only Primary nodes have a meaningful Join Code to share.
+                let isLeader = await MainActor.run { model.settings.clusterMode == .leader }
+                guard isLeader else { return nil }
+                return await model.generateSwiftMeshJoinCode()
+            },
             swiftMinerWebhookHandler: { [weak self] headers, body in
                 guard let model = self else {
                     return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))
