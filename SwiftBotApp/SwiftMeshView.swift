@@ -23,7 +23,7 @@ struct SwiftMeshView: View {
                 VStack(alignment: .leading, spacing: 16) {
                 // Handover Test panel — Configured Primary only, requires at least
                 // one registered worker or an active test.
-                if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive) {
+                if app.settings.clusterMode == .leader && (app.registeredWorkersDebugCount > 0 || app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil) {
                     HandoverTestPanel(
                         lastRunAt: app.settings.clusterLastHandoverTestAt,
                         lastRunOK: app.settings.clusterLastHandoverTestOK,
@@ -37,6 +37,19 @@ struct SwiftMeshView: View {
                         snapshot: app.clusterSnapshot,
                         countdownSeconds: app.autoReclaimRemainingSeconds,
                         onPromote: { showPromoteConfirm = true }
+                    )
+                }
+
+                // Failover-side banner: surfaces when the Primary has either
+                // scheduled or started a Handover Test. State is mirrored over
+                // the mesh sync so this works even when Primary→Standby
+                // callbacks fail (NAT).
+                if app.settings.clusterMode == .standby,
+                   app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                    HandoverTestStandbyBanner(
+                        isActive: app.clusterSnapshot.isHandoverTestActive,
+                        scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
+                        endsAt: app.clusterSnapshot.handoverTestEndsAt
                     )
                 }
 
@@ -1528,9 +1541,11 @@ struct HandoverTestPanel: View {
                 .foregroundStyle(statusColor)
             Text("Test Failover handover")
                 .font(.subheadline.weight(.semibold))
-            
+
             if app.clusterSnapshot.isHandoverTestActive {
                 activeBadge
+            } else if app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                scheduledBadge
             } else {
                 Text(statusLabel)
                     .font(.caption.weight(.medium))
@@ -1540,6 +1555,20 @@ struct HandoverTestPanel: View {
                     .background(Capsule().fill(statusColor.opacity(0.12)))
             }
         }
+    }
+
+    @ViewBuilder
+    private var scheduledBadge: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.caption2.weight(.bold))
+            Text("SCHEDULED")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(Capsule().fill(Color.orange.opacity(0.12)))
     }
 
     @ViewBuilder
@@ -1566,12 +1595,27 @@ struct HandoverTestPanel: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+        } else if let scheduledAt = app.clusterSnapshot.scheduledHandoverTestAt {
+            HStack(spacing: 0) {
+                Text("Starts at \(formattedTime(scheduledAt)) — in ")
+                HandoverCountdownText(endsAt: scheduledAt)
+                Text(". Failover will be notified on its next sync.")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         } else {
-            Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Useful for validating the swap path without a real outage.")
+            Text("Hands the Primary role to the Failover for 60 s, then auto-reclaims. Failover is notified ~90 s ahead via mesh sync so the test works through NAT.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm:ss a"
+        return f.string(from: date)
     }
 
     @ViewBuilder
@@ -1583,6 +1627,14 @@ struct HandoverTestPanel: View {
                 Label("End Test", systemImage: "stop.circle.fill")
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        } else if app.clusterSnapshot.scheduledHandoverTestAt != nil {
+            Button(role: .destructive) {
+                Task { await app.cancelScheduledHandoverTest() }
+            } label: {
+                Label("Cancel", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
             .controlSize(.regular)
         } else {
             Button(action: onRun) {
@@ -1762,15 +1814,94 @@ enum SwiftMeshNodeIconCatalog {
 /// `timerInterval`/`pauseTime` initialiser stops at zero. We also clamp the
 /// interval so a deadline already in the past renders as "00:00" instead of
 /// crashing on an invalid range.
+/// Banner shown on a Failover node while the Primary is running a Handover
+/// Test. The state arrives via the regular mesh sync tick, so it can be up to
+/// ~one sync interval stale on first appearance.
+struct HandoverTestStandbyBanner: View {
+    let isActive: Bool
+    let scheduledAt: Date?
+    let endsAt: Date?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.left.arrow.right.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(headlineText)
+                        .font(.subheadline.weight(.semibold))
+                    Text(badgeText)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.orange.opacity(0.15)))
+                }
+                detailRow
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var headlineText: String {
+        if isActive { return "Handover Test in progress" }
+        return "Handover Test scheduled"
+    }
+
+    private var badgeText: String {
+        isActive ? "PRIMARY-INITIATED" : "SCHEDULED"
+    }
+
+    @ViewBuilder
+    private var detailRow: some View {
+        if isActive, let endsAt {
+            HStack(spacing: 4) {
+                Text("Primary auto-reclaims in")
+                HandoverCountdownText(endsAt: endsAt)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else if !isActive, let scheduledAt {
+            HStack(spacing: 4) {
+                Text("Starts at \(formattedTime(scheduledAt)) — in")
+                HandoverCountdownText(endsAt: scheduledAt)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            Text("Awaiting signal from Primary.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func formattedTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm:ss a"
+        return f.string(from: date)
+    }
+}
+
 private struct HandoverCountdownText: View {
     let endsAt: Date
 
     var body: some View {
-        let now = Date()
-        if endsAt > now {
-            Text(timerInterval: now...endsAt, pauseTime: endsAt, countsDown: true)
-        } else {
-            Text("00:00")
+        TimelineView(.periodic(from: .now, by: 1.0)) { context in
+            let remaining = max(0, Int(endsAt.timeIntervalSince(context.date).rounded(.up)))
+            let minutes = remaining / 60
+            let seconds = remaining % 60
+            Text(String(format: "%02d:%02d", minutes, seconds))
+                .monospacedDigit()
         }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import OSLog
 
 struct AdminWebPublicAccessRuntimeStatus: Sendable, Equatable {
@@ -72,6 +73,18 @@ actor TunnelManager: TunnelProvider {
     /// doesn't burn CPU forever when the tunnel credential is bad.
     private static let maxConsecutiveFailures = 5
 
+    /// Observes macOS network path changes. cloudflared self-heals most
+    /// transient flaps internally, but laptops moving between networks (or
+    /// sleep/wake transitions) can leave the tunnel in a half-broken state
+    /// where the process is alive but no traffic flows. Restarting on a
+    /// confirmed interface change forces a clean reconnect and resets the
+    /// failure counter so a previously-locked-out node gets a fresh budget.
+    private var pathMonitor: NWPathMonitor?
+    private let pathMonitorQueue = DispatchQueue(label: "com.swiftbot.tunnel.pathMonitor")
+    /// `nil` means we haven't seen a path yet. Once observed, we only act on
+    /// changes — the first callback (initial state) is a no-op.
+    private var lastObservedPathSignature: String?
+
     func configure(
         _ configuration: TunnelRuntimeConfiguration?,
         logger: @escaping @MainActor @Sendable (String) -> Void,
@@ -103,6 +116,7 @@ actor TunnelManager: TunnelProvider {
             consecutiveFailures = 0
             lastRegistrationError = nil
         }
+        startPathMonitorIfNeeded()
         await stop(clearDesiredConfiguration: false)
         await startProcess(using: configuration)
     }
@@ -113,6 +127,7 @@ actor TunnelManager: TunnelProvider {
 
         if clearDesiredConfiguration {
             desiredConfiguration = nil
+            stopPathMonitor()
         }
         nextStartIsRestart = false
 
@@ -294,6 +309,63 @@ actor TunnelManager: TunnelProvider {
 
     private func publishStatus(_ status: AdminWebPublicAccessRuntimeStatus) async {
         await statusHandler?(status)
+    }
+
+    // MARK: - Network path monitoring
+
+    private func startPathMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        pathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            Task { await self.handlePathUpdate(path) }
+        }
+        monitor.start(queue: pathMonitorQueue)
+    }
+
+    private func stopPathMonitor() {
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        lastObservedPathSignature = nil
+    }
+
+    /// Builds a stable signature of the network path so we can detect changes.
+    /// Includes the satisfied state and the set of available interface types
+    /// — that catches Wi-Fi ↔ Ethernet, Wi-Fi network changes, USB-tether,
+    /// and going offline/online.
+    private nonisolated func signature(for path: NWPath) -> String {
+        let interfaces = path.availableInterfaces
+            .map { "\($0.type):\($0.name)" }
+            .sorted()
+            .joined(separator: ",")
+        return "\(path.status)|\(interfaces)|exp=\(path.isExpensive)"
+    }
+
+    private func handlePathUpdate(_ path: NWPath) async {
+        let newSignature = signature(for: path)
+        let previous = lastObservedPathSignature
+        lastObservedPathSignature = newSignature
+
+        // First callback after subscribe — record baseline only, don't restart.
+        guard let previous else { return }
+        guard previous != newSignature else { return }
+        guard let configuration = desiredConfiguration else { return }
+        guard path.status == .satisfied else {
+            // Lost network entirely — let cloudflared notice and exit on its
+            // own. The exponential-backoff path will pick up when the network
+            // returns, and the *next* path change will trip a clean restart.
+            await logger?("Network path lost — cloudflared will retry when connectivity returns")
+            return
+        }
+
+        await logger?("Network path changed — restarting Cloudflare tunnel for a clean reconnect")
+        // Reset the failure counter so a laptop that flapped through a few
+        // networks doesn't hit maxConsecutiveFailures and get stuck.
+        consecutiveFailures = 0
+        lastRegistrationError = nil
+        await stop(clearDesiredConfiguration: false)
+        await startProcess(using: configuration)
     }
 
     private func markNextStartAsRestart() {

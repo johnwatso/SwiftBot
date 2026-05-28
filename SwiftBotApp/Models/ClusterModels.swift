@@ -441,6 +441,54 @@ struct MeshWorkerRegistryPayload: Codable, Sendable {
     let leaderTerm: Int
 }
 
+/// Live "what's happening on the bot right now" snapshot pushed from Leader
+/// to Standby alongside the regular sync payload. The Standby renders these
+/// fields directly into its dashboard so the Failover doesn't feel dead — bot
+/// avatar/name, connected servers, and event counters all come from here when
+/// the Standby is in passive mode.
+///
+/// All fields are optional so older nodes that don't populate them stay
+/// compatible.
+struct MeshLiveSnapshot: Codable, Sendable, Hashable {
+    let botUserId: String?
+    let botUsername: String?
+    let botDiscriminator: String?
+    let botAvatarHash: String?
+    /// Guild ID → guild name. The Standby renders this verbatim in the
+    /// "Connected Servers" surfaces.
+    let connectedServers: [String: String]?
+    let gatewayEventCount: Int?
+    let voiceStateEventCount: Int?
+    let readyEventCount: Int?
+    let guildCreateEventCount: Int?
+    let lastGatewayEventName: String?
+    let lastVoiceStateAt: Date?
+    let lastVoiceStateSummary: String?
+    /// Raw `BotStatus` value on the Leader (e.g. "running").
+    let botStatusRaw: String?
+    /// When the bot last started on the Leader; Standby uses this to render a
+    /// shared uptime so its dashboard agrees with the Primary.
+    let uptimeStartedAt: Date?
+    /// True when the Primary is currently running a Handover Test. The
+    /// Failover surfaces this so it can show a "test in progress" banner
+    /// even when the Primary can't reach it directly (residential NAT).
+    let isHandoverTestActive: Bool?
+    /// When the test is expected to end / auto-reclaim. Drives the same
+    /// countdown UI the Primary shows.
+    let handoverTestEndsAt: Date?
+    /// When a Handover Test is queued to begin. Lets the Failover render a
+    /// heads-up banner ahead of T0 via the regular pull-sync (so the test
+    /// announcement doesn't depend on the Primary being able to reach the
+    /// Failover inbound — which often fails over residential NAT).
+    let scheduledHandoverTestAt: Date?
+    /// Primary's publicly-reachable URL (typically the Cloudflare-tunneled
+    /// admin hostname). Failover uses this as a secondary reachability probe
+    /// (`<url>/live`) so it can detect "Primary has truly disappeared" even
+    /// when the direct mesh socket is fine but the Primary's Discord side has
+    /// failed — or vice versa. `nil` if Primary has no public URL configured.
+    let primaryPublicURL: String?
+}
+
 /// Incremental conversation sync payload sent leader → standby.
 /// Records are ordered by (timestamp ascending, id ascending) for deterministic replay.
 struct MeshSyncPayload: Codable, Sendable {
@@ -459,6 +507,10 @@ struct MeshSyncPayload: Codable, Sendable {
     /// The cursor the leader assumed this node held when building this batch.
     /// Node compares against its own lastMergedRecordID to detect gaps.
     let fromCursorRecordID: String?
+    /// Optional live dashboard snapshot — see `MeshLiveSnapshot`. Omitted by
+    /// the resync endpoint and config-only pushes; included on the normal
+    /// 60-second leader → standby tick.
+    let liveSnapshot: MeshLiveSnapshot?
 
     init(
         conversations: [MemoryRecord],
@@ -471,7 +523,8 @@ struct MeshSyncPayload: Codable, Sendable {
         leaderTerm: Int,
         cursorRecordID: String? = nil,
         hasMore: Bool = false,
-        fromCursorRecordID: String? = nil
+        fromCursorRecordID: String? = nil,
+        liveSnapshot: MeshLiveSnapshot? = nil
     ) {
         self.conversations = conversations
         self.imageUsage = imageUsage
@@ -484,6 +537,7 @@ struct MeshSyncPayload: Codable, Sendable {
         self.cursorRecordID = cursorRecordID
         self.hasMore = hasMore
         self.fromCursorRecordID = fromCursorRecordID
+        self.liveSnapshot = liveSnapshot
     }
 }
 
@@ -811,6 +865,11 @@ struct ClusterSnapshot: Hashable {
     var diagnostics: String = "No diagnostics yet"
     var isHandoverTestActive: Bool = false
     var handoverTestEndsAt: Date? = nil
+    /// When set, a Handover Test is queued to begin at this timestamp. The
+    /// Primary publishes this so the Failover can show a heads-up banner via
+    /// the regular mesh-sync pull (works through NAT, unlike the inbound
+    /// "begin" callback). Cleared once the test actually starts or is cancelled.
+    var scheduledHandoverTestAt: Date? = nil
     /// Phase 3: per-follower state polled by the primary. Keyed by node baseURL.
     /// Empty on followers and on standalone nodes.
     var followerStates: [String: FollowerStateSummary] = [:]

@@ -1352,6 +1352,41 @@ actor AdminWebServer {
         case ("GET", "/health"):
             let paired = await swiftMinerPairedProvider?() ?? false
             return jsonResponse(["status": "ok", "paired": paired])
+        case ("GET", "/live"):
+            // Public liveness probe — no auth. Reveals only whether the bot
+            // is currently connected to Discord, which any user could infer
+            // by watching the bot in a server.
+            //
+            // Content-negotiated: browsers (Accept: text/html) get the styled
+            // status page that matches the 404 design; everything else
+            // (curl, UptimeRobot, BetterStack, k8s probes) gets a plain-text
+            // body of "online" or "offline" for trivial scraping.
+            let liveStatus = await statusProvider?()
+            let botStatus = liveStatus?.botStatus ?? "stopped"
+            let isOnline = botStatus == "running"
+            let rawName = liveStatus?.botUsername.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let botName = rawName.isEmpty || rawName == "OnlineBot" ? "SwiftBot" : rawName
+            let wantsHTML = (request.headers["accept"] ?? "").contains("text/html")
+            if wantsHTML {
+                return authStatusPageResponse(
+                    status: "200 OK",
+                    // ✓ is rendered literally; the helper HTML-escapes the
+                    // string but the check character passes through fine.
+                    title: isOnline ? "\(botName) is online ✓" : "\(botName) is offline",
+                    eyebrow: "Status",
+                    message: isOnline
+                        ? "Connected to Discord and responding to events."
+                        : "The bot is not currently connected to Discord.",
+                    detail: isOnline
+                        ? "If you're seeing this page you've reached the live SwiftBot node successfully."
+                        : "The node is reachable but the bot itself is stopped or reconnecting. Check the dashboard for details.",
+                    actionTitle: "Open dashboard",
+                    actionURL: "/",
+                    variant: isOnline ? .liveOnline : .error
+                )
+            }
+            let body = Data((isOnline ? "online" : "offline").utf8)
+            return httpResponse(status: "200 OK", body: body)
         case ("GET", "/v1/users"):
             let users = (await discordUsersProvider?() ?? [])
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -3474,6 +3509,7 @@ actor AdminWebServer {
         case notFound
         case error
         case mfaRequired
+        case liveOnline
     }
 
     private func authStatusPageResponse(
@@ -3496,6 +3532,7 @@ actor AdminWebServer {
         let isNotFound = (variant == .notFound)
         let isError = (variant == .error)
         let isMFARequired = (variant == .mfaRequired)
+        let isLiveOnline = (variant == .liveOnline)
         let heroHTML: String
         let extraStyles: String
         let bgStreamHTML: String
@@ -3575,6 +3612,28 @@ actor AdminWebServer {
             ]
             // Warm amber/gold palette — security warning without the harshness of red.
             palette = ["#f59e0b", "#fbbf24", "#fcd34d", "#facc15", "#eab308", "#d97706", "#f97316"]
+        } else if isLiveOnline {
+            // Approval / good / online glyphs for the public /live page.
+            icons = [
+                // Check in circle
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 15 10"/></svg>"#,
+                // Bare checkmark
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>"#,
+                // Shield with check (approved)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-3z"/><polyline points="9 12 11 14 15 10"/></svg>"#,
+                // Badge / award
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><polyline points="8.21 13.89 7 22 12 19 17 22 15.79 13.88"/></svg>"#,
+                // Thumbs up
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7V10l4.7-7.4a1.5 1.5 0 0 1 2.6 1.4l-.3 1.88z"/></svg>"#,
+                // Heart (alive / healthy)
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>"#,
+                // Sparkles
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>"#,
+                // Signal/wifi waves
+                #"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M8.5 16.43a6 6 0 0 1 7 0"/><circle cx="12" cy="20" r="1"/></svg>"#
+            ]
+            // Green / mint palette — universally "good".
+            palette = ["#22c55e", "#16a34a", "#4ade80", "#34d399", "#10b981", "#86efac", "#15803d"]
         } else {
             // Success/Generic
             icons = [

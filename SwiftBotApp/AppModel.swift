@@ -116,6 +116,12 @@ final class AppModel: ObservableObject {
     /// onboarding root to switch to the SwiftMesh setup step and auto-apply
     /// the code so the user lands directly in the join flow.
     @Published var pendingMeshOnboardingCode: String?
+    /// Primary's publicly-reachable URL, as advertised in the most recent
+    /// `MeshLiveSnapshot`. Used by the Standby's `/live` second-signal probe
+    /// to confirm a real outage before promoting. Empty when the Primary has
+    /// no public URL (e.g. local-only Web UI), in which case the Standby
+    /// falls back to mesh-only failure detection.
+    @Published var peerPrimaryPublicURL: String = ""
     @Published var appleIntelligenceOnline = false
     @Published var recentMediaCount24h = 0
     @Published var patchyDebugLogs: [String] = []
@@ -742,6 +748,10 @@ final class AppModel: ObservableObject {
                     self.logs.append("[OK] SwiftMesh handover test completed end-to-end.")
                     self.saveSettings()
                 }
+            }
+            await cluster.setConfirmPrimaryPubliclyReachableHandler { [weak self] in
+                guard let self else { return nil }
+                return await self.probePrimaryLiveEndpoint()
             }
             // Per-step trace of the handover drill. Each event lands in the
             // Activity Log under the SwiftMesh filter (any line containing

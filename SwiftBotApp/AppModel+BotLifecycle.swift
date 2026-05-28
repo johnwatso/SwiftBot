@@ -70,9 +70,20 @@ extension AppModel {
     /// for validating the failover path end-to-end without waiting on a real
     /// outage.
     func runSwiftMeshHandoverTest() async {
-        let message = await cluster.startHandoverTest(durationSeconds: 60)
+        // Schedule rather than start immediately so the Failover learns about
+        // the test via the regular pull-sync (works through NAT). The 90s
+        // lead time guarantees at least one ~60s sync window between scheduling
+        // and the test actually starting.
+        let message = await cluster.scheduleHandoverTest(leadTimeSeconds: 90, durationSeconds: 60)
         await MainActor.run {
             logs.append("[INFO] SwiftMesh handover test: \(message)")
+        }
+    }
+
+    func cancelScheduledHandoverTest() async {
+        await cluster.cancelScheduledHandoverTest()
+        await MainActor.run {
+            logs.append("[INFO] SwiftMesh handover test: scheduled test cancelled.")
         }
     }
 
@@ -181,6 +192,68 @@ extension AppModel {
 
         await service.connect(token: token)
         logs.append("Connecting to Discord Gateway")
+    }
+
+    /// Applies a Primary-pushed snapshot to the Standby's live dashboard
+    /// state. Identity fields fall back to existing cached values when the
+    /// snapshot omits them, so we never blank a working avatar/name just
+    /// because the Primary couldn't fill in a slot.
+    @MainActor
+    func applyMeshLiveSnapshot(_ snapshot: MeshLiveSnapshot) {
+        if let userId = snapshot.botUserId, !userId.isEmpty {
+            botUserId = userId
+        }
+        if let username = snapshot.botUsername, !username.isEmpty {
+            botUsername = username
+        }
+        if let discriminator = snapshot.botDiscriminator, !discriminator.isEmpty, discriminator != "0" {
+            botDiscriminator = discriminator
+        }
+        if let hash = snapshot.botAvatarHash, !hash.isEmpty {
+            botAvatarHash = hash
+        }
+        persistCachedBotIdentityIfNeeded()
+
+        if let servers = snapshot.connectedServers {
+            connectedServers = servers
+        }
+        if let count = snapshot.gatewayEventCount { gatewayEventCount = count }
+        if let count = snapshot.voiceStateEventCount { voiceStateEventCount = count }
+        if let count = snapshot.readyEventCount { readyEventCount = count }
+        if let count = snapshot.guildCreateEventCount { guildCreateEventCount = count }
+        if let name = snapshot.lastGatewayEventName, !name.isEmpty {
+            lastGatewayEventName = name
+        }
+        if let at = snapshot.lastVoiceStateAt {
+            lastVoiceStateAt = at
+        }
+        if let summary = snapshot.lastVoiceStateSummary, !summary.isEmpty {
+            lastVoiceStateSummary = summary
+        }
+        if let startedAt = snapshot.uptimeStartedAt {
+            // Mirror the Primary's uptime so the Failover dashboard agrees
+            // with the running bot, not the local "watch started" timestamp.
+            if uptime?.startedAt != startedAt {
+                uptime = UptimeInfo(startedAt: startedAt)
+            }
+        }
+        // Mirror handover-test state into the local snapshot so the same
+        // banner/countdown primitives the Primary uses light up here too.
+        if let active = snapshot.isHandoverTestActive {
+            if clusterSnapshot.isHandoverTestActive != active {
+                clusterSnapshot.isHandoverTestActive = active
+            }
+        }
+        if clusterSnapshot.handoverTestEndsAt != snapshot.handoverTestEndsAt {
+            clusterSnapshot.handoverTestEndsAt = snapshot.handoverTestEndsAt
+        }
+        if clusterSnapshot.scheduledHandoverTestAt != snapshot.scheduledHandoverTestAt {
+            clusterSnapshot.scheduledHandoverTestAt = snapshot.scheduledHandoverTestAt
+        }
+        let nextPeerURL = snapshot.primaryPublicURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if peerPrimaryPublicURL != nextPeerURL {
+            peerPrimaryPublicURL = nextPeerURL
+        }
     }
 
     private func applyBotIdentity(from validation: DiscordService.TokenValidationResult) {

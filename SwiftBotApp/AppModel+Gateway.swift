@@ -131,6 +131,9 @@ extension AppModel {
         if let remoteActiveVoice = payload.activeVoice {
             await replaceVoicePresence(remoteActiveVoice)
         }
+        if let snapshot = payload.liveSnapshot, settings.clusterMode == .standby {
+            await applyMeshLiveSnapshot(snapshot)
+        }
         if payload.configFilesChanged, settings.clusterMode == .standby {
             if let configFiles = payload.configFiles {
                 await applyMeshSyncedConfigFiles(configFiles, sourceDescription: "received")
