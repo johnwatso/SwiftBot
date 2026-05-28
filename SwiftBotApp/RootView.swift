@@ -150,7 +150,7 @@ struct DashboardSidebar: View {
                             botUsername: app.resolvedBotUsername,
                             statusText: app.primaryServiceStatusText,
                             isOnline: app.primaryServiceIsOnline,
-                            clusterMode: app.clusterSnapshot.mode.rawValue,
+                            clusterMode: sidebarModeLabel,
                             clusterIcon: clusterIcon
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -272,6 +272,18 @@ struct DashboardSidebar: View {
 
     private var isPrimaryServiceRunning: Bool {
         app.settings.clusterMode == .worker ? app.isWorkerServiceRunning : app.status != .stopped
+    }
+
+    /// Sidebar mode label that surfaces in-flight transitions (Promoting…,
+    /// Demoting…, Isolated, Recovering) instead of the steady-state role
+    /// during the transition window. Falls back to the snapshot's mode when
+    /// runtime state is idle.
+    private var sidebarModeLabel: String {
+        let runtime = app.clusterSnapshot.runtimeState
+        if runtime != .idle {
+            return runtime.displayName
+        }
+        return app.clusterSnapshot.mode.rawValue
     }
 
     private var clusterIcon: String {

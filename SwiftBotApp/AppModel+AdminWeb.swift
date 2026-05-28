@@ -50,7 +50,8 @@ extension AppModel {
             uptimeText: uptime?.text,
             webUIEnabled: settings.adminWebUI.enabled,
             webUIBaseURL: adminWebBaseURL(),
-            clusterMode: settings.clusterMode.rawValue
+            clusterMode: settings.clusterMode.rawValue,
+            runtimeState: clusterSnapshot.runtimeState.rawValue
         )
     }
 
@@ -1235,7 +1236,8 @@ extension AppModel {
                         uptimeText: nil,
                         webUIEnabled: false,
                         webUIBaseURL: "",
-                        clusterMode: nil
+                        clusterMode: nil,
+                        runtimeState: nil
                     )
                 }
                 return await MainActor.run { model.adminWebStatusSnapshot() }

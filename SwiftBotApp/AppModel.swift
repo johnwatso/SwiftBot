@@ -765,12 +765,17 @@ final class AppModel: ObservableObject {
             }
             await cluster.setDemotionHandler { [weak self] in
                 guard let self else { return }
-                // Higher-term peer detected — mute Discord and revert to passive standby.
+                // Higher-term peer detected — disconnect the Discord gateway
+                // entirely so the now-Standby doesn't race the new Primary's
+                // IDENTIFY for the single allowed session per token. Mute
+                // first as belt-and-braces in case disconnect lags.
                 await self.service.setOutputAllowed(false)
+                await self.service.disconnect()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.lastPublishedRole = .standby
-                    self.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Output muted.")
+                    self.status = .stopped
+                    self.logs.append("[WARN] SwiftMesh demoted to Standby — another Primary holds a higher term. Discord gateway closed.")
                     Task {
                         await self.handleClusterRoleChange()
                     }

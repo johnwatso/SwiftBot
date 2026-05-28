@@ -1263,6 +1263,13 @@ struct OverviewClusterMapCard: View {
                 .help("Open SwiftMesh")
             }
 
+            if app.clusterSnapshot.isHandoverTestActive || app.clusterSnapshot.scheduledHandoverTestAt != nil {
+                ClusterMapHandoverNotice(
+                    isActive: app.clusterSnapshot.isHandoverTestActive,
+                    scheduledAt: app.clusterSnapshot.scheduledHandoverTestAt,
+                    endsAt: app.clusterSnapshot.handoverTestEndsAt
+                )
+            }
             if nodes.isEmpty {
                 PlaceholderPanelLine(text: "Waiting for /cluster/status ...")
                     .frame(height: 118, alignment: .center)

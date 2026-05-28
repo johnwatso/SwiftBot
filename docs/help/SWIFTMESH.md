@@ -155,9 +155,9 @@ A Failover node should not feel like a dead stand-in. SwiftMesh continuously pus
 | Conversation history (incremental) | AI replies pick up exactly where Primary left off after promotion |
 | Config files (when changed) | Automations, rules, etc. carry over |
 
-Sync runs Primary → Failover on a ~60-second tick. After a fresh pair, the first tick fills everything in within a minute.
+Sync runs Primary → Failover on a ~60-second tick. Most fields also push **immediately** on relevant events (bot identity resolves at READY, GUILD_CREATE/DELETE, promotion/demotion) so the dashboard usually catches up within seconds, not a minute.
 
-> **Note** — the Failover still keeps its own Discord gateway connection open in **passive mode** (`outputAllowed = false`) so it can take over instantly on promotion without a reconnect delay. Every Discord write path (sendMessage, slash registration, voice updates) is gated until promotion flips the output gate on.
+> **The Failover does NOT open its own Discord gateway connection.** A previous design kept the Failover's gateway open in "passive mode" for fast promotion, but two SwiftBot instances IDENTIFY'ing with the same token would race for the single allowed session per token-per-shard. Now the Failover stays disconnected from Discord and gets all live data via mesh sync from the Primary. The trade-off is a few seconds of gateway-connect delay at promotion; the gain is eliminating the dual-IDENTIFY hazard entirely.
 
 ---
 
@@ -202,18 +202,30 @@ The Primary's SwiftMesh tab has a **Run Handover Test** button (visible when at 
 **What happens**
 
 1. Click **Run Handover Test** on the Primary.
-2. The test is **scheduled 90 seconds in the future** (not started immediately). The scheduled timestamp is published in the next mesh-sync tick, so both nodes show a countdown:
-   - Primary's HandoverTestPanel: *"Starts at 2:34:15 PM — in 01:28. Failover will be notified on its next sync."*
+2. The test is **scheduled 90 seconds in the future** (not started immediately). The Primary publishes three things into the next mesh-sync snapshot:
+   - `scheduledHandoverTestAt` — T0 timestamp
+   - `scheduledHandoverTargetNodeName` — which Failover is chosen
+   - `handoverTestEndsAt` — when the temp-Primary will demote back
+3. The 90 s lead time guarantees at least one full ~60 s sync window for the chosen Failover to receive the snapshot. Both nodes show a countdown:
+   - Primary's HandoverTestPanel: *"Starts at 2:34:15 PM — in 01:28."*
    - Failover's banner: *"Handover Test scheduled — Starts at 2:34:15 PM — in 00:43."*
-3. The 90 s lead time guarantees at least one full ~60 s sync window for the Failover to learn about the test, even when the Primary can't reach the Failover directly (residential NAT).
-4. You can **Cancel** the scheduled test at any point before T0 from either node.
-5. At T0 the Primary demotes itself, the Failover promotes for 60 s, then the Primary reclaims. A watchdog on the Primary fires after 75 s as a backstop if anything goes wrong.
-6. On success: the *Test Failover handover* panel updates to *"Passed just now"* and the timestamp is persisted.
+4. **Both sides act on the schedule independently at T0** — no inbound HTTP callback from Primary to Failover. This is the key change that makes the test work through residential NAT.
+   - The named Failover arms a local timer when it receives the snapshot. At T0 it self-promotes.
+   - The Primary's scheduling task fires at T0 on its own clock and demotes locally.
+5. **Pre-flight readiness checks** abort the test cleanly instead of leaving the cluster leaderless:
+   - **At scheduling time**: if no Failover has reported in the last 90 s, the test never gets scheduled (clear error to the user).
+   - **At T0**: the Primary re-checks the chosen Failover's freshness before demoting. If the Failover went silent between scheduling and T0, the Primary stays Primary and logs *"T0 abort: \<name\> hasn't reported in Xs — staying Primary"*.
+6. End-of-test:
+   - The temp-Primary Failover sends an outbound `POST /v1/mesh/handover-test/end` to the original Primary. **Outbound from the Failover is the direction that always works** — it's how the Failover registered in the first place.
+   - The original Primary reclaims.
+7. **Watchdog backstop**: if the Failover never signals reclaim by T0 + duration + 15 s grace, the Primary force-reclaims anyway. A safety net, not the primary path.
+8. **Cancellation** propagates: clicking **Cancel** on the Primary clears `scheduledHandoverTestAt` from the snapshot; on the next sync the Failover sees the field is empty and disarms its local timer.
 
-**Limitations to know**
+**What this fixes vs. the older callback design**
 
-- The active-test phase (Primary signalling "begin" / "end" to the Failover) currently uses an HTTP callback that needs the Failover to be reachable inbound. On residential NAT, the Failover's port is not forwarded — the callback times out and the Primary reclaims via watchdog after ~75 s. This still confirms the Primary can stand back up; it doesn't confirm the Failover would actually take Discord traffic.
-- A future change will replace the callback with both sides acting independently at T0 (purely time-based), which removes the bidirectional reachability requirement.
+The previous design had the Primary call `POST /v1/mesh/handover-test/begin` to the Failover at T0. On residential NAT (no port-forward into the Failover), that callback timed out — the Primary's watchdog then "completed" the test ~75 s later without the Failover ever actually taking over. False pass.
+
+The new design routes the begin signal through the pull-sync the Failover already does, so the test exercises the real promote-and-reclaim path even when the Failover is unreachable inbound. The only direction we still depend on is Standby→Primary outbound, which always works.
 
 ---
 
@@ -306,8 +318,11 @@ Set distinct ports — `clusterListenPort` and `clusterLeaderPort` can diverge. 
 **"Promotion aborted: leader reachable on confirmation probe" or "routing issue suspected"**
 Not an error — the safety net working as intended. The Failover saw mesh failures but the deeper checks (generous-timeout retries / final resync / `/live`) found the Primary was actually fine. This typically means the Failover's network is having a bad time, not the Primary. The Failover will keep watching and try again on the next health miss.
 
-**Handover Test step 3/5: "Could not reach &lt;Failover&gt; — The request timed out"**
-Expected when the Failover is behind residential NAT with no inbound port-forward. The active "begin" callback can't reach the Failover, so the Primary's watchdog reclaims after ~75 s. The test still confirms the Primary's reclaim path works. See the *Limitations to know* note in [§9](#9-handover-test--rehearse-without-an-outage).
+**Handover Test aborted at T0: "&lt;Failover&gt; hasn't reported in Xs"**
+The pre-flight freshness check fired — the chosen Failover hasn't checked in recently enough that the Primary is willing to demote. Most likely the Failover lost its mesh connection between scheduling and T0. The Primary stays Primary; fix the link and re-trigger the test.
+
+**Handover Test never seems to start on the Failover side**
+The Failover learns about the test via the mesh-sync snapshot pulled from the Primary. If the snapshot isn't reaching it (e.g. Primary unreachable, mesh paused), it can't arm its local promotion timer. Check the Failover's *workerState* on the SwiftMesh tab — should be "connected, Standby Registered with Primary". If not, the underlying mesh link needs attention before the handover test will work.
 
 ---
 

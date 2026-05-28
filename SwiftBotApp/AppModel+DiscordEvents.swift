@@ -176,6 +176,10 @@ extension AppModel {
         await syncVoicePresenceFromGuildSnapshot(guildId: event.guildID, guildMap: event.rawMap)
         scheduleDiscordCacheSave()
         await registerSlashCommandsIfNeeded()
+
+        // Failover dashboards rely on the mesh snapshot for connectedServers.
+        // Push immediately rather than waiting up to ~60 s for the next tick.
+        await pushLiveSnapshotEagerly(reason: "GUILD_CREATE \(event.guildName ?? event.guildID)")
     }
 
     func handleChannelCreate(_ event: GatewayChannelCreateEvent) async {
@@ -195,6 +199,7 @@ extension AppModel {
         await syncPublishedDiscordCacheFromService()
         await clearVoicePresence(guildID: event.guildID)
         scheduleDiscordCacheSave()
+        await pushLiveSnapshotEagerly(reason: "GUILD_DELETE \(event.guildID)")
     }
 
     func syncVoicePresenceFromGuildSnapshot(guildId: String, guildMap: [String: DiscordJSON]) async {

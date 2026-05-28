@@ -31,6 +31,9 @@ struct AdminWebStatusPayload: Codable {
     /// "Standby" / "Worker"). Optional so existing Codable consumers keep
     /// working; populated by `adminWebStatusSnapshot()`.
     let clusterMode: String?
+    /// Transient runtime state ("idle" / "promoting" / "demoting" /
+    /// "isolated" / "recovering"). Optional for back-compat.
+    let runtimeState: String?
 }
 
 struct AdminWebMetricPayload: Codable {
@@ -1519,7 +1522,8 @@ actor AdminWebServer {
                 uptimeText: nil,
                 webUIEnabled: false,
                 webUIBaseURL: "",
-                clusterMode: nil
+                clusterMode: nil,
+                runtimeState: nil
             )
             return codableResponse(payload)
         case ("GET", "/api/overview"):
