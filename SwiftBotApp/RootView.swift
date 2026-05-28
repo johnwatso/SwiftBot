@@ -133,31 +133,26 @@ private struct BetaBadgeView: View {
     }
 }
 
+private struct SidebarHeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct DashboardSidebar: View {
     @EnvironmentObject var app: AppModel
     @Binding var selection: SidebarItem
     @Namespace private var selectionHighlightNamespace
+    @State private var headerHeight: CGFloat = 120
 
     var body: some View {
         ZStack {
             SwiftBotSidebarMaterialBackground()
 
             VStack(spacing: 0) {
+                ZStack(alignment: .top) {
                 List {
-                    Section {
-                        DashboardSidebarHeader(
-                            avatarURL: app.botAvatarURL,
-                            botUsername: app.resolvedBotUsername,
-                            statusText: app.primaryServiceStatusText,
-                            isOnline: app.primaryServiceIsOnline,
-                            clusterMode: sidebarModeLabel,
-                            clusterIcon: clusterIcon
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                        .listRowBackground(Color.clear)
-                    }
-
                     Section("Dashboard") {
                         sidebarListRow(.overview)
                     }
@@ -186,8 +181,44 @@ struct DashboardSidebar: View {
                 }
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
-                .padding(.top, 34)
-                .fadingEdges(top: 16, bottom: 20)
+                .padding(.top, headerHeight)
+                .fadingEdges(top: 0, bottom: 20)
+
+                    DashboardSidebarHeader(
+                        avatarURL: app.botAvatarURL,
+                        botUsername: app.resolvedBotUsername,
+                        statusText: app.primaryServiceStatusText,
+                        isOnline: app.primaryServiceIsOnline,
+                        clusterMode: sidebarModeLabel,
+                        clusterIcon: clusterIcon
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.top, 44)
+                    .padding(.bottom, 14)
+                    .frame(maxWidth: .infinity)
+                    .background(alignment: .top) {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .mask(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .black, location: 0),
+                                        .init(color: .black, location: 0.7),
+                                        .init(color: .clear, location: 1)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .allowsHitTesting(false)
+                    }
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: SidebarHeaderHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                    .onPreferenceChange(SidebarHeaderHeightKey.self) { headerHeight = $0 }
+                }
 
                 Group {
                     if !isPrimaryServiceRunning {
