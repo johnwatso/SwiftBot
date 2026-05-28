@@ -49,7 +49,8 @@ extension AppModel {
             gatewayEventCount: gatewayEventCount,
             uptimeText: uptime?.text,
             webUIEnabled: settings.adminWebUI.enabled,
-            webUIBaseURL: adminWebBaseURL()
+            webUIBaseURL: adminWebBaseURL(),
+            clusterMode: settings.clusterMode.rawValue
         )
     }
 
@@ -1233,7 +1234,8 @@ extension AppModel {
                         gatewayEventCount: 0,
                         uptimeText: nil,
                         webUIEnabled: false,
-                        webUIBaseURL: ""
+                        webUIBaseURL: "",
+                        clusterMode: nil
                     )
                 }
                 return await MainActor.run { model.adminWebStatusSnapshot() }

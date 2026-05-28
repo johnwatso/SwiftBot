@@ -27,6 +27,10 @@ struct AdminWebStatusPayload: Codable {
     let uptimeText: String?
     let webUIEnabled: Bool
     let webUIBaseURL: String
+    /// Configured SwiftMesh role on this node ("Standalone" / "Leader" /
+    /// "Standby" / "Worker"). Optional so existing Codable consumers keep
+    /// working; populated by `adminWebStatusSnapshot()`.
+    let clusterMode: String?
 }
 
 struct AdminWebMetricPayload: Codable {
@@ -1357,36 +1361,68 @@ actor AdminWebServer {
             // is currently connected to Discord, which any user could infer
             // by watching the bot in a server.
             //
-            // Content-negotiated: browsers (Accept: text/html) get the styled
-            // status page that matches the 404 design; everything else
-            // (curl, UptimeRobot, BetterStack, k8s probes) gets a plain-text
-            // body of "online" or "offline" for trivial scraping.
+            // Three states:
+            //   online  — node is serving Discord traffic (Primary/Standalone, status=running).
+            //   passive — node is connected but in Failover mode; gateway is open in
+            //             passive mode (output muted), takes over on promotion.
+            //   offline — node is not connected (stopped/reconnecting/etc.).
+            //
+            // Content-negotiated: browsers (Accept: text/html) get a styled
+            // status page; everything else (curl, UptimeRobot, BetterStack,
+            // k8s probes) gets the plain-text state for trivial scraping.
             let liveStatus = await statusProvider?()
             let botStatus = liveStatus?.botStatus ?? "stopped"
-            let isOnline = botStatus == "running"
+            let isRunning = botStatus == "running"
+            let isStandby = (liveStatus?.clusterMode ?? "") == "Standby"
+            // Standby with a running gateway is "passive" — connected to
+            // Discord but with output muted. Reporting "online" here would lie
+            // to uptime monitors; reporting "offline" would lie too. The
+            // distinct "passive" state lets each monitor decide whether to
+            // alert on it.
+            let isPassive = isRunning && isStandby
+            let isOnline = isRunning && !isStandby
             let rawName = liveStatus?.botUsername.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let botName = rawName.isEmpty || rawName == "OnlineBot" ? "SwiftBot" : rawName
+
+            let plainBody: String
+            let pageTitle: String
+            let pageMessage: String
+            let pageDetail: String
+            let pageVariant: AuthStatusVariant
+            if isOnline {
+                plainBody = "online"
+                pageTitle = "\(botName) is online ✓"
+                pageMessage = "Connected to Discord and responding to events."
+                pageDetail = "If you're seeing this page you've reached the live SwiftBot node successfully."
+                pageVariant = .liveOnline
+            } else if isPassive {
+                plainBody = "passive"
+                pageTitle = "\(botName) is on standby"
+                pageMessage = "Connected to Discord in passive Failover mode. The bot does not send messages until this node is promoted to Primary."
+                pageDetail = "If the Primary disappears, this node will take over automatically."
+                pageVariant = .mfaRequired // amber/gold palette — informational, not an error
+            } else {
+                plainBody = "offline"
+                pageTitle = "\(botName) is offline"
+                pageMessage = "The bot is not currently connected to Discord."
+                pageDetail = "The node is reachable but the bot itself is stopped or reconnecting. Check the dashboard for details."
+                pageVariant = .error
+            }
+
             let wantsHTML = (request.headers["accept"] ?? "").contains("text/html")
             if wantsHTML {
                 return authStatusPageResponse(
                     status: "200 OK",
-                    // ✓ is rendered literally; the helper HTML-escapes the
-                    // string but the check character passes through fine.
-                    title: isOnline ? "\(botName) is online ✓" : "\(botName) is offline",
+                    title: pageTitle,
                     eyebrow: "Status",
-                    message: isOnline
-                        ? "Connected to Discord and responding to events."
-                        : "The bot is not currently connected to Discord.",
-                    detail: isOnline
-                        ? "If you're seeing this page you've reached the live SwiftBot node successfully."
-                        : "The node is reachable but the bot itself is stopped or reconnecting. Check the dashboard for details.",
+                    message: pageMessage,
+                    detail: pageDetail,
                     actionTitle: "Open dashboard",
                     actionURL: "/",
-                    variant: isOnline ? .liveOnline : .error
+                    variant: pageVariant
                 )
             }
-            let body = Data((isOnline ? "online" : "offline").utf8)
-            return httpResponse(status: "200 OK", body: body)
+            return httpResponse(status: "200 OK", body: Data(plainBody.utf8))
         case ("GET", "/v1/users"):
             let users = (await discordUsersProvider?() ?? [])
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -1482,7 +1518,8 @@ actor AdminWebServer {
                 gatewayEventCount: 0,
                 uptimeText: nil,
                 webUIEnabled: false,
-                webUIBaseURL: ""
+                webUIBaseURL: "",
+                clusterMode: nil
             )
             return codableResponse(payload)
         case ("GET", "/api/overview"):
