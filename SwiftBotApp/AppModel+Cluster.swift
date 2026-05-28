@@ -142,6 +142,7 @@ extension AppModel {
         let nodes = await cluster.registeredNodeInfo()
         guard !nodes.isEmpty else { return }
         let currentTerm = await cluster.currentLeaderTerm()
+        let liveSnapshot = await MainActor.run { buildMeshLiveSnapshot() }
         for (nodeName, baseURL) in nodes {
             let cursor = await cluster.currentReplicationCursor(for: nodeName)
             let fromID = cursor?.lastSentRecordID ?? ""
@@ -155,13 +156,93 @@ extension AppModel {
                 leaderTerm: currentTerm,
                 cursorRecordID: lastID,
                 hasMore: hasMore,
-                fromCursorRecordID: fromID
+                fromCursorRecordID: fromID,
+                liveSnapshot: liveSnapshot
             )
             let ok = await cluster.pushConversationsToSingleNode(baseURL, payload)
             if ok, lastID != nil {
                 await cluster.updateReplicationCursor(for: nodeName, lastSentRecordID: lastID, term: currentTerm)
             }
         }
+    }
+
+    /// Captures the "feel-alive" snapshot for Standby dashboards (bot identity,
+    /// connected guilds, gateway counters, uptime). MainActor-only — all the
+    /// source fields are `@Published` on AppModel.
+    @MainActor
+    func buildMeshLiveSnapshot() -> MeshLiveSnapshot {
+        MeshLiveSnapshot(
+            botUserId: botUserId,
+            botUsername: botUsername.isEmpty ? nil : botUsername,
+            botDiscriminator: botDiscriminator,
+            botAvatarHash: botAvatarHash,
+            connectedServers: connectedServers.isEmpty ? nil : connectedServers,
+            gatewayEventCount: gatewayEventCount,
+            voiceStateEventCount: voiceStateEventCount,
+            readyEventCount: readyEventCount,
+            guildCreateEventCount: guildCreateEventCount,
+            lastGatewayEventName: lastGatewayEventName,
+            lastVoiceStateAt: lastVoiceStateAt,
+            lastVoiceStateSummary: lastVoiceStateSummary,
+            botStatusRaw: status.rawValue,
+            uptimeStartedAt: uptime?.startedAt,
+            isHandoverTestActive: clusterSnapshot.isHandoverTestActive,
+            handoverTestEndsAt: clusterSnapshot.handoverTestEndsAt,
+            scheduledHandoverTestAt: clusterSnapshot.scheduledHandoverTestAt,
+            primaryPublicURL: publicPrimaryURLForSnapshot()
+        )
+    }
+
+    /// Standby-side `/live` HTTPS probe. Used as a second opinion alongside
+    /// the direct mesh socket before promoting:
+    /// - `true`  → Primary clearly online (abort promotion)
+    /// - `false` → Primary not publicly reachable (proceed with promotion)
+    /// - `nil`   → no public URL configured / probe inapplicable (fall back
+    ///   to mesh-only behavior)
+    func probePrimaryLiveEndpoint() async -> Bool? {
+        let base = await MainActor.run { peerPrimaryPublicURL }
+        let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var components = URLComponents(string: trimmed) else {
+            return nil
+        }
+        // Append /live to whatever path is configured. publicBaseURL is
+        // usually bare ("https://swiftbot.example.com"), but tolerate a
+        // trailing slash or pre-existing path.
+        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        components.path = basePath + "/live"
+        guard let url = components.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 6
+        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                return false
+            }
+            let body = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? ""
+            return body == "online"
+        } catch {
+            return false
+        }
+    }
+
+    /// Returns the Primary's publicly-reachable admin URL when one is actively
+    /// serving (Cloudflare tunnel or user-configured public base URL). Returns
+    /// `nil` when the Primary only listens locally — in that case the Failover
+    /// has no usable secondary reachability path anyway.
+    @MainActor
+    private func publicPrimaryURLForSnapshot() -> String? {
+        if adminWebPublicAccessStatus.isEnabled {
+            let url = adminWebPublicAccessStatus.publicURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !url.isEmpty { return url }
+        }
+        let explicit = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+        return nil
     }
 
     func pullWikiCacheFromLeader() async {

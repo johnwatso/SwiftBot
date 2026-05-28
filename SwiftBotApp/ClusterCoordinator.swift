@@ -88,6 +88,10 @@ actor ClusterCoordinator {
     /// Tracks an in-flight handover test so the button doesn't double-fire
     /// and so the auto-reclaim timer can be cancelled if mode changes.
     private var handoverTestTask: Task<Void, Never>?
+    /// Sleep-until-T0 task for a *scheduled* (not yet running) handover test.
+    /// Distinct from `handoverTestTask`, which is the watchdog that runs
+    /// during/after the test itself.
+    private var scheduledHandoverTask: Task<Void, Never>?
 
     // SwiftMesh failover state
     var leaderTerm: Int = 0
@@ -138,6 +142,17 @@ actor ClusterCoordinator {
     /// Fires when the original Primary successfully reclaims at the end of a
     /// Handover Test. Used by AppModel to persist a "last passed" timestamp.
     private var onHandoverTestPassed: (@Sendable () async -> Void)?
+    /// Optional secondary probe that returns whether the Primary is publicly
+    /// reachable via its Cloudflare-tunneled URL (`/live` HTTPS check). Used
+    /// as a second opinion before promoting on direct-mesh failure — many
+    /// real outages take down the whole Primary, so /live will also fail. If
+    /// /live still reports the Primary online, the mesh failure is more
+    /// likely a routing problem and we should NOT promote.
+    /// Returns:
+    /// - `true`  → Primary publicly reachable (abort promotion)
+    /// - `false` → Primary not publicly reachable (proceed)
+    /// - `nil`   → no public URL known (fall back to mesh-only behavior)
+    private var onConfirmPrimaryPubliclyReachable: (@Sendable () async -> Bool?)?
     /// Fires for each meaningful step of a Handover Test on the local node
     /// (whichever role it currently plays — origin Primary or target Failover).
     /// AppModel wires this into the Activity Log so the user can watch the
@@ -216,6 +231,10 @@ actor ClusterCoordinator {
         self.onHandoverTestPassed = handler
     }
 
+    func setConfirmPrimaryPubliclyReachableHandler(_ handler: @escaping @Sendable () async -> Bool?) {
+        self.onConfirmPrimaryPubliclyReachable = handler
+    }
+
     /// Wires a per-step observer for the Handover Test. AppModel forwards each
     /// step to the Activity Log so the SwiftMesh filter shows the full drill
     /// in real time instead of just "started" / "completed".
@@ -285,10 +304,73 @@ actor ClusterCoordinator {
         meshLogger.notice("Manual promote requested by user")
         handoverTestTask?.cancel()
         handoverTestTask = nil
+        scheduledHandoverTask?.cancel()
+        scheduledHandoverTask = nil
+        snapshot.scheduledHandoverTestAt = nil
         await promoteToLeader()
     }
 
     // MARK: - Handover Test (Primary ⇄ Failover round-trip)
+
+    /// Schedules a Handover Test to start `leadTimeSeconds` from now. The
+    /// scheduled time is published in the next snapshot tick so the Failover
+    /// can render a heads-up banner via the regular pull-sync — no inbound
+    /// callback needed, so this works across residential NAT.
+    ///
+    /// `leadTimeSeconds` should be ≥ the mesh-sync interval (~60s) so the
+    /// Failover has at least one sync window to learn about the upcoming test.
+    /// Returns a short message for the caller to log.
+    func scheduleHandoverTest(leadTimeSeconds: Int = 90, durationSeconds: Int = 60) async -> String {
+        guard mode == .leader else { return "Handover test requires this node to be Primary." }
+        let workers = sortedRegisteredWorkers()
+        guard !workers.isEmpty else {
+            return "Handover test needs at least one registered Failover."
+        }
+        guard handoverTestTask == nil, scheduledHandoverTask == nil else {
+            return "Handover test already in progress or scheduled."
+        }
+
+        let startAt = Date().addingTimeInterval(TimeInterval(leadTimeSeconds))
+        snapshot.scheduledHandoverTestAt = startAt
+        snapshot.diagnostics = "Handover test scheduled for \(formattedTimeOfDay(startAt))"
+        await publishSnapshot()
+        await emitHandoverStep(0, of: 5, "Handover test scheduled for \(formattedTimeOfDay(startAt)) — Failover will be notified on next sync")
+        meshLogger.notice("Handover test scheduled for \(startAt, privacy: .public)")
+
+        let durSeconds = durationSeconds
+        scheduledHandoverTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(leadTimeSeconds) * 1_000_000_000)
+            guard let self else { return }
+            await self.handleScheduledHandoverFiring(durationSeconds: durSeconds)
+        }
+
+        return "Handover test scheduled for \(formattedTimeOfDay(startAt)). Failover will be notified on its next sync."
+    }
+
+    /// Cancels any scheduled (not yet started) handover test.
+    func cancelScheduledHandoverTest() async {
+        scheduledHandoverTask?.cancel()
+        scheduledHandoverTask = nil
+        if snapshot.scheduledHandoverTestAt != nil {
+            snapshot.scheduledHandoverTestAt = nil
+            await publishSnapshot()
+            meshLogger.notice("Scheduled handover test cancelled")
+        }
+    }
+
+    private func handleScheduledHandoverFiring(durationSeconds: Int) async {
+        guard !Task.isCancelled else { return }
+        scheduledHandoverTask = nil
+        snapshot.scheduledHandoverTestAt = nil
+        await publishSnapshot()
+        _ = await startHandoverTest(durationSeconds: durationSeconds)
+    }
+
+    private func formattedTimeOfDay(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm:ss a"
+        return formatter.string(from: date)
+    }
 
     /// Coordinated test triggered from the Primary's SwiftMesh GUI. Steps:
     /// 1. Demote self to standby so the Failover can promote cleanly.
@@ -1754,6 +1836,16 @@ actor ClusterCoordinator {
             // handler so any tail records get merged before we abort.
             await onSync?(payload)
             meshLogger.warning("Final resync succeeded; leader is alive — promotion aborted")
+            return false
+        }
+        // (3) Secondary signal — if the Primary publishes a public URL we can
+        // also probe `/live` over HTTPS (works through NAT, doesn't depend on
+        // the direct mesh socket). If that probe still finds the Primary
+        // online, the mesh failure is more likely a routing issue and we
+        // should NOT promote. Returns nil when no URL is known; in that case
+        // we proceed with mesh-only behavior unchanged.
+        if let publiclyReachable = await onConfirmPrimaryPubliclyReachable?(), publiclyReachable == true {
+            meshLogger.warning("Direct mesh probe failed, but Primary still answers /live publicly — promotion aborted (routing issue suspected)")
             return false
         }
         return true
