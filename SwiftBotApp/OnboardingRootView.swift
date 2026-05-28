@@ -63,6 +63,18 @@ struct OnboardingRootView: View {
             }
         }
         .ignoresSafeArea()
+        .onAppear {
+            // A swiftmesh:// deep link may have arrived before this view
+            // appeared; jump straight to the mesh step in that case.
+            if app.pendingMeshOnboardingCode != nil, mode != .mesh {
+                navigateTo(.mesh)
+            }
+        }
+        .onChange(of: app.pendingMeshOnboardingCode) { _, newValue in
+            if newValue != nil, mode != .mesh {
+                navigateTo(.mesh)
+            }
+        }
     }
 
     private var onboardingCard: some View {

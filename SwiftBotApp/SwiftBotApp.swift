@@ -193,11 +193,20 @@ struct SwiftBotApp: App {
     }
 
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "swiftbot" else { return }
-
-        switch url.host {
-        case "auth":
-            handleAuthDeepLink(url)
+        switch url.scheme {
+        case "swiftbot":
+            switch url.host {
+            case "auth":
+                handleAuthDeepLink(url)
+            default:
+                break
+            }
+        case "swiftmesh":
+            // Stash the request; RootView shows a confirmation sheet. Never
+            // auto-apply — a malicious link could otherwise repoint the node.
+            Task { @MainActor in
+                _ = appModel.handleSwiftMeshDeepLink(url)
+            }
         default:
             break
         }

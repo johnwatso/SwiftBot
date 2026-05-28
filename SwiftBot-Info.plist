@@ -17,6 +17,14 @@
 				<string>swiftbot</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.swiftbot.swiftmesh</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>swiftmesh</string>
+			</array>
+		</dict>
 	</array>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>

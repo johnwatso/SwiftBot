@@ -10,6 +10,15 @@ struct RootView: View {
     @State private var selection: SidebarItem = .overview
 
     var body: some View {
+        currentRootView
+            .sheet(item: $app.pendingSwiftMeshJoin) { pending in
+                SwiftMeshJoinConfirmationSheet(pending: pending)
+                    .environmentObject(app)
+            }
+    }
+
+    @ViewBuilder
+    private var currentRootView: some View {
         if !app.isOnboardingComplete {
             OnboardingRootView()
                 .frame(minWidth: 1200, minHeight: 760)
@@ -610,5 +619,109 @@ private struct SwiftBotVisualEffectMaterialView: NSViewRepresentable {
         nsView.material = material
         nsView.blendingMode = blendingMode
         nsView.state = .active
+    }
+}
+
+// MARK: - SwiftMesh Join Confirmation
+
+struct SwiftMeshJoinConfirmationSheet: View {
+    @EnvironmentObject var app: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let pending: PendingSwiftMeshJoin
+
+    @State private var isApplying = false
+    @State private var feedback: String?
+    @State private var feedbackIsError = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                Text("Join SwiftMesh Cluster?")
+                    .font(.title3.weight(.semibold))
+            }
+
+            Text("This Mac will be configured as a **Fail Over (Standby)** node and will connect to the Primary using the credentials below. Existing cluster settings will be replaced.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 6) {
+                    detailRow("Primary host(s)", pending.bundle.leaderAddresses.joined(separator: ", "))
+                    detailRow("Port", String(pending.bundle.leaderPort))
+                    detailRow("Shared secret", String(repeating: "•", count: 24))
+                }
+                .padding(.vertical, 4)
+            }
+
+            if let feedback {
+                Text(feedback)
+                    .font(.callout)
+                    .foregroundStyle(feedbackIsError ? .red : .green)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    app.pendingSwiftMeshJoin = nil
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(isApplying ? "Joining…" : "Join Cluster") {
+                    apply()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(isApplying)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+
+    @ViewBuilder
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 110, alignment: .leading)
+            Text(value)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(2)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func apply() {
+        isApplying = true
+        feedback = nil
+        let result = app.applySwiftMeshJoinCode(pending.rawCode)
+        if !result.ok {
+            feedback = result.message
+            feedbackIsError = true
+            isApplying = false
+            return
+        }
+        Task {
+            let ok = await app.testWorkerJoinCodeConnection(
+                addresses: pending.bundle.leaderAddresses,
+                port: pending.bundle.leaderPort
+            )
+            await MainActor.run {
+                isApplying = false
+                feedback = ok ? "Joined successfully." : "Settings saved, but connection test failed. Review SwiftMesh preferences."
+                feedbackIsError = !ok
+                if ok {
+                    app.pendingSwiftMeshJoin = nil
+                    dismiss()
+                }
+            }
+        }
     }
 }

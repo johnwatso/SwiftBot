@@ -5,12 +5,13 @@ struct GeneralPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
     @State private var showRunSetupPrompt = false
-    @State private var showToken = false
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
     @State private var showingClearTokenConfirmation = false
     @State private var showingPermissionsCheck = false
+    @State private var isVerifyingToken = false
+    @State private var tokenVerifyError: String?
 
     private var canGenerateInviteLink: Bool {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -74,36 +75,7 @@ struct GeneralPreferencesView: View {
 
             Section {
                 LabeledContent("Bot Token") {
-                    HStack(spacing: 6) {
-                        Group {
-                            if showToken {
-                                TextField("Token", text: $app.settings.token)
-                            } else {
-                                SecureField("Token", text: $app.settings.token)
-                            }
-                        }
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(minWidth: 220)
-
-                        Button {
-                            showToken.toggle()
-                        } label: {
-                            Image(systemName: showToken ? "eye.slash" : "eye")
-                        }
-                        .buttonStyle(.borderless)
-                        .help(showToken ? "Hide token" : "Show token")
-
-                        if !app.settings.token.isEmpty {
-                            Button {
-                                showingClearTokenConfirmation = true
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Remove token")
-                        }
-                    }
+                    botTokenControl
                 }
 
                 LabeledContent("Invite Bot") {
@@ -184,13 +156,15 @@ struct GeneralPreferencesView: View {
                 Text("Setup")
             }
         }
-        .alert("Remove Bot Token?", isPresented: $showingClearTokenConfirmation) {
+        .alert("Replace Bot Token?", isPresented: $showingClearTokenConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Remove", role: .destructive) {
+            Button("Replace", role: .destructive) {
                 app.settings.token = ""
+                app.settings.cachedBotIdentity = CachedBotIdentity()
+                tokenVerifyError = nil
             }
         } message: {
-            Text("Removing the token will disconnect SwiftBot from Discord until a new token is entered.")
+            Text("Clears the saved token so you can paste a new one. SwiftBot will disconnect from Discord until a new token is verified.")
         }
         .sheet(isPresented: $showingPermissionsCheck) {
             BotPermissionsCheckView(token: app.settings.token)
@@ -211,6 +185,88 @@ struct GeneralPreferencesView: View {
                     .padding(.top, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var botTokenControl: some View {
+        if app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            HStack(spacing: 8) {
+                Button {
+                    Task { await pasteAndVerifyToken() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isVerifyingToken {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        Text(isVerifyingToken ? "Verifying…" : "Paste & Verify Token")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isVerifyingToken)
+
+                if let tokenVerifyError {
+                    Text(tokenVerifyError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(verifiedTokenLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 6)
+
+                Button("Replace…") {
+                    showingClearTokenConfirmation = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var verifiedTokenLabel: String {
+        let cached = app.settings.cachedBotIdentity.username
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cached.isEmpty ? "Token saved" : "Verified as @\(cached)"
+    }
+
+    private func pasteAndVerifyToken() async {
+        guard !isVerifyingToken else { return }
+        tokenVerifyError = nil
+
+        let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
+        let normalized = app.normalizedDiscordToken(from: clipboard)
+        guard !normalized.isEmpty else {
+            tokenVerifyError = "Clipboard is empty. Copy your bot token first."
+            return
+        }
+
+        isVerifyingToken = true
+        defer { isVerifyingToken = false }
+
+        let previousToken = app.settings.token
+        app.settings.token = normalized
+
+        let ok = await app.validateAndOnboard()
+        if ok {
+            showToast("Token verified")
+        } else {
+            app.settings.token = previousToken
+            tokenVerifyError = app.lastTokenValidationResult?.errorMessage
+                ?? "Discord rejected this token."
         }
     }
 
