@@ -157,34 +157,79 @@ struct SwiftMeshSetupView: View {
                 Circle()
                     .fill(Color.green.opacity(0.12))
                     .frame(width: 80, height: 80)
-                
+
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 36))
                     .foregroundStyle(Color.green)
             }
-            
+
             VStack(spacing: 8) {
                 Text("SwiftMesh Paired!")
                     .font(.title3.weight(.bold))
-                
+
                 Text(app.workerConnectionTestStatus)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 16)
-            
-            Button {
-                app.saveSettings()
-                app.completeOnboarding()
-            } label: {
-                Label("Go to Dashboard", systemImage: "arrow.right.circle.fill")
-                    .font(.headline)
-                    .frame(minWidth: 200)
+
+            VStack(spacing: 8) {
+                Button {
+                    finishOnboarding()
+                } label: {
+                    Label(continueButtonTitle, systemImage: "arrow.right.circle.fill")
+                        .font(.headline)
+                        .frame(minWidth: 220)
+                }
+                .onboardingGlassButton()
+
+                if autoContinueSecondsRemaining > 0 {
+                    Button("Cancel auto-continue") {
+                        cancelAutoContinue()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
             }
-            .onboardingGlassButton()
         }
         .frame(minHeight: 200)
+        .onAppear { startAutoContinueCountdown() }
+        .onDisappear { autoContinueTask?.cancel() }
+    }
+
+    private var continueButtonTitle: String {
+        autoContinueSecondsRemaining > 0
+            ? "Continue (\(autoContinueSecondsRemaining))"
+            : "Continue"
+    }
+
+    private func startAutoContinueCountdown() {
+        autoContinueTask?.cancel()
+        autoContinueSecondsRemaining = Self.autoContinueSeconds
+        autoContinueTask = Task { @MainActor in
+            while autoContinueSecondsRemaining > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                autoContinueSecondsRemaining -= 1
+            }
+            if !Task.isCancelled {
+                finishOnboarding()
+            }
+        }
+    }
+
+    private func cancelAutoContinue() {
+        autoContinueTask?.cancel()
+        autoContinueTask = nil
+        autoContinueSecondsRemaining = 0
+    }
+
+    private func finishOnboarding() {
+        cancelAutoContinue()
+        app.saveSettings()
+        app.completeOnboarding()
     }
 
     // MARK: - Helpers
