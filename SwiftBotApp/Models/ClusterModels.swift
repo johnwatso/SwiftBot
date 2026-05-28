@@ -355,6 +355,29 @@ struct MeshSyncedFilesPayload: Codable, Hashable {
 
 // MARK: - Cluster Mode
 
+/// Transient runtime state, orthogonal to the configured `ClusterMode`.
+/// Surfaces in-flight transitions so the dashboard can show "Promoting…",
+/// "Demoting…", "Isolated", or "Recovering" instead of a stale role label
+/// during the swap window. Always `.idle` once the node settles back into
+/// its steady-state role.
+enum ClusterRuntimeState: String, Codable, Sendable {
+    case idle
+    case promoting
+    case demoting
+    case isolated
+    case recovering
+
+    var displayName: String {
+        switch self {
+        case .idle:       return "Idle"
+        case .promoting:  return "Promoting…"
+        case .demoting:   return "Demoting…"
+        case .isolated:   return "Isolated"
+        case .recovering: return "Recovering"
+        }
+    }
+}
+
 enum ClusterMode: String, Codable, CaseIterable, Identifiable {
     case standalone = "Standalone"
     case leader = "Leader"
@@ -481,12 +504,18 @@ struct MeshLiveSnapshot: Codable, Sendable, Hashable {
     /// announcement doesn't depend on the Primary being able to reach the
     /// Failover inbound — which often fails over residential NAT).
     let scheduledHandoverTestAt: Date?
+    /// Node name of the Failover chosen to promote at T0. The matching
+    /// Standby fires its local promotion task; non-matching Standbys ignore.
+    let scheduledHandoverTargetNodeName: String?
     /// Primary's publicly-reachable URL (typically the Cloudflare-tunneled
     /// admin hostname). Failover uses this as a secondary reachability probe
     /// (`<url>/live`) so it can detect "Primary has truly disappeared" even
     /// when the direct mesh socket is fine but the Primary's Discord side has
     /// failed — or vice versa. `nil` if Primary has no public URL configured.
     let primaryPublicURL: String?
+    /// Transient runtime state on the Primary at snapshot time. Mirrored on
+    /// the Standby so its dashboard can show "Primary is promoting…" / etc.
+    let runtimeState: String?
 }
 
 /// Incremental conversation sync payload sent leader → standby.
@@ -865,11 +894,22 @@ struct ClusterSnapshot: Hashable {
     var diagnostics: String = "No diagnostics yet"
     var isHandoverTestActive: Bool = false
     var handoverTestEndsAt: Date? = nil
+    /// Transient transition state — see `ClusterRuntimeState`. Steady state
+    /// is `.idle`; non-idle values flag in-flight transitions and are
+    /// surfaced in the dashboard sidebar and on `/live`.
+    var runtimeState: ClusterRuntimeState = .idle
     /// When set, a Handover Test is queued to begin at this timestamp. The
     /// Primary publishes this so the Failover can show a heads-up banner via
     /// the regular mesh-sync pull (works through NAT, unlike the inbound
     /// "begin" callback). Cleared once the test actually starts or is cancelled.
     var scheduledHandoverTestAt: Date? = nil
+    /// Node name of the Failover chosen to promote during the next scheduled
+    /// handover test. Each Standby compares this to its own `nodeName` to
+    /// know whether IT should fire its local promotion task at T0. This is
+    /// what makes the test work without the Primary→Standby callback: the
+    /// chosen Standby acts on its local clock instead of waiting for an
+    /// inbound HTTP signal.
+    var scheduledHandoverTargetNodeName: String? = nil
     /// Phase 3: per-follower state polled by the primary. Keyed by node baseURL.
     /// Empty on followers and on standalone nodes.
     var followerStates: [String: FollowerStateSummary] = [:]

@@ -166,6 +166,36 @@ extension AppModel {
         }
     }
 
+    /// Pushes the live snapshot (bot identity, guilds, counters, etc.) to all
+    /// registered Standbys *immediately*, bypassing the 60s sync tick. Use
+    /// from event handlers where the Failover dashboard would feel stale
+    /// otherwise (identity change at READY, GUILD_CREATE, GUILD_DELETE,
+    /// promotion/demotion). Conversations are NOT included — they go via the
+    /// incremental path on the next tick. Quiet no-op when not Primary or
+    /// when no nodes are registered.
+    func pushLiveSnapshotEagerly(reason: String) async {
+        let isLeader: Bool = await MainActor.run { settings.clusterMode == .leader }
+        guard isLeader else { return }
+        let nodes = await cluster.registeredNodeInfo()
+        guard !nodes.isEmpty else { return }
+        let currentTerm = await cluster.currentLeaderTerm()
+        let liveSnapshot = await MainActor.run { buildMeshLiveSnapshot() }
+        let payload = MeshSyncPayload(
+            conversations: [],
+            commandLog: nil,
+            voiceLog: nil,
+            activeVoice: nil,
+            leaderTerm: currentTerm,
+            liveSnapshot: liveSnapshot
+        )
+        for (_, baseURL) in nodes {
+            _ = await cluster.pushConversationsToSingleNode(baseURL, payload)
+        }
+        await MainActor.run {
+            logs.append("[SwiftMesh] Pushed live snapshot eagerly (reason: \(reason))")
+        }
+    }
+
     /// Captures the "feel-alive" snapshot for Standby dashboards (bot identity,
     /// connected guilds, gateway counters, uptime). MainActor-only — all the
     /// source fields are `@Published` on AppModel.
@@ -189,7 +219,9 @@ extension AppModel {
             isHandoverTestActive: clusterSnapshot.isHandoverTestActive,
             handoverTestEndsAt: clusterSnapshot.handoverTestEndsAt,
             scheduledHandoverTestAt: clusterSnapshot.scheduledHandoverTestAt,
-            primaryPublicURL: publicPrimaryURLForSnapshot()
+            scheduledHandoverTargetNodeName: clusterSnapshot.scheduledHandoverTargetNodeName,
+            primaryPublicURL: publicPrimaryURLForSnapshot(),
+            runtimeState: clusterSnapshot.runtimeState.rawValue
         )
     }
 

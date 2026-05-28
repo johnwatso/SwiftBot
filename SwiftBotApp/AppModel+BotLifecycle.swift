@@ -45,10 +45,19 @@ extension AppModel {
 
         let runtimeMode = await cluster.currentSnapshot().mode
         if runtimeMode == .standby {
-            // Block all Discord output — standby observes events for live dashboard
-            // but must not respond until promoted to Primary.
+            // Failover mode: skip the Discord gateway IDENTIFY entirely. Two
+            // bots IDENTIFY'ing with the same token would fight for the
+            // single allowed session per token-per-shard; we previously
+            // muted output via setOutputAllowed(false) but the gateway was
+            // still open and racing the Primary. Now the dashboard data
+            // (identity, guilds, voice, counters) flows in via MeshLiveSnapshot
+            // from the Primary. On promotion, `connectDiscordAfterPromotion`
+            // does a real IDENTIFY for the first time.
             await service.setOutputAllowed(false)
-            logs.append("Fail Over mode active. Connecting to Discord in passive mode; live work remains delegated/primary-only.")
+            status = .stopped
+            logs.append("Fail Over mode active. Discord gateway NOT opened — dashboard data syncs from Primary via mesh. Will IDENTIFY only on promotion.")
+            startMediaMonitor()
+            return
         }
 
         let normalizedToken = normalizedDiscordToken(from: settings.token)
@@ -122,27 +131,34 @@ extension AppModel {
     }
 
     func connectDiscordAfterPromotion() async {
-        // Bug 3 fix: a final tail-resync pull from the prior leader has already
-        // been attempted inside ClusterCoordinator.confirmLeaderDeadAndResync()
-        // BEFORE promotion was committed. By the time we get here, the standby's
-        // local state contains everything we could pull from the prior leader,
-        // so it is safe to enable output. The gateway connection is already
-        // live (passive standby kept it open) — flipping the output gate avoids
-        // the brief downtime of a disconnect/reconnect.
+        // Standbys no longer keep a passive Discord gateway connection (see
+        // the IDENTIFY-gating change in startBot). On promotion we always
+        // need a real connect + IDENTIFY. The trade-off: a few seconds of
+        // gateway-connect delay at promotion, in exchange for never having
+        // two SwiftBot instances fight over the same token's IDENTIFY slot.
+        //
+        // A final tail-resync pull from the prior leader was already attempted
+        // inside ClusterCoordinator.confirmLeaderDeadAndResync() before
+        // promotion was committed, so by the time we get here our local
+        // state contains everything we could pull from the prior leader.
         await service.setOutputAllowed(true)
 
         if status == .running {
-            // Already connected and receiving events — just flip the output gate.
-            logs.append("✅ Output enabled. Now responding as Primary (post-resync).")
+            // Rare path — possibly a stale connection lingering from a
+            // previous Primary stint. Just flip the gate; no reconnect needed.
+            logs.append("✅ Output enabled. Already-open gateway re-used for promotion.")
             return
         }
 
-        // Not yet connected (e.g. fresh start without prior standby connection).
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if settings.token != normalizedToken {
             settings.token = normalizedToken
         }
-        guard !normalizedToken.isEmpty else { return }
+        guard !normalizedToken.isEmpty else {
+            logs.append("⚠️ Token empty at promotion — cannot IDENTIFY. Check that the Standby pulled the token via mesh handshake.")
+            return
+        }
+        logs.append("Promotion: opening Discord gateway (first IDENTIFY on this node)…")
         await connectDiscordInternal()
     }
 
@@ -250,9 +266,55 @@ extension AppModel {
         if clusterSnapshot.scheduledHandoverTestAt != snapshot.scheduledHandoverTestAt {
             clusterSnapshot.scheduledHandoverTestAt = snapshot.scheduledHandoverTestAt
         }
+        if clusterSnapshot.scheduledHandoverTargetNodeName != snapshot.scheduledHandoverTargetNodeName {
+            clusterSnapshot.scheduledHandoverTargetNodeName = snapshot.scheduledHandoverTargetNodeName
+        }
+        // If this Standby is the named target of an upcoming handover test,
+        // arm a local task that fires at T0 to promote without waiting for an
+        // inbound HTTP callback from the Primary. That callback is what fails
+        // on residential NAT today. If the scheduled time vanished from the
+        // snapshot (Primary cancelled) we must also disarm — otherwise the
+        // local task fires anyway and promotes against a still-alive Primary.
+        if settings.clusterMode == .standby {
+            if let scheduledAt = snapshot.scheduledHandoverTestAt,
+               let target = snapshot.scheduledHandoverTargetNodeName,
+               target == settings.clusterNodeName {
+                armLocalHandoverTrigger(at: scheduledAt, durationSeconds: handoverTestDurationFromSnapshot(snapshot))
+            } else {
+                disarmLocalHandoverTrigger()
+            }
+        }
         let nextPeerURL = snapshot.primaryPublicURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if peerPrimaryPublicURL != nextPeerURL {
             peerPrimaryPublicURL = nextPeerURL
+        }
+    }
+
+    /// Returns the test duration derived from the snapshot. Today the Primary
+    /// publishes `handoverTestEndsAt` only after the test is active; while
+    /// merely *scheduled* we default to the well-known 60s so the Standby can
+    /// arm its post-promote demote timer.
+    @MainActor
+    private func handoverTestDurationFromSnapshot(_ snapshot: MeshLiveSnapshot) -> Int {
+        if let endsAt = snapshot.handoverTestEndsAt,
+           let scheduledAt = snapshot.scheduledHandoverTestAt,
+           endsAt > scheduledAt {
+            return max(5, Int(endsAt.timeIntervalSince(scheduledAt)))
+        }
+        return 60
+    }
+
+    @MainActor
+    private func armLocalHandoverTrigger(at scheduledAt: Date, durationSeconds: Int) {
+        Task {
+            await cluster.armLocalHandoverPromotion(at: scheduledAt, durationSeconds: durationSeconds)
+        }
+    }
+
+    @MainActor
+    private func disarmLocalHandoverTrigger() {
+        Task {
+            await cluster.disarmLocalHandoverPromotion()
         }
     }
 
@@ -277,6 +339,11 @@ extension AppModel {
             botAvatarHash = nil
         }
         persistCachedBotIdentityIfNeeded()
+        // Bot identity just became known. Failover dashboards display this
+        // from the mesh snapshot — push immediately so they don't render the
+        // placeholder "SwiftBot" name for up to 60 s after the Primary
+        // identifies.
+        Task { await pushLiveSnapshotEagerly(reason: "bot identity resolved") }
     }
 
     // MARK: - Onboarding integration

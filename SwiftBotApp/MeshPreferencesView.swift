@@ -274,7 +274,7 @@ struct MeshPreferencesView: View {
                         "Reclaim Primary automatically after failover",
                         isOn: Binding(
                             get: { app.settings.clusterAutoReclaimAfterHours > 0 },
-                            set: { app.settings.clusterAutoReclaimAfterHours = $0 ? max(1, app.settings.clusterAutoReclaimAfterHours) : 0 }
+                            set: { app.settings.clusterAutoReclaimAfterHours = $0 ? max(1, app.settings.clusterAutoReclaimAfterHours == 0 ? 6 : app.settings.clusterAutoReclaimAfterHours) : 0 }
                         )
                     )
 
@@ -289,9 +289,14 @@ struct MeshPreferencesView: View {
                         }
                     }
                 } header: {
-                    Label("Auto-Reclaim", systemImage: "arrow.uturn.up.circle")
+                    Label("Auto-Reclaim (Advanced)", systemImage: "arrow.uturn.up.circle")
                 } footer: {
-                    Text("If this Primary fails over to the Failover node, it will rejoin as Standby. Once it observes the new Primary as healthy for the configured window, it will automatically reclaim Primary. Set to off to require manual promotion.")
+                    Text(
+                        "**Off by default.** When this Primary fails over and later rejoins as Standby, auto-reclaim swings it back to "
+                        + "Primary after a healthy window. That's convenient but assumes this node is always the canonical Primary — if "
+                        + "you'd rather have the cluster stay on whichever node took over, leave this off and use **Promote to Primary** "
+                        + "when you actually want to swap back. Manual promotion always works regardless."
+                    )
                 }
             }
 

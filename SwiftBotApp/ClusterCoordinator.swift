@@ -92,6 +92,20 @@ actor ClusterCoordinator {
     /// Distinct from `handoverTestTask`, which is the watchdog that runs
     /// during/after the test itself.
     private var scheduledHandoverTask: Task<Void, Never>?
+    /// Standby-side: the T0 we've armed for. Prevents re-arming on every
+    /// snapshot tick (which would reset the timer constantly). Cleared after
+    /// promotion fires or when the schedule is withdrawn.
+    private var localHandoverArmedFor: Date?
+    /// Latest leader node name we've heard from the current Primary in a
+    /// registration ack. Lets the temp-Primary log meaningful messages when
+    /// it signals reclaim — the URL is what matters for the call but the
+    /// name makes the audit trail human-readable.
+    private var currentLeaderNodeName: String?
+    /// Captured at promotion time so the temporary-Primary Standby knows
+    /// where to send the "end" signal when its window elapses. Reset on
+    /// demotion.
+    private var previousLeaderAddressBeforePromotion: String?
+    private var previousLeaderNameBeforePromotion: String?
 
     // SwiftMesh failover state
     var leaderTerm: Int = 0
@@ -306,7 +320,9 @@ actor ClusterCoordinator {
         handoverTestTask = nil
         scheduledHandoverTask?.cancel()
         scheduledHandoverTask = nil
+        localHandoverArmedFor = nil
         snapshot.scheduledHandoverTestAt = nil
+        snapshot.scheduledHandoverTargetNodeName = nil
         await promoteToLeader()
     }
 
@@ -323,47 +339,147 @@ actor ClusterCoordinator {
     func scheduleHandoverTest(leadTimeSeconds: Int = 90, durationSeconds: Int = 60) async -> String {
         guard mode == .leader else { return "Handover test requires this node to be Primary." }
         let workers = sortedRegisteredWorkers()
-        guard !workers.isEmpty else {
+        guard let target = workers.first else {
             return "Handover test needs at least one registered Failover."
         }
         guard handoverTestTask == nil, scheduledHandoverTask == nil else {
             return "Handover test already in progress or scheduled."
         }
+        // Pre-flight: the chosen Failover must have checked in recently enough
+        // that we can trust it'll receive the snapshot announcing the test.
+        // With the regular 60s sync cadence + ~30s worker re-registration, a
+        // freshness window of 90s catches "has paged out / disconnected"
+        // without being so tight that a single slow tick aborts the test.
+        let staleSeconds = Date().timeIntervalSince(target.lastSeen)
+        let freshnessLimit: TimeInterval = 90
+        if staleSeconds > freshnessLimit {
+            return "Handover test aborted: \(target.nodeName) hasn't reported in \(Int(staleSeconds))s (>\(Int(freshnessLimit))s). The Failover may have disconnected — fix the link before retrying."
+        }
 
         let startAt = Date().addingTimeInterval(TimeInterval(leadTimeSeconds))
+        let endsAt = startAt.addingTimeInterval(TimeInterval(durationSeconds))
         snapshot.scheduledHandoverTestAt = startAt
-        snapshot.diagnostics = "Handover test scheduled for \(formattedTimeOfDay(startAt))"
+        // Publish ends-at at scheduling time too so the named Standby derives
+        // the exact duration from the snapshot rather than guessing.
+        snapshot.handoverTestEndsAt = endsAt
+        snapshot.scheduledHandoverTargetNodeName = target.nodeName
+        snapshot.diagnostics = "Handover test scheduled for \(formattedTimeOfDay(startAt)) (target: \(target.nodeName))"
         await publishSnapshot()
-        await emitHandoverStep(0, of: 5, "Handover test scheduled for \(formattedTimeOfDay(startAt)) — Failover will be notified on next sync")
-        meshLogger.notice("Handover test scheduled for \(startAt, privacy: .public)")
+        await emitHandoverStep(0, of: 5, "Handover test scheduled for \(formattedTimeOfDay(startAt)) — \(target.nodeName) will promote autonomously at T0 from mesh sync")
+        meshLogger.notice("Handover test scheduled for \(startAt, privacy: .public) with target \(target.nodeName, privacy: .public)")
 
         let durSeconds = durationSeconds
         scheduledHandoverTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(leadTimeSeconds) * 1_000_000_000)
             guard let self else { return }
-            await self.handleScheduledHandoverFiring(durationSeconds: durSeconds)
+            await self.handleScheduledHandoverFiring(durationSeconds: durSeconds, targetName: target.nodeName)
         }
 
-        return "Handover test scheduled for \(formattedTimeOfDay(startAt)). Failover will be notified on its next sync."
+        return "Handover test scheduled for \(formattedTimeOfDay(startAt)). \(target.nodeName) will promote autonomously at T0."
     }
 
     /// Cancels any scheduled (not yet started) handover test.
     func cancelScheduledHandoverTest() async {
         scheduledHandoverTask?.cancel()
         scheduledHandoverTask = nil
-        if snapshot.scheduledHandoverTestAt != nil {
+        localHandoverArmedFor = nil
+        // If we're a Standby with an armed local trigger, cancel that too.
+        if mode == .standby, handoverTestTask != nil, !snapshot.isHandoverTestActive {
+            handoverTestTask?.cancel()
+            handoverTestTask = nil
+        }
+        if snapshot.scheduledHandoverTestAt != nil || snapshot.scheduledHandoverTargetNodeName != nil {
             snapshot.scheduledHandoverTestAt = nil
+            snapshot.scheduledHandoverTargetNodeName = nil
             await publishSnapshot()
             meshLogger.notice("Scheduled handover test cancelled")
         }
     }
 
-    private func handleScheduledHandoverFiring(durationSeconds: Int) async {
+    private func handleScheduledHandoverFiring(durationSeconds: Int, targetName: String) async {
         guard !Task.isCancelled else { return }
         scheduledHandoverTask = nil
         snapshot.scheduledHandoverTestAt = nil
+        snapshot.scheduledHandoverTargetNodeName = nil
         await publishSnapshot()
-        _ = await startHandoverTest(durationSeconds: durationSeconds)
+        _ = await beginTimeBasedHandoverTest(durationSeconds: durationSeconds, targetName: targetName)
+    }
+
+    /// Time-based handover test trigger. Both sides act on their local clock
+    /// at T0 — no Primary→Standby HTTP callback. The chosen Standby has
+    /// already armed its own promotion task via `armLocalHandoverPromotion`
+    /// when the snapshot reached it.
+    private func beginTimeBasedHandoverTest(durationSeconds: Int, targetName: String) async -> String {
+        guard mode == .leader else { return "Handover test requires this node to be Primary." }
+        guard handoverTestTask == nil else { return "Handover test already in progress." }
+
+        // T0 readiness check: never demote without confirming the chosen
+        // Standby has registered recently enough that we can trust it'll act
+        // on its locally-armed promotion. If it's gone quiet between
+        // scheduling and T0, abort cleanly — staying Primary is always safer
+        // than a leaderless cluster.
+        let target = registeredWorkers.values.first(where: { $0.nodeName == targetName })
+        if let target {
+            let staleSeconds = Date().timeIntervalSince(target.lastSeen)
+            if staleSeconds > 90 {
+                meshLogger.warning("Handover test T0 aborted — \(targetName, privacy: .public) hasn't reported in \(staleSeconds, privacy: .public)s")
+                snapshot.diagnostics = "Handover test aborted at T0 — \(targetName) has gone silent (\(Int(staleSeconds))s)"
+                await publishSnapshot()
+                await emitHandoverStep(0, of: 4, "T0 abort: \(targetName) hasn't reported in \(Int(staleSeconds))s — staying Primary")
+                return "Handover test aborted at T0: \(targetName) appears to have disconnected."
+            }
+        } else {
+            meshLogger.warning("Handover test T0 aborted — \(targetName, privacy: .public) is not currently registered")
+            snapshot.diagnostics = "Handover test aborted at T0 — \(targetName) is no longer registered"
+            await publishSnapshot()
+            await emitHandoverStep(0, of: 4, "T0 abort: \(targetName) is no longer registered — staying Primary")
+            return "Handover test aborted at T0: \(targetName) is no longer registered."
+        }
+
+        let graceSeconds = 15
+        snapshot.isHandoverTestActive = true
+        snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        await publishSnapshot()
+
+        // STEP 1: Demote self locally. The chosen Standby is independently
+        // arming its own promotion at this same T0 from the snapshot it
+        // received earlier.
+        await emitHandoverStep(1, of: 4, "T0 reached: demoting self to Standby (target \(targetName) is promoting locally on its own clock)")
+        // Synthesize the next-leader address from the registered worker entry
+        // so split-brain detection points at the right peer.
+        let targetBaseURL = registeredWorkers.values
+            .first(where: { $0.nodeName == targetName })?.baseURL
+            ?? sortedRegisteredWorkers().first?.baseURL
+            ?? ""
+        await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: targetBaseURL)
+        meshLogger.notice("Handover test (time-based): demoted self; \(targetName, privacy: .public) takes over for \(durationSeconds, privacy: .public)s")
+
+        // STEP 2: Arm watchdog — if Standby never sends the "end" signal by
+        // T0 + duration + grace, reclaim Primary anyway so we don't leave
+        // the cluster leaderless.
+        await emitHandoverStep(2, of: 4, "Watchdog armed (\(durationSeconds + graceSeconds)s) — will force-reclaim if \(targetName) goes silent")
+        handoverTestTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(durationSeconds + graceSeconds) * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard mode == .standby else {
+                snapshot.isHandoverTestActive = false
+                snapshot.handoverTestEndsAt = nil
+                handoverTestTask = nil
+                return
+            }
+            meshLogger.warning("Handover test watchdog fired — \(targetName, privacy: .public) never signalled back; reclaiming Primary")
+            snapshot.diagnostics = "Handover test watchdog — reclaiming Primary after timeout"
+            snapshot.isHandoverTestActive = false
+            snapshot.handoverTestEndsAt = nil
+            await publishSnapshot()
+            await emitHandoverStep(3, of: 4, "Watchdog fired — \(targetName) never signalled back; force-reclaiming Primary")
+            await promoteToLeader()
+            await emitHandoverStep(4, of: 4, "Reclaim complete after watchdog timeout")
+            await onHandoverTestPassed?()
+            handoverTestTask = nil
+        }
+
+        return "Handover test started (time-based). \(targetName) is promoting locally; auto-reclaim on completion or after \(durationSeconds + graceSeconds)s timeout."
     }
 
     private func formattedTimeOfDay(_ date: Date) -> String {
@@ -454,6 +570,76 @@ actor ClusterCoordinator {
             await emitHandoverStep(3, of: 5, "Could not reach \(target.nodeName) — \(error.localizedDescription)")
             return "Handover test: could not reach \(target.nodeName) — \(error.localizedDescription)"
         }
+    }
+
+    /// Standby-side: arms a local task to self-promote at `startAt` for a
+    /// fixed `durationSeconds`. Called from `AppModel.applyMeshLiveSnapshot`
+    /// when this Standby is named as the target. Idempotent: re-arming with
+    /// the same start time is a no-op; a different start time replaces the
+    /// previous arming.
+    /// Standby-side: clears a previously-armed local promotion (called when
+    /// the Primary cancels the scheduled test). No-op if nothing was armed or
+    /// if the test has already started.
+    func disarmLocalHandoverPromotion() async {
+        guard localHandoverArmedFor != nil else { return }
+        localHandoverArmedFor = nil
+        if !snapshot.isHandoverTestActive {
+            handoverTestTask?.cancel()
+            handoverTestTask = nil
+            meshLogger.notice("Handover test (time-based): local promotion disarmed — Primary cancelled the schedule")
+        }
+    }
+
+    func armLocalHandoverPromotion(at startAt: Date, durationSeconds: Int) async {
+        guard mode == .standby else { return }
+        // If we've already armed for this exact T0, don't restart the timer
+        // (the snapshot will re-arrive every sync tick).
+        if let existing = localHandoverArmedFor, existing == startAt { return }
+        localHandoverArmedFor = startAt
+        let delay = max(0, startAt.timeIntervalSinceNow)
+        meshLogger.notice("Handover test (time-based): armed self-promotion in \(delay, privacy: .public)s for \(durationSeconds, privacy: .public)s")
+        snapshot.diagnostics = "Handover test scheduled — will auto-promote at \(self.formattedTimeOfDay(startAt))"
+        await publishSnapshot()
+
+        handoverTestTask?.cancel()
+        handoverTestTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard mode == .standby else { return }
+            await self.runLocalHandoverPromotion(durationSeconds: durationSeconds)
+        }
+    }
+
+    private func runLocalHandoverPromotion(durationSeconds: Int) async {
+        meshLogger.notice("Handover test (time-based): T0 reached; promoting locally for \(durationSeconds, privacy: .public)s")
+        snapshot.isHandoverTestActive = true
+        snapshot.handoverTestEndsAt = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        snapshot.scheduledHandoverTestAt = nil
+        snapshot.scheduledHandoverTargetNodeName = nil
+        await publishSnapshot()
+        await emitHandoverStep(1, of: 4, "T0 reached; promoting to temporary Primary (autonomous, no inbound signal)")
+        await promoteToLeader()
+        await emitHandoverStep(2, of: 4, "Promoted to temporary Primary; holding role for \(durationSeconds)s")
+
+        try? await Task.sleep(nanoseconds: UInt64(durationSeconds) * 1_000_000_000)
+        if Task.isCancelled { return }
+
+        // Build the origin URL for the "end" signal from the cached leader
+        // address we recorded at handshake — outbound from us to the Primary
+        // is the direction that always works (it's how we registered in the
+        // first place).
+        let originBaseURL = previousLeaderAddressBeforePromotion ?? ""
+        let originNodeName = previousLeaderNameBeforePromotion ?? "Primary"
+        await emitHandoverStep(3, of: 4, "Test window elapsed; signalling \(originNodeName) to reclaim")
+        await broadcastHandoverTestEnd(originPrimaryNodeName: originNodeName, originPrimaryBaseURL: originBaseURL, duration: durationSeconds)
+
+        meshLogger.notice("Handover test window elapsed; demoting back to Standby")
+        snapshot.isHandoverTestActive = false
+        snapshot.handoverTestEndsAt = nil
+        await demoteToStandby(observedTerm: leaderTerm, newLeaderAddress: originBaseURL)
+        await emitHandoverStep(4, of: 4, "Demoted back to Standby")
+        localHandoverArmedFor = nil
+        handoverTestTask = nil
     }
 
     /// Failover-side handler. Schedules promotion after a brief delay (so the
@@ -1759,6 +1945,15 @@ actor ClusterCoordinator {
         if isHealthy {
             if standbyHealthMisses > 0 {
                 snapshot.diagnostics = "Primary recovered after \(standbyHealthMisses) misses"
+                // Flag transient recovery so the dashboard shows the node
+                // climbing out of isolation rather than silently resetting.
+                if snapshot.runtimeState == .isolated {
+                    snapshot.runtimeState = .recovering
+                }
+                await publishSnapshot()
+            } else if snapshot.runtimeState == .recovering {
+                // Healthy ticks after a recovery — return to idle.
+                snapshot.runtimeState = .idle
                 await publishSnapshot()
             }
             standbyHealthMisses = 0
@@ -1786,6 +1981,12 @@ actor ClusterCoordinator {
             standbyHealthySince = nil
             standbyHealthMisses += 1
             snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
+            // Mark as isolated once misses cross half the promotion threshold
+            // — visible warning that we may promote soon, before we actually
+            // commit to a promotion attempt.
+            if standbyHealthMisses >= max(1, Self.standbyPromotionThreshold / 2) {
+                snapshot.runtimeState = .isolated
+            }
         meshLogger.warning("Primary health miss \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
             await publishSnapshot()
 
@@ -1853,6 +2054,17 @@ actor ClusterCoordinator {
     func promoteToLeader() async {
         guard mode == .standby else { return }
 
+        // Capture the leader address we're about to replace so a temp-Primary
+        // (handover test) knows where to send the "end" signal when its
+        // window elapses. This is the address direction that always works
+        // — Standby→Primary outbound was how we registered originally.
+        previousLeaderAddressBeforePromotion = leaderAddress
+        previousLeaderNameBeforePromotion = currentLeaderNodeName
+
+        // Surface the in-flight promotion in the dashboard / logs.
+        snapshot.runtimeState = .promoting
+        await publishSnapshot()
+
         mode = .leader
         leaderTerm += 1
         snapshot.mode = .leader
@@ -1914,6 +2126,10 @@ actor ClusterCoordinator {
                 await notifyWorkerOfLeaderChange(worker, payload: payload)
             }
         }
+
+        // Promotion complete — runtime state settles back to idle.
+        snapshot.runtimeState = .idle
+        await publishSnapshot()
     }
 
     private func notifyWorkerOfLeaderChange(_ worker: RegisteredWorker, payload: MeshLeaderChangedPayload) async {
@@ -2028,6 +2244,10 @@ actor ClusterCoordinator {
         handoverTestTask?.cancel()
         handoverTestTask = nil
 
+        // Surface in-flight demotion before we start tearing down Primary state.
+        snapshot.runtimeState = .demoting
+        await publishSnapshot()
+
         mode = .standby
         leaderTerm = observedTerm
         if let addr = newLeaderAddress, !addr.isEmpty {
@@ -2052,6 +2272,10 @@ actor ClusterCoordinator {
         followerStatePollTask = nil
         followerStates.removeAll()
         snapshot.followerStates = [:]
+
+        // Demotion complete — runtime state settles back to idle.
+        snapshot.runtimeState = .idle
+        await publishSnapshot()
     }
 
     /// Build a JSON body for a 409 Conflict response that carries our current
@@ -2132,6 +2356,7 @@ actor ClusterCoordinator {
             snapshot.workerState = .connected
             snapshot.workerStatusText = mode == .standby ? "Standby Registered with Primary" : "Worker Registered with Primary"
             if let ack {
+                currentLeaderNodeName = ack.leaderNodeName
                 snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary \(ack.leaderNodeName) (\(ack.registeredWorkers) nodes total)"
             } else {
                 snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary via \(url.absoluteString)"

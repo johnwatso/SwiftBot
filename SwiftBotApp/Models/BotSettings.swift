@@ -296,7 +296,12 @@ struct BotSettings: Codable, Hashable {
     /// originally-configured primary (i.e. `clusterMode == .leader` that has
     /// been runtime-demoted to standby) will automatically reclaim leadership.
     /// `0` disables auto-reclaim. Manual promote always works regardless.
-    var clusterAutoReclaimAfterHours: Int = 6
+    ///
+    /// Defaults to **off** (0). Auto-reclaim assumes the originally-configured
+    /// Primary should always be the canonical one — risky in production where
+    /// the cluster swinging back automatically may not be desired. Opt-in via
+    /// SwiftMesh preferences.
+    var clusterAutoReclaimAfterHours: Int = 0
     /// Persisted "last Handover Test" outcome shown in the SwiftMesh GUI tile.
     /// nil = never run on this node.
     var clusterLastHandoverTestAt: Date?
@@ -423,7 +428,9 @@ struct BotSettings: Codable, Hashable {
             ?? (decodedOffloadAIReplies || decodedOffloadWikiLookups)
         clusterOffloadAIReplies = decodedOffloadAIReplies
         clusterOffloadWikiLookups = decodedOffloadWikiLookups
-        clusterAutoReclaimAfterHours = try container.decodeIfPresent(Int.self, forKey: .clusterAutoReclaimAfterHours) ?? 6
+        // Default 0 (off) for fresh installs. Existing users who explicitly
+        // saved a non-zero value keep theirs — decodeIfPresent handles that.
+        clusterAutoReclaimAfterHours = try container.decodeIfPresent(Int.self, forKey: .clusterAutoReclaimAfterHours) ?? 0
         clusterLastHandoverTestAt = try container.decodeIfPresent(Date.self, forKey: .clusterLastHandoverTestAt)
         clusterLastHandoverTestOK = try container.decodeIfPresent(Bool.self, forKey: .clusterLastHandoverTestOK) ?? false
         clusterNodeIconOverrides = try container.decodeIfPresent([String: String].self, forKey: .clusterNodeIconOverrides) ?? [:]
