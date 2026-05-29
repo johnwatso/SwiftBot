@@ -283,6 +283,9 @@ actor VoicePlaybackService {
         negotiatedMode = mode
         await debug("Voice selected transport encryption: \(mode.rawValue).")
 
+        if let existing = transport {
+            await existing.stop()
+        }
         let udp = VoiceUDPTransport(host: info.ip, port: info.port)
         transport = udp
         do {

@@ -24,6 +24,7 @@ struct TunnelRuntimeConfiguration: Sendable, Equatable {
     let publicURL: String
     let originURL: String
     let tunnelToken: String
+    var healthCheckEnabled: Bool = true
 }
 
 protocol TunnelProvider: Sendable {
@@ -85,6 +86,25 @@ actor TunnelManager: TunnelProvider {
     /// changes — the first callback (initial state) is a no-op.
     private var lastObservedPathSignature: String?
 
+    /// Periodically GETs `{publicURL}/live` while the tunnel reports `.enabled`.
+    /// Process death and network changes are already handled elsewhere; this
+    /// catches the silent "process alive, edge says registered, but no traffic
+    /// flows" failure mode that operators see after the tunnel has been up for
+    /// hours. After `maxConsecutiveHealthFailures` failures (~30 min at the
+    /// 10-min cadence) the tunnel is force-restarted.
+    private var healthCheckTask: Task<Void, Never>?
+    private var consecutiveHealthFailures = 0
+    private static let healthCheckInterval: UInt64 = 10 * 60 * 1_000_000_000
+    private static let healthCheckTimeout: TimeInterval = 5
+    private static let maxConsecutiveHealthFailures = 3
+    private let healthCheckSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = TunnelManager.healthCheckTimeout
+        config.timeoutIntervalForResource = TunnelManager.healthCheckTimeout
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: config)
+    }()
+
     func configure(
         _ configuration: TunnelRuntimeConfiguration?,
         logger: @escaping @MainActor @Sendable (String) -> Void,
@@ -124,6 +144,7 @@ actor TunnelManager: TunnelProvider {
     func stop(clearDesiredConfiguration: Bool = true) async {
         restartTask?.cancel()
         restartTask = nil
+        stopHealthCheck()
 
         if clearDesiredConfiguration {
             desiredConfiguration = nil
@@ -159,6 +180,7 @@ actor TunnelManager: TunnelProvider {
     }
 
     private func startProcess(using configuration: TunnelRuntimeConfiguration) async {
+        stopHealthCheck()
         do {
             guard !configuration.tunnelToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw Error.missingTunnelToken
@@ -245,6 +267,7 @@ actor TunnelManager: TunnelProvider {
                 publicURL: publicURL,
                 detail: "Traffic is routed securely through Cloudflare Tunnel."
             ))
+            startHealthCheckIfNeeded()
             return
         }
         // Cloudflare's edge rejected the tunnel — almost always a stale or
@@ -370,6 +393,81 @@ actor TunnelManager: TunnelProvider {
 
     private func markNextStartAsRestart() {
         nextStartIsRestart = true
+    }
+
+    // MARK: - Public-URL health check
+
+    private func startHealthCheckIfNeeded() {
+        guard healthCheckTask == nil else { return }
+        guard let configuration = desiredConfiguration, configuration.healthCheckEnabled else { return }
+        guard let url = healthCheckURL(for: configuration.publicURL) else { return }
+
+        consecutiveHealthFailures = 0
+        healthCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.healthCheckInterval)
+                guard !Task.isCancelled else { return }
+                await self?.performHealthCheck(url: url)
+            }
+        }
+    }
+
+    private func stopHealthCheck() {
+        healthCheckTask?.cancel()
+        healthCheckTask = nil
+        consecutiveHealthFailures = 0
+    }
+
+    private func healthCheckURL(for publicURL: String) -> URL? {
+        let trimmed = publicURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let base = URL(string: trimmed) else { return nil }
+        return base.appendingPathComponent("live")
+    }
+
+    private func performHealthCheck(url: URL) async {
+        // Only probe while we think the tunnel is up — during enabling/restart
+        // a transient failure here would double-trigger the restart logic.
+        guard let configuration = desiredConfiguration, configuration.healthCheckEnabled else {
+            stopHealthCheck()
+            return
+        }
+        guard process?.isRunning == true else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = Self.healthCheckTimeout
+
+        let succeeded: Bool
+        do {
+            let (_, response) = try await healthCheckSession.data(for: request)
+            if let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) {
+                succeeded = true
+            } else {
+                succeeded = false
+            }
+        } catch {
+            succeeded = false
+        }
+
+        if succeeded {
+            if consecutiveHealthFailures != 0 {
+                await logger?("Tunnel health check recovered after \(consecutiveHealthFailures) failure(s)")
+            }
+            consecutiveHealthFailures = 0
+            return
+        }
+
+        consecutiveHealthFailures += 1
+        await logger?("⚠️ Tunnel health check failed (\(consecutiveHealthFailures)/\(Self.maxConsecutiveHealthFailures)) at \(url.absoluteString)")
+
+        if consecutiveHealthFailures >= Self.maxConsecutiveHealthFailures {
+            await logger?("Tunnel appears stale — forcing Cloudflare tunnel restart")
+            consecutiveHealthFailures = 0
+            consecutiveFailures = 0
+            lastRegistrationError = nil
+            await stop(clearDesiredConfiguration: false)
+            await startProcess(using: configuration)
+        }
     }
 
     nonisolated static func resolveCloudflaredBinaryURL(

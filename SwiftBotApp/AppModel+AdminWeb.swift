@@ -2422,7 +2422,8 @@ extension AppModel {
                 hostname: hostname,
                 publicURL: "https://\(hostname)",
                 originURL: originURL,
-                tunnelToken: tunnelToken
+                tunnelToken: tunnelToken,
+                healthCheckEnabled: settings.adminWebUI.tunnelHealthCheckEnabled
             ),
             logger: logger,
             statusHandler: statusHandler

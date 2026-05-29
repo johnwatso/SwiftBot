@@ -55,6 +55,19 @@ actor ClusterCoordinator {
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    /// Dedicated session for all mesh HTTP traffic. Kept separate from
+    /// `URLSession.shared` so mesh polling does not contend with app-wide URL
+    /// loads, and so we can bound resource time (the shared session defaults to
+    /// a 7-day resource timeout, which lets a stalled response body outlive the
+    /// per-request `timeoutInterval`). `waitsForConnectivity = false` makes
+    /// requests fail fast rather than parking when a peer is unreachable.
+    private let meshSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForResource = 30
+        config.httpMaximumConnectionsPerHost = 6
+        return URLSession(configuration: config)
+    }()
     private let startedAt = Date()
     private let hardwareInfo = HardwareInfo.current()
     /// Registration heartbeat interval. 30s is sufficient for a healthy standby;
@@ -64,6 +77,9 @@ actor ClusterCoordinator {
     private let registrationStaleAfter: TimeInterval = 90
     static let maxHTTPRequestSize = 1_024 * 1024
     private static let httpReadTimeout: TimeInterval = 5.0
+    /// Hard ceiling on simultaneously-serviced inbound mesh connections. Caps
+    /// resource use if a peer (or a misbehaving scanner) opens many sockets.
+    private static let maxConcurrentConnections = 64
     static let maxSyncBatchSize: Int = 500
 
     var mode: ClusterMode = .standalone
@@ -140,6 +156,9 @@ actor ClusterCoordinator {
     private var conversationFetcher: ConversationFetcher?
     private var listener: NWListener?
     private var listenerActivePort: Int?
+    /// Number of inbound mesh connections currently being serviced. Bounded by
+    /// `maxConcurrentConnections`.
+    private var activeConnectionCount = 0
     private var onSnapshot: (@Sendable (ClusterSnapshot) async -> Void)?
     private var onJobLog: JobLogHandler?
     private var onSync: SyncHandler?
@@ -558,7 +577,7 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/begin")
             request.timeoutInterval = 8
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 await emitHandoverStep(3, of: 5, "\(target.nodeName) refused begin signal (HTTP \(code))")
@@ -733,7 +752,7 @@ actor ClusterCoordinator {
             request.httpBody = body
             applyMeshAuth(to: &request, path: "/v1/mesh/handover-test/end")
             request.timeoutInterval = 8
-            _ = try await URLSession.shared.data(for: request)
+            _ = try await meshSession.data(for: request)
         } catch {
             meshLogger.warning("Handover test: failed to notify \(originPrimaryNodeName, privacy: .public) — \(error.localizedDescription)")
         }
@@ -811,7 +830,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &request, path: "/v1/mesh/discord-token")
         request.timeoutInterval = 5
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
             guard let payload = try? decoder.decode(MeshDiscordTokenResponse.self, from: data),
                   payload.available,
@@ -1139,7 +1158,7 @@ actor ClusterCoordinator {
             }
 
             do {
-                let (_, response) = try await URLSession.shared.data(from: url)
+                let (_, response) = try await meshSession.data(from: url)
                 if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                     snapshot.workerState = .connected
                     snapshot.workerStatusText = "Primary reachable"
@@ -1244,7 +1263,7 @@ actor ClusterCoordinator {
                 var request = URLRequest(url: url)
                 request.httpMethod = "GET"
                 applyMeshAuth(to: &request, path: "/v1/probe")
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await meshSession.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
                     continue
@@ -1533,10 +1552,27 @@ actor ClusterCoordinator {
     }
 
     private func handleConnection(_ connection: NWConnection) async {
+        guard acquireConnectionSlot() else {
+            // Over capacity: shed load rather than queueing unbounded work.
+            connection.start(queue: .global(qos: .utility))
+            let body = #"{"error":"server_busy"}"#.data(using: .utf8) ?? Data()
+            let response = httpResponse(status: "503 Service Unavailable", body: body)
+            connection.send(content: response, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+            return
+        }
+        defer { releaseConnectionSlot() }
+
         connection.start(queue: .global(qos: .utility))
         let remoteHost = remoteHostFromConnection(connection)
         do {
-            let requestData = try await readHTTPRequest(connection)
+            // Hard wall-clock cap: `readHTTPRequest` only checks the clock
+            // between chunks, so a peer that connects and then sends nothing
+            // would otherwise block forever inside `receiveChunk`.
+            let requestData = try await withReadTimeout(connection: connection) {
+                try await self.readHTTPRequest(connection)
+            }
             let response = await processHTTPRequest(requestData, remoteHost: remoteHost)
             connection.send(content: response, completion: .contentProcessed { _ in
                 connection.cancel()
@@ -1547,6 +1583,37 @@ actor ClusterCoordinator {
             connection.send(content: response, completion: .contentProcessed { _ in
                 connection.cancel()
             })
+        }
+    }
+
+    private func acquireConnectionSlot() -> Bool {
+        guard activeConnectionCount < Self.maxConcurrentConnections else { return false }
+        activeConnectionCount += 1
+        return true
+    }
+
+    private func releaseConnectionSlot() {
+        if activeConnectionCount > 0 { activeConnectionCount -= 1 }
+    }
+
+    /// Race the read against a wall-clock timeout. On timeout we cancel the
+    /// connection *before* throwing: `NWConnection.receive` does not observe
+    /// Swift task cancellation, so without the explicit cancel the read child
+    /// task would stay suspended on its continuation and the task group could
+    /// never finish tearing down.
+    private func withReadTimeout<T: Sendable>(
+        connection: NWConnection,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(Self.httpReadTimeout * 1_000_000_000))
+                connection.cancel()
+                throw NWError.posix(.ETIMEDOUT)
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
@@ -2141,7 +2208,7 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/v1/mesh/leader-changed")
             request.timeoutInterval = 5
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             await detectStaleSelfFromResponse(data: data, response: response)
         } catch {
             // Best effort — worker will re-register on its own next cycle if missed
@@ -2183,7 +2250,7 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: "/v1/mesh/sync/conversations")
             request.timeoutInterval = 10
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             await detectStaleSelfFromResponse(data: data, response: response)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
             return true
@@ -2201,7 +2268,7 @@ actor ClusterCoordinator {
             request.httpBody = try encoder.encode(payload)
             applyMeshAuth(to: &request, path: path)
             request.timeoutInterval = 10
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             await detectStaleSelfFromResponse(data: data, response: response)
         } catch {
             // best effort
@@ -2338,7 +2405,7 @@ actor ClusterCoordinator {
             let authMode = sharedSecret.isEmpty ? "none" : "HMAC"
             snapshot.diagnostics = "Registering with Primary: POST \(describeEndpoint(url)) auth=\(authMode) node=\(nodeName) listenPort=\(listenPort)"
             await publishSnapshot()
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -2549,7 +2616,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/health")
             request.timeoutInterval = timeout
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
             return (200..<300).contains(http.statusCode)
         } catch {
@@ -2583,7 +2650,7 @@ actor ClusterCoordinator {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try encoder.encode(job)
                 applyMeshAuth(to: &request, path: "/v1/ai-reply")
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await meshSession.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
                     continue
@@ -2625,7 +2692,7 @@ actor ClusterCoordinator {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try encoder.encode(WikiJobRequest(query: query, source: source))
                 applyMeshAuth(to: &request, path: "/v1/wiki-lookup")
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await meshSession.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
                     continue
@@ -2672,7 +2739,7 @@ actor ClusterCoordinator {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try encoder.encode(job)
                 applyMeshAuth(to: &request, path: "/v1/playlist-import")
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await meshSession.data(for: request)
                 guard let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode) else {
                     continue
@@ -2946,7 +3013,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/cluster/status")
             request.timeoutInterval = 3
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 return nil
@@ -2971,7 +3038,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/cluster/ping")
             request.timeoutInterval = 3
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
@@ -3206,7 +3273,7 @@ actor ClusterCoordinator {
             applyMeshAuth(to: &request, path: "/v1/mesh/follower-state")
             request.timeoutInterval = 4
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await meshSession.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
                 if let summary = try? decoder.decode(FollowerStateSummary.self, from: data) {
                     refreshed[worker.baseURL.lowercased()] = summary
@@ -3372,7 +3439,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &request, path: "/v1/mesh/sync/conversations/resync")
         request.timeoutInterval = 15
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return try? decoder.decode(MeshSyncPayload.self, from: data)
         } catch {
@@ -3387,7 +3454,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/library")
             request.timeoutInterval = 8
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 return nil
@@ -3435,7 +3502,7 @@ actor ClusterCoordinator {
             }
             applyMeshAuth(to: &request, path: "/v1/media/stream")
             request.timeoutInterval = 30
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return nil }
             guard [200, 206].contains(http.statusCode) else { return nil }
             let headers = http.allHeaderFields.reduce(into: [String: String]()) { partial, entry in
@@ -3465,7 +3532,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/thumbnail")
             request.timeoutInterval = 15
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else { return nil }
             return BinaryHTTPResponse(
@@ -3492,7 +3559,7 @@ actor ClusterCoordinator {
             request.httpMethod = "GET"
             applyMeshAuth(to: &request, path: "/v1/media/frame")
             request.timeoutInterval = 15
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else { return nil }
             return BinaryHTTPResponse(
@@ -3527,7 +3594,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &urlRequest, path: "/v1/media/clip")
         urlRequest.timeoutInterval = 30
         do {
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            let (data, response) = try await meshSession.data(for: urlRequest)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
@@ -3547,7 +3614,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &urlRequest, path: "/v1/media/multiview")
         urlRequest.timeoutInterval = 60
         do {
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            let (data, response) = try await meshSession.data(for: urlRequest)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
@@ -3568,7 +3635,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &request, path: "/v1/mesh/sync/wiki-cache")
         request.timeoutInterval = 15
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return data
         } catch {
@@ -3586,7 +3653,7 @@ actor ClusterCoordinator {
         applyMeshAuth(to: &request, path: "/v1/mesh/sync/config-files")
         request.timeoutInterval = 15
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await meshSession.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return data
         } catch {
