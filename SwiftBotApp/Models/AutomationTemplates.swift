@@ -32,40 +32,38 @@ struct AutomationTemplate: Identifiable, Hashable {
     static let automationCatalog: [AutomationTemplate] = [
 
         AutomationTemplate(
-            id: "voice-join-log",
-            title: "Voice join log",
-            subtitle: "Write a local log entry when someone joins voice.",
+            id: "voice-join-notify",
+            title: "Voice join notify",
+            subtitle: "Announce in the voice channel when someone joins.",
             symbol: "speaker.wave.2.fill",
             tint: .green,
             rule: Automations.Rule(
-                name: "Voice join log",
+                name: "Voice join notify",
                 trigger: Automations.Trigger(kind: .userJoinedVoice),
                 steps: [
                     Automations.Step(
-                        kind: .log,
-                        logText: "{username} joined #{channelName}"
+                        kind: .sendMessage,
+                        sendTarget: .sameChannel,
+                        content: "🔊 {userMention} has joined #{channelName}"
                     )
                 ]
             )
         ),
 
         AutomationTemplate(
-            id: "voice-session-recap",
-            title: "Voice session recap",
-            subtitle: "When someone leaves voice after 30 minutes, post their session length.",
+            id: "voice-leave-notify",
+            title: "Voice leave notify",
+            subtitle: "Announce in the voice channel when someone leaves, with their session length.",
             symbol: "speaker.slash.fill",
             tint: .orange,
             rule: Automations.Rule(
-                name: "Voice session recap",
+                name: "Voice leave notify",
                 trigger: Automations.Trigger(kind: .userLeftVoice),
-                filters: [
-                    Automations.Filter(kind: .minVoiceDurationSeconds, intValue: 1800)
-                ],
                 steps: [
                     Automations.Step(
                         kind: .sendMessage,
                         sendTarget: .sameChannel,
-                        content: "{username} was in voice for {duration}."
+                        content: "👋 {userMention} has left #{channelName} ({duration})"
                     )
                 ]
             )
@@ -401,6 +399,25 @@ struct AutomationTemplate: Identifiable, Hashable {
                     Automations.Step(
                         kind: .log,
                         logText: "{username} joined {guildName}"
+                    )
+                ]
+            )
+        ),
+
+        AutomationTemplate(
+            id: "mod-voice-join-audit",
+            title: "Voice join audit",
+            subtitle: "Write a local audit entry when someone joins a voice channel.",
+            symbol: "speaker.wave.2.fill",
+            tint: .green,
+            rule: Automations.Rule(
+                name: "Voice join audit",
+                category: .moderation,
+                trigger: Automations.Trigger(kind: .userJoinedVoice),
+                steps: [
+                    Automations.Step(
+                        kind: .log,
+                        logText: "{username} joined #{channelName}"
                     )
                 ]
             )
