@@ -320,6 +320,17 @@ struct InternetAccessConfigurationSection: View {
             .toggleStyle(.switch)
             .disabled(isEnabling || isDisabling)
 
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Auto-repair stale tunnel", isOn: $app.settings.adminWebUI.tunnelHealthCheckEnabled)
+                    .toggleStyle(.switch)
+                    .disabled(!app.settings.adminWebUI.internetAccessEnabled)
+
+                Text("Checks \(publicURLString.isEmpty ? "the public URL" : "\(publicURLString)/live") every 10 minutes and restarts the Cloudflare tunnel if it's been unreachable for ~30 minutes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             DisclosureGroup(isExpanded: $isCredentialsExpanded) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {

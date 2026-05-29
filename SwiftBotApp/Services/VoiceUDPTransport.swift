@@ -34,6 +34,10 @@ actor VoiceUDPTransport {
     }
 
     func stop() {
+        // Drop handlers before cancelling so any in-flight dispatch_source
+        // timers / completions don't reach back into a deallocated actor and
+        // trip a PAC failure on Apple Silicon.
+        connection.stateUpdateHandler = nil
         connection.cancel()
         ready = false
         let waiters = readyWaiters

@@ -65,6 +65,11 @@ struct AdminWebUISettings: Codable, Hashable {
     var requireHTTPS: Bool = false
     var publicBaseURL: String = ""
     var internetAccessEnabled: Bool = false
+    /// When `true`, SwiftBot periodically GETs `{publicURL}/live` and restarts
+    /// the Cloudflare tunnel after several consecutive failures. Catches the
+    /// "process alive but edge stopped routing" case that the existing
+    /// terminate/network-change recovery paths can't see.
+    var tunnelHealthCheckEnabled: Bool = true
     var hostname: String = ""
     var subdomain: String = "swiftbot"
     var selectedZoneID: String = ""
@@ -117,6 +122,7 @@ struct AdminWebUISettings: Codable, Hashable {
         case requireHTTPS
         case publicBaseURL
         case internetAccessEnabled
+        case tunnelHealthCheckEnabled
         case hostname
         case subdomain
         case selectedZoneID
@@ -173,6 +179,7 @@ struct AdminWebUISettings: Codable, Hashable {
         let decodedInternetAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .internetAccessEnabled)
         let decodedPublicAccessEnabled = try container.decodeIfPresent(Bool.self, forKey: .publicAccessEnabled)
         internetAccessEnabled = decodedInternetAccessEnabled ?? decodedPublicAccessEnabled ?? false
+        tunnelHealthCheckEnabled = try container.decodeIfPresent(Bool.self, forKey: .tunnelHealthCheckEnabled) ?? true
 
         publicAccessTunnelID = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelID) ?? ""
         publicAccessTunnelName = try container.decodeIfPresent(String.self, forKey: .publicAccessTunnelName) ?? ""
@@ -211,6 +218,7 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(selectedZoneName, forKey: .selectedZoneName)
         try container.encode(cloudflareAPIToken, forKey: .cloudflareAPIToken)
         try container.encode(internetAccessEnabled, forKey: .internetAccessEnabled)
+        try container.encode(tunnelHealthCheckEnabled, forKey: .tunnelHealthCheckEnabled)
         try container.encode(publicAccessTunnelID, forKey: .publicAccessTunnelID)
         try container.encode(publicAccessTunnelName, forKey: .publicAccessTunnelName)
         try container.encode(publicAccessTunnelAccountID, forKey: .publicAccessTunnelAccountID)
@@ -544,6 +552,14 @@ struct SwiftMinerSettings: Codable, Hashable {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "http://127.0.0.1:8080" }
         return trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    /// `true` once a SwiftMiner pairing bundle has been applied — without
+    /// these credentials the integration can't authenticate or verify webhook
+    /// signatures, so enabling it would just produce errors.
+    var isPaired: Bool {
+        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !webhookSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     mutating func apply(pairingBundle: SwiftMinerPairingBundle) {

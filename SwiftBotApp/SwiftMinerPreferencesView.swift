@@ -47,11 +47,21 @@ struct SwiftMinerPreferencesView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $app.settings.swiftMiner.enabled)
+                    Toggle("", isOn: Binding(
+                        get: { app.settings.swiftMiner.enabled },
+                        set: { newValue in
+                            // Block turning ON until a pairing bundle has been
+                            // applied — otherwise the integration is missing
+                            // the API key + HMAC secret and every call fails.
+                            if newValue && !app.settings.swiftMiner.isPaired { return }
+                            app.settings.swiftMiner.enabled = newValue
+                        }
+                    ))
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.mini)
-                        .help(app.settings.swiftMiner.enabled ? "Disable SwiftMiner integration" : "Enable SwiftMiner integration")
+                        .disabled(!app.settings.swiftMiner.enabled && !app.settings.swiftMiner.isPaired)
+                        .help(toggleHelpText)
                 }
 
                 Text("Receives mining events from SwiftMiner and relays Discord DMs for account recovery, drop claims, and campaign updates.")
@@ -84,6 +94,16 @@ struct SwiftMinerPreferencesView: View {
                     .foregroundStyle(statusColor)
             }
         }
+    }
+
+    private var toggleHelpText: String {
+        if app.settings.swiftMiner.enabled {
+            return "Disable SwiftMiner integration"
+        }
+        if !app.settings.swiftMiner.isPaired {
+            return "Pair with SwiftMiner first to enable the integration"
+        }
+        return "Enable SwiftMiner integration"
     }
 
     private var statusTitle: String {

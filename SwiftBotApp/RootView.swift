@@ -491,6 +491,8 @@ private struct DashboardSidebarHeader: View {
     let clusterMode: String
     let clusterIcon: String
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .center, spacing: 12) {
@@ -538,11 +540,12 @@ private struct DashboardSidebarHeader: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.primary.opacity(colorScheme == .dark ? 0.08 : 0.12), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 5, x: 0, y: 2)
     }
 }
 

@@ -1195,7 +1195,7 @@ actor AdminWebServer {
 
         let peerIP = Self.peerIP(of: connection)
         do {
-            let requestData = try await withReadTimeout {
+            let requestData = try await withReadTimeout(connection: connection) {
                 try await self.receiveHTTPRequest(from: connection)
             }
             let response = await process(requestData, peerIP: peerIP)
@@ -1239,16 +1239,24 @@ actor AdminWebServer {
         if activeConnectionCount > 0 { activeConnectionCount -= 1 }
     }
 
-    private func withReadTimeout<T: Sendable>(_ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    /// On timeout we cancel the connection *before* throwing: `NWConnection.receive`
+    /// does not observe Swift task cancellation, so without the explicit cancel the
+    /// read child task would stay suspended on its continuation and the task group
+    /// could never finish tearing down (the caller's `defer` cancel can't run until
+    /// this returns).
+    private func withReadTimeout<T: Sendable>(
+        connection: NWConnection,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await operation() }
             group.addTask { [requestReadTimeout] in
                 try await Task.sleep(nanoseconds: UInt64(requestReadTimeout * 1_000_000_000))
+                connection.cancel()
                 throw NSError(domain: "AdminWebServer", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request read timed out"])
             }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
