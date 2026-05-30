@@ -25,17 +25,31 @@ actor TextChannelAnnouncer {
 
     var watchedChannel: String? { watchedChannelID }
 
-    /// Hook to call from `GatewayEventDispatcher.onMessageCreate`.
-    func handle(_ event: GatewayMessageCreateEvent, displayNameOverride: String? = nil) async {
+    /// Hook to call from `GatewayEventDispatcher.onMessageCreate`. `channelNames`
+    /// / `roleNames` (id → name) let `<#id>` / `<@&id>` resolve to real names.
+    func handle(
+        _ event: GatewayMessageCreateEvent,
+        displayNameOverride: String? = nil,
+        channelNames: [String: String] = [:],
+        roleNames: [String: String] = [:]
+    ) async {
         guard let watched = watchedChannelID, event.channelID == watched else { return }
-        guard let spoken = formattedSpeech(for: event, displayNameOverride: displayNameOverride) else { return }
+        guard let spoken = formattedSpeech(
+            for: event, displayNameOverride: displayNameOverride,
+            channelNames: channelNames, roleNames: roleNames
+        ) else { return }
         await announcer.enqueue(spoken)
     }
 
     // MARK: - Formatting
 
-    private func formattedSpeech(for event: GatewayMessageCreateEvent, displayNameOverride: String?) -> String? {
-        let body = readableBody(for: event)
+    private func formattedSpeech(
+        for event: GatewayMessageCreateEvent,
+        displayNameOverride: String?,
+        channelNames: [String: String],
+        roleNames: [String: String]
+    ) -> String? {
+        let body = readableBody(for: event, channelNames: channelNames, roleNames: roleNames)
         guard let body, !body.isEmpty else { return nil }
         guard body.count <= Self.maxLength else { return nil }
         let override = displayNameOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -49,8 +63,20 @@ actor TextChannelAnnouncer {
         return "\(author): \(body)"
     }
 
-    private func readableBody(for event: GatewayMessageCreateEvent) -> String? {
-        let content = event.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func readableBody(
+        for event: GatewayMessageCreateEvent,
+        channelNames: [String: String],
+        roleNames: [String: String]
+    ) -> String? {
+        // Convert raw Discord markup (mentions, custom emoji, timestamps) into
+        // human-readable text so it's both spoken and logged cleanly.
+        let humanized = DiscordService.humanizeContent(
+            event.content,
+            mentionNames: DiscordService.mentionNames(from: event.rawMap),
+            channelNames: channelNames,
+            roleNames: roleNames
+        )
+        let content = humanized.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // If the message has visible non-link text, prefer that.
         if !content.isEmpty {

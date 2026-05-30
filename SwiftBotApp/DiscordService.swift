@@ -12,6 +12,16 @@ actor DiscordService {
         outputAllowed = allowed
     }
 
+    /// Channel/role display names (id → name), refreshed from `DiscordCache` so
+    /// `humanizeContent` can resolve `<#id>` / `<@&id>` mentions to real names.
+    private var channelNamesByID: [String: String] = [:]
+    private var roleNamesByID: [String: String] = [:]
+
+    func setNameCaches(channels: [String: String], roles: [String: String]) {
+        channelNamesByID = channels
+        roleNamesByID = roles
+    }
+
     #if DEBUG
     func setBotTokenForTesting(_ token: String) {
         botToken = token
@@ -737,7 +747,7 @@ actor DiscordService {
             // Inter-page stagger to stay polite with the API.
             try? await Task.sleep(nanoseconds: 1_500_000_000)
         }
-        return collected.compactMap { Self.mapSweepMessage(from: $0) }
+        return collected.compactMap { self.mapSweepMessage(from: $0) }
     }
 
     /// Sweep entry point — delete a message using the cached bot token.
@@ -747,6 +757,147 @@ actor DiscordService {
             throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep delete failed: no bot token."])
         }
         try await deleteMessage(channelId: channelId, messageId: messageId, token: token)
+    }
+
+    /// Sweep entry point — delete many messages efficiently. Uses Discord's
+    /// bulk-delete (≤100/request) for messages younger than 14 days and falls
+    /// back to individual deletes for older ones (Discord forbids bulk on those).
+    /// Honours 429 `retry_after` with bounded retries. Returns the number of
+    /// messages actually deleted. Gated by `outputAllowed`.
+    @discardableResult
+    func sweepDeleteMessages(channelId: String, messageIds: [String]) async -> Int {
+        guard outputAllowed, let token = botToken, !token.isEmpty, !messageIds.isEmpty else { return 0 }
+
+        // Snowflake age cutoff. Use a margin below Discord's hard 14-day bulk
+        // limit so a message that crosses the boundary mid-run doesn't 400 the
+        // whole batch.
+        let cutoff = Date().addingTimeInterval(-13.5 * 86_400)
+        var recent: [String] = []
+        var old: [String] = []
+        for id in messageIds {
+            if let created = Self.messageCreatedDate(fromSnowflake: id), created < cutoff {
+                old.append(id)
+            } else {
+                recent.append(id)
+            }
+        }
+
+        var deleted = 0
+
+        // Recent → bulk-delete in chunks of 100. A lone message can't use
+        // bulk-delete (needs ≥2), so delete it individually.
+        for chunk in stride(from: 0, to: recent.count, by: 100).map({ Array(recent[$0..<min($0 + 100, recent.count)]) }) {
+            if chunk.count == 1 {
+                if await deleteIndividually(channelId: channelId, messageId: chunk[0], token: token) { deleted += 1 }
+            } else {
+                let ok = await withRateLimitRetry {
+                    try await self.messageRESTClient.bulkDeleteMessages(channelId: channelId, messageIds: chunk, token: token)
+                }
+                if ok { deleted += chunk.count }
+            }
+        }
+
+        // Old → individual deletes, paced to stay polite with the API.
+        for id in old {
+            if await deleteIndividually(channelId: channelId, messageId: id, token: token) { deleted += 1 }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+        }
+
+        return deleted
+    }
+
+    /// Single delete with 429 retry. Returns whether it succeeded.
+    private func deleteIndividually(channelId: String, messageId: String, token: String) async -> Bool {
+        await withRateLimitRetry {
+            try await self.messageRESTClient.deleteMessage(channelId: channelId, messageId: messageId, token: token)
+        }
+    }
+
+    /// Run a throwing REST call, retrying on HTTP 429 after the server's
+    /// `retry_after`. Returns `true` on success, `false` once retries are
+    /// exhausted or a non-429 error is hit (caller continues with the rest).
+    private func withRateLimitRetry(maxAttempts: Int = 5, _ work: () async throws -> Void) async -> Bool {
+        var attempt = 0
+        while attempt < maxAttempts {
+            do {
+                try await work()
+                return true
+            } catch {
+                let ns = error as NSError
+                guard ns.code == 429 else { return false }
+                let retryAfter = Self.retryAfterSeconds(from: ns) ?? 1.0
+                try? await Task.sleep(nanoseconds: UInt64(min(retryAfter, 10) * 1_000_000_000))
+                attempt += 1
+            }
+        }
+        return false
+    }
+
+    /// Parse `retry_after` (seconds) from a 429 NSError's `responseBody`.
+    private static func retryAfterSeconds(from error: NSError) -> Double? {
+        guard let body = error.userInfo["responseBody"] as? String,
+              let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let secs = json["retry_after"] as? Double { return secs }
+        if let secs = json["retry_after"] as? Int { return Double(secs) }
+        return nil
+    }
+
+    /// Discord snowflake → creation date. `timestamp_ms = (id >> 22) + epoch`,
+    /// where the Discord epoch is 2015-01-01.
+    static func messageCreatedDate(fromSnowflake id: String) -> Date? {
+        guard let raw = UInt64(id) else { return nil }
+        let discordEpochMs: UInt64 = 1_420_070_400_000
+        let ms = (raw >> 22) + discordEpochMs
+        return Date(timeIntervalSince1970: Double(ms) / 1000.0)
+    }
+
+    /// Replace `:name:` shorthand with the `<:name:id>` token Discord needs for
+    /// custom emoji, using the guild's emoji list. Unmatched shorthand is left
+    /// as-is (it may be a Unicode emoji or just text). Read-only; best-effort.
+    func sweepResolveCustomEmoji(guildId: String, in text: String) async -> String {
+        guard text.contains(":"), !guildId.isEmpty, let token = botToken, !token.isEmpty,
+              let emojis = try? await messageRESTClient.fetchGuildEmojis(guildId: guildId, token: token),
+              !emojis.isEmpty else { return text }
+        var out = text
+        for emoji in emojis {
+            let shorthand = ":\(emoji.name):"
+            guard out.contains(shorthand) else { continue }
+            // Skip if a fully-formed token is already present (e.g. the user
+            // pasted `<:name:id>` directly) — otherwise we'd corrupt it.
+            if out.contains("<:\(emoji.name):") || out.contains("<a:\(emoji.name):") { continue }
+            let prefix = emoji.animated ? "a" : ""
+            out = out.replacingOccurrences(of: shorthand, with: "<\(prefix):\(emoji.name):\(emoji.id)>")
+        }
+        return out
+    }
+
+    /// Sweep entry point — post an embed notice and pin it. Returns the new
+    /// message ID. Gated by `outputAllowed` via the underlying REST calls.
+    func sweepPostPinnedNotice(channelId: String, embed: [String: Any]) async throws -> String {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep notice failed: no bot token."])
+        }
+        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payload: ["embeds": [embed]], token: token)
+        try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
+        return messageId
+    }
+
+    /// Sweep entry point — does a previously-posted notice still exist? Used so
+    /// the notice is posted once and only re-posted if it was deleted. Read-only
+    /// (not gated by `outputAllowed`). On a transient/non-404 error we assume it
+    /// still exists, so we never accidentally post a duplicate.
+    func sweepMessageExists(channelId: String, messageId: String) async -> Bool {
+        guard let token = botToken, !token.isEmpty else { return false }
+        do {
+            _ = try await messageRESTClient.fetchMessage(channelId: channelId, messageId: messageId, token: token)
+            return true
+        } catch {
+            return (error as NSError).code != 404
+        }
     }
 
     nonisolated(unsafe) private static let sweepTimestampWithFraction: ISO8601DateFormatter = {
@@ -766,7 +917,7 @@ actor DiscordService {
         return sweepTimestampNoFraction.date(from: stamp)
     }
 
-    private static func mapSweepMessage(from raw: [String: DiscordJSON]) -> SweepFetchedMessage? {
+    private func mapSweepMessage(from raw: [String: DiscordJSON]) -> SweepFetchedMessage? {
         guard case let .string(id)? = raw["id"] else { return nil }
         let content: String = {
             if case let .string(value)? = raw["content"] { return value }
@@ -774,7 +925,7 @@ actor DiscordService {
         }()
         let createdAt: Date = {
             if case let .string(stamp)? = raw["timestamp"],
-               let parsed = parseSweepTimestamp(stamp) {
+               let parsed = Self.parseSweepTimestamp(stamp) {
                 return parsed
             }
             return Date()
@@ -795,17 +946,90 @@ actor DiscordService {
             if case let .string(value)? = author["username"] { authorName = value }
             if case let .bool(value)? = author["bot"] { isBot = value }
         }
+
         return SweepFetchedMessage(
             id: id,
             authorID: authorID,
             authorName: authorName,
             isBot: isBot,
-            content: content,
+            content: Self.humanizeContent(
+                content,
+                mentionNames: Self.mentionNames(from: raw),
+                channelNames: channelNamesByID,
+                roleNames: roleNamesByID
+            ),
             createdAt: createdAt,
             isPinned: isPinned,
             hasReactions: hasReactions
         )
     }
+
+    /// Build a user-mention map (id → display name) from a message's `mentions`
+    /// array so `<@id>` can render as a real @name in logs/activity/speech.
+    static func mentionNames(from raw: [String: DiscordJSON]) -> [String: String] {
+        var names: [String: String] = [:]
+        guard case let .array(mentions)? = raw["mentions"] else { return names }
+        for case let .object(user) in mentions {
+            guard case let .string(uid)? = user["id"] else { continue }
+            if case let .string(global)? = user["global_name"], !global.isEmpty { names[uid] = global }
+            else if case let .string(uname)? = user["username"] { names[uid] = uname }
+        }
+        return names
+    }
+
+    /// Convert Discord's raw markup into human-readable text for logs/activity:
+    /// `<@id>`/`<@!id>` → `@name`, `<@&id>` → `@role-name`, `<#id>` → `#channel-name`,
+    /// `<:name:id>`/`<a:name:id>` → `:name:`, `<t:unix(:style)>` → a date. Pass
+    /// `channelNames`/`roleNames` (id → name) to resolve real names; unknown IDs
+    /// fall back to the generic `#channel` / `@role`.
+    static func humanizeContent(
+        _ content: String,
+        mentionNames: [String: String],
+        channelNames: [String: String] = [:],
+        roleNames: [String: String] = [:]
+    ) -> String {
+        guard content.contains("<") else { return content }
+        var text = content
+
+        func replace(_ pattern: String, _ transform: ([String]) -> String) {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            for match in matches.reversed() {
+                guard let full = Range(match.range, in: text) else { continue }
+                var groups: [String] = []
+                for i in 1..<match.numberOfRanges {
+                    if let r = Range(match.range(at: i), in: text) { groups.append(String(text[r])) }
+                    else { groups.append("") }
+                }
+                text.replaceSubrange(full, with: transform(groups))
+            }
+        }
+
+        // Custom emoji <:name:id> / <a:name:id> → :name:
+        replace("<a?:([A-Za-z0-9_]+):[0-9]+>") { ":\($0[0]):" }
+        // User mentions <@id> / <@!id> → @name (real name when known)
+        replace("<@!?([0-9]+)>") { groups in
+            let id = groups[0]
+            return "@\(mentionNames[id] ?? "user")"
+        }
+        // Role mentions <@&id> → @role-name (generic when unknown)
+        replace("<@&([0-9]+)>") { groups in "@\(roleNames[groups[0]] ?? "role")" }
+        // Channel mentions <#id> → #channel-name (generic when unknown)
+        replace("<#([0-9]+)>") { groups in "#\(channelNames[groups[0]] ?? "channel")" }
+        // Timestamps <t:unix> / <t:unix:style> → localized date/time
+        replace("<t:([0-9]+)(?::[a-zA-Z])?>") { groups in
+            guard let secs = TimeInterval(groups[0]) else { return groups[0] }
+            return DiscordService.humanTimestampFormatter.string(from: Date(timeIntervalSince1970: secs))
+        }
+        return text
+    }
+
+    nonisolated(unsafe) private static let humanTimestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 
     func addRole(guildId: String, userId: String, roleId: String, token: String) async throws {
         guard outputAllowed else {

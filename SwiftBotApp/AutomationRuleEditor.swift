@@ -258,6 +258,29 @@ struct AutomationRuleEditor: View {
     private var isReady: Bool {
         !rule.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !rule.steps.isEmpty
+            && allRequiredChannelsSet
+    }
+
+    /// Steps that target a specific channel must have one chosen before the
+    /// rule can be saved — the channel picker no longer auto-fills a default.
+    private var allRequiredChannelsSet: Bool {
+        for step in rule.steps {
+            switch step.kind {
+            case .sendMessage:
+                if (step.sendTarget ?? .replyToTrigger) == .specificChannel,
+                   (step.channelId ?? "").isEmpty {
+                    return false
+                }
+            case .modifyMember:
+                if (step.memberOp ?? .addRole) == .moveVoice,
+                   (step.targetVoiceChannelId ?? "").isEmpty {
+                    return false
+                }
+            default:
+                break
+            }
+        }
+        return true
     }
 
     // MARK: - Trigger editor
@@ -1112,14 +1135,16 @@ struct AutomationRuleEditor: View {
                             voiceOnly: Bool = false,
                             requireValue: Bool = false) -> some View {
         let pool = voiceOnly ? serverContext.voiceChannels : serverContext.textChannels
-        // When the field requires a value but the binding is empty, default
-        // to the first available channel. Avoids the "(Any)" state in slots
-        // where Any would mean "the rule does nothing".
+        // For required fields we no longer auto-pick the first channel — a new
+        // rule (not seeded from a preview) starts on a "Select channel…"
+        // placeholder so the user makes a deliberate choice. Save stays
+        // disabled until they do (see `isReady`). A rule loaded from a preview
+        // already carries a channelId, so it shows that real channel.
         let resolved = id.wrappedValue ?? ""
         let effective: String = {
             if !requireValue { return resolved }
             if !resolved.isEmpty, pool.contains(where: { $0.id == resolved }) { return resolved }
-            return pool.first?.id ?? ""
+            return ""
         }()
 
         formRow(label: label) {
@@ -1127,7 +1152,9 @@ struct AutomationRuleEditor: View {
                 get: { effective },
                 set: { id.wrappedValue = $0.isEmpty ? nil : $0 }
             )) {
-                if !requireValue {
+                if requireValue {
+                    Text("Select channel…").tag("")
+                } else {
                     Text("Any").tag("")
                 }
                 ForEach(pool, id: \.id) { c in
@@ -1136,14 +1163,6 @@ struct AutomationRuleEditor: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .onAppear {
-                // Sync the binding when the requireValue default kicked in
-                // so a Save after no manual interaction still writes the
-                // resolved channel rather than a nil.
-                if requireValue, (id.wrappedValue ?? "").isEmpty, !effective.isEmpty {
-                    id.wrappedValue = effective
-                }
-            }
         }
     }
 
