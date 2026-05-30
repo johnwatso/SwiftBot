@@ -19,6 +19,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
     case archive
     case quietChannel
     case reduceNoise
+    case clearAll
 
     var id: String { rawValue }
 
@@ -31,6 +32,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
         case .archive: return "Archive"
         case .quietChannel: return "Quiet Channel"
         case .reduceNoise: return "Reduce Noise"
+        case .clearAll: return "Clear Channel"
         }
     }
 
@@ -43,6 +45,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
         case .archive: return "archivebox"
         case .quietChannel: return "bell.slash"
         case .reduceNoise: return "waveform.path.ecg"
+        case .clearAll: return "trash"
         }
     }
 
@@ -62,6 +65,8 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
             return "In-app only. Marks routine bot chatter as muted so SwiftBot’s UI can collapse it. Nothing is sent to Discord and no messages are deleted."
         case .reduceNoise:
             return "Composite pass: deletes duplicate messages, then deletes bot messages older than the chosen age. Best for high-traffic notification channels."
+        case .clearAll:
+            return "Deletes every message in the channel from Discord. Pinned and reacted messages are kept when the matching safety rails are on; the Swiftbot notice is always kept."
         }
     }
 
@@ -69,7 +74,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
     /// users can tell at a glance which strategies actually touch Discord.
     var destinationLabel: String {
         switch self {
-        case .compact, .keepLatest, .deduplicate, .reduceNoise: return "Deletes from Discord"
+        case .compact, .keepLatest, .deduplicate, .reduceNoise, .clearAll: return "Deletes from Discord"
         case .archive: return "Archives Discord threads"
         case .summarise: return "In-app digest only"
         case .quietChannel: return "In-app only"
@@ -79,6 +84,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
     var destinationTone: Color {
         switch self {
         case .compact, .keepLatest, .deduplicate, .reduceNoise: return .orange
+        case .clearAll: return .red
         case .archive: return .indigo
         case .summarise, .quietChannel: return .blue
         }
@@ -97,6 +103,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
     case cleanNoisyBotChannel
     case archiveStaleThreads
     case dailyDigest
+    case clearChannel
 
     var id: String { rawValue }
 
@@ -108,6 +115,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
         case .cleanNoisyBotChannel: return "Clean a noisy bot channel"
         case .archiveStaleThreads: return "Archive stale threads"
         case .dailyDigest: return "Daily AI digest"
+        case .clearChannel: return "Clear the channel"
         }
     }
 
@@ -125,6 +133,8 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
             return "Archives Discord threads that have been quiet for the chosen period. They stay visible but collapsed."
         case .dailyDigest:
             return "Generates a daily on-device summary of channel activity using Apple Intelligence."
+        case .clearChannel:
+            return "Deletes every message in the channel on a schedule. Pinned and reacted messages are kept, and the optional Swiftbot notice is always preserved. Pairs well with a Daily schedule."
         }
     }
 
@@ -136,12 +146,13 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
         case .cleanNoisyBotChannel: return "speaker.slash"
         case .archiveStaleThreads: return "archivebox"
         case .dailyDigest: return "text.bubble"
+        case .clearChannel: return "trash"
         }
     }
 
     var destinationLabel: String {
         switch self {
-        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return "Deletes from Discord"
+        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel, .clearChannel: return "Deletes from Discord"
         case .archiveStaleThreads: return "Archives Discord threads"
         case .dailyDigest: return "On-device digest"
         }
@@ -150,6 +161,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
     var destinationTone: Color {
         switch self {
         case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return .orange
+        case .clearChannel: return .red
         case .archiveStaleThreads: return .indigo
         case .dailyDigest: return .blue
         }
@@ -159,7 +171,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
     /// picker shows them with a "Coming soon" badge and disables selection.
     var isAvailable: Bool {
         switch self {
-        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel: return true
+        case .trimOldBotMessages, .keepNewest, .removeDuplicates, .cleanNoisyBotChannel, .clearChannel: return true
         case .archiveStaleThreads, .dailyDigest: return false
         }
     }
@@ -181,6 +193,8 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
             return SweepStrategy(kind: .archive, ageHours: ageHours)
         case .dailyDigest:
             return SweepStrategy(kind: .summarise)
+        case .clearChannel:
+            return SweepStrategy(kind: .clearAll)
         }
     }
 
@@ -193,6 +207,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
         case .reduceNoise: return .cleanNoisyBotChannel
         case .archive: return .archiveStaleThreads
         case .summarise: return .dailyDigest
+        case .clearAll: return .clearChannel
         case .quietChannel: return .cleanNoisyBotChannel // legacy fallback
         }
     }
@@ -256,6 +271,66 @@ enum SweepSchedule: Codable, Hashable {
             return next
         }
     }
+
+    /// Human phrase for the `{time}` placeholder in a pinned notice — e.g.
+    /// "at 4 AM" for a daily schedule. Empty for interval/manual schedules
+    /// (those carry their cadence entirely in `noticeFrequencyPhrase`).
+    var noticeTimePhrase: String {
+        switch self {
+        case .daily(let h):
+            var comps = DateComponents()
+            comps.hour = max(0, min(23, h))
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = .current
+            guard let date = cal.date(from: comps) else { return "" }
+            let fmt = DateFormatter()
+            fmt.locale = .current
+            fmt.dateFormat = "h a"
+            return "at \(fmt.string(from: date))"
+        case .interval, .manual:
+            return ""
+        }
+    }
+
+    /// Human phrase for the `{frequency}` placeholder — e.g. "daily",
+    /// "every 2 hours", "when triggered manually".
+    var noticeFrequencyPhrase: String {
+        switch self {
+        case .manual:
+            return "when triggered manually"
+        case .daily:
+            return "daily"
+        case .interval(let m):
+            if m % 60 == 0 {
+                let hours = max(1, m / 60)
+                return hours == 1 ? "every hour" : "every \(hours) hours"
+            }
+            return "every \(max(1, m)) minutes"
+        }
+    }
+}
+
+/// Optional pinned "this channel is managed by Swiftbot" notice attached to a
+/// policy. When enabled, Sweep posts an embed after a live run and pins it,
+/// re-using `pinnedMessageID` to keep a single notice up to date.
+struct SweepNotice: Codable, Hashable {
+    var isEnabled: Bool = false
+    var template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
+    /// Set after the notice is first posted + pinned, so subsequent runs edit
+    /// (or, if it was deleted, re-post) the same message instead of duplicating.
+    var pinnedMessageID: String?
+
+    /// Substitute the `{time}` / `{frequency}` placeholders from the schedule
+    /// and collapse any double spaces left behind by an empty time phrase.
+    func rendered(for schedule: SweepSchedule) -> String {
+        var text = template
+            .replacingOccurrences(of: "{time}", with: schedule.noticeTimePhrase)
+            .replacingOccurrences(of: "{frequency}", with: schedule.noticeFrequencyPhrase)
+        while text.contains("  ") {
+            text = text.replacingOccurrences(of: "  ", with: " ")
+        }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
 }
 
 struct SweepSafetyRails: Codable, Hashable, Validatable {
@@ -288,6 +363,9 @@ struct SweepPolicy: Codable, Identifiable, Hashable, Validatable {
     var strategies: [SweepStrategy]
     var schedule: SweepSchedule
     var safety: SweepSafetyRails
+    /// Optional pinned management notice. Optional (not a defaulted value) so
+    /// snapshots written before this field existed still decode cleanly.
+    var notice: SweepNotice?
     var isEnabled: Bool = true
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
@@ -297,6 +375,12 @@ struct SweepPolicy: Codable, Identifiable, Hashable, Validatable {
     var strategyChipSummary: String {
         if strategies.isEmpty { return "No strategies" }
         return strategies.map { $0.kind.displayName }.joined(separator: " · ")
+    }
+
+    /// A full-channel clear: ignores the per-run cap and fetches deep so a
+    /// single run can empty the channel.
+    var isClearAll: Bool {
+        strategies.contains { $0.kind == .clearAll }
     }
 
     func validate() throws {
@@ -514,6 +598,32 @@ protocol SweepDispatcher: Sendable {
     func canExecute() async -> Bool
     func fetchRecentMessages(channelID: String, limit: Int) async throws -> [SweepFetchedMessage]
     func deleteMessage(channelID: String, messageID: String) async throws
+    /// Delete many messages, returning how many were actually removed. The
+    /// live implementation batches via Discord bulk-delete with rate-limit
+    /// backoff; the default falls back to sequential single deletes.
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int
+    /// Post a new embed notice and pin it; returns the new message ID. `guildID`
+    /// lets the live dispatcher resolve `:name:` custom-emoji shorthand.
+    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String
+    /// Whether a previously-posted notice still exists in the channel, so the
+    /// caller can post once and only re-post if it was deleted.
+    func noticeExists(channelID: String, messageID: String) async -> Bool
+}
+
+extension SweepDispatcher {
+    // Default no-op notice handling — only the live dispatcher touches Discord.
+    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String { "" }
+    func noticeExists(channelID: String, messageID: String) async -> Bool { true }
+
+    // Default sequential delete — preserves prior behaviour for dispatchers
+    // (e.g. the preview shim) that don't implement bulk deletion.
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int {
+        var deleted = 0
+        for id in messageIDs {
+            if (try? await deleteMessage(channelID: channelID, messageID: id)) != nil { deleted += 1 }
+        }
+        return deleted
+    }
 }
 
 struct SweepFetchedMessage: Sendable, Hashable {
@@ -546,6 +656,26 @@ struct LiveSweepDispatcher: SweepDispatcher {
 
     func deleteMessage(channelID: String, messageID: String) async throws {
         try await discord.sweepDeleteMessage(channelId: channelID, messageId: messageID)
+    }
+
+    func deleteMessages(channelID: String, messageIDs: [String]) async -> Int {
+        await discord.sweepDeleteMessages(channelId: channelID, messageIds: messageIDs)
+    }
+
+    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String {
+        let resolvedTitle = await discord.sweepResolveCustomEmoji(guildId: guildID, in: title)
+        let resolvedBody = await discord.sweepResolveCustomEmoji(guildId: guildID, in: body)
+        return try await discord.sweepPostPinnedNotice(
+            channelId: channelID, embed: Self.embed(title: resolvedTitle, body: resolvedBody))
+    }
+
+    func noticeExists(channelID: String, messageID: String) async -> Bool {
+        await discord.sweepMessageExists(channelId: channelID, messageId: messageID)
+    }
+
+    /// Discord embed payload. Colour is SwiftBot's blurple accent (decimal int).
+    private static func embed(title: String, body: String) -> [String: Any] {
+        ["title": title, "description": body, "color": 0x5B5BD6]
     }
 }
 
@@ -722,6 +852,8 @@ final class SweepService: ObservableObject {
     }
     @Published private(set) var activePolicyID: UUID?
     @Published private(set) var suggestions: [SweepSuggestion] = []
+    /// Rules that have had a successful Try Run this session (in-memory only).
+    @Published private(set) var previewedPolicyIDs: Set<UUID> = []
     @Published private(set) var isScanningSuggestions: Bool = false
     @Published private(set) var lastSuggestionScanAt: Date?
     @Published private(set) var scanProgress: (done: Int, total: Int) = (0, 0)
@@ -888,7 +1020,7 @@ final class SweepService: ObservableObject {
 
     @discardableResult
     func run(policyID: UUID, manual: Bool) async -> SweepRunReport? {
-        guard let policy = policies.first(where: { $0.id == policyID }) else { return nil }
+        guard var policy = policies.first(where: { $0.id == policyID }) else { return nil }
         if globalPaused && !manual { return nil }
 
         activePolicyID = policyID
@@ -903,31 +1035,64 @@ final class SweepService: ObservableObject {
             let canExecute = await dispatcher.canExecute()
             let effectivelyDryRun = policy.safety.dryRunOnly || !canExecute
 
-            let messages = try await dispatcher.fetchRecentMessages(
-                channelID: policy.channelID,
-                limit: max(10, policy.safety.maxMessagesPerRun)
-            )
-
-            let plan = planActions(for: policy, messages: messages)
-            let toExecute = plan.filter { $0.kind != .skip && $0.kind != .keep }
-
-            var executed = 0
-            if !effectivelyDryRun {
-                for action in toExecute where action.kind == .delete {
-                    do {
-                        try await dispatcher.deleteMessage(channelID: policy.channelID, messageID: action.messageID)
-                        executed += 1
-                    } catch {
-                        // Skip and continue; surfaced via report.error after the loop.
-                    }
+            // Pin the management notice BEFORE clearing — only on live runs —
+            // so it's in place during the run and protected from deletion by
+            // its ID (which we feed into the planner below).
+            if !effectivelyDryRun, let notice = policy.notice, notice.isEnabled {
+                if let id = await ensureNotice(notice, for: policy), !id.isEmpty {
+                    policy.notice?.pinnedMessageID = id
                 }
             }
 
-            let suppressed = plan.filter { $0.kind == .skip }.count
+            // A full-channel clear deletes in pages and repeats until the
+            // channel is empty (delete-until-empty); every other task makes a
+            // single bounded pass. The loop stops as soon as a pass deletes
+            // nothing — empty channel, only-protected messages left, dry run,
+            // or a non-clear task — so it can't spin.
+            let isClearLoop = policy.isClearAll
+            let pageLimit = isClearLoop
+                ? SweepService.clearPageSize
+                : max(10, policy.safety.maxMessagesPerRun)
+
+            var scanned = 0
+            var matched = 0
+            var executed = 0
+            var suppressed = 0
+            var representativePlan: [SweepAction] = []
+            var pass = 0
+
+            while true {
+                pass += 1
+                let messages = try await dispatcher.fetchRecentMessages(
+                    channelID: policy.channelID,
+                    limit: pageLimit
+                )
+                let plan = planActions(for: policy, messages: messages)
+                let toExecute = plan.filter { $0.kind != .skip && $0.kind != .keep }
+                scanned += messages.count
+                matched += toExecute.count
+                suppressed += plan.filter { $0.kind == .skip }.count
+                if representativePlan.isEmpty { representativePlan = plan }
+
+                var deletedThisPass = 0
+                if !effectivelyDryRun {
+                    // Batch deletions through the dispatcher, which uses bulk
+                    // delete + rate-limit backoff under the hood.
+                    let deleteIDs = toExecute.filter { $0.kind == .delete }.map(\.messageID)
+                    deletedThisPass = await dispatcher.deleteMessages(
+                        channelID: policy.channelID, messageIDs: deleteIDs)
+                }
+                executed += deletedThisPass
+
+                let moreLikely = messages.count >= pageLimit
+                let shouldContinue = isClearLoop && !effectivelyDryRun
+                    && deletedThisPass > 0 && moreLikely && pass < SweepService.clearMaxPasses
+                if !shouldContinue { break }
+            }
 
             // Build an on-device digest if any actions asked to be summarised.
             var digest: String?
-            let summariseLines = plan
+            let summariseLines = representativePlan
                 .filter { $0.kind == .summarise }
                 .map(\.preview)
             if !summariseLines.isEmpty, let summariser {
@@ -939,12 +1104,12 @@ final class SweepService: ObservableObject {
                 policyName: policy.name,
                 startedAt: start,
                 durationMS: Int(Date().timeIntervalSince(start) * 1000),
-                scanned: messages.count,
-                matched: toExecute.count,
+                scanned: scanned,
+                matched: matched,
                 executed: executed,
                 suppressed: suppressed,
                 dryRun: effectivelyDryRun,
-                actions: plan,
+                actions: SweepService.sampledActions(representativePlan),
                 error: nil,
                 summary: digest
             )
@@ -980,7 +1145,17 @@ final class SweepService: ObservableObject {
 
     func preview(policyID: UUID) async -> SweepRunReport? {
         guard let policy = policies.first(where: { $0.id == policyID }) else { return nil }
-        return await runPreview(of: policy)
+        let report = await runPreview(of: policy)
+        // A successful dry-run "verifies" the rule — used to warn before a live
+        // Run Now on a rule that's never been previewed.
+        if report.error == nil { previewedPolicyIDs.insert(policyID) }
+        return report
+    }
+
+    /// Whether the user has done a successful Try Run on this rule (this
+    /// session) or it has already run live — i.e. they've seen its effect.
+    func hasBeenVerified(_ policy: SweepPolicy) -> Bool {
+        previewedPolicyIDs.contains(policy.id) || policy.lastRunAt != nil
     }
 
     /// Always returns a `SweepRunReport`. On failure (no token, channel not
@@ -1007,9 +1182,14 @@ final class SweepService: ObservableObject {
             )
         }
         do {
+            // Dry-run preview fetches a bounded sample even for a full clear so
+            // Try Run stays responsive; the live run fetches the full depth.
+            let previewLimit = policy.isClearAll
+                ? SweepService.clearPageSize
+                : max(10, policy.safety.maxMessagesPerRun)
             let messages = try await dispatcher.fetchRecentMessages(
                 channelID: policy.channelID,
-                limit: max(10, policy.safety.maxMessagesPerRun)
+                limit: previewLimit
             )
             let plan = planActions(for: policy, messages: messages)
             let matched = plan.filter { $0.kind != .skip && $0.kind != .keep }.count
@@ -1075,6 +1255,35 @@ final class SweepService: ObservableObject {
         return ns.localizedDescription
     }
 
+    /// Ensure the policy's pinned notice exists, returning the effective pinned
+    /// message ID (so the run can protect it from the clear that follows). The
+    /// notice is posted **once**: if we already have one and it still exists,
+    /// it's left untouched; we only (re)post + pin when it's missing (never
+    /// created, or deleted in Discord). Failures are swallowed — a notice
+    /// hiccup never fails the sweep — returning the last known ID.
+    @discardableResult
+    private func ensureNotice(_ notice: SweepNotice, for policy: SweepPolicy) async -> String? {
+        // Already posted and still present → leave it exactly as-is.
+        if let existing = notice.pinnedMessageID,
+           await dispatcher.noticeExists(channelID: policy.channelID, messageID: existing) {
+            return existing
+        }
+        do {
+            let title = ":swiftbird: Channel managed by Swiftbot"
+            let body = notice.rendered(for: policy.schedule)
+            let newID = try await dispatcher.postPinnedNotice(
+                channelID: policy.channelID, guildID: policy.guildID, title: title, body: body)
+            if !newID.isEmpty, let i = policies.firstIndex(where: { $0.id == policy.id }) {
+                policies[i].notice?.pinnedMessageID = newID
+                await persist()
+            }
+            return newID.isEmpty ? notice.pinnedMessageID : newID
+        } catch {
+            lastError = "Sweep notice for #\(policy.channelName): \(error.localizedDescription)"
+            return notice.pinnedMessageID
+        }
+    }
+
     private func markRan(policyID: UUID, at date: Date) {
         guard let i = policies.firstIndex(where: { $0.id == policyID }) else { return }
         policies[i].lastRunAt = date
@@ -1096,6 +1305,22 @@ final class SweepService: ObservableObject {
     /// cap keep the Discord API request rate low.
     static let suggestionScanMessageLimit: Int = 300
     static let suggestionScanInterChannelDelayNanos: UInt64 = 1_500_000_000
+
+    /// How many messages a full-channel clear fetches+deletes per pass before
+    /// looping again. Keeps each pass's memory footprint small while the loop
+    /// drains the channel completely.
+    static let clearPageSize: Int = 1_000
+
+    /// Safety bound on clear passes (≈ clearPageSize × this many messages) so a
+    /// pathological channel can never loop unbounded. Far above any real channel.
+    static let clearMaxPasses: Int = 500
+
+    /// A full clear can match thousands of messages; the real counts live on
+    /// the report's dedicated fields, so we persist only a sample of `actions`
+    /// (the activity view shows the first 12 anyway) to keep snapshots small.
+    static func sampledActions(_ actions: [SweepAction]) -> [SweepAction] {
+        actions.count > 60 ? Array(actions.prefix(60)) : actions
+    }
 
     struct SweepScanTarget: Sendable, Hashable {
         let guildID: String
@@ -1173,6 +1398,7 @@ final class SweepService: ObservableObject {
         case .summarise:   name = "Summarise · #\(suggestion.channelName)"
         case .archive:     name = "Archive · #\(suggestion.channelName)"
         case .quietChannel: name = "Quiet · #\(suggestion.channelName)"
+        case .clearAll:    name = "Clear · #\(suggestion.channelName)"
         }
         let policy = SweepPolicy(
             name: name,
@@ -1239,8 +1465,13 @@ final class SweepService: ObservableObject {
         let minAge = TimeInterval(policy.safety.minMessageAgeMinutes * 60)
 
         // Safety pass — produce `.skip` entries for protected messages.
+        let noticeID = policy.notice?.pinnedMessageID
         var candidates: [SweepFetchedMessage] = []
         for message in messages {
+            if let noticeID, message.id == noticeID {
+                actions.append(.from(message, kind: .skip, reason: "Swiftbot notice — protected"))
+                continue
+            }
             if policy.safety.protectPinned && message.isPinned {
                 actions.append(.from(message, kind: .skip, reason: "Pinned — protected"))
                 continue
@@ -1269,10 +1500,11 @@ final class SweepService: ObservableObject {
             actions.append(.from(message, kind: .keep, reason: "No matching strategy"))
         }
 
-        // Apply per-run cap.
+        // Apply per-run cap — except for a full-channel clear, whose whole
+        // purpose is to empty the channel regardless of the cap.
         let cap = max(1, policy.safety.maxMessagesPerRun)
         let executable = actions.filter { $0.kind != .skip && $0.kind != .keep }
-        if executable.count > cap {
+        if !policy.isClearAll && executable.count > cap {
             let trim = executable.count - cap
             var trimmed = 0
             var output: [SweepAction] = []
@@ -1305,6 +1537,14 @@ final class SweepService: ObservableObject {
         let age = TimeInterval(strategy.ageHours * 3_600)
 
         switch strategy.kind {
+        case .clearAll:
+            // Delete every remaining candidate. Protection (pinned/reacted/min
+            // age/notice) is handled in the safety pass before we get here.
+            let consumed = messages.map {
+                SweepAction.from($0, kind: .delete, reason: "Channel cleared")
+            }
+            return (consumed, [])
+
         case .compact:
             var consumed: [SweepAction] = []
             var remaining: [SweepFetchedMessage] = []
@@ -1672,7 +1912,12 @@ private struct SweepContentView: View {
 
     private var activeRunPanel: some View {
         HStack(spacing: 12) {
-            ProgressView().controlSize(.mini)
+            // Continuously rotating gear — the arrows spin while the cog stays
+            // put (the symbol's built-in rotate effect handles that).
+            Image(systemName: "gearshape.arrow.trianglehead.2.clockwise.rotate.90")
+                .font(.title3)
+                .foregroundStyle(.orange)
+                .symbolEffect(.rotate, options: .repeating)
             VStack(alignment: .leading, spacing: 2) {
                 Text("SWEEP IN PROGRESS")
                     .font(.subheadline.weight(.bold))
@@ -1796,6 +2041,7 @@ private struct SweepContentView: View {
                 ForEach(service.policies) { policy in
                     SweepPolicyRow(
                         policy: policy,
+                        hasBeenVerified: service.hasBeenVerified(policy),
                         onPreview: {
                             previewingPolicyName = policy.name
                             Task {
@@ -1953,11 +2199,14 @@ enum SweepDashboardSummary {
 
 private struct SweepPolicyRow: View {
     let policy: SweepPolicy
+    let hasBeenVerified: Bool
     let onPreview: () -> Void
     let onRunNow: () -> Void
     let onEdit: () -> Void
     let onToggleEnabled: () -> Void
     let onDelete: () -> Void
+
+    @State private var confirmingRun = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -2023,6 +2272,28 @@ private struct SweepPolicyRow: View {
             .controlSize(.small)
             .help("Run this rule as a dry-run against the channel right now — nothing is changed.")
 
+            Button {
+                confirmingRun = true
+            } label: {
+                Label("Run Now", systemImage: "bolt.fill")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .help("Run this rule live right now, even if it's scheduled. This performs the real actions on the channel.")
+            .confirmationDialog(
+                "Run “\(policy.name)” now?",
+                isPresented: $confirmingRun,
+                titleVisibility: .visible
+            ) {
+                Button(policy.isClearAll ? "Clear \(channelLabel) now" : "Run now", role: .destructive) {
+                    onRunNow()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(confirmationMessage)
+            }
+
             if let last = policy.lastRunAt {
                 Text(relativeShort(last))
                     .font(.caption)
@@ -2073,6 +2344,19 @@ private struct SweepPolicyRow: View {
         if !policy.channelName.isEmpty { return "#\(policy.channelName)" }
         if !policy.channelID.isEmpty { return "Channel \(policy.channelID)" }
         return "Unconfigured channel"
+    }
+
+    private var confirmationMessage: String {
+        let base: String
+        if policy.isClearAll {
+            base = "This will permanently delete every message in \(channelLabel) right now. Pinned/reacted messages are kept per this rule's safety rails."
+        } else {
+            base = "This runs “\(policy.name)” live against \(channelLabel) now and performs its real actions."
+        }
+        if !hasBeenVerified {
+            return "⚠️ You haven't done a Try Run on this rule yet, so you haven't previewed what it will affect. Consider running Try Run first.\n\n" + base
+        }
+        return base
     }
 
     private func relativeShort(_ date: Date) -> String {
@@ -2397,8 +2681,11 @@ struct SweepPolicyEditor: View {
                         .onChange(of: policy.guildID) { _, newValue in
                             policy.guildName = connectedServers[newValue] ?? ""
                             let channels = channelsByServer[newValue] ?? []
+                            // Never auto-pick a channel — require an explicit
+                            // choice so a rule can't accidentally target (and
+                            // clear) a channel the user didn't select.
                             if !channels.contains(where: { $0.id == policy.channelID }) {
-                                policy.channelID = channels.first?.id ?? ""
+                                policy.channelID = ""
                             }
                             syncChannelName()
                         }
@@ -2415,6 +2702,10 @@ struct SweepPolicyEditor: View {
 
                     SweepFormSection(title: "Safety Rails", symbol: "shield.lefthalf.filled") {
                         safetyRails
+                    }
+
+                    SweepFormSection(title: "Pinned Notice", symbol: "pin.fill") {
+                        pinnedNotice
                     }
 
                     if let tryRunReport {
@@ -2595,15 +2886,12 @@ struct SweepPolicyEditor: View {
 
     private func autoSelectIfNeeded() {
         // If exactly one server is connected, lock it in silently so users
-        // aren't asked to pick from a list of one.
+        // aren't asked to pick from a list of one. The channel is deliberately
+        // NOT auto-selected — the user must choose one, so a new rule can never
+        // default to (and accidentally act on) a channel they didn't pick.
         if isSingleServer, let only = sortedServerIDs.first, policy.guildID.isEmpty {
             policy.guildID = only
             policy.guildName = connectedServers[only] ?? ""
-            if policy.channelID.isEmpty,
-               let firstChannel = (channelsByServer[only] ?? []).first {
-                policy.channelID = firstChannel.id
-                policy.channelName = firstChannel.name
-            }
         }
     }
 
@@ -2738,9 +3026,34 @@ struct SweepPolicyEditor: View {
                 )
                 Spacer()
             }
+        case .clearChannel:
+            clearChannelWarning
         case .dailyDigest:
             EmptyView()
         }
+    }
+
+    private var clearChannelWarning: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text("This permanently deletes **every** message in the channel on each run. Messages older than 14 days are removed one at a time, so a first run on a channel with lots of history may take several minutes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private func selectTask(_ task: SweepTask) {
@@ -2846,7 +3159,7 @@ struct SweepPolicyEditor: View {
                     .frame(maxWidth: 140)
                 Spacer()
             }
-        case .summarise, .quietChannel:
+        case .summarise, .quietChannel, .clearAll:
             EmptyView() // No parameters — blurb above describes the behaviour.
         }
     }
@@ -2931,18 +3244,23 @@ struct SweepPolicyEditor: View {
             Toggle("Protect messages with reactions", isOn: $policy.safety.protectReacted)
                 .toggleStyle(.switch)
                 .font(.caption)
-            HStack {
-                Text("Max per run")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 110, alignment: .leading)
-                numericInput(
-                    value: $policy.safety.maxMessagesPerRun,
-                    range: 10...2000,
-                    step: 10,
-                    suffix: "messages"
-                )
-                Spacer()
+            // "Max per run" is a throttle for the tidying tasks. A full-channel
+            // clear ignores it (it empties the channel), so we hide it there to
+            // avoid implying a limit that doesn't apply.
+            if !policy.isClearAll {
+                HStack {
+                    Text("Max per run")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 110, alignment: .leading)
+                    numericInput(
+                        value: $policy.safety.maxMessagesPerRun,
+                        range: 10...2000,
+                        step: 10,
+                        suffix: "messages"
+                    )
+                    Spacer()
+                }
             }
             HStack {
                 Text("Min age (min)")
@@ -2956,6 +3274,65 @@ struct SweepPolicyEditor: View {
                     suffix: "minutes"
                 )
                 Spacer()
+            }
+        }
+    }
+
+    // MARK: Pinned notice
+
+    private var noticeBinding: Binding<SweepNotice> {
+        Binding(
+            get: { policy.notice ?? SweepNotice() },
+            set: { policy.notice = $0 }
+        )
+    }
+
+    @ViewBuilder
+    private var pinnedNotice: some View {
+        let notice = noticeBinding
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Pin a managed-channel notice", isOn: notice.isEnabled)
+                .toggleStyle(.switch)
+                .font(.caption)
+
+            if notice.wrappedValue.isEnabled {
+                Text("Swiftbot posts this as a pinned embed after each live run, and keeps a single copy up to date. The notice is never deleted by this rule.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                TextEditor(text: notice.template)
+                    .font(.callout)
+                    .frame(minHeight: 56, maxHeight: 90)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+
+                Text("Placeholders: {time} → e.g. “at 4 AM” · {frequency} → e.g. “daily”")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "eye")
+                        .font(.caption2)
+                        .foregroundStyle(.tint)
+                    Text(notice.wrappedValue.rendered(for: policy.schedule))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.08))
+                )
             }
         }
     }

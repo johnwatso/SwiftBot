@@ -16,7 +16,11 @@ struct DiscordMessageRESTClient {
     }
 
     func sendMessageReturningID(channelId: String, content: String, token: String) async throws -> String {
-        let response = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
+        try await sendMessageReturningID(channelId: channelId, payload: ["content": content], token: token)
+    }
+
+    func sendMessageReturningID(channelId: String, payload: [String: Any], token: String) async throws -> String {
+        let response = try await sendMessage(channelId: channelId, payload: payload, token: token)
         guard let data = response.responseBody.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(DiscordRESTMessageEnvelope.self, from: data) else {
             throw NSError(
@@ -90,9 +94,14 @@ struct DiscordMessageRESTClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (_, response) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to edit message"])
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to edit message", "responseBody": responseBody]
+            )
         }
     }
 
@@ -269,9 +278,56 @@ struct DiscordMessageRESTClient {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
         req.httpMethod = "DELETE"
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        let (_, response) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "DiscordService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to delete message"])
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to delete message", "responseBody": responseBody]
+            )
+        }
+    }
+
+    /// Fetch a guild's custom emoji as `(name, id, animated)` tuples, so callers
+    /// can convert `:name:` shorthand into the `<:name:id>` token bots must use.
+    func fetchGuildEmojis(guildId: String, token: String) async throws -> [(name: String, id: String, animated: Bool)] {
+        var req = URLRequest(url: restBase.appendingPathComponent("guilds/\(guildId)/emojis"))
+        req.httpMethod = "GET"
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch guild emojis", "responseBody": responseBody]
+            )
+        }
+        guard let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return arr.compactMap { obj in
+            guard let name = obj["name"] as? String, let id = obj["id"] as? String else { return nil }
+            return (name, id, (obj["animated"] as? Bool) ?? false)
+        }
+    }
+
+    /// Bulk-delete 2–100 messages in a single request. Discord rejects the
+    /// whole batch (400) if any message is older than 14 days or a duplicate,
+    /// so the caller must pre-filter to recent, unique IDs.
+    func bulkDeleteMessages(channelId: String, messageIds: [String], token: String) async throws {
+        var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/bulk-delete"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["messages": messageIds])
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "DiscordService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to bulk-delete messages", "responseBody": responseBody]
+            )
         }
     }
 

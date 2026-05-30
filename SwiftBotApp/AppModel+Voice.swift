@@ -303,7 +303,12 @@ extension AppModel {
         if let botUserId, event.userID == botUserId { return }
         guard let watcher = textChannelAnnouncer else { return }
         let cachedDisplayName = await discordCache.userName(for: event.userID)
-        await watcher.handle(event, displayNameOverride: cachedDisplayName)
+        await watcher.handle(
+            event,
+            displayNameOverride: cachedDisplayName,
+            channelNames: flattenedChannelNames(),
+            roleNames: flattenedRoleNames()
+        )
     }
 
     // MARK: - Gateway event handlers

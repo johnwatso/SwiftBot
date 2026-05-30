@@ -35,12 +35,16 @@ final class AppUpdater: NSObject, ObservableObject {
     @Published private(set) var hasPublicKey = false
     @Published private(set) var bundlePath = Bundle.main.bundlePath
     @Published private(set) var selectedChannel: UpdateChannel = .stable
+    @Published private(set) var automaticallyChecksForUpdates = false
+    @Published private(set) var automaticallyDownloadsUpdates = false
 
 #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
 #endif
     private let stableFeedURL: String
+    private let currentShortVersion: String
     private var autoCheckTask: Task<Void, Never>?
+    var onError: ((Error) -> Void)?
 
     init(bundle: Bundle = .main) {
         let persistedChannelRaw = UserDefaults.standard.string(forKey: Self.updateChannelDefaultsKey) ?? UpdateChannel.stable.rawValue
@@ -51,8 +55,11 @@ final class AppUpdater: NSObject, ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let publicKey = (bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let shortVersion = (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let configured = !feedURL.isEmpty && !publicKey.isEmpty
         stableFeedURL = feedURL
+        currentShortVersion = shortVersion
 
         let initialFeedURL = Self.resolvedFeedURL(stableFeedURL: feedURL, channel: persistedChannel)
 
@@ -70,16 +77,20 @@ final class AppUpdater: NSObject, ObservableObject {
                 updaterDelegate: self,
                 userDriverDelegate: nil
             )
-            updaterController?.updater.automaticallyChecksForUpdates = true
-            updaterController?.updater.automaticallyDownloadsUpdates = true
+            automaticallyChecksForUpdates = updaterController?.updater.automaticallyChecksForUpdates ?? false
+            automaticallyDownloadsUpdates = updaterController?.updater.automaticallyDownloadsUpdates ?? false
             canCheckForUpdates = true
-            startAutoCheckLoop()
+            updateAutoCheckLoop()
         } else {
             updaterController = nil
             canCheckForUpdates = false
+            automaticallyChecksForUpdates = false
+            automaticallyDownloadsUpdates = false
         }
 #else
         canCheckForUpdates = false
+        automaticallyChecksForUpdates = false
+        automaticallyDownloadsUpdates = false
 #endif
     }
 
@@ -93,6 +104,34 @@ final class AppUpdater: NSObject, ObservableObject {
 #if canImport(Sparkle)
         updaterController?.updater.checkForUpdatesInBackground()
 #endif
+    }
+
+    var releaseNotesURL: URL? {
+        Self.releaseNotesURL(from: feedURLString, shortVersion: currentShortVersion)
+    }
+
+    func setAutomaticallyChecksForUpdates(_ isEnabled: Bool) {
+#if canImport(Sparkle)
+        updaterController?.updater.automaticallyChecksForUpdates = isEnabled
+#endif
+        automaticallyChecksForUpdates = isEnabled
+        updateAutoCheckLoop()
+    }
+
+    func setAutomaticallyDownloadsUpdates(_ isEnabled: Bool) {
+#if canImport(Sparkle)
+        updaterController?.updater.automaticallyDownloadsUpdates = isEnabled
+#endif
+        automaticallyDownloadsUpdates = isEnabled
+    }
+
+    private func updateAutoCheckLoop() {
+        if automaticallyChecksForUpdates {
+            startAutoCheckLoop()
+        } else {
+            autoCheckTask?.cancel()
+            autoCheckTask = nil
+        }
     }
 
     private func startAutoCheckLoop() {
@@ -140,6 +179,30 @@ final class AppUpdater: NSObject, ObservableObject {
         components.path = betaPath
         return components.url?.absoluteString ?? stableFeedURL
     }
+
+    static func releaseNotesURL(from feedURLString: String, shortVersion: String) -> URL? {
+        guard var components = URLComponents(string: feedURLString) else {
+            return nil
+        }
+
+        let sanitizedVersion = shortVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = components.path
+        if path.hasSuffix("/beta/appcast.xml") {
+            components.path = String(path.dropLast("/beta/appcast.xml".count)) + "/release-notes/"
+        } else if path.hasSuffix("/appcast.xml") {
+            components.path = String(path.dropLast("/appcast.xml".count)) + "/release-notes/"
+        } else if path.hasSuffix("appcast.xml") {
+            components.path = String(path.dropLast("appcast.xml".count)) + "release-notes/"
+        } else {
+            components.path = path.hasSuffix("/") ? path + "release-notes/" : path + "/release-notes/"
+        }
+
+        if !sanitizedVersion.isEmpty {
+            components.path += components.path.hasSuffix("/") ? "\(sanitizedVersion).html" : "/\(sanitizedVersion).html"
+        }
+
+        return components.url
+    }
 }
 
 #if canImport(Sparkle)
@@ -151,6 +214,21 @@ extension AppUpdater: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         // Do not postpone relaunch; install immediately when Sparkle is ready.
         return false
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        let nsError = error as NSError
+        // Skip expected non-failure errors:
+        // SUNoUpdateError = 4001 or 2401
+        // SUInstallationCanceledError = 4003 or 2403
+        if nsError.domain == "SUSparkleErrorDomain" {
+            let code = nsError.code
+            if code == 4001 || code == 4003 || code == 2401 || code == 2403 {
+                return
+            }
+        }
+
+        onError?(error)
     }
 
     func updaterShouldRelaunchApplication(_ updater: SPUUpdater) -> Bool {

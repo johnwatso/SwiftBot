@@ -319,7 +319,33 @@ extension AppModel {
         knownUsersById = snapshot.usernamesById
         knownBotUserIds = snapshot.botUserIds
         knownGuildMemberIds = snapshot.guildMemberIds
+        // Feed channel/role names to DiscordService so Sweep/Announcer can turn
+        // raw `<#id>` / `<@&id>` markup into real #channel / @role names.
+        let channelNames = flattenedChannelNames()
+        let roleNames = flattenedRoleNames()
+        await service.setNameCaches(channels: channelNames, roles: roleNames)
         maybeStartFirstSweepScan()
+    }
+
+    /// Flatten cached channels (text + voice) into an id → name map.
+    func flattenedChannelNames() -> [String: String] {
+        var out: [String: String] = [:]
+        for channels in availableTextChannelsByServer.values {
+            for channel in channels { out[channel.id] = channel.name }
+        }
+        for channels in availableVoiceChannelsByServer.values {
+            for channel in channels { out[channel.id] = channel.name }
+        }
+        return out
+    }
+
+    /// Flatten cached roles into an id → name map.
+    func flattenedRoleNames() -> [String: String] {
+        var out: [String: String] = [:]
+        for roles in availableRolesByServer.values {
+            for role in roles { out[role.id] = role.name }
+        }
+        return out
     }
 
     @discardableResult
