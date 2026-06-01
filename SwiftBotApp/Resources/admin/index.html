@@ -7663,6 +7663,7 @@
 
           const summaryParts = [];
           if (config.autoJoin) summaryParts.push('auto-join');
+          if (config.introduceOnManualJoin) summaryParts.push('intro');
           if (config.connectionMode === 'fixed') summaryParts.push(`${config.connectionMinutes} min`);
           else summaryParts.push('until empty');
 
@@ -7783,6 +7784,7 @@
         symbol: 'volume-2',
         tint: 'purple',
         autoJoin: false,
+        introduceOnManualJoin: false,
         connectionMode: 'fixed',
         connectionMinutes: 20,
         textChannels: [],
@@ -7806,6 +7808,7 @@
         config.symbol = document.getElementById('acSymbol').value;
         config.tint = document.getElementById('acTint').value;
         config.autoJoin = document.getElementById('acAutoJoin').checked;
+        config.introduceOnManualJoin = document.getElementById('acIntroduceOnManualJoin').checked;
         config.connectionMode = document.getElementById('acConnectionMode').value;
         config.connectionMinutes = parseInt(document.getElementById('acConnectionMinutes').value) || 20;
         config.enabled = document.getElementById('acEnabled').checked;
@@ -7936,6 +7939,7 @@
         row('Icon', symbolSelectHTML) +
         row('Tint Color', tintSelectHTML) +
         row('Auto-join', `<input id="acAutoJoin" type="checkbox" ${config.autoJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Join automatically when a user enters voice</span>`) +
+        row('Manual intro', `<input id="acIntroduceOnManualJoin" type="checkbox" ${config.introduceOnManualJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Say a short intro after /announce join</span>`) +
         row('Connection Mode', connectionModeHTML) +
         row('Fixed Stay Duration', connectionMinutesHTML) +
         row('Reads Text Channels', `<div id="acTextChannelsList" style="max-height: 150px; overflow-y: auto; padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--cv-border); border-radius: 6px;"></div>`);

@@ -162,11 +162,12 @@ extension AppModel {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             guard let self else { return }
             await MainActor.run {
+                let isMissingVoiceHandshakeData = self.voicePendingSessionID == nil ||
+                    self.voicePendingServerToken == nil ||
+                    self.voicePendingServerEndpoint == nil
                 if self.voiceConnectionStatus == .connecting,
                    self.voicePendingGuildID == attemptGuildID,
-                   (self.voicePendingSessionID == nil ||
-                    self.voicePendingServerToken == nil ||
-                    self.voicePendingServerEndpoint == nil) {
+                   isMissingVoiceHandshakeData {
                     let message = "Timed out waiting for Discord VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE."
                     self.voiceConnectionStatus = .failed(message)
                     self.deactivateAnnouncerSession()
@@ -287,6 +288,9 @@ extension AppModel {
         await connectVoice(guildID: guildID, channelID: config.voiceChannelID)
         if case let .failed(reason) = voiceConnectionStatus {
             return (false, reason)
+        }
+        if config.introduceOnManualJoin {
+            scheduleVoiceJoinIntro(channelID: config.voiceChannelID)
         }
         return (true, "Joining \(config.voiceChannelName) and reading the configured text feed.")
     }
@@ -504,7 +508,7 @@ extension AppModel {
             return
         }
         await connectVoice(guildID: guildId, channelID: channelId)
-        scheduleAutoJoinIntro(channelID: channelId)
+        scheduleVoiceJoinIntro(channelID: channelId)
 
         // Arm disconnect strategy
         autoDisconnectTask?.cancel()
@@ -557,7 +561,7 @@ extension AppModel {
         }
     }
 
-    private func scheduleAutoJoinIntro(channelID: String) {
+    private func scheduleVoiceJoinIntro(channelID: String) {
         let text = randomAutoJoinIntro()
         Task { [weak self] in
             for _ in 0..<24 {

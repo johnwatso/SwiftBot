@@ -317,6 +317,7 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 | `_purge_` | Cleaned up all stale comment references to `VoiceRuleEvent`. |
 | `_precedence_` | Implemented Typed Trigger System (Option 2) and Spam Moderation Filters (Option 3) with strict moderation execution precedence and full SwiftUI editor integrations. |
 | `_simulation_` | Implemented Rule Simulation & Execution Tracing (dry-run engine, simulation fields, and Tahoe-style simulation view). |
+| `_manual-intro_` | Added an opt-in manual `/announce join` voice intro using the existing auto-join intro scheduler, with native and admin UI controls. |
 
 **Key decisions**
 

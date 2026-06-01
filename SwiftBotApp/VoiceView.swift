@@ -572,6 +572,7 @@ struct VoiceView: View {
     private func behaviourSummary(for config: AnnouncerVoiceChannelConfig) -> String {
         var parts: [String] = []
         if config.autoJoin { parts.append("auto-join") }
+        if config.introduceOnManualJoin { parts.append("intro") }
         switch config.connectionMode {
         case .fixed:      parts.append("\(config.connectionMinutes) min")
         case .untilEmpty: parts.append("until empty")
@@ -890,6 +891,19 @@ private struct AnnouncerConfigSheet: View {
                             Text("Auto-join when someone enters")
                                 .font(.subheadline)
                             Text("SwiftBot joins \(config.voiceChannelName == "—" ? "this channel" : config.voiceChannelName) automatically whenever a member enters.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $config.introduceOnManualJoin) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Introduce on /announce join")
+                                .font(.subheadline)
+                            Text("SwiftBot says a short intro when someone starts this announcer manually.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

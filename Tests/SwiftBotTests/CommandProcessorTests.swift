@@ -275,6 +275,41 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(result.message, "Join a configured voice channel first, then run `/announce join` again.")
     }
 
+    func testAnnouncerVoiceChannelConfigDecodesManualIntroDefault() throws {
+        let json = """
+        {
+          "id": "config-1",
+          "name": "General",
+          "voiceChannelID": "voice-1",
+          "voiceChannelName": "General",
+          "autoJoin": true,
+          "connectionMode": "fixed",
+          "connectionMinutes": 20,
+          "textChannels": ["general"],
+          "enabled": true
+        }
+        """
+
+        let config = try JSONDecoder().decode(AnnouncerVoiceChannelConfig.self, from: Data(json.utf8))
+
+        XCTAssertFalse(config.introduceOnManualJoin)
+        XCTAssertTrue(config.autoJoin)
+    }
+
+    func testAnnouncerVoiceChannelConfigDecodesManualIntroEnabled() throws {
+        let json = """
+        {
+          "id": "config-1",
+          "name": "General",
+          "introduceOnManualJoin": true
+        }
+        """
+
+        let config = try JSONDecoder().decode(AnnouncerVoiceChannelConfig.self, from: Data(json.utf8))
+
+        XCTAssertTrue(config.introduceOnManualJoin)
+    }
+
     func testFormattedWikiResponseIncludesDetectedFieldsWithoutSummary() {
         let app = AppModel()
         let source = WikiSource(
