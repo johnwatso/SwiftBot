@@ -158,16 +158,15 @@ final class RemoteBotProvider: BotDataProvider {
     }
 
     func deleteRule(_ id: UUID) async throws {
-        // Remote API needs a delete endpoint or handle it via upsert with a flag
-        // For now, not implemented in RemoteAPI
+        throw RemoteBotProviderError.unsupportedMutation("Remote rule deletion is not available in SwiftBot 1.20.")
     }
 
     func startBot() async throws {
-        // Remote API needs a start endpoint
+        throw RemoteBotProviderError.unsupportedMutation("Remote bot start is not available in SwiftBot 1.20.")
     }
 
     func stopBot() async throws {
-        // Remote API needs a stop endpoint
+        throw RemoteBotProviderError.unsupportedMutation("Remote bot stop is not available in SwiftBot 1.20.")
     }
 
     func addPatchyTarget(_ target: PatchySourceTarget) async throws {
@@ -247,6 +246,16 @@ private func parseUptimeText(_ text: String?) -> TimeInterval {
 
 // MARK: - Errors
 
-enum RemoteBotProviderError: Error {
+enum RemoteBotProviderError: LocalizedError {
     case missingConfiguration
+    case unsupportedMutation(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingConfiguration:
+            return "Remote mode is missing its connection settings."
+        case .unsupportedMutation(let message):
+            return message
+        }
+    }
 }

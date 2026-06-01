@@ -65,11 +65,34 @@ enum SwiftBotEvent: Sendable {
         let guildId: String
         let userId: String
         let username: String
+        let roleIds: [String]?
         let channelId: String
         let messageId: String
         let content: String
         let isDirectMessage: Bool
         let authorIsBot: Bool
+
+        init(
+            guildId: String,
+            userId: String,
+            username: String,
+            roleIds: [String]? = nil,
+            channelId: String,
+            messageId: String,
+            content: String,
+            isDirectMessage: Bool,
+            authorIsBot: Bool
+        ) {
+            self.guildId = guildId
+            self.userId = userId
+            self.username = username
+            self.roleIds = roleIds
+            self.channelId = channelId
+            self.messageId = messageId
+            self.content = content
+            self.isDirectMessage = isDirectMessage
+            self.authorIsBot = authorIsBot
+        }
     }
 
     struct MediaPayload: Sendable {
@@ -259,6 +282,13 @@ enum SwiftBotEvent: Sendable {
     var authorIsBot: Bool? {
         switch self {
         case .message(let p): return p.authorIsBot
+        default: return nil
+        }
+    }
+
+    var memberRoleIds: [String]? {
+        switch self {
+        case .message(let p): return p.roleIds
         default: return nil
         }
     }

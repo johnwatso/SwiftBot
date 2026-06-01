@@ -43,10 +43,39 @@ struct GatewayMessageCreateEvent: Sendable {
     let displayName: String
     let channelID: String
     let userID: String
+    let memberRoleIDs: [String]?
     let guildID: String?
     let messageID: String
     let isBot: Bool
     let avatarHash: String?
+
+    init(
+        rawMap: [String: DiscordJSON],
+        content: String,
+        author: [String: DiscordJSON],
+        username: String,
+        displayName: String,
+        channelID: String,
+        userID: String,
+        memberRoleIDs: [String]? = nil,
+        guildID: String?,
+        messageID: String,
+        isBot: Bool,
+        avatarHash: String?
+    ) {
+        self.rawMap = rawMap
+        self.content = content
+        self.author = author
+        self.username = username
+        self.displayName = displayName
+        self.channelID = channelID
+        self.userID = userID
+        self.memberRoleIDs = memberRoleIDs
+        self.guildID = guildID
+        self.messageID = messageID
+        self.isBot = isBot
+        self.avatarHash = avatarHash
+    }
 }
 
 struct GatewayInteractionCreateEvent: Sendable {
@@ -317,11 +346,24 @@ actor GatewayEventDispatcher {
             displayName: displayName,
             channelID: channelID,
             userID: userID,
+            memberRoleIDs: memberRoleIDs(from: map),
             guildID: stringValue(for: "guild_id", in: map),
             messageID: messageID,
             isBot: isBot,
             avatarHash: stringValue(for: "avatar", in: author)
         )
+    }
+
+    private func memberRoleIDs(from map: [String: DiscordJSON]) -> [String]? {
+        guard case let .object(member)? = map["member"],
+              case let .array(rawRoles)? = member["roles"] else {
+            return nil
+        }
+
+        return rawRoles.compactMap { role in
+            guard case let .string(id) = role, !id.isEmpty else { return nil }
+            return id
+        }
     }
 
     private func messageDisplayName(

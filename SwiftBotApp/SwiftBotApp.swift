@@ -131,20 +131,24 @@ struct SwiftBotApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(appModel)
-                .environmentObject(updater)
-                .frame(minWidth: 1200, minHeight: 760)
-                .onAppear {
-                    applyAppIconIfAvailable()
-                    updater.checkForUpdatesInBackground()
-                }
-                .onOpenURL { url in
-                    handleDeepLink(url)
-                }
-                .background(WindowAccessor { window in
-                    applyMainWindowChrome(to: window)
-                })
+            if AppModel.isRunningUnderXCTest {
+                Color.clear.frame(width: 1, height: 1)
+            } else {
+                RootView()
+                    .environmentObject(appModel)
+                    .environmentObject(updater)
+                    .frame(minWidth: 1200, minHeight: 760)
+                    .onAppear {
+                        applyAppIconIfAvailable()
+                        updater.checkForUpdatesInBackground()
+                    }
+                    .onOpenURL { url in
+                        handleDeepLink(url)
+                    }
+                    .background(WindowAccessor { window in
+                        applyMainWindowChrome(to: window)
+                    })
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

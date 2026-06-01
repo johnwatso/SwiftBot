@@ -341,6 +341,10 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editOriginalInteractionResponse blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         nonisolated(unsafe) let safePayload = payload
         try await interactionRESTClient.editOriginalInteractionResponse(
             applicationID: applicationID,
@@ -627,6 +631,7 @@ actor DiscordService {
                 guildId: guildId,
                 userId: event.userID,
                 username: event.username,
+                roleIds: event.memberRoleIDs,
                 channelId: event.channelID,
                 messageId: event.messageID,
                 content: event.content,

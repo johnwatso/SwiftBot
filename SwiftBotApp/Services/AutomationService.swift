@@ -149,11 +149,23 @@ actor AutomationService {
             let pool = filter.userIds ?? []
             return pool.isEmpty || pool.contains(event.userId)
 
-        case .userHasAnyRole, .userHasAllRoles, .userHasNoneOfRoles:
-            // Member role state isn't plumbed through SwiftBotEvent yet,
-            // so role filters always pass. Surface this in the UI as
-            // "currently informational" until we wire it up.
-            return true
+        case .userHasAnyRole:
+            guard let eventRoleIds = event.memberRoleIds else { return false }
+            let required = Set(filter.roleIds ?? [])
+            guard !required.isEmpty else { return false }
+            return !Set(eventRoleIds).isDisjoint(with: required)
+
+        case .userHasAllRoles:
+            guard let eventRoleIds = event.memberRoleIds else { return false }
+            let required = Set(filter.roleIds ?? [])
+            guard !required.isEmpty else { return false }
+            return required.isSubset(of: Set(eventRoleIds))
+
+        case .userHasNoneOfRoles:
+            guard let eventRoleIds = event.memberRoleIds else { return false }
+            let excluded = Set(filter.roleIds ?? [])
+            guard !excluded.isEmpty else { return false }
+            return Set(eventRoleIds).isDisjoint(with: excluded)
 
         case .messageContains:
             let needle = (filter.text ?? "").lowercased()
