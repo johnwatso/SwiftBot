@@ -113,6 +113,12 @@ final class MeshFailoverTests: XCTestCase {
             sharedSecret: "drill-secret",
             leaderTerm: 1
         )
+        let termPersisted = expectation(description: "Accepted leader-changed term is persisted")
+        await worker.setTermChangedHandler { newTerm in
+            if newTerm == 2 {
+                termPersisted.fulfill()
+            }
+        }
 
         let payload = MeshLeaderChangedPayload(
             term: 2,
@@ -133,6 +139,7 @@ final class MeshFailoverTests: XCTestCase {
         XCTAssertEqual(statusCode(from: response), 200)
         XCTAssertEqual(newAddress, "http://127.0.0.1:39110")
         XCTAssertEqual(newTerm, 2)
+        await fulfillment(of: [termPersisted], timeout: 2.0)
     }
 
     func testWorkerRejectsStaleTermLeaderChanged() async {

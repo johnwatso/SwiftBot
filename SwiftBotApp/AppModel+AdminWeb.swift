@@ -1192,6 +1192,13 @@ extension AppModel {
     }
 
     func configureAdminWebServer() async {
+        guard !Self.isRunningUnderXCTest else {
+            await adminWebServer.stop()
+            adminWebResolvedBaseURL = ""
+            adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
+            return
+        }
+
         let httpsConfiguration = usesLocalRuntime ? await resolveAdminWebHTTPSConfiguration() : nil
         // Cloudflare Internet Access terminates TLS at the edge and forwards to
         // SwiftBot's loopback-only HTTP origin. In that mode, HTTPS is still

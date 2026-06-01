@@ -6319,8 +6319,7 @@
         case 'userHasAnyRole':
         case 'userHasAllRoles':
         case 'userHasNoneOfRoles':
-          return multiList('Roles', ctx.roles, f.roleIds, 'roleIds') +
-            '<div class="placeholder" style="margin:6px 0 0;font-size:11px;color:#f59e0b;">Role checks are informational until member roles are plumbed through events.</div>';
+          return multiList('Roles', ctx.roles, f.roleIds, 'roleIds');
         case 'messageContainsAny':
           return `<div class="automation-editor-row">
             <label>Any of</label>
@@ -7366,7 +7365,7 @@
       };
       
       newButton.onclick = () => {
-        setMessage('Sweep rule creation is currently available in the native app. Web parity will follow with full policy CRUD.', 'info');
+        setMessage('Create and edit Sweep rules in the macOS app. This web view supports monitoring, pause/resume, previews, run now, toggles, delete, and suggestions.', 'info');
       };
 
       // Metrics

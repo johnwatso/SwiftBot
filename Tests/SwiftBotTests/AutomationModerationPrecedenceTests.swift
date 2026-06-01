@@ -265,6 +265,46 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertEqual(matchesSafe.count, 0)
     }
 
+    func testRoleFilterMatchesAnyConfiguredRole() {
+        let filter = Automations.Filter(id: "f-role", kind: .userHasAnyRole, roleIds: ["moderator", "vip"])
+        let rules = [roleFilterRule(filter)]
+        let event = messageEvent(roleIds: ["member", "vip"])
+
+        let matches = automationService.evaluate(event: event, in: rules)
+
+        XCTAssertEqual(matches.count, 1)
+    }
+
+    func testRoleFilterRequiresAllConfiguredRoles() {
+        let filter = Automations.Filter(id: "f-role", kind: .userHasAllRoles, roleIds: ["moderator", "vip"])
+        let rules = [roleFilterRule(filter)]
+
+        XCTAssertEqual(automationService.evaluate(event: messageEvent(roleIds: ["moderator", "vip"]), in: rules).count, 1)
+        XCTAssertEqual(automationService.evaluate(event: messageEvent(roleIds: ["moderator"]), in: rules).count, 0)
+    }
+
+    func testRoleFilterMatchesNoneOnlyWhenRoleDataIsKnown() {
+        let filter = Automations.Filter(id: "f-role", kind: .userHasNoneOfRoles, roleIds: ["muted"])
+        let rules = [roleFilterRule(filter)]
+
+        XCTAssertEqual(automationService.evaluate(event: messageEvent(roleIds: ["member"]), in: rules).count, 1)
+        XCTAssertEqual(automationService.evaluate(event: messageEvent(roleIds: ["member", "muted"]), in: rules).count, 0)
+    }
+
+    func testRoleFiltersFailClosedWhenRoleDataUnavailable() {
+        let filters = [
+            Automations.Filter(id: "any", kind: .userHasAnyRole, roleIds: ["vip"]),
+            Automations.Filter(id: "all", kind: .userHasAllRoles, roleIds: ["vip"]),
+            Automations.Filter(id: "none", kind: .userHasNoneOfRoles, roleIds: ["vip"])
+        ]
+        let event = messageEvent(roleIds: nil)
+
+        for filter in filters {
+            let matches = automationService.evaluate(event: event, in: [roleFilterRule(filter)])
+            XCTAssertEqual(matches.count, 0, "\(filter.kind) should fail closed without role data")
+        }
+    }
+
     // MARK: - Operational Separation & Precedence Tests
 
     func testDestructiveModerationBypassesAutomationRules() async {
@@ -413,6 +453,33 @@ final class AutomationModerationPrecedenceTests: XCTestCase {
         XCTAssertEqual(result.stepTraces.count, 1)
         XCTAssertTrue(result.stepTraces[0].executed)
         XCTAssertTrue(result.stepTraces[0].detail.contains("Would delete message"))
+    }
+
+    private func roleFilterRule(_ filter: Automations.Filter) -> Automations.Rule {
+        Automations.Rule(
+            id: "r-role-\(filter.id)",
+            name: "Role Filter",
+            enabled: true,
+            category: .automation,
+            trigger: Automations.Trigger(kind: .messageCreated),
+            filterLogic: .all,
+            filters: [filter],
+            steps: []
+        )
+    }
+
+    private func messageEvent(roleIds: [String]?) -> SwiftBotEvent {
+        SwiftBotEvent.message(SwiftBotEvent.MessagePayload(
+            guildId: "guild-123",
+            userId: "user-1",
+            username: "bob",
+            roleIds: roleIds,
+            channelId: "chat-1",
+            messageId: UUID().uuidString,
+            content: "hello",
+            isDirectMessage: false,
+            authorIsBot: false
+        ))
     }
 }
 

@@ -149,7 +149,7 @@ struct PipelineContext {
 - **Startup split-brain reconciliation:** A node configured as leader probes `/cluster/status` and demotes to standby if an active remote leader is found.
 - **Auth is fail-closed:** All non-`/health` mesh routes require valid HMAC when `sharedSecret` is set.
 - **Cursor keying:** Use stable `nodeName`, NOT endpoint URL. URL changes during failover must not orphan replication state.
-- **Promotion side-effects:** `promoteToLeader()` intentionally wipes `replicationCursors` — correct behavior, not a bug.
+- **Promotion side-effects:** `promoteToLeader()` preserves `replicationCursors` and advances their term so promotion does not force a full replay.
 - **Standby must run HTTP server:** Standby nodes must have their HTTP server active to receive sync pushes.
 
 ### Mesh Phases (All Complete ✅)

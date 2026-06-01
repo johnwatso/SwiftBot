@@ -304,10 +304,10 @@ actor SwiftMeshConfigStore {
             lastClusterSharedSecret = trimmedClusterSecret
         }
 
-        // Keep sharedSecret in the mesh config file as a runtime fallback for
-        // environments where Keychain is unavailable (e.g. headless/daemonized servers).
         var copy = settings
-        copy.sharedSecret = trimmedClusterSecret
+        // Secrets are Keychain-only. The config file may be synced across mesh
+        // nodes, so never persist the shared secret there.
+        copy.sharedSecret = ""
         let data = try encoder.encode(copy)
         try data.write(to: url, options: .atomic)
     }

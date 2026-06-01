@@ -22,6 +22,24 @@ final class DiscordServiceDMTests: XCTestCase {
         }
     }
 
+    func testEditOriginalInteractionResponseBlockedOnStandby() async {
+        let service = DiscordService(session: makeMockSession())
+        await service.setOutputAllowed(false)
+
+        do {
+            try await service.editOriginalInteractionResponse(
+                applicationID: "app-1",
+                interactionToken: "interaction-token",
+                payload: ["content": "blocked"]
+            )
+            XCTFail("Expected editOriginalInteractionResponse to throw when outputAllowed is false")
+        } catch {
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.domain, "DiscordService")
+            XCTAssertEqual(nsError.code, 403)
+        }
+    }
+
     func testSendDMEmbedSuccess() async throws {
         let createExpectation = expectation(description: "createDirectMessageChannel called")
         let sendExpectation = expectation(description: "sendMessage called with embed payload")

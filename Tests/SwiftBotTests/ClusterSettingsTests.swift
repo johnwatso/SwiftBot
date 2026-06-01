@@ -49,6 +49,44 @@ final class ClusterSettingsTests: XCTestCase {
         XCTAssertEqual(decodedStandby, .standby)
     }
 
+    func testSwiftMeshConfigDoesNotPersistSharedSecretToDisk() async throws {
+        let account = "cluster-shared-secret"
+        let previousSecret = KeychainHelper.load(account: account)
+        defer {
+            if let previousSecret {
+                KeychainHelper.save(previousSecret, account: account)
+            } else {
+                KeychainHelper.delete(account: account)
+            }
+        }
+
+        let filename = "swiftmesh-config-\(UUID().uuidString).json"
+        let store = SwiftMeshConfigStore(filename: filename)
+        let fileURL = SwiftBotStorage.folderURL().appendingPathComponent(filename)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let secret = "super-secret-mesh-key"
+        try await store.save(
+            SwiftMeshSettings(
+                mode: .leader,
+                nodeName: "Primary",
+                leaderAddress: "",
+                leaderPort: 38787,
+                listenPort: 38787,
+                sharedSecret: secret,
+                leaderTerm: 7
+            )
+        )
+
+        let data = try Data(contentsOf: fileURL)
+        let fileText = String(data: data, encoding: .utf8) ?? ""
+        XCTAssertFalse(fileText.contains(secret), "Mesh shared secret must not be written to the config file")
+
+        let decoded = try JSONDecoder().decode(SwiftMeshSettings.self, from: data)
+        XCTAssertEqual(decoded.sharedSecret, "")
+        XCTAssertEqual(KeychainHelper.load(account: account), secret)
+    }
+
     // MARK: - Snapshot and Promotion Terminology
 
     func testClusterSnapshotPromotionTerminology() async {

@@ -132,38 +132,6 @@ Status of each — no per-item work needed:
 
 ---
 
-## Automation UI
-
-> Genuinely open. Needs design mockups before code.
-
-**Goals:** native macOS feel, Tahoe-style materials, space efficient, minimal visual clutter, strong hierarchy, consistent card styling.
-
-### Layout
-
-- [ ] Remove sidebar-heavy workflow
-- [ ] Build linear pipeline editor (Shortcuts-style)
-- [ ] Improve spacing density
-- [ ] Reduce nested panels
-- [ ] Improve visual hierarchy
-
-### Components
-
-- [ ] Standardise buttons
-- [ ] Standardise cards
-- [ ] Standardise typography
-- [ ] Standardise spacing
-- [ ] Remove older square styling
-
-### Native UX
-
-- [ ] Improve drag/drop interactions
-- [ ] Improve animations
-- [ ] Add inline editing
-- [ ] Improve keyboard navigation
-- [ ] Improve accessibility
-
----
-
 ## Shared Design System
 
 ### Cards

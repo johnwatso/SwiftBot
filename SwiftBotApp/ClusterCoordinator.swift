@@ -3168,6 +3168,7 @@ actor ClusterCoordinator {
         snapshot.workerState = .starting
         snapshot.workerStatusText = "Re-registering with new Primary"
         await publishSnapshot()
+        await onTermChanged?(leaderTerm)
 
         // Phase 3 fix: re-register against the new primary for both worker AND
         // standby modes (previously only `.worker` was handled). Without this,

@@ -8,6 +8,11 @@ import Darwin
 
 @MainActor
 final class AppModel: ObservableObject {
+    static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+    }
+
     @Published var settings = BotSettings()
     @Published var status: BotStatus = .stopped {
         didSet {
@@ -514,6 +519,12 @@ final class AppModel: ObservableObject {
         }
 
         Task {
+            guard !Self.isRunningUnderXCTest else {
+                isOnboardingComplete = onboardingCompleted(for: settings)
+                updateProvider()
+                return
+            }
+
             await startRateLimitCleanupTask()
 
             await voiceSessionStore.load()
@@ -659,7 +670,7 @@ final class AppModel: ObservableObject {
                 return await self.localMediaFrameResponse(itemID: itemID, atSeconds: seconds)
             },
                 conversationFetcher: { [weak self] fromRecordID, limit in
-                    guard let self, let fromRecordID else { return ([], false) }
+                    guard let self else { return ([], false) }
                     return await self.conversationStore.recordsSince(fromRecordID: fromRecordID, limit: limit)
                 },
                 onPromotion: { [weak self] in
