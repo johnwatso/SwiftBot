@@ -34,6 +34,7 @@ struct PatchyView: View {
                 connectedServers: app.connectedServers,
                 channelsByServer: app.availableTextChannelsByServer,
                 rolesByServer: app.availableRolesByServer,
+                fetchSteamIcon: { await app.fetchSteamClientIconURL(appID: $0) },
                 onCancel: { editorDraft = nil },
                 onSave: { updated in
                     if editorMode == .create {
@@ -274,6 +275,7 @@ struct PatchyView: View {
                                     channelName: channelName(for: target),
                                     roleSummary: roleSummary(for: target),
                                     sourceColor: sourceColor(target.source),
+                                    steamIconURL: steamIconURL(for: target),
                                     onTestSend: { app.sendPatchyTest(targetID: target.id) },
                                     onPull: { app.pullPatchyUpdate(targetID: target.id) },
                                     onEdit: {
@@ -367,6 +369,14 @@ struct PatchyView: View {
         case .apple:
             return .softwareReleases
         }
+    }
+
+    private func steamIconURL(for target: PatchySourceTarget) -> String? {
+        guard target.source == .steam, target.useSteamIcon else { return nil }
+        let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appID.isEmpty else { return nil }
+        let url = (app.settings.patchy.steamAppIcons[appID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return url.isEmpty ? nil : url
     }
 
     private func sourceColor(_ source: PatchySourceKind) -> Color {
@@ -813,6 +823,7 @@ private struct PatchTargetCard: View {
     let channelName: String
     let roleSummary: String
     let sourceColor: Color
+    let steamIconURL: String?
     let onTestSend: () -> Void
     let onPull: () -> Void
     let onEdit: () -> Void
@@ -904,13 +915,28 @@ private struct PatchTargetCard: View {
     }
 
     private var sourceBadge: some View {
-        PatchySourceIcon(source: target.source, color: sourceColor)
-            .frame(width: 32, height: 32)
-            .background(sourceColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(sourceColor.opacity(0.20), lineWidth: 1)
-            )
+        Group {
+            if let steamIconURL, let url = URL(string: steamIconURL) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        PatchySourceIcon(source: target.source, color: sourceColor)
+                    }
+                }
+            } else {
+                PatchySourceIcon(source: target.source, color: sourceColor)
+            }
+        }
+        .frame(width: 32, height: 32)
+        .background(sourceColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(sourceColor.opacity(0.20), lineWidth: 1)
+        )
     }
 
     private var metadataBlock: some View {
@@ -1188,6 +1214,7 @@ private struct PatchyTargetDraft: Identifiable {
     var isEnabled: Bool
     var source: PatchySourceKind
     var steamAppID: String
+    var useSteamIcon: Bool
     var githubRepo: String
     var githubBranch: String
     var githubWatchAllCommits: Bool
@@ -1209,6 +1236,7 @@ private struct PatchyTargetDraft: Identifiable {
         isEnabled = target.isEnabled
         source = target.source
         steamAppID = target.steamAppID
+        useSteamIcon = target.useSteamIcon
         githubRepo = target.githubRepo
         githubBranch = target.githubBranch
         githubWatchAllCommits = target.githubWatchAllCommits
@@ -1251,6 +1279,7 @@ private struct PatchyTargetDraft: Identifiable {
             isEnabled: isEnabled,
             source: source,
             steamAppID: steamAppID,
+            useSteamIcon: useSteamIcon,
             githubRepo: githubRepo,
             githubBranch: githubBranch,
             githubWatchAllCommits: githubWatchAllCommits,
@@ -1273,11 +1302,14 @@ private struct PatchyTargetDraft: Identifiable {
 private struct PatchyTargetEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State var draft: PatchyTargetDraft
+    @State private var steamIconPreviewURL: String?
+    @State private var steamIconPreviewLoading = false
 
     let mode: PatchyEditorMode
     let connectedServers: [String: String]
     let channelsByServer: [String: [GuildTextChannel]]
     let rolesByServer: [String: [GuildRole]]
+    let fetchSteamIcon: (String) async -> String?
     let onCancel: () -> Void
     let onSave: (PatchyTargetDraft) -> Void
     let disabledSources: Set<PatchySourceKind>
@@ -1445,6 +1477,64 @@ private struct PatchyTargetEditorSheet: View {
     }
 
     @ViewBuilder
+    private var steamIconPreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.primary.opacity(0.05))
+            if steamIconPreviewLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else if draft.useSteamIcon, let urlString = steamIconPreviewURL, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFit().padding(2)
+                    } else if phase.error != nil {
+                        Image(systemName: "questionmark")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            } else {
+                Image(systemName: draft.useSteamIcon ? "gamecontroller" : "gamecontroller.fill")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(width: 34, height: 34)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.primary.opacity(0.10), lineWidth: 1)
+        )
+        .help(draft.useSteamIcon ? "Preview of the game's Steam icon" : "Game icon disabled for this target")
+    }
+
+    /// Identity for the preview's `.task`: re-fetches only when the App ID or
+    /// the toggle changes, and auto-cancels the prior in-flight fetch.
+    private struct SteamIconPreviewKey: Equatable {
+        let appID: String
+        let enabled: Bool
+    }
+
+    private func refreshSteamIconPreview() async {
+        let appID = draft.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard draft.useSteamIcon, !appID.isEmpty else {
+            steamIconPreviewURL = nil
+            steamIconPreviewLoading = false
+            return
+        }
+
+        // Debounce rapid typing; the .task is cancelled and restarted on each keystroke.
+        steamIconPreviewLoading = true
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        if Task.isCancelled { return }
+
+        let resolved = await fetchSteamIcon(appID)
+        if Task.isCancelled { return }
+        steamIconPreviewURL = resolved
+        steamIconPreviewLoading = false
+    }
+
+    @ViewBuilder
     private var sourceSettingsSection: some View {
         switch draft.source {
         case .apple:
@@ -1468,9 +1558,21 @@ private struct PatchyTargetEditorSheet: View {
         case .steam:
             PatchyEditorSection(title: "Steam Settings", systemImage: "gamecontroller") {
                 PatchyEditorRow(title: "App ID", detail: "Steam app identifier used for platform update checks.") {
-                    TextField("570", text: $draft.steamAppID)
-                        .textFieldStyle(.roundedBorder)
+                    HStack(spacing: 10) {
+                        TextField(PatchyDefaults.steamAppID, text: $draft.steamAppID)
+                            .textFieldStyle(.roundedBorder)
+                        steamIconPreview
+                    }
                 }
+
+                PatchyEditorRow(title: "Game Icon", detail: "Use the game's Steam icon for this target's badge and notification thumbnail.") {
+                    Toggle("", isOn: $draft.useSteamIcon)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+            }
+            .task(id: SteamIconPreviewKey(appID: draft.steamAppID, enabled: draft.useSteamIcon)) {
+                await refreshSteamIconPreview()
             }
         case .github:
             PatchyEditorSection(title: "GitHub Settings", systemImage: "chevron.left.forwardslash.chevron.right") {

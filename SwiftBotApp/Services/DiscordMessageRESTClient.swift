@@ -248,6 +248,30 @@ struct DiscordMessageRESTClient {
         )
     }
 
+    /// Sends a message whose JSON `payload` (embeds, content, allowed_mentions,
+    /// …) references an uploaded file via `attachment://<filename>`. The file is
+    /// attached as `files[0]` and registered in the payload's `attachments`.
+    @discardableResult
+    func sendMessageWithEmbedImage(
+        channelId: String,
+        payload: [String: Any],
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws -> String {
+        let url = restBase.appendingPathComponent("channels/\(channelId)/messages")
+        var merged = payload
+        merged["attachments"] = [["id": "0", "filename": filename]]
+        return try await sendMultipartPayload(
+            url: url,
+            method: "POST",
+            payload: merged,
+            imageData: imageData,
+            filename: filename,
+            token: token
+        )
+    }
+
     func editMessageWithImage(
         channelId: String,
         messageId: String,
@@ -382,13 +406,6 @@ struct DiscordMessageRESTClient {
         filename: String,
         token: String
     ) async throws -> String {
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.timeoutInterval = 90
-        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
         let payload: [String: Any] = [
             "content": content,
             "attachments": [
@@ -398,6 +415,31 @@ struct DiscordMessageRESTClient {
                 ]
             ]
         ]
+        return try await sendMultipartPayload(
+            url: url,
+            method: method,
+            payload: payload,
+            imageData: imageData,
+            filename: filename,
+            token: token
+        )
+    }
+
+    private func sendMultipartPayload(
+        url: URL,
+        method: String,
+        payload: [String: Any],
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws -> String {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.timeoutInterval = 90
+        req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
         let payloadData = try JSONSerialization.data(withJSONObject: payload)
 
         var body = Data()
