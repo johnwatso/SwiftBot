@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct SwiftBotApp: App {
+    @NSApplicationDelegateAdaptor(SwiftBotAppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
     @StateObject private var updater = AppUpdater()
 
@@ -226,6 +227,17 @@ struct SwiftBotApp: App {
             // Store session token for remote authentication
             appModel.handleRemoteAuthSession(sessionToken)
         }
+    }
+}
+
+private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            await TunnelManager.shared.stopForAppTermination()
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 2)
     }
 }
 

@@ -673,7 +673,7 @@ struct AnalyticsView: View {
                     compactSignal(
                         title: "Gateway Events",
                         value: "\(app.gatewayEventCount)",
-                        detail: "Last: \(app.lastGatewayEventName)",
+                        detail: "Last: \(GatewayEventPresentation.displayName(for: app.lastGatewayEventName))",
                         color: .blue
                     )
                     compactSignal(

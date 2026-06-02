@@ -168,7 +168,7 @@ extension AppModel {
                 if self.voiceConnectionStatus == .connecting,
                    self.voicePendingGuildID == attemptGuildID,
                    isMissingVoiceHandshakeData {
-                    let message = "Timed out waiting for Discord VOICE_STATE_UPDATE / VOICE_SERVER_UPDATE."
+                    let message = "Timed out waiting for Discord voice state and voice server updates."
                     self.voiceConnectionStatus = .failed(message)
                     self.deactivateAnnouncerSession()
                     self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
@@ -322,7 +322,7 @@ extension AppModel {
             if voicePendingGuildID != nil {
                 addVoiceLogEntry(VoiceEventLogEntry(
                     time: Date(),
-                    description: "Ignored VOICE_SERVER_UPDATE for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
+                    description: "Ignored voice server update for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
                 ))
             }
             return
@@ -351,7 +351,7 @@ extension AppModel {
             if voicePendingGuildID != nil {
                 addVoiceLogEntry(VoiceEventLogEntry(
                     time: Date(),
-                    description: "Ignored VOICE_STATE_UPDATE for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
+                    description: "Ignored voice state update for guild \(event.guildID); waiting for \(voicePendingGuildID ?? "?")."
                 ))
             }
             return
@@ -359,7 +359,7 @@ extension AppModel {
         guard let expectedBotUserId, event.userID == expectedBotUserId else {
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
-                description: "Observed VOICE_STATE_UPDATE for user \(event.userID); waiting for bot user \(expectedBotUserId ?? "unknown")."
+                description: "Observed voice state update for user \(event.userID); waiting for bot user \(expectedBotUserId ?? "unknown")."
             ))
             return
         }

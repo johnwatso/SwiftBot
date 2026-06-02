@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Network
 import OSLog
 
@@ -164,8 +165,7 @@ actor TunnelManager: TunnelProvider {
         isStoppingProcess = true
         process.terminationHandler = nil
 
-        if process.isRunning {
-            process.terminate()
+        if await terminateProcess(process) {
             await logger?("Cloudflare tunnel stopped")
         }
 
@@ -177,6 +177,23 @@ actor TunnelManager: TunnelProvider {
             publicURL: desiredConfiguration?.publicURL ?? "",
             detail: desiredConfiguration == nil ? "Public access disabled" : "Cloudflare tunnel starting"
         ))
+    }
+
+    func stopForAppTermination() async {
+        restartTask?.cancel()
+        restartTask = nil
+        stopHealthCheck()
+        stopPathMonitor()
+        desiredConfiguration = nil
+        nextStartIsRestart = false
+
+        guard let process else { return }
+
+        isStoppingProcess = true
+        process.terminationHandler = nil
+        await terminateProcess(process, escalationTimeout: 1.5)
+        self.process = nil
+        isStoppingProcess = false
     }
 
     private func startProcess(using configuration: TunnelRuntimeConfiguration) async {
@@ -393,6 +410,30 @@ actor TunnelManager: TunnelProvider {
 
     private func markNextStartAsRestart() {
         nextStartIsRestart = true
+    }
+
+    @discardableResult
+    private func terminateProcess(
+        _ process: Process,
+        escalationTimeout: TimeInterval = 2
+    ) async -> Bool {
+        (process.standardOutput as? Pipe)?.fileHandleForReading.readabilityHandler = nil
+        (process.standardError as? Pipe)?.fileHandleForReading.readabilityHandler = nil
+
+        guard process.isRunning else { return false }
+
+        process.terminate()
+
+        let deadline = Date().addingTimeInterval(escalationTimeout)
+        while process.isRunning, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+
+        return true
     }
 
     // MARK: - Public-URL health check

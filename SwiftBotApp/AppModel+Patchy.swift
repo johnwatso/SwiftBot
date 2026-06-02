@@ -11,6 +11,12 @@ struct PatchyMonitoringSnapshot: Equatable {
 
 extension AppModel {
 
+    private struct PatchySummaryInput {
+        let source: String
+        let text: String
+        let fallback: String
+    }
+
     func appendPatchyLog(_ message: String) {
         Task { @MainActor in
             let timestamp = Date().formatted(date: .omitted, time: .standard)
@@ -498,8 +504,11 @@ extension AppModel {
                 updateText: summaryInput.text,
                 source: summaryInput.source
             ) {
-                embeds[0] = patchyEmbedWithAISummary(embeds[0], summary: summary)
+                embeds[0] = patchyEmbedWithSummary(embeds[0], summary: summary, title: "AI Summary")
                 appendPatchyLog("Summarised with AI [\(target.source.rawValue)].")
+            } else if !summaryInput.fallback.isEmpty {
+                embeds[0] = patchyEmbedWithSummary(embeds[0], summary: summaryInput.fallback, title: "Summary")
+                appendPatchyLog("Used deterministic summary [\(target.source.rawValue)].")
             } else {
                 appendPatchyLog("AI summary skipped [\(target.source.rawValue)]: Apple Intelligence unavailable or returned no summary.")
             }
@@ -514,19 +523,29 @@ extension AppModel {
         return output
     }
 
-    private func patchySummaryInput(for item: (any UpdateItem)?) -> (source: String, text: String)? {
+    private func patchySummaryInput(for item: (any UpdateItem)?) -> PatchySummaryInput? {
         guard let item else { return nil }
 
         if let driver = item as? DriverUpdateItem {
+            let digest = patchyReleaseNotesDigest(driver.releaseNotes)
+            let fallback = patchyDeterministicSummary(
+                lead: "\(driver.releaseNotes.author) \(driver.releaseNotes.version)",
+                date: driver.releaseNotes.date,
+                highlights: digest
+            )
             let text = """
+            Summary brief:
+            Product/vendor: \(driver.releaseNotes.author)
             Title: \(driver.releaseNotes.title)
-            Vendor: \(driver.releaseNotes.author)
             Version: \(driver.releaseNotes.version)
             Release date: \(driver.releaseNotes.date)
+            Key extracted changes:
+            \(patchyNumberedList(digest))
 
+            Full notes:
             \(patchyReleaseNotesText(driver.releaseNotes))
             """
-            return ("\(driver.releaseNotes.author) driver release", text)
+            return PatchySummaryInput(source: "\(driver.releaseNotes.author) driver release", text: text, fallback: fallback)
         }
 
         if let github = item as? GitHubUpdateItem {
@@ -539,37 +558,161 @@ extension AppModel {
             case .allCommits:
                 modeLabel = "commit across branches"
             }
+            let cleanedBody = patchyCleanPlainText(github.info.summary)
+            let digest = patchyDigestLines(from: cleanedBody, limit: 6)
+            let fallback = patchyDeterministicSummary(
+                lead: "\(github.info.author) \(github.info.displayVersion)",
+                date: github.info.date,
+                highlights: digest.isEmpty ? [github.info.title] : digest
+            )
             let text = """
+            Summary brief:
             Repository/source: \(github.info.author)
             Type: GitHub \(modeLabel)
             Title: \(github.info.title)
             Version/identifier: \(github.info.displayVersion)
             Date: \(github.info.date)
             URL: \(github.info.url)
+            Key extracted changes:
+            \(patchyNumberedList(digest.isEmpty ? [github.info.title] : digest))
 
-            \(github.info.summary)
+            Full notes:
+            \(cleanedBody)
             """
-            return ("GitHub \(modeLabel)", text)
+            return PatchySummaryInput(source: "GitHub \(modeLabel)", text: text, fallback: fallback)
         }
 
         if let steam = item as? SteamUpdateItem {
-            let cleaned = steam.newsItem.contents
-                .replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
-                .replacingOccurrences(of: #"\[[^\]]+\]"#, with: " ", options: .regularExpression)
-                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = patchyCleanPlainText(steam.newsItem.contents)
+            let digest = patchyDigestLines(from: cleaned, limit: 6)
+            let fallback = patchyDeterministicSummary(
+                lead: "\(steam.newsItem.feedLabel) - \(steam.newsItem.title)",
+                date: steam.newsItem.dateFormatted,
+                highlights: digest
+            )
             let text = """
+            Summary brief:
             Game/source: \(steam.newsItem.feedLabel)
             Title: \(steam.newsItem.title)
             Date: \(steam.newsItem.dateFormatted)
             URL: \(steam.newsItem.url)
+            Key extracted changes:
+            \(patchyNumberedList(digest))
 
+            Full notes:
             \(cleaned)
             """
-            return ("Steam patch notes", text)
+            return PatchySummaryInput(source: "Steam patch notes", text: text, fallback: fallback)
         }
 
         return nil
+    }
+
+    private func patchyReleaseNotesDigest(_ releaseNotes: ReleaseNotes) -> [String] {
+        var lines: [String] = []
+        let priorityTitles = ["highlight", "fixed", "fix", "known", "issue", "compat", "support", "change", "new", "improvement", "resolved"]
+
+        for section in releaseNotes.sections {
+            let title = section.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            for bullet in section.bullets {
+                let text = bullet.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                let line = title.isEmpty ? text : "\(title): \(text)"
+                if priorityTitles.contains(where: { title.localizedCaseInsensitiveContains($0) || text.localizedCaseInsensitiveContains($0) }) {
+                    lines.insert(line, at: min(lines.count, 3))
+                } else {
+                    lines.append(line)
+                }
+                for sub in bullet.subBullets {
+                    let subText = sub.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !subText.isEmpty {
+                        lines.append(title.isEmpty ? subText : "\(title): \(subText)")
+                    }
+                }
+            }
+        }
+
+        return Array(patchyUniqueLines(lines).prefix(8))
+    }
+
+    private func patchyDigestLines(from text: String, limit: Int) -> [String] {
+        let candidates = text
+            .components(separatedBy: CharacterSet(charactersIn: "\n\r"))
+            .flatMap { line in
+                line
+                    .components(separatedBy: ". ")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            }
+            .map { line -> String in
+                var cleaned = line
+                while let first = cleaned.first, "-*•0123456789. ".contains(first) {
+                    cleaned.removeFirst()
+                    cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return cleaned
+            }
+            .filter { $0.count >= 18 }
+
+        return Array(patchyUniqueLines(candidates).prefix(limit))
+    }
+
+    private func patchyUniqueLines(_ lines: [String]) -> [String] {
+        var seen = Set<String>()
+        var output: [String] = []
+        for line in lines {
+            let cleaned = patchyTruncateText(line, limit: 220)
+            let key = cleaned.lowercased()
+            guard !cleaned.isEmpty, !seen.contains(key) else { continue }
+            seen.insert(key)
+            output.append(cleaned)
+        }
+        return output
+    }
+
+    private func patchyNumberedList(_ lines: [String]) -> String {
+        let useful = lines.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !useful.isEmpty else { return "- No detailed changes were extracted." }
+        return useful.prefix(8).enumerated().map { index, line in
+            "\(index + 1). \(line)"
+        }.joined(separator: "\n")
+    }
+
+    private func patchyDeterministicSummary(lead: String, date: String, highlights: [String]) -> String {
+        let cleanLead = lead.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDate = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanLead.isEmpty else { return "" }
+
+        let useful = highlights
+            .map { patchyTruncateText($0, limit: 180) }
+            .filter { !$0.isEmpty }
+        let dateText = cleanDate.isEmpty || cleanDate == "-" ? "" : " dated \(cleanDate)"
+
+        guard !useful.isEmpty else {
+            return "\(cleanLead)\(dateText) is available, but the upstream notes did not expose enough detail for a deeper summary."
+        }
+
+        let first = useful.prefix(3).joined(separator: "; ")
+        if useful.count > 3 {
+            let remaining = useful.dropFirst(3).prefix(2).joined(separator: "; ")
+            return "\(cleanLead)\(dateText) focuses on \(first). Also worth noting: \(remaining)."
+        }
+        return "\(cleanLead)\(dateText) focuses on \(first)."
+    }
+
+    private func patchyCleanPlainText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\[[^\]]+\]"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"https?://\S+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"[_`#>\t]+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func patchyTruncateText(_ text: String, limit: Int) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > limit else { return trimmed }
+        return String(trimmed.prefix(limit - 3)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 
     private func patchyReleaseNotesText(_ releaseNotes: ReleaseNotes) -> String {
@@ -584,13 +727,13 @@ extension AppModel {
         .joined(separator: "\n\n")
     }
 
-    private func patchyEmbedWithAISummary(_ embed: [String: Any], summary: String) -> [String: Any] {
+    private func patchyEmbedWithSummary(_ embed: [String: Any], summary: String, title: String) -> [String: Any] {
         let cleanedSummary = patchyNormalizedAISummary(summary)
         guard !cleanedSummary.isEmpty else { return embed }
 
         var updated = embed
         let existingDescription = (embed["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let summaryBlock = "**AI Summary**\n\(cleanedSummary)"
+        let summaryBlock = "**\(title)**\n\(cleanedSummary)"
         let combined = existingDescription.isEmpty ? summaryBlock : "\(summaryBlock)\n\n\(existingDescription)"
         updated["description"] = patchyTruncateDiscordDescription(combined)
         return updated

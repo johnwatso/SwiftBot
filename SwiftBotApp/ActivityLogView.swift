@@ -485,7 +485,11 @@ struct ActivityLogView: View {
             return .info
         }()
 
-        return ParsedLogLine(time: time, title: Self.stripMarkers(stripped), level: level)
+        return ParsedLogLine(
+            time: time,
+            title: GatewayEventPresentation.replaceProtocolNames(in: Self.stripMarkers(stripped)),
+            level: level
+        )
     }
 
     /// Removes bracket severity prefixes and emoji glyphs from a log line so

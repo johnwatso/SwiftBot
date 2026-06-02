@@ -103,4 +103,31 @@ final class DiscordAIServiceTests: XCTestCase {
         XCTAssertTrue(online)
         XCTAssertFalse(offline)
     }
+
+    func testPatchySummaryCleanupRemovesToolLeadIn() {
+        XCTAssertEqual(
+            DiscordAIService.cleanPatchySummary("Patchy reports NVIDIA 580.12 improves game stability."),
+            "NVIDIA 580.12 improves game stability."
+        )
+        XCTAssertEqual(
+            DiscordAIService.cleanPatchySummary("Patchy has detected a Steam patch with balance changes."),
+            "a Steam patch with balance changes."
+        )
+        XCTAssertEqual(
+            DiscordAIService.cleanPatchySummary("AMD 26.3.1 fixes crashes and adds compatibility notes."),
+            "AMD 26.3.1 fixes crashes and adds compatibility notes."
+        )
+        XCTAssertEqual(
+            DiscordAIService.cleanPatchySummary("Patchy update summary goes here."),
+            ""
+        )
+    }
+
+    func testPatchySummaryUsefulnessRejectsThinOrVagueOutput() {
+        XCTAssertFalse(DiscordAIService.isUsefulPatchySummary("NVIDIA has a new driver update."))
+        XCTAssertFalse(DiscordAIService.isUsefulPatchySummary("This update includes fixes and improvements for users across the product with better reliability and compatibility."))
+        XCTAssertTrue(DiscordAIService.isUsefulPatchySummary(
+            "NVIDIA 580.12 focuses on game stability, adds support for newer titles, and calls out compatibility notes for affected systems. It also fixes crash regressions and gives users a clearer reason to upgrade when they rely on those games or hardware paths."
+        ))
+    }
 }

@@ -291,10 +291,10 @@ final class AMDServiceTests: XCTestCase {
                 throw URLError(.badURL)
             }
 
-            await counter.increment(url.absoluteString)
+            counter.increment(url.absoluteString)
 
             if url == sitemapURL {
-                try await Task.sleep(nanoseconds: 50_000_000)
+                Thread.sleep(forTimeInterval: 0.05)
                 let xml = """
                 <urlset>
                   <url>
@@ -310,7 +310,7 @@ final class AMDServiceTests: XCTestCase {
             }
 
             if url.absoluteString.contains("RN-RAD-WIN-26-3-1") {
-                try await Task.sleep(nanoseconds: 50_000_000)
+                Thread.sleep(forTimeInterval: 0.05)
                 return (
                     HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                     Data(html.utf8)
@@ -327,8 +327,8 @@ final class AMDServiceTests: XCTestCase {
         async let first = service.fetchLatestDriver()
         async let second = service.fetchLatestDriver()
         let drivers = try await [first, second]
-        let sitemapHits = await counter.value(for: sitemapURL.absoluteString)
-        let releaseHits = await counter.value(
+        let sitemapHits = counter.value(for: sitemapURL.absoluteString)
+        let releaseHits = counter.value(
             for: "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-3-1.html"
         )
 
@@ -339,7 +339,7 @@ final class AMDServiceTests: XCTestCase {
 }
 
 private final class AMDMockURLProtocol: URLProtocol {
-    static var requestHandler: ((URLRequest) async throws -> (HTTPURLResponse, Data))?
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -355,29 +355,32 @@ private final class AMDMockURLProtocol: URLProtocol {
             return
         }
 
-        Task {
-            do {
-                let (response, data) = try await handler(request)
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                client?.urlProtocol(self, didFailWithError: error)
-            }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
         }
     }
 
     override func stopLoading() {}
 }
 
-private actor RequestCounter {
+private final class RequestCounter: @unchecked Sendable {
+    private let lock = NSLock()
     private var counts: [String: Int] = [:]
 
     func increment(_ key: String) {
+        lock.lock()
+        defer { lock.unlock() }
         counts[key, default: 0] += 1
     }
 
     func value(for key: String) -> Int {
-        counts[key, default: 0]
+        lock.lock()
+        defer { lock.unlock() }
+        return counts[key, default: 0]
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Markdown
 
 public enum GitHubWatchMode: Sendable, Hashable {
     case releases
@@ -104,13 +105,14 @@ public struct GitHubService: Sendable {
         let date = formatISODate(decoded.publishedAt ?? decoded.createdAt ?? "")
         let author = decoded.author?.login ?? "\(owner)/\(repo)"
 
+        let sections = makeReleaseSections(body: body)
         let notes = ReleaseNotes(
             title: title,
             author: "\(owner)/\(repo)",
             url: decoded.htmlURL ?? "https://github.com/\(owner)/\(repo)/releases",
             version: tag,
             date: date,
-            sections: makeReleaseSections(body: body),
+            sections: sections,
             thumbnailURL: "https://github.com/\(owner).png",
             color: 0x24292E
         )
@@ -125,7 +127,7 @@ public struct GitHubService: Sendable {
             date: date,
             dateRaw: decoded.publishedAt ?? decoded.createdAt ?? "",
             url: notes.url,
-            summary: body,
+            summary: renderReleaseSectionsText(sections),
             embedJSON: embed,
             rawDebug: "GitHub releases/latest:\n\(rawJSON)",
             mode: .releases
@@ -231,6 +233,38 @@ public struct GitHubService: Sendable {
         guard !body.isEmpty else {
             return [ReleaseSection(title: "Release Notes", bullets: [Bullet(text: "No description provided.")])]
         }
+
+        let document = Document(parsing: body)
+        var sections: [ReleaseSection] = []
+        var currentTitle = "Release Notes"
+        var currentBullets: [Bullet] = []
+
+        func flushSection() {
+            guard !currentBullets.isEmpty else { return }
+            sections.append(ReleaseSection(
+                title: currentTitle,
+                bullets: Array(currentBullets.prefix(8))
+            ))
+            currentBullets.removeAll()
+        }
+
+        for child in document.children {
+            if let heading = child as? Heading {
+                flushSection()
+                let title = cleanMarkdownText(heading.plainText)
+                currentTitle = title.isEmpty ? "Release Notes" : title
+                continue
+            }
+
+            currentBullets.append(contentsOf: markdownBullets(from: child))
+        }
+
+        flushSection()
+        let usefulSections = sections.filter { !$0.bullets.isEmpty }
+        if !usefulSections.isEmpty {
+            return Array(usefulSections.prefix(8))
+        }
+
         let bullets = bulletize(body: body)
         return [ReleaseSection(title: "Release Notes", bullets: bullets)]
     }
@@ -279,6 +313,80 @@ public struct GitHubService: Sendable {
             let truncated = stripped.count > 200 ? String(stripped.prefix(197)) + "..." : stripped
             return Bullet(text: truncated)
         }
+    }
+
+    private func markdownBullets(from markup: Markup) -> [Bullet] {
+        if let unordered = markup as? UnorderedList {
+            return unordered.children.compactMap { child in
+                guard let item = child as? ListItem else { return nil }
+                return markdownBullet(from: item)
+            }
+        }
+
+        if let ordered = markup as? OrderedList {
+            return ordered.children.compactMap { child in
+                guard let item = child as? ListItem else { return nil }
+                return markdownBullet(from: item)
+            }
+        }
+
+        let text = cleanMarkdownText(plainText(from: markup))
+        guard !text.isEmpty else { return [] }
+        return [Bullet(text: truncate(text, limit: 220))]
+    }
+
+    private func markdownBullet(from item: ListItem) -> Bullet? {
+        var textParts: [String] = []
+        var subBullets: [String] = []
+
+        for child in item.children {
+            if child is UnorderedList || child is OrderedList {
+                let nested = markdownBullets(from: child)
+                subBullets.append(contentsOf: nested.map(\.text))
+                for bullet in nested {
+                    subBullets.append(contentsOf: bullet.subBullets)
+                }
+            } else {
+                let text = cleanMarkdownText(plainText(from: child))
+                if !text.isEmpty {
+                    textParts.append(text)
+                }
+            }
+        }
+
+        let text = cleanMarkdownText(textParts.joined(separator: " "))
+        guard !text.isEmpty else { return nil }
+        return Bullet(
+            text: truncate(text, limit: 220),
+            subBullets: Array(subBullets.map { truncate($0, limit: 180) }.prefix(5))
+        )
+    }
+
+    private func plainText(from markup: Markup) -> String {
+        if let plain = markup as? PlainTextConvertibleMarkup {
+            return plain.plainText
+        }
+        return markup.children.map { plainText(from: $0) }.joined(separator: " ")
+    }
+
+    private func cleanMarkdownText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func renderReleaseSectionsText(_ sections: [ReleaseSection]) -> String {
+        sections.map { section in
+            var lines = [section.title]
+            for bullet in section.bullets {
+                lines.append("- \(bullet.text)")
+                for sub in bullet.subBullets {
+                    lines.append("  - \(sub)")
+                }
+            }
+            return lines.joined(separator: "\n")
+        }
+        .joined(separator: "\n\n")
     }
 
     private func formatCommitEmbed(
