@@ -43,6 +43,7 @@
 		27EBD03F4CDFA5B4F8A76F38 /* DiscordMessageRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */; };
 		29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */ = {isa = PBXBuildFile; fileRef = C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */; };
 		2C30A3ECEFEBB1D412442557 /* MediaLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AD9D0BFA57E9EFB2E11322 /* MediaLibraryIndexer.swift */; };
+		2C83C163CF68600ED913A1DB /* libdave-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 24FCC927E2337E1A74F2A427 /* libdave-swift */; };
 		2E21404A8B9220E7EF0F37DA /* ModerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2620F1431DA2A3DAB6CE6F69 /* ModerationView.swift */; };
 		2E7BA59EF979D7D7FC0D4DF2 /* VoiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462957555B9B4E41B5C92EFB /* VoiceProtocol.swift */; };
 		2F717839189B088E0B4DA26C /* PatchyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */; };
@@ -73,6 +74,7 @@
 		451C12B27652124C3E40329B /* AutomationTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8170A687CD0015B81C30F9 /* AutomationTemplates.swift */; };
 		4CB5AE56A18DD876905ECF74 /* TextChannelAnnouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 588F4F27A982BFD31B2920BE /* TextChannelAnnouncer.swift */; };
 		4EB0A5E6CC96AD52F65A20C0 /* CacheKeyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D70C83084571D4A0927A8AA /* CacheKeyBuilder.swift */; };
+		520320BDBE5D049BC14B7F95 /* GatewayEventPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E495B6299B8BB1DD6834DE29 /* GatewayEventPresentationTests.swift */; };
 		52D688DC1DDA87CD00D7A749 /* DiscordGuildRESTClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2912532FD0E1F2D6462C3B /* DiscordGuildRESTClient.swift */; };
 		52F6105016F5F7DCBA6F25F2 /* SwiftMinerPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 791CB4531F69994F14710E55 /* SwiftMinerPreferencesView.swift */; };
 		5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */; };
@@ -90,10 +92,11 @@
 		5CC015BAEEEC0C532C6A63F7 /* RTPPacketBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F114D5560F6CD84DD630744F /* RTPPacketBuilder.swift */; };
 		5D25AD1C212F4CC9B5C90DD5 /* DiscordPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DA7729D9CB3A88CF3619B8 /* DiscordPreferencesView.swift */; };
 		5F1C394CB812F1D2B78DB256 /* SwiftMinerDMSenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7439BDA54C341126F5A30C /* SwiftMinerDMSenderTests.swift */; };
+		5F59E5DA9435761BB8FC767C /* GitHubServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6632242ABEFD0ED1584C533C /* GitHubServiceTests.swift */; };
 		5F948EAA0D02EA068B33BC39 /* AppModel+WikiBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B696934C12E6410E1E192294 /* AppModel+WikiBridge.swift */; };
 		61B7BFCD4B707D6306631F7A /* AppModel+Patchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FD42789A025FD409C081463 /* AppModel+Patchy.swift */; };
 		61FE77A534CAE8A1DB129DD6 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985814A00309DEBC6C7FD35F /* OverviewView.swift */; };
-		626D847B8BB20176403EBBAA /* libdave-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 24FCC927E2337E1A74F2A427 /* libdave-swift */; };
+		626D847B8BB20176403EBBAA /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
 		63424338C247B5ECB87A8504 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F49DE5A766F83A139F9F20 /* AppUpdater.swift */; };
 		647A7728561387E5DFC85FD3 /* UpdateSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FAF77E90DE081DDE95A80BF /* UpdateSource.swift */; };
 		65F8E1C9E4E603B4E420DCE9 /* CloudflareTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C07385233B714CF5897D32E5 /* CloudflareTunnelClient.swift */; };
@@ -116,6 +119,7 @@
 		78FD706601265FE34498BBDE /* VoicePlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A231217B6994B4D911F345 /* VoicePlaybackService.swift */; };
 		795E1B910968188CC57BA263 /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059780457BD592C5364C934 /* RemoteControlService.swift */; };
 		7A065730CD545F87AF004893 /* AdminWebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB32D13A6D673323296304C /* AdminWebServer.swift */; };
+		7A13881555E1761589C1953C /* GatewayEventPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E788B8E1E161A212FA8BAA3 /* GatewayEventPresentation.swift */; };
 		7A8F1F65E34BD4BFFE7BCAA9 /* AdvancedPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CE247254BB7396D69F514B /* AdvancedPreferencesView.swift */; };
 		7AEEABF5EE4F1E8741511E4D /* DMTimeoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */; };
 		7B1416030084F25AC03D0B84 /* AppModel+SlashCommandHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA2D2805C055B0DE50F1453 /* AppModel+SlashCommandHelpers.swift */; };
@@ -158,7 +162,7 @@
 		A47258F9FC57B429217A7D70 /* cloudflared in Resources */ = {isa = PBXBuildFile; fileRef = 8CEF7EB5B287F29B8308E663 /* cloudflared */; };
 		A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */; };
 		A823A186475052C970DB918A /* ConnectionDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */; };
-		AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */ = {isa = PBXBuildFile; productRef = 8340F7290FCD93DB7287E27A /* Opus */; };
+		AA8E2FF0DCF42060A5075E8C /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 1E48035D96FB76D2346BA906 /* Markdown */; };
 		AB311B611EAF20CED07A34FD /* BotStateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C883C3445CFB25BE95819B5 /* BotStateModels.swift */; };
 		AC0B6725D3ABBB12498538EF /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02B30EDD00CF95D428E4065 /* UpdateChecker.swift */; };
 		ACE122B57907AC0B3FBD616F /* VoicePresenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F319382F183BB1612580B30 /* VoicePresenceStore.swift */; };
@@ -170,6 +174,7 @@
 		B0E470490BE7B14CEEA945C2 /* ActivityLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8770FC5C199C2C0E075DF2E /* ActivityLogView.swift */; };
 		B0ECA01493988DD4BBE0840D /* DiscordGatewayConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 460C93A6D305EACF834AA7E4 /* DiscordGatewayConnection.swift */; };
 		B6B3280ACF4438511C36A188 /* SwiftBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5083D5348FCB914E6C796E2D /* SwiftBotApp.swift */; };
+		B7582E801C0D291241F3FFF7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2B026EFC9AE62F7E5F97EF75 /* Assets.xcassets */; };
 		BCD759276C0122F94FC50419 /* AuditDismissalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14174FE208E82DE9DE880997 /* AuditDismissalStore.swift */; };
 		BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */; };
 		BD467513226931F94ED22ED6 /* AuditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B7728E1A6484DB11A01EF3 /* AuditView.swift */; };
@@ -259,9 +264,11 @@
 		2620F1431DA2A3DAB6CE6F69 /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
 		2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotPermissionsCheckView.swift; sourceTree = "<group>"; };
 		29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupServiceTests.swift; sourceTree = "<group>"; };
+		2B026EFC9AE62F7E5F97EF75 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2C156C1770937C834073B637 /* SchemaSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaSettings.swift; sourceTree = "<group>"; };
 		2C8FA234EDBAE756493F5CF9 /* DiscordGuildRESTClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordGuildRESTClientTests.swift; sourceTree = "<group>"; };
 		2E40E1A97020F354A369FB65 /* SwiftMinerDMFrequencyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMFrequencyGate.swift; sourceTree = "<group>"; };
+		2E788B8E1E161A212FA8BAA3 /* GatewayEventPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventPresentation.swift; sourceTree = "<group>"; };
 		2F319382F183BB1612580B30 /* VoicePresenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePresenceStore.swift; sourceTree = "<group>"; };
 		316BE5EE23ADB08FD4042070 /* IntelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelService.swift; sourceTree = "<group>"; };
 		322D9081CEE7191A61086D90 /* ClusterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterModels.swift; sourceTree = "<group>"; };
@@ -306,6 +313,7 @@
 		60C5B2A942D33772E9E9C8E9 /* VoiceGatewayConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGatewayConnection.swift; sourceTree = "<group>"; };
 		625DB0CE520199209A20F7FC /* MeshCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCrypto.swift; sourceTree = "<group>"; };
 		6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeFlowService.swift; sourceTree = "<group>"; };
+		6632242ABEFD0ED1584C533C /* GitHubServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubServiceTests.swift; sourceTree = "<group>"; };
 		67FE597F87B994AB862A6AD1 /* VoiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettings.swift; sourceTree = "<group>"; };
 		694267133E5E659F12946B10 /* DiscordIdentityRESTClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordIdentityRESTClient.swift; sourceTree = "<group>"; };
 		69DA09E6A4540C1214254590 /* CertificateManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManagerTests.swift; sourceTree = "<group>"; };
@@ -412,6 +420,7 @@
 		DE53DBB48C421B9BF15DEF91 /* AdminWebCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminWebCopyTests.swift; sourceTree = "<group>"; };
 		DEDACC9B9F1633073834BE07 /* MediaThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaThumbnailCache.swift; sourceTree = "<group>"; };
 		E1C61277F888422928536026 /* MeshFailoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshFailoverTests.swift; sourceTree = "<group>"; };
+		E495B6299B8BB1DD6834DE29 /* GatewayEventPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEventPresentationTests.swift; sourceTree = "<group>"; };
 		E5A84E95FDE31E5E752C2E2F /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		E5CEA798F4C6EE225D9FD1FE /* RuleEngineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleEngineModels.swift; sourceTree = "<group>"; };
 		E633F274C86F408E3E0854BE /* AuditAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditAnalyzer.swift; sourceTree = "<group>"; };
@@ -450,8 +459,9 @@
 				BF9824A4094CDC175299AA63 /* NIOPosix in Frameworks */,
 				9527171E8D1C224595FF1BF6 /* NIOSSL in Frameworks */,
 				B05A581D1D38DD1E658FB806 /* SwiftSoup in Frameworks */,
-				AA8E2FF0DCF42060A5075E8C /* Opus in Frameworks */,
-				626D847B8BB20176403EBBAA /* libdave-swift in Frameworks */,
+				AA8E2FF0DCF42060A5075E8C /* Markdown in Frameworks */,
+				626D847B8BB20176403EBBAA /* Opus in Frameworks */,
+				2C83C163CF68600ED913A1DB /* libdave-swift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -622,6 +632,8 @@
 				FB6022F9F0E82BBD70503076 /* DMTimeoutTests.swift */,
 				69F5BC752F48845CADB3CA37 /* GatewayDMHandlingTests.swift */,
 				F00EB7C7EB0264A293D5F097 /* GatewayEventDispatcherTests.swift */,
+				E495B6299B8BB1DD6834DE29 /* GatewayEventPresentationTests.swift */,
+				6632242ABEFD0ED1584C533C /* GitHubServiceTests.swift */,
 				3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */,
 				91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */,
 				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
@@ -683,6 +695,7 @@
 			isa = PBXGroup;
 			children = (
 				7C4E3B85871C475A7A8D53DE /* AppIcon.png */,
+				2B026EFC9AE62F7E5F97EF75 /* Assets.xcassets */,
 				8CEF7EB5B287F29B8308E663 /* cloudflared */,
 				7B9C73206F296924B1FAAF39 /* SwiftBird.png */,
 				C234178C0EE1C3BFD4DD8CB6 /* SwiftBird3.png */,
@@ -710,6 +723,7 @@
 				BE46A141E350EC70B74B7430 /* DiscordMessageRESTClient.swift */,
 				92B252D1369D5E4F94AB92AC /* DiscordTimestamp.swift */,
 				855F750BDCFF1773E57DF565 /* GatewayEventDispatcher.swift */,
+				2E788B8E1E161A212FA8BAA3 /* GatewayEventPresentation.swift */,
 				91C41589B7BDFB426C5552BB /* LocalBotProvider.swift */,
 				0C62599CD5D11338B087201C /* MusicLookupService.swift */,
 				C7BE6893BB01F8CC959C13D1 /* OpusFrameEncoder.swift */,
@@ -786,6 +800,7 @@
 				7DF22120B86D527EE31A4E83 /* NIOPosix */,
 				1C81108D7CF200AA2750ED17 /* NIOSSL */,
 				7551369833EB21380EB8B404 /* SwiftSoup */,
+				1E48035D96FB76D2346BA906 /* Markdown */,
 				8340F7290FCD93DB7287E27A /* Opus */,
 				24FCC927E2337E1A74F2A427 /* libdave-swift */,
 			);
@@ -842,6 +857,7 @@
 				7F2B5C746E1B0FDC54E15204 /* XCRemoteSwiftPackageReference "swift-asn1" */,
 				3DBCADE37280FF5C19CB8C41 /* XCRemoteSwiftPackageReference "swift-certificates" */,
 				8CD70ED74937A5A681408390 /* XCRemoteSwiftPackageReference "swift-crypto" */,
+				C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 				53F525F39820A67BBF1FBBAB /* XCRemoteSwiftPackageReference "swift-nio" */,
 				084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
 				F4C8B56AD37C979BBEA1E9BE /* XCRemoteSwiftPackageReference "swift-opus" */,
@@ -864,6 +880,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				916C90B864AAF6FF10BBCD40 /* AppIcon.png in Resources */,
+				B7582E801C0D291241F3FFF7 /* Assets.xcassets in Resources */,
 				2FED59E89C7EF46B3D67C5E3 /* SwiftBird.png in Resources */,
 				29FDA140740B03863DD7632F /* SwiftBird3.png in Resources */,
 				EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */,
@@ -974,6 +991,7 @@
 				F2CD5289AC48F48DAD2E96CD /* EmptyRuleOnboardingView.swift in Sources */,
 				C0A3E25F664C72E666E3D3F2 /* EventBus.swift in Sources */,
 				5343E350CBC68B28BDD894C4 /* GatewayEventDispatcher.swift in Sources */,
+				7A13881555E1761589C1953C /* GatewayEventPresentation.swift in Sources */,
 				382736874A4ABFC372B65199 /* GatewayModels.swift in Sources */,
 				00F2D700D7DA38BA9049A986 /* GeneralPreferencesView.swift in Sources */,
 				0C796BF553DC7A537A3E2702 /* GitHubService.swift in Sources */,
@@ -1094,6 +1112,8 @@
 				D55CF55772E4C031658C0980 /* DiscordServiceDMTests.swift in Sources */,
 				57B689BC7F6E15C9D73DB81D /* GatewayDMHandlingTests.swift in Sources */,
 				11E6E52E41D8F3196BD933F7 /* GatewayEventDispatcherTests.swift in Sources */,
+				520320BDBE5D049BC14B7F95 /* GatewayEventPresentationTests.swift in Sources */,
+				5F59E5DA9435761BB8FC767C /* GitHubServiceTests.swift in Sources */,
 				C0DDE65E5C04789A09133D38 /* HelpEngineTests.swift in Sources */,
 				BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */,
 				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
@@ -1521,6 +1541,14 @@
 				minimumVersion = 3.12.3;
 			};
 		};
+		C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-markdown.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.8.0;
+			};
+		};
 		D8C92210CC9DF49CDCA360CC /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -1549,6 +1577,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 084E20246CEB4E4FE5B8CFC0 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
 			productName = NIOSSL;
+		};
+		1E48035D96FB76D2346BA906 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C81E8E94CAD6EFFB2EAD8666 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
 		};
 		24FCC927E2337E1A74F2A427 /* libdave-swift */ = {
 			isa = XCSwiftPackageProductDependency;

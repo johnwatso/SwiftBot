@@ -742,6 +742,14 @@
       margin-right: 6px;
     }
 
+    .command-name .patchy-brand-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
     .spin {
       animation: lucide-spin 2s linear infinite;
     }
@@ -7092,12 +7100,26 @@
 
     function patchySourceMeta(kind) {
       const k = (kind || '').toLowerCase();
-      if (k === 'nvidia') return { icon: 'cpu', label: 'NVIDIA', category: 'drivers', color: '#76B900' };
-      if (k === 'amd') return { icon: 'circuit-board', label: 'AMD', category: 'drivers', color: '#ED1C24' };
-      if (k === 'intel arc') return { icon: 'monitor', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
-      if (k === 'steam') return { icon: 'gamepad-2', label: 'Steam', category: 'gaming', color: '#2563EB' };
-      if (k === 'github') return { icon: 'code', label: 'GitHub', category: 'github', color: '#7C3AED' };
+      if (k === 'nvidia') return { icon: 'cpu', brandIcon: 'nvidia', label: 'NVIDIA', category: 'drivers', color: '#76B900' };
+      if (k === 'amd') return { icon: 'circuit-board', brandIcon: 'amd', label: 'AMD', category: 'drivers', color: '#ED1C24' };
+      if (k === 'intel arc') return { icon: 'monitor', brandIcon: 'intel', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
+      if (k === 'steam') return { icon: 'gamepad-2', brandIcon: 'steam', label: 'Steam', category: 'gaming', color: '#2563EB' };
+      if (k === 'github') return { icon: 'code', brandIcon: 'github', label: 'GitHub', category: 'github', color: '#7C3AED' };
       return { icon: 'refresh-cw', label: kind || 'Source', category: 'software', color: '#6366F1' };
+    }
+
+    const PATCHY_BRAND_ICON_PATHS = {
+      amd: 'M18.324 9.137l1.559 1.56h2.556v2.557L24 14.814V9.137zM2 9.52l-2 4.96h1.309l.37-.982H3.9l.408.982h1.338L3.432 9.52zm4.209 0v4.955h1.238v-3.092l1.338 1.562h.188l1.338-1.556v3.091h1.238V9.52H10.47l-1.592 1.845L7.287 9.52zm6.283 0v4.96h2.057c1.979 0 2.88-1.046 2.88-2.472 0-1.36-.937-2.488-2.747-2.488zm1.237.91h.792c1.17 0 1.63.711 1.63 1.57 0 .728-.372 1.572-1.616 1.572h-.806zm-10.985.273l.791 1.932H2.008zm17.137.307l-1.604 1.603v2.25h2.246l1.604-1.607h-2.246z',
+      nvidia: 'M8.948 8.798v-1.43a6.7 6.7 0 0 1 .424-.018c3.922-.124 6.493 3.374 6.493 3.374s-2.774 3.851-5.75 3.851c-.398 0-.787-.062-1.158-.185v-4.346c1.528.185 1.837.857 2.747 2.385l2.04-1.714s-1.492-1.952-4-1.952a6.016 6.016 0 0 0-.796.035m0-4.735v2.138l.424-.027c5.45-.185 9.01 4.47 9.01 4.47s-4.08 4.964-8.33 4.964c-.37 0-.733-.035-1.095-.097v1.325c.3.035.61.062.91.062 3.957 0 6.82-2.023 9.593-4.408.459.371 2.34 1.263 2.73 1.652-2.633 2.208-8.772 3.984-12.253 3.984-.335 0-.653-.018-.971-.053v1.864H24V4.063zm0 10.326v1.131c-3.657-.654-4.673-4.46-4.673-4.46s1.758-1.944 4.673-2.262v1.237H8.94c-1.528-.186-2.73 1.245-2.73 1.245s.68 2.412 2.739 3.11M2.456 10.9s2.164-3.197 6.5-3.533V6.201C4.153 6.59 0 10.653 0 10.653s2.35 6.802 8.948 7.42v-1.237c-4.84-.6-6.492-5.936-6.492-5.936z',
+      intel: 'M20.42 7.345v9.18h1.651v-9.18zM0 7.475v1.737h1.737V7.474zm9.78.352v6.053c0 .513.044.945.13 1.292.087.34.235.618.44.828.203.21.475.359.803.451.334.093.754.136 1.255.136h.216v-1.533c-.24 0-.445-.012-.593-.037a.672.672 0 0 1-.39-.173.693.693 0 0 1-.173-.377 4.002 4.002 0 0 1-.037-.606v-2.182h1.193v-1.416h-1.193V7.827zm-3.505 2.312c-.396 0-.76.08-1.082.241-.327.161-.6.384-.822.668l-.087.117v-.902H2.658v6.256h1.639v-3.214c.018-.588.16-1.02.433-1.299.29-.297.642-.445 1.044-.445.476 0 .841.149 1.082.433.235.284.359.686.359 1.2v3.324h1.663V12.97c.006-.89-.229-1.595-.686-2.09-.458-.495-1.1-.742-1.917-.742zm10.065.006a3.252 3.252 0 0 0-2.306.946c-.29.29-.525.637-.692 1.033a3.145 3.145 0 0 0-.254 1.273c0 .452.08.878.241 1.274.161.395.39.742.674 1.032.284.29.637.526 1.045.693.408.173.86.26 1.342.26 1.397 0 2.262-.637 2.782-1.23l-1.187-.904c-.248.297-.841.699-1.583.699-.464 0-.847-.105-1.138-.321a1.588 1.588 0 0 1-.593-.872l-.019-.056h4.915v-.587c0-.451-.08-.872-.235-1.267a3.393 3.393 0 0 0-.661-1.033 3.013 3.013 0 0 0-1.02-.692 3.345 3.345 0 0 0-1.311-.248zm-16.297.118v6.256h1.651v-6.256zm16.278 1.286c1.132 0 1.664.797 1.664 1.255l-3.32.006c0-.458.525-1.255 1.656-1.261zm7.073 3.814a.606.606 0 0 0-.606.606.606.606 0 0 0 .606.606.606.606 0 0 0 .606-.606.606.606 0 0 0-.606-.606zm-.008.105a.5.5 0 0 1 .002 0 .5.5 0 0 1 .5.501.5.5 0 0 1-.5.5.5.5 0 0 1-.5-.5.5.5 0 0 1 .498-.5zm-.233.155v.699h.13v-.285h.093l.173.285h.136l-.18-.297a.191.191 0 0 0 .118-.056c.03-.03.05-.074.05-.136 0-.068-.02-.117-.063-.154-.037-.038-.105-.056-.185-.056zm.13.099h.154c.019 0 .037.006.056.012a.064.064 0 0 1 .037.031c.013.013.012.031.012.056a.124.124 0 0 1-.012.055.164.164 0 0 1-.037.031c-.019.006-.037.013-.056.013h-.154Z',
+      github: 'M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12',
+      steam: 'M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z'
+    };
+
+    function patchySourceIconHTML(meta) {
+      const path = PATCHY_BRAND_ICON_PATHS[meta.brandIcon];
+      if (!path) return `<i class="lucide" data-lucide="${meta.icon}"></i>`;
+      return `<svg class="patchy-brand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"></path></svg>`;
     }
 
     function formatTime(value) {
@@ -8089,7 +8111,7 @@
           html += `
             <article class="patchy-target-card ${isDuplicate ? 'duplicate-warning' : ''}" data-patchy-id="${target.id}">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                <div class="command-name" style="color: ${meta.color};"><i class="lucide" data-lucide="${meta.icon}"></i> ${meta.label}</div>
+                <div class="command-name" style="color: ${meta.color};">${patchySourceIconHTML(meta)} ${meta.label}</div>
                 <div style="display:flex;align-items:center;gap:12px;">
                   ${isDuplicate ? `<span class="patchy-status-pill" style="background: rgba(255, 59, 48, 0.1); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3);" title="${duplicateReason}"><i class="lucide" data-lucide="alert-triangle" style="width:14px;height:14px;"></i> Duplicate</span>` : ''}
                   <span class="patchy-status-pill" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">
@@ -10218,10 +10240,8 @@
         settings.classList.add('hidden');
         diagnostics.classList.add('hidden');
         aibots.classList.add('hidden');
-        logs.classList.add('hidden');
         swiftmesh.classList.add('hidden');
         userprefs.classList.add('hidden');
-        actions.classList.add('hidden');
         section.classList.add('hidden');
         renderWikiBridgeView();
         if (mobileSubtitle) mobileSubtitle.textContent = 'Lookup';

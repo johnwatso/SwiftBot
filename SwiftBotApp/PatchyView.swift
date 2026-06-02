@@ -442,17 +442,6 @@ struct PatchyView: View {
         }
     }
 
-    private func sourceIcon(_ source: PatchySourceKind) -> String {
-        switch source {
-        case .amd: return "a.circle.fill"
-        case .nvidia: return "n.square.fill"
-        case .intel: return "i.circle.fill"
-        case .apple: return "applelogo"
-        case .steam: return "gamecontroller.fill"
-        case .github: return "chevron.left.forwardslash.chevron.right"
-        }
-    }
-
     private func githubBranchLabel(for target: PatchySourceTarget) -> String {
         switch target.githubBranchMode {
         case .main:
@@ -915,9 +904,7 @@ private struct PatchTargetCard: View {
     }
 
     private var sourceBadge: some View {
-        Image(systemName: sourceIcon(target.source))
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(sourceColor)
+        PatchySourceIcon(source: target.source, color: sourceColor)
             .frame(width: 32, height: 32)
             .background(sourceColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
@@ -1038,8 +1025,42 @@ private struct PatchTargetCard: View {
         if status.contains("Unchanged") || status.contains("unchanged") { return "Last sync clean" }
         return status
     }
+}
 
-    private func sourceIcon(_ source: PatchySourceKind) -> String {
+private struct PatchySourceIcon: View {
+    let source: PatchySourceKind
+    let color: Color
+
+    var body: some View {
+        Group {
+            if let assetName = assetName {
+                Image(assetName)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(source == .nvidia ? 6 : 7)
+            } else {
+                Image(systemName: systemName)
+                    .font(.system(size: 16, weight: .bold))
+            }
+        }
+        .foregroundStyle(color)
+        .accessibilityLabel(source.rawValue)
+    }
+
+    private var assetName: String? {
+        switch source {
+        case .amd: return "PatchyAMD"
+        case .nvidia: return "PatchyNVIDIA"
+        case .intel: return "PatchyIntel"
+        case .steam: return "PatchySteam"
+        case .github: return "PatchyGitHub"
+        case .apple:
+            return nil
+        }
+    }
+
+    private var systemName: String {
         switch source {
         case .amd: return "a.circle.fill"
         case .nvidia: return "n.square.fill"

@@ -210,7 +210,7 @@ struct OverviewView: View {
                 id: "gateway-latency",
                 title: "Gateway Heartbeat",
                 value: latency.map { "\($0) ms" } ?? "--",
-                detail: app.lastGatewayEventName == "-" ? "Awaiting gateway events" : "Last event \(app.lastGatewayEventName)",
+                detail: GatewayEventPresentation.statusDetail(for: app.lastGatewayEventName),
                 symbol: "antenna.radiowaves.left.and.right",
                 state: latency.map {
                     ConnectionDiagnostics.isGatewayHeartbeatWarning($0) ? .warning : .healthy

@@ -289,6 +289,14 @@ actor SwiftMeshConfigStore {
             if settings != nil {
                 settings?.sharedSecret = storedSecret
             }
+        } else if let fileSecret = settings?.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !fileSecret.isEmpty {
+            KeychainHelper.save(fileSecret, account: clusterSharedSecretAccount)
+            lastClusterSharedSecret = fileSecret
+            settings?.sharedSecret = fileSecret
+            if let scrubbed = settings {
+                try? save(scrubbed)
+            }
         }
         return settings
     }

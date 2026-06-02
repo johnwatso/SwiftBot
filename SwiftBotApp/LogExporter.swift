@@ -111,6 +111,7 @@ enum LogExporter {
         out += "guildCreates=\(app.guildCreateEventCount)\n"
         out += "voiceStateEvents=\(app.voiceStateEventCount)\n"
         out += "lastGatewayEvent=\(app.lastGatewayEventName)\n"
+        out += "lastGatewayEventDisplayName=\(GatewayEventPresentation.displayName(for: app.lastGatewayEventName))\n"
         out += "intentsAccepted=\(app.intentsAccepted.map(String.init(describing:)) ?? "unknown")\n"
         out += "\n"
 

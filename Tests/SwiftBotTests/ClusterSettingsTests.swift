@@ -87,6 +87,48 @@ final class ClusterSettingsTests: XCTestCase {
         XCTAssertEqual(KeychainHelper.load(account: account), secret)
     }
 
+    func testSwiftMeshConfigLoadMigratesLegacyFileSecretToKeychainAndScrubsDisk() async throws {
+        let account = "cluster-shared-secret"
+        let previousSecret = KeychainHelper.load(account: account)
+        defer {
+            if let previousSecret {
+                KeychainHelper.save(previousSecret, account: account)
+            } else {
+                KeychainHelper.delete(account: account)
+            }
+        }
+        KeychainHelper.delete(account: account)
+
+        let filename = "swiftmesh-config-\(UUID().uuidString).json"
+        let store = SwiftMeshConfigStore(filename: filename)
+        let fileURL = SwiftBotStorage.folderURL().appendingPathComponent(filename)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let legacySecret = "legacy-file-secret"
+        let legacySettings = SwiftMeshSettings(
+            mode: .standby,
+            nodeName: "Failover",
+            leaderAddress: "http://primary.local:38787",
+            leaderPort: 38787,
+            listenPort: 38787,
+            sharedSecret: legacySecret,
+            leaderTerm: 3
+        )
+        let legacyData = try JSONEncoder().encode(legacySettings)
+        try legacyData.write(to: fileURL, options: .atomic)
+
+        let loaded = await store.load()
+
+        XCTAssertEqual(loaded?.sharedSecret, legacySecret)
+        XCTAssertEqual(KeychainHelper.load(account: account), legacySecret)
+
+        let scrubbedData = try Data(contentsOf: fileURL)
+        let scrubbedText = String(data: scrubbedData, encoding: .utf8) ?? ""
+        XCTAssertFalse(scrubbedText.contains(legacySecret), "Legacy mesh secret must be removed from disk after load")
+        let scrubbed = try JSONDecoder().decode(SwiftMeshSettings.self, from: scrubbedData)
+        XCTAssertEqual(scrubbed.sharedSecret, "")
+    }
+
     // MARK: - Snapshot and Promotion Terminology
 
     func testClusterSnapshotPromotionTerminology() async {

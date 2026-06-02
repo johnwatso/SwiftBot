@@ -985,7 +985,7 @@ actor ClusterCoordinator {
         await restartServerIfNeeded()
         await restartWorkerRegistrationIfNeeded()
         await restartStandbyMonitorIfNeeded()
-        await restartFollowerStatePollIfNeeded()
+        await reconcileFollowerStatePoll()
         await refreshWorkerHealth()
         await publishSnapshot()
     }
@@ -2174,7 +2174,7 @@ actor ClusterCoordinator {
         // Restart server as leader
         await restartServerIfNeeded()
         // Begin polling follower state now that we're primary.
-        await restartFollowerStatePollIfNeeded()
+        await reconcileFollowerStatePoll()
 
         // Notify workers of the new leader
         let workers = Array(registeredWorkers.values)
@@ -2334,9 +2334,7 @@ actor ClusterCoordinator {
         await restartWorkerRegistrationIfNeeded()
         await restartServerIfNeeded()
         // No longer primary — stop polling follower state and clear the published map.
-        followerStatePollTask?.cancel()
-        _ = await followerStatePollTask?.value
-        followerStatePollTask = nil
+        await reconcileFollowerStatePoll()
         followerStates.removeAll()
         snapshot.followerStates = [:]
 
@@ -3254,7 +3252,7 @@ actor ClusterCoordinator {
 
     /// Primary-side polling: fetch /v1/mesh/follower-state from each registered
     /// worker and stash the result in `followerStates`, then publish snapshot.
-    /// Started by `restartFollowerStatePollIfNeeded()`; quiet on non-leaders.
+    /// Started by `reconcileFollowerStatePoll()`; quiet on non-leaders.
     private func pollFollowerStates() async {
         guard mode == .leader else { return }
         let workers = sortedRegisteredWorkers()
@@ -3292,11 +3290,15 @@ actor ClusterCoordinator {
         await publishSnapshot()
     }
 
-    private func restartFollowerStatePollIfNeeded() async {
-        followerStatePollTask?.cancel()
-        _ = await followerStatePollTask?.value
-        followerStatePollTask = nil
-        guard mode == .leader else { return }
+    private func reconcileFollowerStatePoll() async {
+        guard mode == .leader else {
+            guard let task = followerStatePollTask else { return }
+            task.cancel()
+            _ = await task.value
+            followerStatePollTask = nil
+            return
+        }
+        guard followerStatePollTask == nil else { return }
         meshLogger.debug("Starting follower state poll")
         followerStatePollTask = Task {
             while !Task.isCancelled {

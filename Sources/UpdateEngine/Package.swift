@@ -22,13 +22,15 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.9.6")
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.9.6"),
+        .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.8.0")
     ],
     targets: [
         .target(
             name: "UpdateEngine",
             dependencies: [
-                .product(name: "SwiftSoup", package: "SwiftSoup")
+                .product(name: "SwiftSoup", package: "SwiftSoup"),
+                .product(name: "Markdown", package: "swift-markdown")
             ],
             path: "Sources/UpdateEngineCore"
         ),

@@ -65,7 +65,7 @@ extension AppModel {
         connectionDiagnostics.lastGatewayCloseCode = nil
         updateBotIdentity(event.identity)
         await handleReady(event)
-        logs.append("READY received")
+        logs.append("Discord gateway connected")
         if shouldRegisterSlashCommands {
             await registerSlashCommandsIfNeeded()
         }

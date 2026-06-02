@@ -223,26 +223,76 @@ actor DiscordAIService {
         guard !trimmed.isEmpty, appleAvailability() else { return nil }
 
         let systemPrompt = """
-        You summarise Patchy update checks for a Discord embed.
-        Produce an overall user-facing blurb, not just fixes.
+        You summarise software, game, driver, and repository update notes for a Discord embed.
+        Describe the update itself, not the monitoring tool that found it.
+        Start with the product, vendor, game, repository, release, or commit subject when one is present.
+        Never use the word Patchy.
+        Use the Summary brief and Key extracted changes first, then consult Full notes only for missing context.
+        Produce a useful user-facing summary with concrete changes and practical impact, not a generic announcement.
         Include important highlights, fixes, known issues, regressions, UI or GUI changes, compatibility notes, and upgrade impact when present.
         For GitHub commits or releases, call out visible product/UI changes and practical developer-facing changes.
-        Output one or two short paragraphs, maximum. Do not use bullet points. Do not include a heading. Do not mention that you are an AI.
+        Output two compact paragraphs or one rich paragraph. Aim for 45-110 words. Do not use bullet points. Do not include a heading. Do not mention that you are an AI.
         """
         let prompt = """
-        Summarise this \(source) update:
+        Update category: \(source)
+
+        Summarise these update notes for users:
 
         \(trimmed)
         """
         let engine = AppleIntelligenceEngine(defaultSystemPrompt: systemPrompt)
         let messages = [
-            Message(channelID: "patchy", userID: "swiftbot", username: "Patchy", content: systemPrompt, role: .system),
-            Message(channelID: "patchy", userID: "swiftbot", username: "Patchy", content: prompt, role: .user)
+            Message(channelID: "update-summary", userID: "swiftbot", username: "Release notes", content: systemPrompt, role: .system),
+            Message(channelID: "update-summary", userID: "swiftbot", username: "Release notes", content: prompt, role: .user)
         ]
 
         guard let reply = await engine.generate(messages: messages) else { return nil }
         let cleaned = cleanAIOutput(reply)
-        return cleaned.isEmpty ? nil : cleaned
+        let summary = Self.cleanPatchySummary(cleaned)
+        return Self.isUsefulPatchySummary(summary) ? summary : nil
+    }
+
+    nonisolated static func cleanPatchySummary(_ raw: String) -> String {
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+
+        let disallowedPrefixes = [
+            "patchy reports ",
+            "patchy has detected ",
+            "patchy detected ",
+            "patchy found ",
+            "patchy says ",
+            "patchy summarises ",
+            "patchy summarizes "
+        ]
+        let lowered = cleaned.lowercased()
+        for prefix in disallowedPrefixes where lowered.hasPrefix(prefix) {
+            cleaned = String(cleaned.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            break
+        }
+
+        guard !cleaned.lowercased().hasPrefix("patchy") else { return "" }
+        return cleaned
+    }
+
+    nonisolated static func isUsefulPatchySummary(_ summary: String) -> Bool {
+        let cleaned = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return false }
+        let words = cleaned
+            .split { !$0.isLetter && !$0.isNumber }
+        guard words.count >= 24 else { return false }
+
+        let lowered = cleaned.lowercased()
+        let vagueOpeners = [
+            "this update",
+            "this release",
+            "the update",
+            "the release",
+            "a new update",
+            "an update"
+        ]
+        guard !vagueOpeners.contains(where: { lowered.hasPrefix($0) }) else { return false }
+        return true
     }
 
     /// Sweep digest — on-device summarisation of a stretch of channel activity

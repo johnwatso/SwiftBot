@@ -31,6 +31,9 @@ packages:
   SwiftSoup:
     url: https://github.com/scinfu/SwiftSoup.git
     majorVersion: 2.9.6
+  swift-markdown:
+    url: https://github.com/swiftlang/swift-markdown.git
+    majorVersion: 0.8.0
   swift-opus:
     url: https://github.com/alta/swift-opus.git
     exactVersion: 0.0.2
@@ -51,6 +54,9 @@ targets:
         type: group
       - path: SwiftBotApp/Resources/admin
         type: folder
+        buildPhase: resources
+      - path: SwiftBotApp/Resources/Assets.xcassets
+        type: file
         buildPhase: resources
       - path: SwiftBotApp/Resources/AppIcon.png
         type: file
@@ -88,6 +94,8 @@ targets:
         product: NIOSSL
       - package: SwiftSoup
         product: SwiftSoup
+      - package: swift-markdown
+        product: Markdown
       - package: swift-opus
         product: Opus
       - package: libdave-swift
