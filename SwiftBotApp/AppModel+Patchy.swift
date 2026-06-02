@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 private let maxPatchyLogEntries = 100
 
@@ -123,7 +124,8 @@ extension AppModel {
                         for: target,
                         item: item
                     ),
-                    roleIDs: target.roleIDs
+                    roleIDs: target.roleIDs,
+                    iconAttachment: await patchySteamIconAttachment(for: target)
                 )
 
                 updatePatchyTargetRuntimeState(id: target.id) { entry in
@@ -308,7 +310,8 @@ extension AppModel {
                                 channelId: target.channelId,
                                 message: fallback,
                                 embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: driverItem),
-                                roleIDs: target.roleIDs
+                                roleIDs: target.roleIDs,
+                                iconAttachment: await patchySteamIconAttachment(for: target)
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
                                 entry.lastRunAt = Date()
@@ -355,7 +358,8 @@ extension AppModel {
                                 channelId: target.channelId,
                                 message: fallback,
                                 embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: githubItem),
-                                roleIDs: target.roleIDs
+                                roleIDs: target.roleIDs,
+                                iconAttachment: await patchySteamIconAttachment(for: target)
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
                                 entry.lastRunAt = Date()
@@ -413,7 +417,8 @@ extension AppModel {
                                 channelId: target.channelId,
                                 message: fallback,
                                 embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: steamItem),
-                                roleIDs: target.roleIDs
+                                roleIDs: target.roleIDs,
+                                iconAttachment: await patchySteamIconAttachment(for: target)
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
                                 entry.lastRunAt = Date()
@@ -453,7 +458,8 @@ extension AppModel {
                                 channelId: target.channelId,
                                 message: fallback,
                                 embedJSON: await patchyEmbedJSON(mapped.embedJSON, for: target, item: item),
-                                roleIDs: target.roleIDs
+                                roleIDs: target.roleIDs,
+                                iconAttachment: await patchySteamIconAttachment(for: target)
                             )
                             updatePatchyTargetRuntimeState(id: target.id) { entry in
                                 entry.lastRunAt = Date()
@@ -894,18 +900,93 @@ extension AppModel {
         guard target.source == .steam else { return }
         let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !appID.isEmpty else { return }
-        if let existing = settings.patchy.steamAppNames[appID], !existing.isEmpty {
-            return
-        }
+        let needsName = (settings.patchy.steamAppNames[appID] ?? "").isEmpty
+        let needsIcon = target.useSteamIcon && (settings.patchy.steamAppIcons[appID] ?? "").isEmpty
+        guard needsName || needsIcon else { return }
 
         Task {
-            if let name = await fetchSteamAppName(appID: appID) {
-                await MainActor.run {
-                    self.settings.patchy.steamAppNames[appID] = name
-                    self.persistSettingsQuietly()
-                }
+            async let nameResult = needsName ? fetchSteamAppName(appID: appID) : nil
+            async let iconResult = needsIcon ? fetchSteamClientIconURL(appID: appID) : nil
+            let (name, icon) = await (nameResult, iconResult)
+            guard name != nil || icon != nil else { return }
+            await MainActor.run {
+                if let name { self.settings.patchy.steamAppNames[appID] = name }
+                if let icon { self.settings.patchy.steamAppIcons[appID] = icon }
+                self.persistSettingsQuietly()
             }
         }
+    }
+
+    /// Resolves the Steam `clienticon` for an app and returns the full `.ico`
+    /// CDN URL (multi-resolution, up to 256x256). The icon hash isn't exposed by
+    /// the keyless store endpoints, so we read it from the public steamcmd
+    /// metadata mirror (`common.clienticon`).
+    func fetchSteamClientIconURL(appID: String) async -> String? {
+        guard let url = URL(string: "https://api.steamcmd.net/v1/info/\(appID)") else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            guard
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let dataNode = root["data"] as? [String: Any],
+                let appNode = dataNode[appID] as? [String: Any],
+                let common = appNode["common"] as? [String: Any],
+                let hash = (common["clienticon"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !hash.isEmpty
+            else {
+                return nil
+            }
+
+            return "https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/\(appID)/\(hash).ico"
+        } catch {
+            return nil
+        }
+    }
+
+    /// Downloads a Steam target's cached `.ico` icon and converts the largest
+    /// frame to PNG so it can be attached to a Discord embed (Discord doesn't
+    /// render `.ico`). Returns `nil` for non-Steam targets or on any failure,
+    /// in which case the caller falls back to the URL-based embed thumbnail.
+    func patchySteamIconAttachment(for target: PatchySourceTarget) async -> (data: Data, filename: String)? {
+        guard target.source == .steam, target.useSteamIcon else { return nil }
+        let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appID.isEmpty,
+              let urlString = settings.patchy.steamAppIcons[appID]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !urlString.isEmpty,
+              let url = URL(string: urlString)
+        else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let png = patchyConvertICOToPNG(data)
+            else {
+                return nil
+            }
+            return (png, "steam_\(appID)_icon.png")
+        } catch {
+            return nil
+        }
+    }
+
+    /// Picks the highest-resolution frame from a multi-resolution `.ico` and
+    /// re-encodes it as PNG.
+    private func patchyConvertICOToPNG(_ data: Data) -> Data? {
+        guard let image = NSImage(data: data) else { return nil }
+        let bitmapReps = image.representations.compactMap { $0 as? NSBitmapImageRep }
+        if let best = bitmapReps.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }) {
+            return best.representation(using: .png, properties: [:])
+        }
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
     }
 
     func fetchSteamAppName(appID: String) async -> String? {

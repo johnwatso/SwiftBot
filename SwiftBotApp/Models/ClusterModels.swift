@@ -2,6 +2,10 @@ import Foundation
 
 // MARK: - Patchy Settings
 
+enum PatchyDefaults {
+    static let steamAppID = "2073850"
+}
+
 enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     case nvidia = "NVIDIA"
     case amd = "AMD"
@@ -87,7 +91,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var id = UUID()
     var isEnabled: Bool = true
     var source: PatchySourceKind = .nvidia
-    var steamAppID: String = "570"
+    var steamAppID: String = PatchyDefaults.steamAppID
+    var useSteamIcon: Bool = true
     var githubRepo: String = ""
     var githubBranch: String = ""
     var githubWatchAllCommits: Bool = false
@@ -105,7 +110,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var lastStatus: String = "Never checked"
 
     enum CodingKeys: String, CodingKey {
-        case id, isEnabled, source, steamAppID
+        case id, isEnabled, source, steamAppID, useSteamIcon
         case githubRepo, githubBranch, githubWatchAllCommits, githubBranchMode
         case appleProduct, appleIncludeBetas
         case pollingIntervalMinutes, embedColorHex, summarizeWithAppleIntelligence
@@ -118,7 +123,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         id: UUID = UUID(),
         isEnabled: Bool = true,
         source: PatchySourceKind = .nvidia,
-        steamAppID: String = "570",
+        steamAppID: String = PatchyDefaults.steamAppID,
+        useSteamIcon: Bool = true,
         githubRepo: String = "",
         githubBranch: String = "",
         githubWatchAllCommits: Bool = false,
@@ -139,6 +145,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         self.isEnabled = isEnabled
         self.source = source
         self.steamAppID = steamAppID
+        self.useSteamIcon = useSteamIcon
         self.githubRepo = githubRepo
         self.githubBranch = githubBranch
         self.githubWatchAllCommits = githubWatchAllCommits
@@ -161,7 +168,8 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
         source = try c.decodeIfPresent(PatchySourceKind.self, forKey: .source) ?? .nvidia
-        steamAppID = try c.decodeIfPresent(String.self, forKey: .steamAppID) ?? "570"
+        steamAppID = try c.decodeIfPresent(String.self, forKey: .steamAppID) ?? PatchyDefaults.steamAppID
+        useSteamIcon = try c.decodeIfPresent(Bool.self, forKey: .useSteamIcon) ?? true
         githubRepo = try c.decodeIfPresent(String.self, forKey: .githubRepo) ?? ""
         githubBranch = try c.decodeIfPresent(String.self, forKey: .githubBranch) ?? ""
         githubWatchAllCommits = try c.decodeIfPresent(Bool.self, forKey: .githubWatchAllCommits) ?? false
@@ -188,6 +196,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         try c.encode(isEnabled, forKey: .isEnabled)
         try c.encode(source, forKey: .source)
         try c.encode(steamAppID, forKey: .steamAppID)
+        try c.encode(useSteamIcon, forKey: .useSteamIcon)
         try c.encode(githubRepo, forKey: .githubRepo)
         try c.encode(githubBranch, forKey: .githubBranch)
         try c.encode(githubWatchAllCommits, forKey: .githubWatchAllCommits)
@@ -273,10 +282,13 @@ struct PatchySettings: Codable, Hashable {
     var showDebug: Bool = false
     var sourceTargets: [PatchySourceTarget] = []
     var steamAppNames: [String: String] = [:]
+    // appID -> Steam clienticon URL (.ico, up to 256x256). Cached when a Steam
+    // target is added, used for the Patchy UI row art and the Discord thumbnail.
+    var steamAppIcons: [String: String] = [:]
 
     // Legacy fields kept for migration compatibility.
     var source: PatchySourceKind = .nvidia
-    var steamAppID: String = "570"
+    var steamAppID: String = PatchyDefaults.steamAppID
     var saveAfterFetch: Bool = true
     var targets: [PatchyDeliveryTarget] = []
 }

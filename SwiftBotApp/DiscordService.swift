@@ -453,6 +453,28 @@ actor DiscordService {
         )
     }
 
+    @discardableResult
+    func sendMessageWithEmbedImage(
+        channelId: String,
+        payload: [String: Any],
+        imageData: Data,
+        filename: String,
+        token: String
+    ) async throws -> String {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: sendMessageWithEmbedImage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        nonisolated(unsafe) let safePayload = payload
+        return try await messageRESTClient.sendMessageWithEmbedImage(
+            channelId: channelId,
+            payload: safePayload,
+            imageData: imageData,
+            filename: filename,
+            token: token
+        )
+    }
+
     func editMessageWithImage(
         channelId: String,
         messageId: String,

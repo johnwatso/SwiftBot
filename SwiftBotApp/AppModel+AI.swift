@@ -295,7 +295,8 @@ extension AppModel {
         channelId: String,
         message: String,
         embedJSON: String?,
-        roleIDs: [String]
+        roleIDs: [String],
+        iconAttachment: (data: Data, filename: String)? = nil
     ) async -> (ok: Bool, detail: String) {
         guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "sendPatchyNotification", log: { logs.append($0) }) else {
             return (false, "Patchy send blocked — node is not Primary.")
@@ -323,7 +324,14 @@ extension AppModel {
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let embeds = object["embeds"] as? [Any],
            !embeds.isEmpty {
-            payload["embeds"] = embeds
+            // When an icon attachment is supplied, point the first embed's
+            // thumbnail at the uploaded file (Discord can't render the .ico URL).
+            if let iconAttachment, var typedEmbeds = embeds as? [[String: Any]], !typedEmbeds.isEmpty {
+                typedEmbeds[0]["thumbnail"] = ["url": "attachment://\(iconAttachment.filename)"]
+                payload["embeds"] = typedEmbeds
+            } else {
+                payload["embeds"] = embeds
+            }
             if !roleMentionText.isEmpty {
                 payload["content"] = roleMentionText
             }
@@ -340,11 +348,22 @@ extension AppModel {
         }
 
         do {
-            _ = try await sendPayloadResponse(
-                channelId: channelId,
-                payload: payload,
-                action: "sendPatchyNotification"
-            )
+            if let iconAttachment, payload["embeds"] != nil {
+                nonisolated(unsafe) let safePayload = payload
+                _ = try await service.sendMessageWithEmbedImage(
+                    channelId: channelId,
+                    payload: safePayload,
+                    imageData: iconAttachment.data,
+                    filename: iconAttachment.filename,
+                    token: token
+                )
+            } else {
+                _ = try await sendPayloadResponse(
+                    channelId: channelId,
+                    payload: payload,
+                    action: "sendPatchyNotification"
+                )
+            }
             let detail = "Notification sent successfully."
             logs.append("✅ Patchy: \(detail)")
             return (true, detail)

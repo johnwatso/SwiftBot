@@ -1014,7 +1014,7 @@ extension AppModel {
             id: UUID(),
             isEnabled: true,
             source: source,
-            steamAppID: source == .steam ? "570" : "",
+            steamAppID: source == .steam ? PatchyDefaults.steamAppID : "",
             serverId: serverID,
             channelId: textChannelID,
             roleIDs: [],
