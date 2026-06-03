@@ -7122,6 +7122,15 @@
       return `<svg class="patchy-brand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"></path></svg>`;
     }
 
+    function patchySourceTitle(target, meta) {
+      if (target.source === 'Steam') {
+        const appID = (target.steamAppID || '').trim();
+        const name = appID ? (patchyData.steamAppNames || {})[appID] : '';
+        return name ? `Steam • ${name}` : 'Steam';
+      }
+      return meta.label;
+    }
+
     function formatTime(value) {
       if (!value) return 'Never';
       const date = new Date(value);
@@ -8068,8 +8077,9 @@
           </div>
         `;
 
-        targets.forEach(target => {
+          targets.forEach(target => {
           const meta = patchySourceMeta(target.source);
+          const sourceTitle = patchySourceTitle(target, meta);
           const channels = textChannelsForServer(target.serverId || (patchyData.servers[0]?.id || ''));
           const roleSummary = asRoleNames(target.serverId, target.roleIDs);
 
@@ -8111,7 +8121,7 @@
           html += `
             <article class="patchy-target-card ${isDuplicate ? 'duplicate-warning' : ''}" data-patchy-id="${target.id}">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                <div class="command-name" style="color: ${meta.color};">${patchySourceIconHTML(meta)} ${meta.label}</div>
+                <div class="command-name" style="color: ${meta.color};">${patchySourceIconHTML(meta)} ${escapeHTML(sourceTitle)}</div>
                 <div style="display:flex;align-items:center;gap:12px;">
                   ${isDuplicate ? `<span class="patchy-status-pill" style="background: rgba(255, 59, 48, 0.1); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3);" title="${duplicateReason}"><i class="lucide" data-lucide="alert-triangle" style="width:14px;height:14px;"></i> Duplicate</span>` : ''}
                   <span class="patchy-status-pill" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">

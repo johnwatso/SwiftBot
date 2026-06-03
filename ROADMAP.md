@@ -265,6 +265,12 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 ## Session log
 
+### 2026-06-03 — Sweep pinned notice analytics + controls
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Added opt-in 7-day rolling voice averages to Sweep pinned embeds, editing the original pinned notice in place with non-notifying user mentions. Modernised Sweep row actions with compact Try/Run Now controls, added a pencil edit button, and changed clear-channel iconography to `rectangle.stack.slash.fill`. |
+
 ### 2026-05-27 — 6+ commits landed
 
 | Commit | Summary |

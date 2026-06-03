@@ -908,9 +908,34 @@ actor DiscordService {
         guard let token = botToken, !token.isEmpty else {
             throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep notice failed: no bot token."])
         }
-        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payload: ["embeds": [embed]], token: token)
+        let payload: [String: Any] = [
+            "embeds": [embed],
+            "allowed_mentions": ["parse": []]
+        ]
+        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payload: payload, token: token)
         try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
         return messageId
+    }
+
+    /// Sweep entry point — edit the existing pinned notice embed in-place.
+    /// Gated by `outputAllowed` via the same Primary-only guard as other
+    /// Discord output paths.
+    func sweepEditPinnedNotice(channelId: String, messageId: String, embed: [String: Any]) async throws {
+        guard outputAllowed else {
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
+        guard let token = botToken, !token.isEmpty else {
+            throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep notice failed: no bot token."])
+        }
+        try await messageRESTClient.editMessage(
+            channelId: channelId,
+            messageId: messageId,
+            payload: [
+                "embeds": [embed],
+                "allowed_mentions": ["parse": []]
+            ],
+            token: token
+        )
     }
 
     /// Sweep entry point — does a previously-posted notice still exist? Used so

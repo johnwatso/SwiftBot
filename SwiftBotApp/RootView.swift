@@ -186,15 +186,12 @@ struct DashboardSidebar: View {
 
                     DashboardSidebarHeader(
                         avatarURL: app.botAvatarURL,
-                        botUsername: app.resolvedBotUsername,
                         statusText: app.primaryServiceStatusText,
                         isOnline: app.primaryServiceIsOnline,
                         clusterMode: sidebarModeLabel,
                         clusterIcon: clusterIcon
                     )
-                    .padding(.horizontal, 10)
                     .padding(.top, 44)
-                    .padding(.bottom, 14)
                     .frame(maxWidth: .infinity)
                     .background(alignment: .top) {
                         Rectangle()
@@ -409,22 +406,13 @@ struct SidebarRow: View {
 private struct SidebarSelectionHighlight: View {
     @Environment(\.controlActiveState) private var controlActiveState
 
-    private var highlightMaterial: Material {
-        controlActiveState == .active ? .thinMaterial : .ultraThinMaterial
-    }
-
-    private var strokeOpacity: Double {
-        controlActiveState == .active ? 0.08 : 0.04
-    }
-
     var body: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(highlightMaterial)
+            .fill(.primary.opacity(controlActiveState == .active ? 0.08 : 0.045))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.primary.opacity(strokeOpacity), lineWidth: 1)
+                    .strokeBorder(.primary.opacity(controlActiveState == .active ? 0.045 : 0.025), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(controlActiveState == .active ? 0.06 : 0), radius: 4, y: 2)
     }
 }
 
@@ -485,7 +473,6 @@ struct SidebarSection<Content: View>: View {
 
 private struct DashboardSidebarHeader: View {
     let avatarURL: URL?
-    let botUsername: String
     let statusText: String
     let isOnline: Bool
     let clusterMode: String
@@ -494,63 +481,41 @@ private struct DashboardSidebarHeader: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .center, spacing: 12) {
-                SidebarAvatarView(avatarURL: avatarURL)
+        VStack(spacing: 8) {
+                SidebarAvatarView(avatarURL: avatarURL, isOnline: isOnline)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(botUsername)
+                VStack(spacing: 3) {
+                    Text("SwiftBot – Dev")
                         .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
-                        .truncationMode(.tail)
-                        .layoutPriority(1)
 
                     HStack(spacing: 5) {
-                        Circle()
-                            .fill(isOnline ? Color.green : Color.secondary)
-                            .frame(width: 6, height: 6)
+                        Text(statusText)
+                        Text("•")
+                            .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
-                        Text("SwiftBot")
+                        Image(systemName: clusterIcon)
+                            .font(.system(size: 10, weight: .semibold))
+                            .accessibilityHidden(true)
+                        Text(clusterMode)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
-
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 8) {
-                SidebarInfoRow(
-                    systemImage: "power.circle.fill",
-                    title: "Status",
-                    value: statusText,
-                    tint: isOnline ? .green : .secondary
-                )
-                SidebarInfoRow(
-                    systemImage: clusterIcon,
-                    title: "Mode",
-                    value: clusterMode,
-                    tint: .secondary
-                )
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.primary.opacity(colorScheme == .dark ? 0.08 : 0.12), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 5, x: 0, y: 2)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
     }
 }
 
 private struct SidebarAvatarView: View {
     let avatarURL: URL?
+    let isOnline: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -563,8 +528,8 @@ private struct SidebarAvatarView: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 40, height: 40)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     case .failure:
                         placeholder()
                     @unknown default:
@@ -575,16 +540,24 @@ private struct SidebarAvatarView: View {
                 placeholder()
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: 56, height: 56)
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.30), lineWidth: 1)
         )
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(isOnline ? Color.green : Color.secondary)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().strokeBorder(.background.opacity(0.85), lineWidth: 2))
+                .offset(x: 2, y: 2)
+                .accessibilityHidden(true)
+        }
     }
 
     private func placeholder(progress: Bool = false) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [.blue.opacity(0.85), .indigo.opacity(0.85)],
@@ -599,45 +572,10 @@ private struct SidebarAvatarView: View {
                     .tint(.white)
             } else {
                 Image(systemName: "cpu.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 23, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
-    }
-}
-
-private struct SidebarInfoRow: View {
-    let systemImage: String
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 12)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

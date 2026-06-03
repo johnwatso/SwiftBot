@@ -90,7 +90,7 @@
 <body>
   <main>
     <h1>SwiftBot 1.20</h1>
-    <p class="meta">Version 1.20 · Build 2026052301</p>
+    <p class="meta">Version 1.20 · Build 2026060313</p>
     <p class="intro">The most significant update to SwiftBot yet. Version 1.20 introduces a massive security overhaul, hardened clustering with SwiftMesh, a powerful new Sweep subsystem for server health, and a complete migration to Swift 6.</p>
 
     <section class="security">
@@ -131,6 +131,9 @@
       <p class="summary">Keeping your server healthy and your workflows automated.</p>
       <ul>
         <li><strong>Sweep Subsystem:</strong> A new native-first engine for channel health policies, with macOS rule creation and Admin Web monitoring controls.</li>
+        <li><strong>Pinned Notice Analytics:</strong> Sweep pinned notices can now include an opt-in 7-day rolling voice average, highlighting the most active voice users directly in the channel notice.</li>
+        <li><strong>Smarter Pinned Notices:</strong> Existing Sweep notices are now edited in place when schedules, templates, or analytics change, preventing duplicate pinned messages while keeping the notice current.</li>
+        <li><strong>Quiet Mentions:</strong> Sweep notice embeds can reference users without triggering Discord mention notifications.</li>
         <li><strong>Dry-Run Previews:</strong> See exactly what a Sweep policy or automation rule will do before it applies changes.</li>
         <li><strong>Welcome Flow v2:</strong> A complete refactor of the member join/leave service with support for rich embeds, invite tracking, and account age gating.</li>
         <li><strong>Patchy Integration:</strong> Introduced a new integration engine for rich metadata previews from external services like GitHub and Steam.</li>
@@ -143,12 +146,15 @@
       <p class="summary">Redesigned from the ground up for performance and clarity.</p>
       <ul>
         <li><strong>UI Consistency:</strong> A comprehensive visual refresh across all native views and the admin web interface, ensuring a seamless and consistent experience throughout the application.</li>
+        <li><strong>Sweep Controls:</strong> Sweep policy rows now use compact Try, Run Now, and edit controls, with clearer iconography for full-channel clear actions.</li>
+        <li><strong>Sidebar Polish:</strong> Refined the native sidebar header with a larger bot avatar, integrated online status, and calmer selection styling.</li>
         <li><strong>Static UI Mode:</strong> Introduced a specialized "Static Auth" mode when the Admin UI is loaded directly from local files, ensuring a consistent fallback experience.</li>
         <li><strong>Enhanced MFA Awareness:</strong> Redesigned the "MFA Required" login status page with security-themed iconography (fingerprints, padlocks, keys) and a warm amber palette to clearly communicate 2FA requirements.</li>
         <li><strong>SwiftMesh UI Refresh:</strong> A complete redesign of the mesh management interface with a new node list, configuration grid, and improved visual hierarchy.</li>
         <li><strong>Unified Activity Log:</strong> Merged Command Log and System Logs into a single, high-performance view with smart filtering for Gateway, Audit, and Mesh events.</li>
         <li><strong>Premium Login Experience:</strong> A completely redesigned, Apple-inspired login screen for the Web UI with high-density background animations.</li>
         <li><strong>Optimized Auth Visuals:</strong> Refined the Apple-inspired login screen with higher icon density, improved shadows, and smoother floating animations.</li>
+        <li><strong>Patchy Steam Labels:</strong> Steam targets now show the resolved app name without repeating raw app IDs in native and web Patchy lists.</li>
         <li><strong>Lucide Icon Migration:</strong> Replaced legacy icon sets with modern, consistent Lucide icons across both native and web interfaces.</li>
         <li><strong>Variable Autocomplete:</strong> Intelligent autocomplete for template variables in the Web UI automation editor.</li>
         <li><strong>Metric Grid:</strong> Redesigned dashboard cards with clearer trends and balanced layouts.</li>

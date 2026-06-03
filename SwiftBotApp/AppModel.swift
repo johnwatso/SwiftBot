@@ -464,6 +464,10 @@ final class AppModel: ObservableObject {
         self.sweepService.setSummariser { channelName, lines in
             await aiService.summarizeSweepDigest(channelName: channelName, lines: lines)
         }
+        let voiceSessionStore = self.voiceSessionStore
+        self.sweepService.setNoticeAnalyticsProvider { guildID in
+            await voiceSessionStore.getTopVoiceUserRollingAveragesLast7Days(guildId: guildID, limit: 5)
+        }
         // Forward Sweep run reports into the shared Activity log so the user
         // can see them alongside Patchy / voice activity.
         self.sweepService.setActivityLogger { [weak self] report in

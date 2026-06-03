@@ -45,7 +45,7 @@ enum SweepStrategyKind: String, Codable, CaseIterable, Identifiable {
         case .archive: return "archivebox"
         case .quietChannel: return "bell.slash"
         case .reduceNoise: return "waveform.path.ecg"
-        case .clearAll: return "trash"
+        case .clearAll: return "rectangle.stack.slash.fill"
         }
     }
 
@@ -146,7 +146,7 @@ enum SweepTask: String, CaseIterable, Identifiable, Codable {
         case .cleanNoisyBotChannel: return "speaker.slash"
         case .archiveStaleThreads: return "archivebox"
         case .dailyDigest: return "text.bubble"
-        case .clearChannel: return "trash"
+        case .clearChannel: return "rectangle.stack.slash.fill"
         }
     }
 
@@ -316,9 +316,37 @@ enum SweepSchedule: Codable, Hashable {
 struct SweepNotice: Codable, Hashable {
     var isEnabled: Bool = false
     var template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
+    /// When true, the pinned embed includes a 7-day rolling voice average field
+    /// sourced from SwiftBot's Analytics voice-session history.
+    var showVoiceAverages: Bool = false
     /// Set after the notice is first posted + pinned, so subsequent runs edit
     /// (or, if it was deleted, re-post) the same message instead of duplicating.
     var pinnedMessageID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled, template, showVoiceAverages, pinnedMessageID
+    }
+
+    init(
+        isEnabled: Bool = false,
+        template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}.",
+        showVoiceAverages: Bool = false,
+        pinnedMessageID: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.template = template
+        self.showVoiceAverages = showVoiceAverages
+        self.pinnedMessageID = pinnedMessageID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        template = try container.decodeIfPresent(String.self, forKey: .template)
+            ?? ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
+        showVoiceAverages = try container.decodeIfPresent(Bool.self, forKey: .showVoiceAverages) ?? false
+        pinnedMessageID = try container.decodeIfPresent(String.self, forKey: .pinnedMessageID)
+    }
 
     /// Substitute the `{time}` / `{frequency}` placeholders from the schedule
     /// and collapse any double spaces left behind by an empty time phrase.
@@ -604,7 +632,23 @@ protocol SweepDispatcher: Sendable {
     func deleteMessages(channelID: String, messageIDs: [String]) async -> Int
     /// Post a new embed notice and pin it; returns the new message ID. `guildID`
     /// lets the live dispatcher resolve `:name:` custom-emoji shorthand.
-    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String
+    /// Edit an existing pinned notice so changes to the schedule, template, or
+    /// analytics field are reflected without posting a duplicate.
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws
     /// Whether a previously-posted notice still exists in the channel, so the
     /// caller can post once and only re-post if it was deleted.
     func noticeExists(channelID: String, messageID: String) async -> Bool
@@ -612,7 +656,23 @@ protocol SweepDispatcher: Sendable {
 
 extension SweepDispatcher {
     // Default no-op notice handling — only the live dispatcher touches Discord.
-    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String { "" }
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String { "" }
+
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws {}
+
     func noticeExists(channelID: String, messageID: String) async -> Bool { true }
 
     // Default sequential delete — preserves prior behaviour for dispatchers
@@ -662,11 +722,36 @@ struct LiveSweepDispatcher: SweepDispatcher {
         await discord.sweepDeleteMessages(channelId: channelID, messageIds: messageIDs)
     }
 
-    func postPinnedNotice(channelID: String, guildID: String, title: String, body: String) async throws -> String {
+    func postPinnedNotice(
+        channelID: String,
+        guildID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws -> String {
         let resolvedTitle = await discord.sweepResolveCustomEmoji(guildId: guildID, in: title)
         let resolvedBody = await discord.sweepResolveCustomEmoji(guildId: guildID, in: body)
         return try await discord.sweepPostPinnedNotice(
-            channelId: channelID, embed: Self.embed(title: resolvedTitle, body: resolvedBody))
+            channelId: channelID,
+            embed: Self.embed(title: resolvedTitle, body: resolvedBody, voiceAverages: voiceAverages)
+        )
+    }
+
+    func editPinnedNotice(
+        channelID: String,
+        guildID: String,
+        messageID: String,
+        title: String,
+        body: String,
+        voiceAverages: [VoiceUserRollingAverage]
+    ) async throws {
+        let resolvedTitle = await discord.sweepResolveCustomEmoji(guildId: guildID, in: title)
+        let resolvedBody = await discord.sweepResolveCustomEmoji(guildId: guildID, in: body)
+        try await discord.sweepEditPinnedNotice(
+            channelId: channelID,
+            messageId: messageID,
+            embed: Self.embed(title: resolvedTitle, body: resolvedBody, voiceAverages: voiceAverages)
+        )
     }
 
     func noticeExists(channelID: String, messageID: String) async -> Bool {
@@ -674,8 +759,41 @@ struct LiveSweepDispatcher: SweepDispatcher {
     }
 
     /// Discord embed payload. Colour is SwiftBot's blurple accent (decimal int).
-    private static func embed(title: String, body: String) -> [String: Any] {
-        ["title": title, "description": body, "color": 0x5B5BD6]
+    private static func embed(title: String, body: String, voiceAverages: [VoiceUserRollingAverage]) -> [String: Any] {
+        var embed: [String: Any] = ["title": title, "description": body, "color": 0x5B5BD6]
+        if !voiceAverages.isEmpty {
+            embed["fields"] = [[
+                "name": "7 Day Average",
+                "value": voiceAverages.enumerated().map { index, average in
+                    "\(index + 1). \(mentionText(for: average)) @ \(formatDuration(average.averageSecondsPerDay))"
+                }.joined(separator: "\n"),
+                "inline": false
+            ]]
+        }
+        return embed
+    }
+
+    private static func mentionText(for average: VoiceUserRollingAverage) -> String {
+        let userId = average.userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !userId.isEmpty else {
+            return sanitisedDiscordLine(average.username)
+        }
+        return "<@\(userId)>"
+    }
+
+    private static func sanitisedDiscordLine(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func formatDuration(_ seconds: Int) -> String {
+        let minutes = max(0, seconds) / 60
+        if minutes < 60 { return "\(max(1, minutes)) min" }
+        let hours = Double(minutes) / 60.0
+        if hours.rounded() == hours { return "\(Int(hours)) hours" }
+        return String(format: "%.1f hours", hours)
     }
 }
 
@@ -861,6 +979,7 @@ final class SweepService: ObservableObject {
     private let store = SweepStore()
     private var dispatcher: SweepDispatcher = PreviewSweepDispatcher()
     private var summariser: (@Sendable (String, [String]) async -> String?)?
+    private var noticeAnalyticsProvider: (@Sendable (String) async -> [VoiceUserRollingAverage])?
     private var activityLogger: ((SweepRunReport) -> Void)?
     private var tickTask: Task<Void, Never>?
 
@@ -877,6 +996,10 @@ final class SweepService: ObservableObject {
     /// `.summarise` actions; the resulting text is stored on the run report.
     func setSummariser(_ summariser: @escaping @Sendable (String, [String]) async -> String?) {
         self.summariser = summariser
+    }
+
+    func setNoticeAnalyticsProvider(_ provider: @escaping @Sendable (String) async -> [VoiceUserRollingAverage]) {
+        self.noticeAnalyticsProvider = provider
     }
 
     /// Called once per completed run (manual or scheduled). AppModel uses this
@@ -1256,23 +1379,44 @@ final class SweepService: ObservableObject {
     }
 
     /// Ensure the policy's pinned notice exists, returning the effective pinned
-    /// message ID (so the run can protect it from the clear that follows). The
-    /// notice is posted **once**: if we already have one and it still exists,
-    /// it's left untouched; we only (re)post + pin when it's missing (never
-    /// created, or deleted in Discord). Failures are swallowed — a notice
-    /// hiccup never fails the sweep — returning the last known ID.
+    /// message ID (so the run can protect it from the clear that follows).
+    /// Existing notices are edited in-place so schedule/template/analytics
+    /// changes show up without posting duplicates. Failures are swallowed — a
+    /// notice hiccup never fails the sweep — returning the last known ID.
     @discardableResult
     private func ensureNotice(_ notice: SweepNotice, for policy: SweepPolicy) async -> String? {
-        // Already posted and still present → leave it exactly as-is.
+        let title = ":swiftbird: Channel managed by Swiftbot"
+        let body = notice.rendered(for: policy.schedule)
+        let averages = notice.showVoiceAverages
+            ? (await noticeAnalyticsProvider?(policy.guildID) ?? [])
+            : []
+
+        // Already posted and still present → keep the same message, but refresh
+        // its embed so the rolling analytics stay current.
         if let existing = notice.pinnedMessageID,
            await dispatcher.noticeExists(channelID: policy.channelID, messageID: existing) {
+            do {
+                try await dispatcher.editPinnedNotice(
+                    channelID: policy.channelID,
+                    guildID: policy.guildID,
+                    messageID: existing,
+                    title: title,
+                    body: body,
+                    voiceAverages: averages
+                )
+            } catch {
+                lastError = "Sweep notice for #\(policy.channelName): \(error.localizedDescription)"
+            }
             return existing
         }
         do {
-            let title = ":swiftbird: Channel managed by Swiftbot"
-            let body = notice.rendered(for: policy.schedule)
             let newID = try await dispatcher.postPinnedNotice(
-                channelID: policy.channelID, guildID: policy.guildID, title: title, body: body)
+                channelID: policy.channelID,
+                guildID: policy.guildID,
+                title: title,
+                body: body,
+                voiceAverages: averages
+            )
             if !newID.isEmpty, let i = policies.firstIndex(where: { $0.id == policy.id }) {
                 policies[i].notice?.pinnedMessageID = newID
                 await persist()
@@ -2262,25 +2406,30 @@ private struct SweepPolicyRow: View {
 
             Spacer()
 
-            Button {
-                onPreview()
-            } label: {
-                Label("Try Run", systemImage: "play.circle")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Run this rule as a dry-run against the channel right now — nothing is changed.")
+            HStack(spacing: 6) {
+                SweepPolicyActionButton(
+                    title: "Try",
+                    systemImage: "eye",
+                    role: .secondary,
+                    action: onPreview
+                )
+                .help("Run this rule as a dry-run against the channel right now — nothing is changed.")
 
-            Button {
-                confirmingRun = true
-            } label: {
-                Label("Run Now", systemImage: "bolt.fill")
-                    .labelStyle(.titleAndIcon)
+                SweepPolicyActionButton(
+                    title: "Run Now",
+                    systemImage: policy.isClearAll ? "rectangle.stack.slash.fill" : "bolt.fill",
+                    role: .primary,
+                    action: { confirmingRun = true }
+                )
+                .help("Run this rule live right now, even if it's scheduled. This performs the real actions on the channel.")
+
+                SweepPolicyIconButton(
+                    systemImage: "pencil",
+                    accessibilityLabel: "Edit rule",
+                    action: onEdit
+                )
+                .help("Edit this Sweep rule.")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .help("Run this rule live right now, even if it's scheduled. This performs the real actions on the channel.")
             .confirmationDialog(
                 "Run “\(policy.name)” now?",
                 isPresented: $confirmingRun,
@@ -2365,6 +2514,81 @@ private struct SweepPolicyRow: View {
         if delta < 3_600 { return "\(Int(delta / 60))m ago" }
         if delta < 86_400 { return "\(Int(delta / 3_600))h ago" }
         return "\(Int(delta / 86_400))d ago"
+    }
+}
+
+private struct SweepPolicyActionButton: View {
+    enum Role {
+        case primary
+        case secondary
+    }
+
+    let title: String
+    let systemImage: String
+    let role: Role
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(foregroundStyle)
+        .background(backgroundStyle, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(strokeStyle, lineWidth: 1)
+        )
+    }
+
+    private var foregroundStyle: AnyShapeStyle {
+        switch role {
+        case .primary: return AnyShapeStyle(.white)
+        case .secondary: return AnyShapeStyle(.primary)
+        }
+    }
+
+    private var backgroundStyle: AnyShapeStyle {
+        switch role {
+        case .primary: return AnyShapeStyle(Color.accentColor)
+        case .secondary: return AnyShapeStyle(.thinMaterial)
+        }
+    }
+
+    private var strokeStyle: AnyShapeStyle {
+        switch role {
+        case .primary: return AnyShapeStyle(Color.white.opacity(0.16))
+        case .secondary: return AnyShapeStyle(Color.primary.opacity(0.10))
+        }
+    }
+}
+
+private struct SweepPolicyIconButton: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(.thinMaterial, in: Circle())
+        .overlay(
+            Circle()
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+        )
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -3301,6 +3525,10 @@ struct SweepPolicyEditor: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                Toggle("Show 7-day voice average", isOn: notice.showVoiceAverages)
+                    .toggleStyle(.switch)
+                    .font(.caption)
+
                 TextEditor(text: notice.template)
                     .font(.callout)
                     .frame(minHeight: 56, maxHeight: 90)
@@ -3322,10 +3550,18 @@ struct SweepPolicyEditor: View {
                     Image(systemName: "eye")
                         .font(.caption2)
                         .foregroundStyle(.tint)
-                    Text(notice.wrappedValue.rendered(for: policy.schedule))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(notice.wrappedValue.rendered(for: policy.schedule))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if notice.wrappedValue.showVoiceAverages {
+                            Text("7 Day Average\n1. John @ 7 hours\n2. Max @ 6.4 hours\n3. Gabe @ 2 hours")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
