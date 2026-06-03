@@ -132,7 +132,7 @@ extension AppModel {
             await replaceVoicePresence(remoteActiveVoice)
         }
         if let snapshot = payload.liveSnapshot, settings.clusterMode == .standby {
-            await applyMeshLiveSnapshot(snapshot)
+            applyMeshLiveSnapshot(snapshot)
         }
         if payload.configFilesChanged, settings.clusterMode == .standby {
             if let configFiles = payload.configFiles {

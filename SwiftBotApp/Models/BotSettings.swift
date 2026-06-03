@@ -91,14 +91,8 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedCertificateChainFile: String = ""
     var dismissedDNSConflictHostnames: [String] = []
 
-    // OAuth Providers (Discord is active, others are archived/placeholder placeholders)
+    // OAuth Providers (Discord is active; older archived providers are ignored on decode)
     var discordOAuth = OAuthProviderSettings()
-    @available(*, deprecated, message: "Archived/Unused")
-    var appleOAuth = OAuthProviderSettings()
-    @available(*, deprecated, message: "Archived/Unused")
-    var steamOAuth = OAuthProviderSettings()
-    @available(*, deprecated, message: "Archived/Unused")
-    var githubOAuth = OAuthProviderSettings()
     var localAuthEnabled: Bool = false
     var localAuthUsername: String = "admin"
     var localAuthPassword: String = ""
@@ -193,9 +187,6 @@ struct AdminWebUISettings: Codable, Hashable {
                 clientID: try container.decodeIfPresent(String.self, forKey: .discordClientID) ?? "",
                 clientSecret: try container.decodeIfPresent(String.self, forKey: .discordClientSecret) ?? ""
             )
-        appleOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .appleOAuth) ?? OAuthProviderSettings()
-        steamOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .steamOAuth) ?? OAuthProviderSettings()
-        githubOAuth = try container.decodeIfPresent(OAuthProviderSettings.self, forKey: .githubOAuth) ?? OAuthProviderSettings()
         localAuthEnabled = try container.decodeIfPresent(Bool.self, forKey: .localAuthEnabled) ?? false
         localAuthUsername = try container.decodeIfPresent(String.self, forKey: .localAuthUsername) ?? "admin"
         localAuthPassword = try container.decodeIfPresent(String.self, forKey: .localAuthPassword) ?? ""
@@ -227,9 +218,6 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(importedPrivateKeyFile, forKey: .importedPrivateKeyFile)
         try container.encode(importedCertificateChainFile, forKey: .importedCertificateChainFile)
         try container.encode(discordOAuth, forKey: .discordOAuth)
-        try container.encode(appleOAuth, forKey: .appleOAuth)
-        try container.encode(steamOAuth, forKey: .steamOAuth)
-        try container.encode(githubOAuth, forKey: .githubOAuth)
         try container.encode(localAuthEnabled, forKey: .localAuthEnabled)
         try container.encode(localAuthUsername, forKey: .localAuthUsername)
         try container.encode(localAuthPassword, forKey: .localAuthPassword)

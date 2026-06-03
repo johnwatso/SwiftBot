@@ -265,6 +265,13 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 ## Session log
 
+### 2026-06-04 — Shutdown QoS + Discord payload safety
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Removed the blocking termination semaphore by letting AppKit wait for async tunnel shutdown, serialized Discord embed payloads to `Data` before async REST calls, and removed stale classic `AppIcon.appiconset` files so the app stays on the `SwiftBot.icon` Icon Composer path. |
+| `_working-tree_` | Cleared targeted Xcode/Swift warnings: updated generated project upgrade metadata via XcodeGen, removed archived OAuth placeholder encoding, dropped redundant awaits, modernized local IP C-string decoding, and marked the animated delete mutation result intentionally unused. |
+
 ### 2026-06-03 — Sweep pinned notice analytics + controls
 
 | Commit | Summary |

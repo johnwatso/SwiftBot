@@ -231,13 +231,12 @@ struct SwiftBotApp: App {
 }
 
 private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillTerminate(_ notification: Notification) {
-        let semaphore = DispatchSemaphore(value: 0)
-        Task.detached {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
             await TunnelManager.shared.stopForAppTermination()
-            semaphore.signal()
+            sender.reply(toApplicationShouldTerminate: true)
         }
-        _ = semaphore.wait(timeout: .now() + 2)
+        return .terminateLater
     }
 }
 

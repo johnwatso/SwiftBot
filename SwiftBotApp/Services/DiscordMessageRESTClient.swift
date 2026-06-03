@@ -12,15 +12,22 @@ struct DiscordMessageRESTClient {
     }
 
     func sendMessage(channelId: String, content: String, token: String) async throws {
-        _ = try await sendMessage(channelId: channelId, payload: ["content": content], token: token)
+        let payloadData = try Self.encodeJSONObject(["content": content])
+        _ = try await sendMessage(channelId: channelId, payloadData: payloadData, token: token)
     }
 
     func sendMessageReturningID(channelId: String, content: String, token: String) async throws -> String {
-        try await sendMessageReturningID(channelId: channelId, payload: ["content": content], token: token)
+        let payloadData = try Self.encodeJSONObject(["content": content])
+        return try await sendMessageReturningID(channelId: channelId, payloadData: payloadData, token: token)
     }
 
     func sendMessageReturningID(channelId: String, payload: [String: Any], token: String) async throws -> String {
-        let response = try await sendMessage(channelId: channelId, payload: payload, token: token)
+        let payloadData = try Self.encodeJSONObject(payload)
+        return try await sendMessageReturningID(channelId: channelId, payloadData: payloadData, token: token)
+    }
+
+    func sendMessageReturningID(channelId: String, payloadData: Data, token: String) async throws -> String {
+        let response = try await sendMessage(channelId: channelId, payloadData: payloadData, token: token)
         guard let data = response.responseBody.data(using: .utf8),
               let decoded = try? JSONDecoder().decode(DiscordRESTMessageEnvelope.self, from: data) else {
             throw NSError(
@@ -38,11 +45,21 @@ struct DiscordMessageRESTClient {
         payload: [String: Any],
         token: String
     ) async throws -> (statusCode: Int, responseBody: String) {
+        let payloadData = try Self.encodeJSONObject(payload)
+        return try await sendMessage(channelId: channelId, payloadData: payloadData, token: token)
+    }
+
+    @discardableResult
+    func sendMessage(
+        channelId: String,
+        payloadData: Data,
+        token: String
+    ) async throws -> (statusCode: Int, responseBody: String) {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        req.httpBody = payloadData
 
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
@@ -85,15 +102,21 @@ struct DiscordMessageRESTClient {
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
-        try await editMessage(channelId: channelId, messageId: messageId, payload: ["content": content], token: token)
+        let payloadData = try Self.encodeJSONObject(["content": content])
+        try await editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: token)
     }
 
     func editMessage(channelId: String, messageId: String, payload: [String: Any], token: String) async throws {
+        let payloadData = try Self.encodeJSONObject(payload)
+        try await editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: token)
+    }
+
+    func editMessage(channelId: String, messageId: String, payloadData: Data, token: String) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("channels/\(channelId)/messages/\(messageId)"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bot \(token)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        req.httpBody = payloadData
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let responseBody = String(data: data, encoding: .utf8) ?? ""
@@ -103,6 +126,10 @@ struct DiscordMessageRESTClient {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to edit message", "responseBody": responseBody]
             )
         }
+    }
+
+    private static func encodeJSONObject(_ payload: Any) throws -> Data {
+        try JSONSerialization.data(withJSONObject: payload)
     }
 
     func fetchMessage(channelId: String, messageId: String, token: String) async throws -> [String: DiscordJSON] {
@@ -443,17 +470,21 @@ struct DiscordMessageRESTClient {
         let payloadData = try JSONSerialization.data(withJSONObject: payload)
 
         var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n".data(using: .utf8)!)
-        body.append(payloadData)
-        body.append("\r\n".data(using: .utf8)!)
+        func appendString(_ value: String) {
+            body.append(Data(value.utf8))
+        }
 
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"files[0]\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/png\r\n\r\n".data(using: .utf8)!)
+        appendString("--\(boundary)\r\n")
+        appendString("Content-Disposition: form-data; name=\"payload_json\"\r\n\r\n")
+        body.append(payloadData)
+        appendString("\r\n")
+
+        appendString("--\(boundary)\r\n")
+        appendString("Content-Disposition: form-data; name=\"files[0]\"; filename=\"\(filename)\"\r\n")
+        appendString("Content-Type: image/png\r\n\r\n")
         body.append(imageData)
-        body.append("\r\n".data(using: .utf8)!)
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        appendString("\r\n")
+        appendString("--\(boundary)--\r\n")
 
         req.httpBody = body
         let (data, response) = try await session.data(for: req)

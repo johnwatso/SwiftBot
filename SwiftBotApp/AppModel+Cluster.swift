@@ -655,7 +655,10 @@ extension AppModel {
                     if getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
                                    &hostname, socklen_t(hostname.count),
                                    nil, socklen_t(0), NI_NUMERICHOST) == 0 {
-                        let ip = String(cString: hostname)
+                        let ipBytes = hostname
+                            .prefix { $0 != 0 }
+                            .map { UInt8(bitPattern: $0) }
+                        let ip = String(bytes: ipBytes, encoding: .utf8) ?? ""
                         if !ip.isEmpty && ip != "127.0.0.1" {
                             addresses.append(ip)
                         }

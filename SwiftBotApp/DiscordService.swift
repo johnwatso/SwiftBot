@@ -367,8 +367,8 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: sendMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        nonisolated(unsafe) let safePayload = payload
-        return try await messageRESTClient.sendMessage(channelId: channelId, payload: safePayload, token: token)
+        let payloadData = try Self.encodeDiscordPayload(payload)
+        return try await messageRESTClient.sendMessage(channelId: channelId, payloadData: payloadData, token: token)
     }
 
     func editMessage(channelId: String, messageId: String, content: String, token: String) async throws {
@@ -384,8 +384,8 @@ actor DiscordService {
             discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        nonisolated(unsafe) let safePayload = payload
-        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payload: safePayload, token: token)
+        let payloadData = try Self.encodeDiscordPayload(payload)
+        try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: token)
     }
 
     func fetchChannel(channelId: String, token: String) async throws -> [String: DiscordJSON] {
@@ -726,8 +726,9 @@ actor DiscordService {
         }
         guard let token = botToken else { return }
 
+        let payloadData = try Self.encodeDiscordPayload(["embeds": [embed]])
         let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
-        _ = try await messageRESTClient.sendMessage(channelId: channelId, payload: ["embeds": [embed]], token: token)
+        _ = try await messageRESTClient.sendMessage(channelId: channelId, payloadData: payloadData, token: token)
     }
 
     func deleteMessage(channelId: String, messageId: String, token: String) async throws {
@@ -870,6 +871,10 @@ actor DiscordService {
         return nil
     }
 
+    private static func encodeDiscordPayload(_ payload: Any) throws -> Data {
+        try JSONSerialization.data(withJSONObject: payload)
+    }
+
     /// Discord snowflake → creation date. `timestamp_ms = (id >> 22) + epoch`,
     /// where the Discord epoch is 2015-01-01.
     static func messageCreatedDate(fromSnowflake id: String) -> Date? {
@@ -912,7 +917,8 @@ actor DiscordService {
             "embeds": [embed],
             "allowed_mentions": ["parse": []]
         ]
-        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payload: payload, token: token)
+        let payloadData = try Self.encodeDiscordPayload(payload)
+        let messageId = try await messageRESTClient.sendMessageReturningID(channelId: channelId, payloadData: payloadData, token: token)
         try await messageRESTClient.pinMessage(channelId: channelId, messageId: messageId, token: token)
         return messageId
     }
@@ -927,13 +933,14 @@ actor DiscordService {
         guard let token = botToken, !token.isEmpty else {
             throw NSError(domain: "DiscordService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Sweep notice failed: no bot token."])
         }
+        let payloadData = try Self.encodeDiscordPayload([
+            "embeds": [embed],
+            "allowed_mentions": ["parse": []]
+        ])
         try await messageRESTClient.editMessage(
             channelId: channelId,
             messageId: messageId,
-            payload: [
-                "embeds": [embed],
-                "allowed_mentions": ["parse": []]
-            ],
+            payloadData: payloadData,
             token: token
         )
     }
@@ -1023,8 +1030,11 @@ actor DiscordService {
         guard case let .array(mentions)? = raw["mentions"] else { return names }
         for case let .object(user) in mentions {
             guard case let .string(uid)? = user["id"] else { continue }
-            if case let .string(global)? = user["global_name"], !global.isEmpty { names[uid] = global }
-            else if case let .string(uname)? = user["username"] { names[uid] = uname }
+            if case let .string(global)? = user["global_name"], !global.isEmpty {
+                names[uid] = global
+            } else if case let .string(uname)? = user["username"] {
+                names[uid] = uname
+            }
         }
         return names
     }
@@ -1050,8 +1060,11 @@ actor DiscordService {
                 guard let full = Range(match.range, in: text) else { continue }
                 var groups: [String] = []
                 for i in 1..<match.numberOfRanges {
-                    if let r = Range(match.range(at: i), in: text) { groups.append(String(text[r])) }
-                    else { groups.append("") }
+                    if let r = Range(match.range(at: i), in: text) {
+                        groups.append(String(text[r]))
+                    } else {
+                        groups.append("")
+                    }
                 }
                 text.replaceSubrange(full, with: transform(groups))
             }
@@ -1076,7 +1089,7 @@ actor DiscordService {
         return text
     }
 
-    nonisolated(unsafe) private static let humanTimestampFormatter: DateFormatter = {
+    private static let humanTimestampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .short
