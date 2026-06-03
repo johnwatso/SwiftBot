@@ -1479,7 +1479,7 @@ extension AutomationRuleEditor {
 
     private func deleteStep(at index: Int) {
         guard index >= 0 && index < rule.steps.count else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
             rule.steps.remove(at: index)
         }
     }

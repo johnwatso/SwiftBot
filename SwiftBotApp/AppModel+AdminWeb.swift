@@ -2035,12 +2035,12 @@ extension AppModel {
         Task(priority: .background) {
             let tokenIsValid = await dnsProvider.verifyAPIToken()
             if tokenIsValid {
-                await self.logs.append("✅ Cloudflare API verified (background)")
+                self.logs.append("✅ Cloudflare API verified (background)")
                 await MainActor.run {
                     progress(.cloudflareAccessVerified)
                 }
             } else {
-                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+                self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
             }
         }
 
@@ -2258,12 +2258,12 @@ extension AppModel {
         Task(priority: .background) {
             let tokenIsValid = await dnsProvider.verifyAPIToken()
             if tokenIsValid {
-                await self.logs.append("✅ Cloudflare API verified (background)")
+                self.logs.append("✅ Cloudflare API verified (background)")
                 await MainActor.run {
                     progress(.cloudflareAccessVerified)
                 }
             } else {
-                await self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
+                self.logs.append("⚠️ Cloudflare API verification failed (token may be invalid or timed out)")
             }
         }
 
