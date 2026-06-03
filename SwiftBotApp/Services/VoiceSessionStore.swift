@@ -22,6 +22,14 @@ struct VoiceSession: Codable, Identifiable {
     }
 }
 
+struct VoiceUserRollingAverage: Codable, Hashable, Sendable {
+    let userId: String
+    let username: String
+    let averageSecondsPerDay: Int
+    let totalSeconds: Int
+    let sessionCount: Int
+}
+
 actor VoiceSessionStore {
     private let activeURL: URL
     private let historyURL: URL
@@ -160,6 +168,40 @@ actor VoiceSessionStore {
             totals[session.username, default: 0] += session.durationSeconds ?? 0
         }
         return totals.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+    }
+
+    func getTopVoiceUserRollingAveragesLast7Days(guildId: String? = nil, limit: Int = 5) -> [VoiceUserRollingAverage] {
+        var totals = [String: (username: String, seconds: Int, sessions: Int)]()
+        for session in sessionsInLast7Days() {
+            if let guildId, session.guildId != guildId { continue }
+            let duration = max(0, session.durationSeconds ?? 0)
+            guard duration > 0 else { continue }
+            var current = totals[session.userId, default: (username: session.username, seconds: 0, sessions: 0)]
+            current.username = session.username
+            current.seconds += duration
+            current.sessions += 1
+            totals[session.userId] = current
+        }
+
+        let ranked = totals
+            .map { userId, value in
+                VoiceUserRollingAverage(
+                    userId: userId,
+                    username: value.username,
+                    averageSecondsPerDay: Int((Double(value.seconds) / 7.0).rounded()),
+                    totalSeconds: value.seconds,
+                    sessionCount: value.sessions
+                )
+            }
+            .filter { $0.averageSecondsPerDay > 0 }
+            .sorted {
+                if $0.averageSecondsPerDay != $1.averageSecondsPerDay {
+                    return $0.averageSecondsPerDay > $1.averageSecondsPerDay
+                }
+                return $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+            }
+
+        return Array(ranked.prefix(max(0, limit)))
     }
 
     func getTopUserStreakLast7Days() -> (username: String, days: Int)? {

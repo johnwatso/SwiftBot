@@ -401,9 +401,9 @@ struct PatchyView: View {
             let appID = target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !appID.isEmpty else { return "Steam" }
             if let name = app.settings.patchy.steamAppNames[appID], !name.isEmpty {
-                return "Steam • \(name) (\(appID))"
+                return "Steam • \(name)"
             }
-            return "Steam (\(appID))"
+            return "Steam"
         case .github:
             let repo = target.githubRepo.trimmingCharacters(in: .whitespacesAndNewlines)
             let suffix = target.githubWatchAllCommits
