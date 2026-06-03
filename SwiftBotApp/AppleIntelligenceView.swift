@@ -219,13 +219,11 @@ struct AppleIntelligenceView: View {
     private var capabilitiesSection: some View {
         let repliesActive = app.settings.localAIDMReplyEnabled || app.settings.behavior.useAIInGuildChannels
         let summariesActive = app.settings.patchy.sourceTargets.contains { $0.isEnabled && $0.summarizeWithAppleIntelligence }
-        let announcerActive = app.settings.voice.textChannelSourceEnabled && !app.settings.voice.watchedTextChannelID.isEmpty && app.voiceConnectionStatus.isConnected
         let moderationActive = app.automationStore.rules.contains { $0.category == .moderation && $0.enabled }
         let threadActive = app.memoryViewModel.totalMessages > 0
 
         let repliesStatus: CapabilityStatus = repliesActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
         let summariesStatus: CapabilityStatus = summariesActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
-        let announcerStatus: CapabilityStatus = announcerActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
         let moderationStatus: CapabilityStatus = moderationActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
         let threadStatus: CapabilityStatus = threadActive ? .active : (app.appleIntelligenceOnline ? .ready : .off)
 
@@ -244,13 +242,6 @@ struct AppleIntelligenceView: View {
                     symbol: "doc.text.magnifyingglass",
                     tint: .indigo,
                     status: summariesStatus
-                )
-                capabilityCard(
-                    title: "Voice Announcer",
-                    description: "Prepares concise text for voice announcement flows.",
-                    symbol: "speaker.wave.2.fill",
-                    tint: .orange,
-                    status: announcerStatus
                 )
                 capabilityCard(
                     title: "Moderation Assist",
@@ -496,7 +487,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
     case community
     case technicalSupport
     case professional
-    case announcer
 
     var id: String { rawValue }
 
@@ -506,7 +496,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
         case .community: return "Community"
         case .technicalSupport: return "Technical Support"
         case .professional: return "Professional"
-        case .announcer: return "Announcer"
         }
     }
 
@@ -516,7 +505,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
         case .community: return "Server-aware"
         case .technicalSupport: return "Structured help"
         case .professional: return "Clear and calm"
-        case .announcer: return "Concise summaries"
         }
     }
 
@@ -526,7 +514,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
         case .community: return "person.3.fill"
         case .technicalSupport: return "lifepreserver.fill"
         case .professional: return "briefcase.fill"
-        case .announcer: return "megaphone.fill"
         }
     }
 
@@ -536,7 +523,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
         case .community: return .blue
         case .technicalSupport: return .indigo
         case .professional: return .teal
-        case .announcer: return .orange
         }
     }
 
@@ -550,8 +536,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
             return "Structured and informative replies for support-focused channels."
         case .professional:
             return "Polished, concise responses for official or staff-led spaces."
-        case .announcer:
-            return "Optimised for voice announcements and concise summaries."
         }
     }
 
@@ -565,8 +549,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
             return "First, check the token. Then confirm the channel permission."
         case .professional:
             return "The request is queued. I will report back when it completes."
-        case .announcer:
-            return "Update ready: two fixes shipped, one restart recommended."
         }
     }
 
@@ -587,10 +569,6 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
         case .professional:
             return "You are a professional Discord assistant. Keep replies calm, polished, concise, " +
                 "and neutral. Use plain language, avoid slang, and focus on useful outcomes."
-        case .announcer:
-            return "You are a concise announcement assistant for Discord and voice announcements. " +
-                "Summarise the important point first, keep wording short, avoid long lists, and use " +
-                "clear spoken-language phrasing."
         }
     }
 
@@ -606,7 +584,7 @@ enum AppleIntelligencePersonality: String, CaseIterable, Identifiable {
             return .professional
         }
         if lowercased.contains("announcement") || lowercased.contains("announcer") || lowercased.contains("spoken") {
-            return .announcer
+            return .professional
         }
         if lowercased.contains("community") || lowercased.contains("welcoming") {
             return .community
