@@ -60,6 +60,7 @@ final class SwiftMinerDMStateTests: XCTestCase {
             affectedGame: "A Game",
             campaignName: "A Campaign",
             milestoneTitle: "Halfway",
+            gameArtworkURL: "https://example.com/game.jpg",
             recoveryReason: "Expired"
         )
 
@@ -72,6 +73,7 @@ final class SwiftMinerDMStateTests: XCTestCase {
         XCTAssertEqual(json?["priority_games"] as? [String], ["Game 1"])
         XCTAssertEqual(json?["activation_code"] as? String, "CODE-1234")
         XCTAssertEqual(json?["activation_expires_in_minutes"] as? Int, 15)
+        XCTAssertEqual(json?["game_artwork_url"] as? String, "https://example.com/game.jpg")
     }
 
     func testSwiftMinerDMRequestDecodesFromSwiftMinerJSON() throws {
@@ -81,7 +83,8 @@ final class SwiftMinerDMStateTests: XCTestCase {
             "debug": false,
             "twitch_username": "streamer_x",
             "priority_games": ["A", "B"],
-            "campaign_name": "Holiday Drops"
+            "campaign_name": "Holiday Drops",
+            "game_artwork_url": "https://example.com/game.jpg"
         }
         """.data(using: .utf8)!
 
@@ -91,6 +94,7 @@ final class SwiftMinerDMStateTests: XCTestCase {
         XCTAssertEqual(request.twitchUsername, "streamer_x")
         XCTAssertEqual(request.priorityGames, ["A", "B"])
         XCTAssertEqual(request.campaignName, "Holiday Drops")
+        XCTAssertEqual(request.gameArtworkURL, "https://example.com/game.jpg")
     }
 
     func testSwiftMinerDMRequestDebugDefaultsToFalse() throws {

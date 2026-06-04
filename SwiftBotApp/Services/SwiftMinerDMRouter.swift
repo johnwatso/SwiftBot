@@ -101,6 +101,8 @@ struct SwiftMinerDMRouter: Sendable {
             embed = SwiftMinerDMEmbedBuilders.buildCampaignCompletedEmbed(
                 discordName: discordName,
                 campaignName: request.campaignName,
+                gameName: request.affectedGame,
+                gameArtworkURL: request.gameArtworkURL,
                 debug: request.debug,
                 theme: theme
             )

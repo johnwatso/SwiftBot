@@ -101,7 +101,7 @@ final class SwiftMinerE2EIntegrationTests: XCTestCase {
                 XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bot bot-token-999")
                 let bodyData = request.bodyStreamData() ?? request.httpBody ?? Data()
                 let bodyString = String(data: bodyData, encoding: .utf8) ?? ""
-                XCTAssertTrue(bodyString.contains("SwiftMiner drop claimed"), "Expected claim message. Got: \(bodyString)")
+                XCTAssertTrue(bodyString.contains("SwiftMiner claimed a Drop"), "Expected claim message. Got: \(bodyString)")
                 XCTAssertTrue(bodyString.contains("The Finals"), "Expected game name. Got: \(bodyString)")
                 dmSendExpectation.fulfill()
                 let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!

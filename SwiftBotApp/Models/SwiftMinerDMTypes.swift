@@ -54,6 +54,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let affectedGame: String?
     let campaignName: String?
     let milestoneTitle: String?
+    let gameArtworkURL: String?
     let recoveryReason: String?
     /// Opaque event identifier for persistent deduplication. E.g. "drop:<id>", "campaign:<id>".
     let eventId: String?
@@ -70,6 +71,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         affectedGame: String? = nil,
         campaignName: String? = nil,
         milestoneTitle: String? = nil,
+        gameArtworkURL: String? = nil,
         recoveryReason: String? = nil,
         eventId: String? = nil
     ) {
@@ -84,6 +86,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.affectedGame = affectedGame
         self.campaignName = campaignName
         self.milestoneTitle = milestoneTitle
+        self.gameArtworkURL = gameArtworkURL
         self.recoveryReason = recoveryReason
         self.eventId = eventId
     }
@@ -105,6 +108,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.affectedGame = try container.decodeIfPresent(String.self, forKey: .affectedGame)
         self.campaignName = try container.decodeIfPresent(String.self, forKey: .campaignName)
         self.milestoneTitle = try container.decodeIfPresent(String.self, forKey: .milestoneTitle)
+        self.gameArtworkURL = try container.decodeIfPresent(String.self, forKey: .gameArtworkURL)
         self.recoveryReason = try container.decodeIfPresent(String.self, forKey: .recoveryReason)
         self.eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
     }
@@ -121,6 +125,7 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case affectedGame = "affected_game"
         case campaignName = "campaign_name"
         case milestoneTitle = "milestone_title"
+        case gameArtworkURL = "game_artwork_url"
         case recoveryReason = "recovery_reason"
         case eventId = "event_id"
     }
@@ -138,6 +143,7 @@ struct SwiftMinerDMMockData: Sendable {
     var affectedGame: String? = "Test Game"
     var campaignName: String? = "Test Campaign"
     var milestoneTitle: String? = "50% Complete"
+    var gameArtworkURL: String? = "https://static-cdn.jtvnw.net/ttv-boxart/1234_IGDB-285x380.jpg"
     var recoveryReason: String? = "Twitch token expired during mining."
 
     static let `default` = SwiftMinerDMMockData()

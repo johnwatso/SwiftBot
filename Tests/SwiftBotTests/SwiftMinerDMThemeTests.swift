@@ -18,6 +18,16 @@ final class SwiftMinerDMThemeTests: XCTestCase {
         }))
     }
 
+    func testWelcomeIncludesProjectLink() {
+        let router = SwiftMinerDMRouter(theme: .default)
+        let result = router.route(request: .init(messageType: .welcome), discordName: nil)
+
+        XCTAssertTrue(embedHasField(result, where: { name, value in
+            name.contains("SwiftMiner") &&
+            value.contains("github.com/johnwatso/SwiftMiner")
+        }))
+    }
+
     // MARK: - Custom Theme Override
 
     func testCustomThemeOverridesSectionLabel() {

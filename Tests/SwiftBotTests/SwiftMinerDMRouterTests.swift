@@ -110,6 +110,45 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertTrue(embedDescription(result).contains("Winter Event"))
     }
 
+    func testCampaignCompletedRouteUsesGameArtAsFocalImage() {
+        let result = router.route(
+            request: .init(
+                messageType: .campaignCompleted,
+                affectedGame: "THE FINALS",
+                campaignName: "Winter Event",
+                gameArtworkURL: "https://example.com/game.jpg"
+            ),
+            discordName: nil
+        )
+
+        // Game art is the large focal image (not a thumbnail).
+        XCTAssertEqual(
+            (result.embed["image"] as? [String: String])?["url"],
+            "https://example.com/game.jpg"
+        )
+        XCTAssertNil(result.embed["thumbnail"])
+        // Title leads with the game name.
+        XCTAssertTrue((result.embed["title"] as? String ?? "").contains("THE FINALS"))
+        // Title links to the Twitch Drops inventory.
+        XCTAssertEqual(
+            result.embed["url"] as? String,
+            "https://www.twitch.tv/drops/inventory"
+        )
+    }
+
+    func testCampaignCompletedRouteOmitsTitleGameWhenUnknown() {
+        let result = router.route(
+            request: .init(messageType: .campaignCompleted, campaignName: "Winter Event"),
+            discordName: nil
+        )
+        XCTAssertEqual(result.embed["title"] as? String, "🏁 Campaign complete")
+        // Drops link is always present, even without a game name.
+        XCTAssertEqual(
+            result.embed["url"] as? String,
+            "https://www.twitch.tv/drops/inventory"
+        )
+    }
+
     func testCampaignDetectedRouteHasDetectionSemantics() {
         let result = router.route(
             request: .init(messageType: .campaignDetected, affectedGame: "Rocket League"),
@@ -135,6 +174,14 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         )
         XCTAssertTrue(embedHasLinkingSemantics(result))
         XCTAssertTrue(embedTitle(result).contains("Valorant"))
+        // Links to the Twitch Drops page so the user can act.
+        XCTAssertEqual(
+            result.embed["url"] as? String,
+            "https://www.twitch.tv/drops/inventory"
+        )
+        XCTAssertTrue(hasField(result, matching: { _, value in
+            value.contains("https://www.twitch.tv/drops/inventory")
+        }))
     }
 
     func testWelcomeBackRouteHasWelcomeBackSemantics() {
@@ -233,7 +280,7 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     }
 
     private func embedHasLinkedSemantics(_ result: SwiftMinerDMResult) -> Bool {
-        embedTitle(result).contains("connected") && embedDescription(result).contains("connected")
+        embedTitle(result).contains("connected") && embedDescription(result).contains("linked")
     }
 
     private func embedHasReauthSemantics(_ result: SwiftMinerDMResult) -> Bool {
