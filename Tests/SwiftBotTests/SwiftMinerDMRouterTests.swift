@@ -129,11 +129,12 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertNil(result.embed["thumbnail"])
         // Title leads with the game name.
         XCTAssertTrue((result.embed["title"] as? String ?? "").contains("THE FINALS"))
-        // Title links to the Twitch Drops inventory.
-        XCTAssertEqual(
-            result.embed["url"] as? String,
-            "https://www.twitch.tv/drops/inventory"
-        )
+        XCTAssertNil(result.embed["url"])
+        XCTAssertTrue(hasField(result, matching: { name, value in
+            name == "Twitch inventory" &&
+            value.contains("Open Twitch Drops inventory") &&
+            value.contains("https://www.twitch.tv/drops/inventory")
+        }))
     }
 
     func testCampaignCompletedRouteOmitsTitleGameWhenUnknown() {
@@ -142,11 +143,11 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             discordName: nil
         )
         XCTAssertEqual(result.embed["title"] as? String, "🏁 Campaign complete")
-        // Drops link is always present, even without a game name.
-        XCTAssertEqual(
-            result.embed["url"] as? String,
-            "https://www.twitch.tv/drops/inventory"
-        )
+        XCTAssertNil(result.embed["url"])
+        XCTAssertTrue(hasField(result, matching: { name, value in
+            name == "Twitch inventory" &&
+            value.contains("https://www.twitch.tv/drops/inventory")
+        }))
     }
 
     func testCampaignDetectedRouteHasDetectionSemantics() {
@@ -156,6 +157,8 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         )
         XCTAssertTrue(embedHasDetectionSemantics(result))
         XCTAssertTrue(embedDescription(result).contains("Rocket League"))
+        XCTAssertTrue(embedDescription(result).contains("priority list"))
+        XCTAssertEqual(embedFooter(result), "Use /miner action:status to check your setup")
     }
 
     func testAccountActionRequiredRouteHasAlertSemantics() {
