@@ -270,6 +270,17 @@ extension AppModel {
         }
 
         if isDMChannel {
+            // Reply-to-dismiss: "ignore"/"dismiss"/… replying to a
+            // "Link Twitch for {game}" DM mutes that game's reminders.
+            if await handleSwiftMinerLinkWarningDismiss(
+                discordUserId: userId,
+                channelId: channelId,
+                rawMap: event.rawMap,
+                content: content
+            ) {
+                return
+            }
+
             if let memoryText = extractAIMemoryInstruction(from: content) {
                 _ = await rememberAIMemory(
                     text: memoryText,

@@ -41,6 +41,48 @@ extension AppModel {
         return try decodeSwiftMinerPairingJSON(data)
     }
 
+    /// Title of the first embed on the message this DM is replying to, if any.
+    /// Discord includes `referenced_message` inline on replies.
+    private func referencedEmbedTitle(from rawMap: [String: DiscordJSON]) -> String? {
+        guard case let .object(referenced)? = rawMap["referenced_message"],
+              case let .array(embeds)? = referenced["embeds"],
+              case let .object(firstEmbed)? = embeds.first,
+              case let .string(title)? = firstEmbed["title"]
+        else { return nil }
+        return title
+    }
+
+    /// Handles a possible "reply to dismiss" on a "Link Twitch for {game}" DM.
+    /// Returns true when the message was a dismiss reply (handled — caller should
+    /// stop processing it), false otherwise.
+    func handleSwiftMinerLinkWarningDismiss(
+        discordUserId: String,
+        channelId: String,
+        rawMap: [String: DiscordJSON],
+        content: String
+    ) async -> Bool {
+        let referencedTitle = referencedEmbedTitle(from: rawMap)
+        guard let game = SwiftMinerLinkWarningDismiss.gameToDismiss(
+            replyContent: content,
+            referencedEmbedTitle: referencedTitle
+        ) else {
+            return false
+        }
+
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let ignored = try await client.ignoreLinkWarning(discordUserId: discordUserId, gameName: game)
+            if ignored {
+                _ = await send(channelId, "👍 Got it — you won't get more reminders to link Twitch for **\(game)**. You can turn it back on anytime in SwiftMiner.")
+            } else {
+                _ = await send(channelId, "I couldn't find a linked SwiftMiner account for you, so there was nothing to mute for **\(game)**.")
+            }
+        } catch {
+            _ = await send(channelId, "I couldn't update that right now — please try again later. (\(error.localizedDescription))")
+        }
+        return true
+    }
+
     func swiftMinerCommand(action: String, userId: String, channelId: String) async -> (ok: Bool, message: String) {
         let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
         let normalizedAction = action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -63,7 +105,7 @@ extension AppModel {
                 }
 
                 let session = try await client.startActivation(discordUserId: userId)
-                let activationLink = "\(session.verificationUri)?code=\(session.userCode)"
+                let activationLink = activationLink(for: session)
                 return (
                     true,
                     """
@@ -211,6 +253,7 @@ extension AppModel {
             affectedGame: mockData.affectedGame,
             campaignName: mockData.campaignName,
             milestoneTitle: mockData.milestoneTitle,
+            gameArtworkURL: mockData.gameArtworkURL,
             recoveryReason: mockData.recoveryReason
         )
         return await sendSwiftMinerDM(request: request, discordUserId: discordUserId)
@@ -268,11 +311,11 @@ extension AppModel {
         let headline: String
         switch event.eventType {
         case "user.dropClaimed":
-            headline = "SwiftMiner drop claimed."
+            headline = "SwiftMiner claimed a Drop."
         case "user.actionRequired":
-            headline = "SwiftMiner needs your attention."
+            headline = "SwiftMiner needs a quick check."
         case "user.opportunityAvailable":
-            headline = "SwiftMiner found a drops opportunity."
+            headline = "SwiftMiner found a Drops campaign."
         case "user.stateChanged":
             headline = "SwiftMiner status changed."
         default:
@@ -288,20 +331,20 @@ extension AppModel {
     private func renderSwiftMinerProjection(_ projection: SwiftMinerUserProjection) -> String {
         switch projection.state {
         case .notConfigured:
-            return "SwiftMiner is not set up for your Discord account yet. Run `/miner action:setup`."
+            return "No Twitch account is linked yet. Run `/miner action:setup` to connect one."
         case .active:
             if let campaign = projection.activeCampaign {
-                return "SwiftMiner is mining \(campaign.game): \(campaign.progress.pct)% (\(campaign.progress.current)/\(campaign.progress.required) \(campaign.progress.unit))."
+                return "Now mining \(campaign.game): \(campaign.progress.pct)% complete (\(campaign.progress.current)/\(campaign.progress.required) \(campaign.progress.unit))."
             }
             return "SwiftMiner is active."
         case .idle:
             let account = projection.account.map { " for @\($0.username)" } ?? ""
-            return "SwiftMiner is idle\(account). No active campaign is being mined right now."
+            return "Idle\(account). No active campaign is being mined right now."
         case .blocked:
             if let issue = projection.issues.first {
-                return "SwiftMiner is blocked: \(issue.message)"
+                return "Blocked: \(issue.message)"
             }
-            return "SwiftMiner is blocked and needs attention."
+            return "Blocked. Run `/miner action:status` for details."
         }
     }
 
@@ -326,6 +369,16 @@ extension AppModel {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func activationLink(for session: SwiftMinerActivationSession) -> String {
+        let verificationUri = session.verificationUri
+        if verificationUri.contains("device-code=") || verificationUri.contains("code=") {
+            return verificationUri
+        }
+        let encodedCode = session.userCode.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? session.userCode
+        let separator = verificationUri.contains("?") ? "&" : "?"
+        return "\(verificationUri)\(separator)device-code=\(encodedCode)"
     }
 
     private func decodeSwiftMinerPairingJSON(_ data: Data) throws -> SwiftMinerPairingBundle {

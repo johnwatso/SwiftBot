@@ -154,6 +154,20 @@ struct SwiftMinerClient {
         )
     }
 
+    /// Dismiss the "needs linking" warning/DM for a game. Returns whether the
+    /// user had any miner the ignore could be applied to.
+    @discardableResult
+    func ignoreLinkWarning(discordUserId: String, gameName: String) async throws -> Bool {
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let encodedGame = gameName.addingPercentEncoding(withAllowedCharacters: allowed) ?? gameName
+        let data = try await request(
+            path: "/v1/users/\(discordUserId)/link-warnings/\(encodedGame)/ignore",
+            method: "POST"
+        )
+        struct Response: Decodable { let ignored: Bool }
+        return (try? decoder.decode(Response.self, from: data))?.ignored ?? true
+    }
+
     func controlMiner(discordUserId: String, action: String) async throws -> SwiftMinerControlResponse {
         let data = try await request(path: "/v1/users/\(discordUserId)/miner/\(action)", method: "POST")
         return try decoder.decode(SwiftMinerControlResponse.self, from: data)

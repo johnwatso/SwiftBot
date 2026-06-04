@@ -102,6 +102,16 @@ enum SwiftMinerDMEmbedPrimitives {
         ]
     }
 
+    static func makeProjectField(theme: SwiftMinerDMTheme = .default) -> [String: Any]? {
+        guard let url = theme.projectURL, !url.isEmpty else { return nil }
+        let link = "[\(theme.viewProjectLabel)](\(url))"
+        return [
+            "name": theme.whatIsSwiftMinerLabel,
+            "value": String(format: theme.projectInfoValue, link),
+            "inline": false
+        ]
+    }
+
     // MARK: - Debug Helpers
 
     static func debugTitle(_ title: String, debug: Bool) -> String {
@@ -136,6 +146,9 @@ enum SwiftMinerDMEmbedBuilders {
         if let helpField = SwiftMinerDMEmbedPrimitives.makeHelpField(theme: theme) {
             fields.append(helpField)
         }
+        if let projectField = SwiftMinerDMEmbedPrimitives.makeProjectField(theme: theme) {
+            fields.append(projectField)
+        }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
             title: "👋 Welcome to SwiftMiner",
@@ -161,7 +174,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "🔗 Discord account linked",
+            title: "🔗 Discord linked",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.discordLinkedDescription,
             style: .info,
             fields: fields,
@@ -235,7 +248,7 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "🟣 Link your Twitch account",
+            title: "🟣 Link Twitch",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.setupDescription,
             style: .info,
             fields: fields,
@@ -357,7 +370,7 @@ enum SwiftMinerDMEmbedBuilders {
             title: "🎁 Drop claimed",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .success,
-            footer: "Check your Twitch inventory to redeem it",
+            footer: "Check Twitch inventory for the claimed Drop",
             debug: debug,
             theme: theme
         )
@@ -365,23 +378,47 @@ enum SwiftMinerDMEmbedBuilders {
 
     // MARK: - Campaign Completed
 
+    /// Twitch Drops inventory — where Drops progress and claimed rewards live.
+    /// Stable for every campaign/game, so the title link can't 404.
+    static let twitchDropsURL = "https://www.twitch.tv/drops/inventory"
+
+    /// Builds the campaign-completed embed. The game box art is the large focal
+    /// image, the title leads with the game name, and the embed links to the
+    /// Twitch Drops inventory (where the claimed rewards live).
     static func buildCampaignCompletedEmbed(
         discordName: String?,
         campaignName: String?,
+        gameName: String? = nil,
+        gameArtworkURL: String? = nil,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         let campaign = campaignName ?? "a campaign"
         let desc = String(format: theme.campaignCompletedDescription, campaign)
 
-        return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "🏁 Campaign complete",
+        let trimmedGame = gameName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if let trimmedGame, !trimmedGame.isEmpty {
+            title = "🏁 \(trimmedGame) — Campaign complete"
+        } else {
+            title = "🏁 Campaign complete"
+        }
+
+        var embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
+            title: title,
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .success,
             footer: theme.statusFooter,
             debug: debug,
             theme: theme
         )
+        // Game box art is the focal image.
+        if let gameArtworkURL, !gameArtworkURL.isEmpty {
+            embed["image"] = ["url": gameArtworkURL]
+        }
+        // Title links to the Twitch Drops dashboard.
+        embed["url"] = twitchDropsURL
+        return embed
     }
 
     // MARK: - Campaign Detected
@@ -432,11 +469,11 @@ enum SwiftMinerDMEmbedBuilders {
         }
 
         return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "⚠️ Something needs a look",
+            title: "⚠️ SwiftMiner needs a look",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + theme.accountActionRequiredDescription,
             style: .recovery,
             fields: fields,
-            footer: "Check status for next steps",
+            footer: "Use /miner action:status for details",
             debug: debug,
             theme: theme
         )
@@ -454,11 +491,17 @@ enum SwiftMinerDMEmbedBuilders {
         let desc = String(format: theme.prioritisedGameNeedsLinkingDescription, game)
 
         var fields: [[String: Any]] = []
+        // Primary CTA: open the Twitch Drops page where the user manages Drops
+        // and the linked account that claims them.
+        fields.append(SwiftMinerDMEmbedPrimitives.makeCTAField(
+            title: "🔗 Open Twitch Drops",
+            value: "[Link your account for Drops](\(twitchDropsURL))"
+        ))
         if let helpField = SwiftMinerDMEmbedPrimitives.makeHelpField(theme: theme) {
             fields.append(helpField)
         }
 
-        return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
+        var embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
             title: "🔗 Link Twitch for \(game)",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .warning,
@@ -467,5 +510,8 @@ enum SwiftMinerDMEmbedBuilders {
             debug: debug,
             theme: theme
         )
+        // Make the title itself link to the Twitch Drops page.
+        embed["url"] = twitchDropsURL
+        return embed
     }
 }
