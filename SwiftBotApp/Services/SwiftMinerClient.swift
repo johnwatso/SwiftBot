@@ -27,6 +27,15 @@ struct SwiftMinerUserProjection: Codable, Sendable {
         let pct: Int
     }
 
+    struct RecentCampaign: Codable, Sendable {
+        let campaignId: String
+        let campaignName: String
+        let game: String
+        let completedAt: Date?
+        let claimedDrops: Int
+        let totalDrops: Int
+    }
+
     struct Issue: Codable, Sendable {
         let issueId: String
         let type: String
@@ -40,6 +49,7 @@ struct SwiftMinerUserProjection: Codable, Sendable {
     let state: State
     let account: Account?
     let activeCampaign: Campaign?
+    let recentCompletedCampaigns: [RecentCampaign]?
     let issues: [Issue]
 }
 

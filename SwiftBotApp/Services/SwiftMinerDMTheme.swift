@@ -50,6 +50,8 @@ struct SwiftMinerDMTheme: Sendable {
     var viewProjectLabel: String = "Check the project on GitHub"
     var projectInfoValue: String = "Want the bigger picture? %@."
     var setupGuideValue: String = "Open the setup guide for linking, troubleshooting, and commands."
+    var inventoryLinkLabel: String = "Twitch inventory"
+    var viewInventoryLabel: String = "Open Twitch Drops inventory"
 
     // MARK: - Body Copy
 
@@ -77,7 +79,7 @@ struct SwiftMinerDMTheme: Sendable {
 
     var dropClaimedDescription: String = "Claimed a Drop from **%@**%@."
     var campaignCompletedDescription: String = "All available Drops from **%@** are claimed."
-    var campaignDetectedDescription: String = "A new Drops campaign is available for **%@**. SwiftMiner will pick it up automatically when it matches your setup."
+    var campaignDetectedDescription: String = "A new Twitch Drops campaign is live for **%@**. SwiftMiner will watch it automatically because this game is in your priority list."
     var accountActionRequiredDescription: String = "SwiftMiner needs one thing checked before it can continue cleanly."
     var accountActionIssueLabel: String = "⚠️ Issue"
     var accountActionFixLabel: String = "🛠️ Next step"

@@ -379,12 +379,11 @@ enum SwiftMinerDMEmbedBuilders {
     // MARK: - Campaign Completed
 
     /// Twitch Drops inventory — where Drops progress and claimed rewards live.
-    /// Stable for every campaign/game, so the title link can't 404.
     static let twitchDropsURL = "https://www.twitch.tv/drops/inventory"
 
     /// Builds the campaign-completed embed. The game box art is the large focal
-    /// image, the title leads with the game name, and the embed links to the
-    /// Twitch Drops inventory (where the claimed rewards live).
+    /// image, the title leads with the game name, and the embed includes a
+    /// visible link to the Twitch Drops inventory.
     static func buildCampaignCompletedEmbed(
         discordName: String?,
         campaignName: String?,
@@ -412,12 +411,15 @@ enum SwiftMinerDMEmbedBuilders {
             debug: debug,
             theme: theme
         )
+        embed["fields"] = [[
+            "name": theme.inventoryLinkLabel,
+            "value": "[\(theme.viewInventoryLabel)](\(Self.twitchDropsURL))",
+            "inline": false
+        ]]
         // Game box art is the focal image.
         if let gameArtworkURL, !gameArtworkURL.isEmpty {
             embed["image"] = ["url": gameArtworkURL]
         }
-        // Title links to the Twitch Drops dashboard.
-        embed["url"] = twitchDropsURL
         return embed
     }
 
@@ -437,7 +439,7 @@ enum SwiftMinerDMEmbedBuilders {
             title: "🆕 New campaign",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .info,
-            footer: "Prioritise or ignore games with /miner",
+            footer: "Use /miner action:status to check your setup",
             debug: debug,
             theme: theme
         )

@@ -331,21 +331,89 @@ extension AppModel {
     private func renderSwiftMinerProjection(_ projection: SwiftMinerUserProjection) -> String {
         switch projection.state {
         case .notConfigured:
-            return "No Twitch account is linked yet. Run `/miner action:setup` to connect one."
+            return """
+            **Twitch is not linked yet.**
+            Run `/miner action:setup` and I'll send you a Twitch activation link.
+            """
         case .active:
             if let campaign = projection.activeCampaign {
-                return "Now mining \(campaign.game): \(campaign.progress.pct)% complete (\(campaign.progress.current)/\(campaign.progress.required) \(campaign.progress.unit))."
+                return """
+                **SwiftMiner is mining \(campaign.game).**
+                Progress: **\(campaign.progress.pct)%** (\(campaign.progress.current)/\(campaign.progress.required) \(campaign.progress.unit))
+                \(campaignEndLine(campaign.endsAt))
+                \(recentCampaignsSection(projection))
+                """
             }
-            return "SwiftMiner is active."
+            return """
+            **SwiftMiner is active.**
+            No specific campaign is showing in the status feed yet. I'll message you when something useful changes.
+            \(recentCampaignsSection(projection))
+            """
         case .idle:
             let account = projection.account.map { " for @\($0.username)" } ?? ""
-            return "Idle\(account). No active campaign is being mined right now."
+            return """
+            **Your miner is fully up to date\(account).**
+            There are no active Drops ready to mine right now.
+            \(recentCampaignsSection(projection))
+            \(issueSummarySection(projection))
+            """
         case .blocked:
             if let issue = projection.issues.first {
-                return "Blocked: \(issue.message)"
+                return """
+                **SwiftMiner needs a quick check.**
+                \(issue.message)
+                \(swiftMinerNextStep(for: issue))
+                \(recentCampaignsSection(projection))
+                """
             }
-            return "Blocked. Run `/miner action:status` for details."
+            return """
+            **SwiftMiner needs a quick check.**
+            Run `/miner action:status` again for details, or `/miner action:setup` if Twitch needs reconnecting.
+            \(recentCampaignsSection(projection))
+            """
         }
+    }
+
+    private func campaignEndLine(_ endsAt: Date?) -> String {
+        guard let endsAt else {
+            return "I'll message you when this campaign is complete."
+        }
+        return "Ends: <t:\(Int(endsAt.timeIntervalSince1970)):R>"
+    }
+
+    private func swiftMinerNextStep(for issue: SwiftMinerUserProjection.Issue) -> String {
+        if issue.action.contains("link_account") {
+            return "Next step: run `/miner action:setup` to reconnect Twitch."
+        }
+        return "Next step: run `/miner action:status` to check the latest details."
+    }
+
+    private func recentCampaignsSection(_ projection: SwiftMinerUserProjection) -> String {
+        let campaigns = projection.recentCompletedCampaigns ?? []
+        guard !campaigns.isEmpty else {
+            return "Recently mined: none reported yet."
+        }
+        let rows = campaigns.prefix(3).map { campaign -> String in
+            let title = campaignTitle(campaign)
+            let drops = campaign.totalDrops > 0
+                ? " — \(campaign.claimedDrops)/\(campaign.totalDrops) Drops claimed"
+                : ""
+            return "• \(title)\(drops)"
+        }.joined(separator: "\n")
+        return "Recently mined:\n\(rows)"
+    }
+
+    private func issueSummarySection(_ projection: SwiftMinerUserProjection) -> String {
+        guard let issue = projection.issues.first else { return "" }
+        let game = issue.game.map { " on **\($0)**" } ?? ""
+        return "Currently blocked\(game): \(issue.message)"
+    }
+
+    private func campaignTitle(_ campaign: SwiftMinerUserProjection.RecentCampaign) -> String {
+        if campaign.campaignName.caseInsensitiveCompare(campaign.game) == .orderedSame {
+            return "**\(campaign.game)**"
+        }
+        return "**\(campaign.game)** — \(campaign.campaignName)"
     }
 
     private func validateSwiftMinerSignature(headers: [String: String], body: Data) -> Bool {
