@@ -135,6 +135,9 @@ enum SwiftMinerDMEmbedPrimitives {
 
 enum SwiftMinerDMEmbedBuilders {
 
+    static let linkWarningDismissCustomID = "swiftminer:link-warning:dismiss"
+    static let linkWarningDismissTestCustomID = "swiftminer:link-warning:dismiss:test"
+
     // MARK: - Welcome
 
     static func buildWelcomeEmbed(
@@ -429,20 +432,37 @@ enum SwiftMinerDMEmbedBuilders {
         discordName: String?,
         campaignName: String?,
         affectedGame: String?,
+        gameArtworkURL: String? = nil,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [String: Any] {
         let game = affectedGame ?? campaignName ?? "a game"
         let desc = String(format: theme.campaignDetectedDescription, game)
+        let trimmedGame = affectedGame?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if let trimmedGame, !trimmedGame.isEmpty {
+            title = "🆕 \(trimmedGame) — New campaign"
+        } else {
+            title = "🆕 New campaign"
+        }
 
-        return SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
-            title: "🆕 New campaign",
+        var embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
+            title: title,
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .info,
-            footer: "Use /miner action:status to check your setup",
+            footer: theme.statusFooter,
             debug: debug,
             theme: theme
         )
+        embed["fields"] = [[
+            "name": theme.inventoryLinkLabel,
+            "value": "[\(theme.viewInventoryLabel)](\(Self.twitchDropsURL))",
+            "inline": false
+        ]]
+        if let gameArtworkURL, !gameArtworkURL.isEmpty {
+            embed["image"] = ["url": gameArtworkURL]
+        }
+        return embed
     }
 
     // MARK: - Account Action Required
@@ -512,8 +532,37 @@ enum SwiftMinerDMEmbedBuilders {
             debug: debug,
             theme: theme
         )
-        // Make the title itself link to the Twitch Drops page.
-        embed["url"] = twitchDropsURL
         return embed
+    }
+
+    static func buildPrioritisedGameNeedsLinkingComponents(
+        affectedGame: String?,
+        debug: Bool,
+        theme: SwiftMinerDMTheme = .default
+    ) -> [[String: Any]] {
+        let game = affectedGame ?? "this game"
+        let dismissLabel = truncatedButtonLabel("Dismiss \(game) reminders")
+        return [[
+            "type": 1,
+            "components": [
+                [
+                    "type": 2,
+                    "style": 5,
+                    "label": "Open Twitch Drops",
+                    "url": twitchDropsURL
+                ],
+                [
+                    "type": 2,
+                    "style": 2,
+                    "label": dismissLabel,
+                    "custom_id": debug ? linkWarningDismissTestCustomID : linkWarningDismissCustomID
+                ]
+            ]
+        ]]
+    }
+
+    private static func truncatedButtonLabel(_ label: String) -> String {
+        guard label.count > 80 else { return label }
+        return String(label.prefix(77)) + "..."
     }
 }

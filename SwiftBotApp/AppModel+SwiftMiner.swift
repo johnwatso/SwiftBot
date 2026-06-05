@@ -52,6 +52,15 @@ extension AppModel {
         return title
     }
 
+    private func componentMessageEmbedTitle(from rawMap: [String: DiscordJSON]) -> String? {
+        guard case let .object(message)? = rawMap["message"],
+              case let .array(embeds)? = message["embeds"],
+              case let .object(firstEmbed)? = embeds.first,
+              case let .string(title)? = firstEmbed["title"]
+        else { return nil }
+        return title
+    }
+
     /// Handles a possible "reply to dismiss" on a "Link Twitch for {game}" DM.
     /// Returns true when the message was a dismiss reply (handled — caller should
     /// stop processing it), false otherwise.
@@ -81,6 +90,60 @@ extension AppModel {
             _ = await send(channelId, "I couldn't update that right now — please try again later. (\(error.localizedDescription))")
         }
         return true
+    }
+
+    func handleSwiftMinerLinkWarningDismissButton(
+        event: GatewayInteractionCreateEvent,
+        context: SlashContext,
+        isDebug: Bool
+    ) async {
+        let game = componentMessageEmbedTitle(from: event.rawMap)
+            .flatMap(SwiftMinerLinkWarningDismiss.game(fromNeedsLinkingTitle:))
+        guard let game else {
+            await respondToSwiftMinerButton(event: event, message: "I couldn't tell which game this reminder was for.")
+            return
+        }
+
+        if isDebug {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "Test dismiss received for **\(game)** — no real settings changed."
+            )
+            return
+        }
+
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let ignored = try await client.ignoreLinkWarning(discordUserId: userId, gameName: game)
+            let message = ignored
+                ? "Got it — I won't send more link reminders for **\(game)**."
+                : "I couldn't find a linked SwiftMiner account for you, so there was nothing to mute for **\(game)**."
+            await respondToSwiftMinerButton(event: event, message: message)
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't update that right now — please try again later. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    private func respondToSwiftMinerButton(event: GatewayInteractionCreateEvent, message: String) async {
+        do {
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: [
+                    "type": 4,
+                    "data": [
+                        "content": message,
+                        "flags": 64
+                    ]
+                ]
+            )
+        } catch {
+            logs.append("❌ Failed responding to SwiftMiner button: \(error.localizedDescription)")
+        }
     }
 
     func swiftMinerCommand(action: String, userId: String, channelId: String) async -> (ok: Bool, message: String) {
@@ -160,10 +223,11 @@ extension AppModel {
 
     private func makeSwiftMinerDMSender() -> SwiftMinerDMSender {
         SwiftMinerDMSender(dependencies: .init(
-                sendDMEmbed: { [weak self] userId, embed in
+                sendDMEmbed: { [weak self] userId, embed, components in
                     guard let self else { throw NSError(domain: "SwiftMinerDMSender", code: -1, userInfo: [NSLocalizedDescriptionKey: "AppModel deallocated"]) }
                     nonisolated(unsafe) let safeEmbed = embed
-                    try await self.service.sendDMEmbed(userId: userId, embed: safeEmbed)
+                    nonisolated(unsafe) let safeComponents = components
+                    try await self.service.sendDMEmbed(userId: userId, embed: safeEmbed, components: safeComponents)
                 },
                 discordNameForUserId: { [weak self] userId in
                     guard let self else { return nil }

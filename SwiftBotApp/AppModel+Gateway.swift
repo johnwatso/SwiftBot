@@ -516,6 +516,15 @@ extension AppModel {
             }
         case 3:
             let customID = slashCustomID(in: event.data)
+            if customID == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID ||
+                customID == SwiftMinerDMEmbedBuilders.linkWarningDismissTestCustomID {
+                await handleSwiftMinerLinkWarningDismissButton(
+                    event: event,
+                    context: context,
+                    isDebug: customID == SwiftMinerDMEmbedBuilders.linkWarningDismissTestCustomID
+                )
+                return
+            }
             if customID.hasPrefix("music:") {
                 await handleMusicComponentInteraction(event: event, context: context)
                 return

@@ -719,14 +719,22 @@ actor DiscordService {
     }
 
     /// Send a DM using a Discord embed payload (e.g. for richer welcome / status messages).
-    func sendDMEmbed(userId: String, embed: [String: Any]) async throws {
+    func sendDMEmbed(
+        userId: String,
+        embed: [String: Any],
+        components: [[String: Any]] = []
+    ) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: sendDMEmbed blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
         guard let token = botToken else { return }
 
-        let payloadData = try Self.encodeDiscordPayload(["embeds": [embed]])
+        var payload: [String: Any] = ["embeds": [embed]]
+        if !components.isEmpty {
+            payload["components"] = components
+        }
+        let payloadData = try Self.encodeDiscordPayload(payload)
         let channelId = try await messageRESTClient.createDirectMessageChannel(userId: userId, token: token)
         _ = try await messageRESTClient.sendMessage(channelId: channelId, payloadData: payloadData, token: token)
     }
