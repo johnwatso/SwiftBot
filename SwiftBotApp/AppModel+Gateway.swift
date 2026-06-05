@@ -525,8 +525,29 @@ extension AppModel {
                 )
                 return
             }
+            if customID == SwiftMinerDMEmbedBuilders.pauseLinkWarningCustomID ||
+                customID == SwiftMinerDMEmbedBuilders.pauseLinkWarningTestCustomID {
+                await handleSwiftMinerLinkWarningPauseButton(
+                    event: event,
+                    context: context,
+                    isDebug: customID == SwiftMinerDMEmbedBuilders.pauseLinkWarningTestCustomID
+                )
+                return
+            }
             if customID == SwiftMinerDMEmbedBuilders.statusRefreshCustomID {
                 await handleSwiftMinerStatusRefreshButton(event: event, context: context)
+                return
+            }
+            if customID == SwiftMinerDMEmbedBuilders.prioritiesCustomID {
+                await handleSwiftMinerPrioritiesButton(event: event, context: context)
+                return
+            }
+            if customID == SwiftMinerDMEmbedBuilders.quietModeCustomID {
+                await handleSwiftMinerQuietModeButton(event: event)
+                return
+            }
+            if customID == SwiftMinerDMEmbedBuilders.whyBlockedCustomID {
+                await handleSwiftMinerWhyBlockedButton(event: event, context: context)
                 return
             }
             if customID.hasPrefix("music:") {

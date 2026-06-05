@@ -22,7 +22,7 @@ struct SwiftMinerDMRouter: Sendable {
 
     func route(request: SwiftMinerDMRequest, discordName: String?) -> SwiftMinerDMResult {
         let embed: [String: Any]
-        var components = SwiftMinerDMEmbedBuilders.buildStatusRefreshComponents()
+        var components = SwiftMinerDMEmbedBuilders.buildStandardActionComponents()
         var shouldTrackWelcome = false
         var shouldTrackCompletion = false
         let analyticsDescription: String

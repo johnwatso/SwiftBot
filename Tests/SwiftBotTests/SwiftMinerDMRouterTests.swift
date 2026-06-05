@@ -10,10 +10,7 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     func testWelcomeRouteHasWelcomeSemantics() {
         let result = router.route(request: .init(messageType: .welcome), discordName: "Taylor")
         XCTAssertTrue(embedHasWelcomeSemantics(result))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Refresh status" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
-        }))
+        XCTAssertTrue(hasStandardDMControls(result))
         XCTAssertTrue(result.shouldTrackWelcome)
         XCTAssertFalse(result.shouldTrackCompletion)
     }
@@ -210,9 +207,19 @@ final class SwiftMinerDMRouterTests: XCTestCase {
                 button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID
         }))
         XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Refresh status" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
+            button["label"] as? String == "Why blocked?" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.whyBlockedCustomID
         }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Pause 7 days" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.pauseLinkWarningCustomID
+        }))
+        XCTAssertTrue(hasStandardDMControls(result))
+    }
+
+    func testStandardDMControlsIncludeStatusPrioritiesQuietAndInventory() {
+        let result = router.route(request: .init(messageType: .campaignCompleted), discordName: nil)
+        XCTAssertTrue(hasStandardDMControls(result))
     }
 
     func testPrioritisedGameNeedsLinkingDebugRouteUsesTestDismissButton() {
@@ -223,6 +230,9 @@ final class SwiftMinerDMRouterTests: XCTestCase {
 
         XCTAssertTrue(componentButton(result, matching: { button in
             button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissTestCustomID
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.pauseLinkWarningTestCustomID
         }))
     }
 
@@ -317,6 +327,25 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             let buttons = row["components"] as? [[String: Any]] ?? []
             return buttons.contains(where: predicate)
         }
+    }
+
+    private func hasStandardDMControls(_ result: SwiftMinerDMResult) -> Bool {
+        componentButton(result, matching: { button in
+            button["label"] as? String == "Refresh status" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
+        }) &&
+        componentButton(result, matching: { button in
+            button["label"] as? String == "View priorities" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.prioritiesCustomID
+        }) &&
+        componentButton(result, matching: { button in
+            button["label"] as? String == "Fewer DMs" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.quietModeCustomID
+        }) &&
+        componentButton(result, matching: { button in
+            button["label"] as? String == "Open inventory" &&
+                button["url"] as? String == SwiftMinerDMEmbedBuilders.twitchDropsURL
+        })
     }
 
     // Semantic checks that are resilient to exact wording changes

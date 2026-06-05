@@ -142,6 +142,93 @@ extension AppModel {
         }
     }
 
+    func handleSwiftMinerPrioritiesButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let projection = try await client.projection(discordUserId: userId)
+            await respondToSwiftMinerButton(event: event, message: renderSwiftMinerPriorities(projection))
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't fetch your SwiftMiner priorities right now - please try `/miner action:status` in a moment. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    func handleSwiftMinerWhyBlockedButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let messageGame = componentMessageEmbedTitle(from: event.rawMap)
+            .flatMap(SwiftMinerLinkWarningDismiss.game(fromNeedsLinkingTitle:))
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let projection = try await client.projection(discordUserId: userId)
+            await respondToSwiftMinerButton(
+                event: event,
+                message: renderSwiftMinerBlockerExplanation(projection: projection, messageGame: messageGame)
+            )
+        } catch {
+            if let messageGame {
+                await respondToSwiftMinerButton(
+                    event: event,
+                    message: "SwiftMiner wants to mine **\(messageGame)**, but Twitch does not show that account as linked for this game's Drops yet. Open Twitch Drops, link the game/account, then use **Refresh status** here."
+                )
+            } else {
+                await respondToSwiftMinerButton(
+                    event: event,
+                    message: "I couldn't fetch the blocker details right now - please try **Refresh status** or `/miner action:status` in a moment. (\(error.localizedDescription))"
+                )
+            }
+        }
+    }
+
+    func handleSwiftMinerLinkWarningPauseButton(
+        event: GatewayInteractionCreateEvent,
+        context: SlashContext,
+        isDebug: Bool
+    ) async {
+        let game = componentMessageEmbedTitle(from: event.rawMap)
+            .flatMap(SwiftMinerLinkWarningDismiss.game(fromNeedsLinkingTitle:))
+        guard let game else {
+            await respondToSwiftMinerButton(event: event, message: "I couldn't tell which game this reminder was for.")
+            return
+        }
+
+        if isDebug {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "Test pause received for **\(game)** - no real settings changed."
+            )
+            return
+        }
+
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let paused = try await client.pauseLinkWarning(discordUserId: userId, gameName: game, days: 7)
+            let message = paused
+                ? "Done - I won't send link reminders for **\(game)** for 7 days."
+                : "I couldn't find a linked SwiftMiner account for you, so there was nothing to pause for **\(game)**."
+            await respondToSwiftMinerButton(event: event, message: message)
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't pause that reminder right now - please try again later. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    func handleSwiftMinerQuietModeButton(event: GatewayInteractionCreateEvent) async {
+        settings.swiftMiner.notificationPreferences.dropClaimedEnabled = false
+        settings.swiftMiner.notificationPreferences.campaignDetectedEnabled = false
+        settings.swiftMiner.notificationPreferences.welcomeBackEnabled = false
+        saveSettings()
+        await respondToSwiftMinerButton(
+            event: event,
+            message: "Done - SwiftMiner will send fewer DMs now. I'll still send setup, account recovery, link-required, and campaign-complete messages."
+        )
+    }
+
     private func respondToSwiftMinerButton(event: GatewayInteractionCreateEvent, message: String) async {
         do {
             try await service.respondToInteraction(
@@ -479,6 +566,50 @@ extension AppModel {
             return "• \(title)\(drops)"
         }.joined(separator: "\n")
         return "Recently mined:\n\(rows)"
+    }
+
+    private func renderSwiftMinerPriorities(_ projection: SwiftMinerUserProjection) -> String {
+        let priorities = projection.priorityGames ?? []
+        guard !priorities.isEmpty else {
+            return """
+            **No priority games are set right now.**
+            SwiftMiner will pick from available Drops campaigns automatically.
+            """
+        }
+        let rows = priorities.prefix(10).enumerated().map { index, game in
+            "\(index + 1). **\(game)**"
+        }.joined(separator: "\n")
+        let suffix = priorities.count > 10 ? "\n…and \(priorities.count - 10) more." : ""
+        return """
+        **Current SwiftMiner priorities**
+        \(rows)\(suffix)
+        """
+    }
+
+    private func renderSwiftMinerBlockerExplanation(
+        projection: SwiftMinerUserProjection,
+        messageGame: String?
+    ) -> String {
+        if let issue = projection.issues.first {
+            let game = issue.game ?? messageGame
+            let gameText = game.map { " for **\($0)**" } ?? ""
+            return """
+            **Why SwiftMiner is blocked\(gameText)**
+            \(issue.message)
+            \(swiftMinerNextStep(for: issue))
+            """
+        }
+        if let messageGame {
+            return """
+            **Why SwiftMiner is blocked for \(messageGame)**
+            SwiftMiner wants to mine **\(messageGame)** because it is in your priority list, but Twitch does not show that account as linked for this game's Drops yet.
+            Next step: open Twitch Drops, link the game/account, then use **Refresh status** here.
+            """
+        }
+        return """
+        **No current blocker is showing.**
+        Use **Refresh status** for the latest SwiftMiner state.
+        """
     }
 
     private func issueSummarySection(_ projection: SwiftMinerUserProjection) -> String {
