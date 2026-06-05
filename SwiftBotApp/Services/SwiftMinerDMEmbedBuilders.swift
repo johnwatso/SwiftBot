@@ -137,6 +137,7 @@ enum SwiftMinerDMEmbedBuilders {
 
     static let linkWarningDismissCustomID = "swiftminer:link-warning:dismiss"
     static let linkWarningDismissTestCustomID = "swiftminer:link-warning:dismiss:test"
+    static let statusRefreshCustomID = "swiftminer:status:refresh"
 
     // MARK: - Welcome
 
@@ -558,6 +559,18 @@ enum SwiftMinerDMEmbedBuilders {
                     "custom_id": debug ? linkWarningDismissTestCustomID : linkWarningDismissCustomID
                 ]
             ]
+        ]]
+    }
+
+    static func buildStatusRefreshComponents() -> [[String: Any]] {
+        [[
+            "type": 1,
+            "components": [[
+                "type": 2,
+                "style": 2,
+                "label": "Refresh status",
+                "custom_id": statusRefreshCustomID
+            ]]
         ]]
     }
 
