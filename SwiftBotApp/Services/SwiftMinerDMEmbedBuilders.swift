@@ -138,6 +138,11 @@ enum SwiftMinerDMEmbedBuilders {
     static let linkWarningDismissCustomID = "swiftminer:link-warning:dismiss"
     static let linkWarningDismissTestCustomID = "swiftminer:link-warning:dismiss:test"
     static let statusRefreshCustomID = "swiftminer:status:refresh"
+    static let prioritiesCustomID = "swiftminer:priorities:view"
+    static let quietModeCustomID = "swiftminer:quiet-mode:enable"
+    static let whyBlockedCustomID = "swiftminer:blocker:why"
+    static let pauseLinkWarningCustomID = "swiftminer:link-warning:pause"
+    static let pauseLinkWarningTestCustomID = "swiftminer:link-warning:pause:test"
 
     // MARK: - Welcome
 
@@ -555,6 +560,18 @@ enum SwiftMinerDMEmbedBuilders {
                 [
                     "type": 2,
                     "style": 2,
+                    "label": "Why blocked?",
+                    "custom_id": whyBlockedCustomID
+                ],
+                [
+                    "type": 2,
+                    "style": 2,
+                    "label": "Pause 7 days",
+                    "custom_id": debug ? pauseLinkWarningTestCustomID : pauseLinkWarningCustomID
+                ],
+                [
+                    "type": 2,
+                    "style": 2,
                     "label": dismissLabel,
                     "custom_id": debug ? linkWarningDismissTestCustomID : linkWarningDismissCustomID
                 ]
@@ -562,15 +579,35 @@ enum SwiftMinerDMEmbedBuilders {
         ]]
     }
 
-    static func buildStatusRefreshComponents() -> [[String: Any]] {
+    static func buildStandardActionComponents() -> [[String: Any]] {
         [[
             "type": 1,
-            "components": [[
-                "type": 2,
-                "style": 2,
-                "label": "Refresh status",
-                "custom_id": statusRefreshCustomID
-            ]]
+            "components": [
+                [
+                    "type": 2,
+                    "style": 2,
+                    "label": "Refresh status",
+                    "custom_id": statusRefreshCustomID
+                ],
+                [
+                    "type": 2,
+                    "style": 2,
+                    "label": "View priorities",
+                    "custom_id": prioritiesCustomID
+                ],
+                [
+                    "type": 2,
+                    "style": 2,
+                    "label": "Fewer DMs",
+                    "custom_id": quietModeCustomID
+                ],
+                [
+                    "type": 2,
+                    "style": 5,
+                    "label": "Open inventory",
+                    "url": twitchDropsURL
+                ]
+            ]
         ]]
     }
 

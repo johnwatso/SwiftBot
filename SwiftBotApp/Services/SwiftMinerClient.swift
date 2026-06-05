@@ -51,6 +51,7 @@ struct SwiftMinerUserProjection: Codable, Sendable {
     let activeCampaign: Campaign?
     let recentCompletedCampaigns: [RecentCampaign]?
     let issues: [Issue]
+    let priorityGames: [String]?
 }
 
 struct SwiftMinerActivationSession: Codable, Sendable {
@@ -176,6 +177,20 @@ struct SwiftMinerClient {
         )
         struct Response: Decodable { let ignored: Bool }
         return (try? decoder.decode(Response.self, from: data))?.ignored ?? true
+    }
+
+    @discardableResult
+    func pauseLinkWarning(discordUserId: String, gameName: String, days: Int = 7) async throws -> Bool {
+        struct Body: Encodable { let days: Int }
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let encodedGame = gameName.addingPercentEncoding(withAllowedCharacters: allowed) ?? gameName
+        let data = try await request(
+            path: "/v1/users/\(discordUserId)/link-warnings/\(encodedGame)/pause",
+            method: "POST",
+            body: Body(days: days)
+        )
+        struct Response: Decodable { let paused: Bool }
+        return (try? decoder.decode(Response.self, from: data))?.paused ?? true
     }
 
     func controlMiner(discordUserId: String, action: String) async throws -> SwiftMinerControlResponse {
