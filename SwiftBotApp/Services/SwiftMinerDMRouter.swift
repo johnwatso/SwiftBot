@@ -22,7 +22,7 @@ struct SwiftMinerDMRouter: Sendable {
 
     func route(request: SwiftMinerDMRequest, discordName: String?) -> SwiftMinerDMResult {
         let embed: [String: Any]
-        var components: [[String: Any]] = []
+        var components = SwiftMinerDMEmbedBuilders.buildStatusRefreshComponents()
         var shouldTrackWelcome = false
         var shouldTrackCompletion = false
         let analyticsDescription: String
@@ -140,7 +140,7 @@ struct SwiftMinerDMRouter: Sendable {
                 affectedGame: request.affectedGame,
                 debug: request.debug,
                 theme: theme
-            )
+            ) + components
             analyticsDescription = "prioritised_game_needs_linking"
         }
 

@@ -128,6 +128,20 @@ extension AppModel {
         }
     }
 
+    func handleSwiftMinerStatusRefreshButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let projection = try await client.projection(discordUserId: userId)
+            await respondToSwiftMinerButton(event: event, message: renderSwiftMinerProjection(projection))
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't refresh SwiftMiner status right now - please try `/miner action:status` in a moment. (\(error.localizedDescription))"
+            )
+        }
+    }
+
     private func respondToSwiftMinerButton(event: GatewayInteractionCreateEvent, message: String) async {
         do {
             try await service.respondToInteraction(

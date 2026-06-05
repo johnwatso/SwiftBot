@@ -10,6 +10,10 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     func testWelcomeRouteHasWelcomeSemantics() {
         let result = router.route(request: .init(messageType: .welcome), discordName: "Taylor")
         XCTAssertTrue(embedHasWelcomeSemantics(result))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Refresh status" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
+        }))
         XCTAssertTrue(result.shouldTrackWelcome)
         XCTAssertFalse(result.shouldTrackCompletion)
     }
@@ -204,6 +208,10 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertTrue(componentButton(result, matching: { button in
             button["label"] as? String == "Dismiss Valorant reminders" &&
                 button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Refresh status" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
         }))
     }
 

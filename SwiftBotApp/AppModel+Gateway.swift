@@ -525,6 +525,10 @@ extension AppModel {
                 )
                 return
             }
+            if customID == SwiftMinerDMEmbedBuilders.statusRefreshCustomID {
+                await handleSwiftMinerStatusRefreshButton(event: event, context: context)
+                return
+            }
             if customID.hasPrefix("music:") {
                 await handleMusicComponentInteraction(event: event, context: context)
                 return
