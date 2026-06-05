@@ -131,24 +131,31 @@ struct SwiftMinerPreferencesView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Button {
-                        let token = NSPasteboard.general.string(forType: .string) ?? ""
-                        applyToken(token)
+                        openSwiftMinerPairing()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "doc.on.clipboard")
-                            Text("Paste & Pair with SwiftMiner")
+                            Image(systemName: "link")
+                            Text("Pair with SwiftMiner")
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
 
+                    Button {
+                        let token = NSPasteboard.general.string(forType: .string) ?? ""
+                        applyToken(token)
+                    } label: {
+                        Text("Paste Link")
+                    }
+                    .controlSize(.regular)
+
                     Spacer(minLength: 0)
                 }
 
-                if let swiftMinerPairingMessage {
-                    Text(swiftMinerPairingMessage)
+                if let pairingMessage {
+                    Text(pairingMessage)
                         .font(.caption)
-                        .foregroundStyle(swiftMinerPairingSucceeded ? .green : .red)
+                        .foregroundStyle(pairingSucceeded ? .green : .red)
                 }
             }
         } header: {
@@ -160,9 +167,30 @@ struct SwiftMinerPreferencesView: View {
                     .font(.subheadline.weight(.semibold))
             }
         } footer: {
-            Text("Copy the pairing bundle from SwiftMiner › Integrations and paste it here.")
+            Text("Click Pair with SwiftBot in SwiftMiner › Integrations. Manual paste still works as a fallback.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var pairingMessage: String? {
+        swiftMinerPairingMessage ?? app.swiftMinerPairingStatusMessage
+    }
+
+    private var pairingSucceeded: Bool {
+        swiftMinerPairingMessage == nil
+            ? app.swiftMinerPairingStatusSucceeded
+            : swiftMinerPairingSucceeded
+    }
+
+    private func openSwiftMinerPairing() {
+        guard let url = URL(string: "swiftminer://pair") else { return }
+        if NSWorkspace.shared.open(url) {
+            swiftMinerPairingSucceeded = true
+            swiftMinerPairingMessage = "SwiftMiner opened. Click Pair with SwiftBot there to finish."
+        } else {
+            swiftMinerPairingSucceeded = false
+            swiftMinerPairingMessage = "I couldn't open SwiftMiner automatically. Open SwiftMiner › Integrations and click Pair with SwiftBot."
         }
     }
 
@@ -170,7 +198,7 @@ struct SwiftMinerPreferencesView: View {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             swiftMinerPairingSucceeded = false
-            swiftMinerPairingMessage = "Clipboard is empty. Copy the pairing bundle from SwiftMiner first."
+            swiftMinerPairingMessage = "Clipboard is empty. Click Pair with SwiftBot in SwiftMiner, or copy its pairing link first."
             return
         }
         let result = app.applySwiftMinerPairingToken(trimmed)

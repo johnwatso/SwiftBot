@@ -203,6 +203,8 @@ struct SwiftBotApp: App {
             switch url.host {
             case "auth":
                 handleAuthDeepLink(url)
+            case "swiftminer-pair":
+                handleSwiftMinerPairingDeepLink(url)
             default:
                 break
             }
@@ -227,6 +229,22 @@ struct SwiftBotApp: App {
             // Store session token for remote authentication
             appModel.handleRemoteAuthSession(sessionToken)
         }
+    }
+
+    private func handleSwiftMinerPairingDeepLink(_ url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let payload = components.queryItems?.first(where: { $0.name == "b" })?.value,
+              !payload.isEmpty else { return }
+
+        let result = appModel.applySwiftMinerPairingToken(payload)
+        appModel.swiftMinerPairingStatusSucceeded = result.ok
+        appModel.swiftMinerPairingStatusMessage = result.ok
+            ? "SwiftMiner paired successfully. Discord DMs are ready."
+            : result.message
+
+        UserDefaults.standard.set(3, forKey: "swiftbot.preferences.selectedTab")
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 
