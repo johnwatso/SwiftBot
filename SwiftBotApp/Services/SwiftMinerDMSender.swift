@@ -16,8 +16,8 @@ import OSLog
 struct SwiftMinerDMSender: Sendable {
 
     struct Dependencies: Sendable {
-        /// Sends an embed DM to the given Discord user ID.
-        let sendDMEmbed: @Sendable (String, [String: Any]) async throws -> Void
+        /// Sends an embed DM to the given Discord user ID, optionally with components.
+        let sendDMEmbed: @Sendable (String, [String: Any], [[String: Any]]) async throws -> Void
         /// Looks up the Discord display name for a user ID.
         let discordNameForUserId: @Sendable (String) async -> String?
         /// Reads whether the user has already been welcomed.
@@ -81,7 +81,7 @@ struct SwiftMinerDMSender: Sendable {
         let result = router.route(request: request, discordName: discordName)
 
         do {
-            try await dependencies.sendDMEmbed(discordUserId, result.embed)
+            try await dependencies.sendDMEmbed(discordUserId, result.embed, result.components)
             await applyStateTransitions(
                 request: request,
                 result: result,
@@ -126,7 +126,7 @@ struct SwiftMinerDMSender: Sendable {
         let welcomeResult = router.route(request: welcomeRequest, discordName: discordName)
 
         do {
-            try await dependencies.sendDMEmbed(discordUserId, welcomeResult.embed)
+            try await dependencies.sendDMEmbed(discordUserId, welcomeResult.embed, welcomeResult.components)
             await dependencies.markUserWelcomed(discordUserId)
             await dependencies.logInfo("SwiftMiner welcome DM sent to \(discordUserId)")
         } catch {
@@ -139,7 +139,7 @@ struct SwiftMinerDMSender: Sendable {
         let discordLinkedResult = router.route(request: discordLinkedRequest, discordName: discordName)
 
         do {
-            try await dependencies.sendDMEmbed(discordUserId, discordLinkedResult.embed)
+            try await dependencies.sendDMEmbed(discordUserId, discordLinkedResult.embed, discordLinkedResult.components)
             await dependencies.logInfo("SwiftMiner discordLinked DM sent to \(discordUserId)")
         } catch {
             await dependencies.logError("SwiftMiner discordLinked DM failed for \(discordUserId): \(error.localizedDescription)")

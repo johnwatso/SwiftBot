@@ -152,13 +152,29 @@ final class SwiftMinerDMRouterTests: XCTestCase {
 
     func testCampaignDetectedRouteHasDetectionSemantics() {
         let result = router.route(
-            request: .init(messageType: .campaignDetected, affectedGame: "Rocket League"),
+            request: .init(
+                messageType: .campaignDetected,
+                affectedGame: "Rocket League",
+                gameArtworkURL: "https://example.com/rocket.jpg"
+            ),
             discordName: nil
         )
         XCTAssertTrue(embedHasDetectionSemantics(result))
+        XCTAssertTrue(embedTitle(result).contains("Rocket League"))
         XCTAssertTrue(embedDescription(result).contains("Rocket League"))
         XCTAssertTrue(embedDescription(result).contains("priority list"))
-        XCTAssertEqual(embedFooter(result), "Use /miner action:status to check your setup")
+        XCTAssertEqual(embedFooter(result), SwiftMinerDMTheme.default.statusFooter)
+        XCTAssertEqual(
+            (result.embed["image"] as? [String: String])?["url"],
+            "https://example.com/rocket.jpg"
+        )
+        XCTAssertNil(result.embed["thumbnail"])
+        XCTAssertNil(result.embed["url"])
+        XCTAssertTrue(hasField(result, matching: { name, value in
+            name == "Twitch inventory" &&
+            value.contains("Open Twitch Drops inventory") &&
+            value.contains("https://www.twitch.tv/drops/inventory")
+        }))
     }
 
     func testAccountActionRequiredRouteHasAlertSemantics() {
@@ -177,13 +193,28 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         )
         XCTAssertTrue(embedHasLinkingSemantics(result))
         XCTAssertTrue(embedTitle(result).contains("Valorant"))
-        // Links to the Twitch Drops page so the user can act.
-        XCTAssertEqual(
-            result.embed["url"] as? String,
-            "https://www.twitch.tv/drops/inventory"
-        )
+        XCTAssertNil(result.embed["url"])
         XCTAssertTrue(hasField(result, matching: { _, value in
             value.contains("https://www.twitch.tv/drops/inventory")
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Open Twitch Drops" &&
+                button["url"] as? String == "https://www.twitch.tv/drops/inventory"
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Dismiss Valorant reminders" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID
+        }))
+    }
+
+    func testPrioritisedGameNeedsLinkingDebugRouteUsesTestDismissButton() {
+        let result = router.route(
+            request: .init(messageType: .prioritisedGameNeedsLinking, debug: true, affectedGame: "Valorant"),
+            discordName: nil
+        )
+
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissTestCustomID
         }))
     }
 
@@ -267,6 +298,16 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             guard let name = field["name"] as? String,
                   let value = field["value"] as? String else { return false }
             return predicate(name, value)
+        }
+    }
+
+    private func componentButton(
+        _ result: SwiftMinerDMResult,
+        matching predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        result.components.contains { row in
+            let buttons = row["components"] as? [[String: Any]] ?? []
+            return buttons.contains(where: predicate)
         }
     }
 

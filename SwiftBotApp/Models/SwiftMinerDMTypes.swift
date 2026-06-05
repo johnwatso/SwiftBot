@@ -156,6 +156,9 @@ struct SwiftMinerDMResult {
     /// The Discord embed payload to send.
     let embed: [String: Any]
 
+    /// Optional Discord message components, such as action buttons.
+    let components: [[String: Any]]
+
     /// Whether this DM should mark the user as having received a welcome message.
     let shouldTrackWelcome: Bool
 

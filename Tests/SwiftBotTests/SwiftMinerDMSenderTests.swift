@@ -58,7 +58,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
 
     private func makeSender(spy: Spy) -> SwiftMinerDMSender {
         SwiftMinerDMSender(dependencies: .init(
-            sendDMEmbed: { userId, embed in
+            sendDMEmbed: { userId, embed, _ in
                 nonisolated(unsafe) let safeEmbed = embed
                 await spy.recordSend(userId: userId, embed: safeEmbed)
             },
@@ -115,7 +115,7 @@ final class SwiftMinerDMSenderTests: XCTestCase {
     func testSendFailureReturnsFalse() async {
         let spy = Spy()
         let sender = SwiftMinerDMSender(dependencies: .init(
-            sendDMEmbed: { _, _ in throw NSError(domain: "Test", code: 1) },
+            sendDMEmbed: { _, _, _ in throw NSError(domain: "Test", code: 1) },
             discordNameForUserId: { _ in nil },
             hasUserBeenWelcomed: { _ in true },
             hasUserCompletedOnboarding: { _ in true },
