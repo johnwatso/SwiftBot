@@ -22,7 +22,7 @@ extension AppModel {
         guard !trimmed.isEmpty else { throw SwiftMinerPairingError.empty }
 
         let encodedPayload: String
-        if trimmed.hasPrefix("swiftminer://pair?") {
+        if trimmed.hasPrefix("swiftminer://pair?") || trimmed.hasPrefix("swiftbot://swiftminer-pair?") {
             guard let components = URLComponents(string: trimmed),
                   let value = components.queryItems?.first(where: { $0.name == "b" })?.value else {
                 throw SwiftMinerPairingError.invalidToken

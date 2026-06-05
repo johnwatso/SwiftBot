@@ -47,6 +47,31 @@ final class SwiftMinerDMStateTests: XCTestCase {
         XCTAssertEqual(settings.completedInitialDMFlowUserIds, ["123"])
     }
 
+    @MainActor
+    func testSwiftMinerPairingDecodesSwiftBotDeepLink() throws {
+        let bundle = SwiftMinerPairingBundle(
+            endpoint: "http://localhost:8080",
+            swiftMinerEndpoint: "http://localhost:8080",
+            swiftBotEndpoint: "http://localhost:38888",
+            apiKey: String(repeating: "a", count: 32),
+            hmacSecret: String(repeating: "b", count: 32),
+            webhookHint: "http://localhost:38888/webhooks/swiftminer/events"
+        )
+        let data = try JSONEncoder().encode(bundle)
+        let payload = data.base64EncodedString()
+        var components = URLComponents()
+        components.scheme = "swiftbot"
+        components.host = "swiftminer-pair"
+        components.queryItems = [URLQueryItem(name: "b", value: payload)]
+
+        let model = AppModel()
+        let decoded = try model.decodeSwiftMinerPairingToken(XCTUnwrap(components.url).absoluteString)
+
+        XCTAssertEqual(decoded.swiftMinerEndpoint, "http://localhost:8080")
+        XCTAssertEqual(decoded.swiftBotEndpoint, "http://localhost:38888")
+        XCTAssertEqual(decoded.apiKey, String(repeating: "a", count: 32))
+    }
+
     // MARK: - DM Request Codable
 
     func testSwiftMinerDMRequestRoundTrip() throws {

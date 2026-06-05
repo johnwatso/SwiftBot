@@ -136,6 +136,8 @@ final class AppModel: ObservableObject {
     @Published var adminWebResolvedBaseURL: String = ""
     @Published var adminWebPublicAccessStatus = AdminWebPublicAccessRuntimeStatus()
     @Published var workerModeMigrated = false
+    @Published var swiftMinerPairingStatusMessage: String?
+    @Published var swiftMinerPairingStatusSucceeded = false
     // MARK: - P0.4 Diagnostics state
 
     @Published var connectionDiagnostics = ConnectionDiagnostics()
