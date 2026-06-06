@@ -118,6 +118,11 @@ struct SwiftMinerDMRouter: Sendable {
                 debug: request.debug,
                 theme: theme
             )
+            components = SwiftMinerDMEmbedBuilders.buildCampaignDetectedComponents(
+                accountId: request.accountId,
+                campaignId: Self.campaignId(fromEventId: request.eventId),
+                debug: request.debug
+            ) + components
             analyticsDescription = "campaign_detected"
 
         case .accountActionRequired:
@@ -138,6 +143,7 @@ struct SwiftMinerDMRouter: Sendable {
             )
             components = SwiftMinerDMEmbedBuilders.buildPrioritisedGameNeedsLinkingComponents(
                 affectedGame: request.affectedGame,
+                accountId: request.accountId,
                 debug: request.debug,
                 theme: theme
             ) + components
@@ -151,5 +157,11 @@ struct SwiftMinerDMRouter: Sendable {
             shouldTrackCompletion: shouldTrackCompletion,
             analyticsDescription: analyticsDescription
         )
+    }
+
+    private static func campaignId(fromEventId eventId: String?) -> String? {
+        guard let eventId, eventId.hasPrefix("campaignDetected:") else { return nil }
+        let id = String(eventId.dropFirst("campaignDetected:".count))
+        return id.isEmpty ? nil : id
     }
 }

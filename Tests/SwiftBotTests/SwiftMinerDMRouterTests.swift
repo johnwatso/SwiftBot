@@ -156,7 +156,9 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             request: .init(
                 messageType: .campaignDetected,
                 affectedGame: "Rocket League",
-                gameArtworkURL: "https://example.com/rocket.jpg"
+                gameArtworkURL: "https://example.com/rocket.jpg",
+                accountId: "account-1",
+                eventId: "campaignDetected:campaign-1"
             ),
             discordName: nil
         )
@@ -175,6 +177,14 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             name == "Twitch inventory" &&
             value.contains("Open Twitch Drops inventory") &&
             value.contains("https://www.twitch.tv/drops/inventory")
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Prioritise" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.priorityCustomID(accountId: "account-1", debug: false)
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Dismiss" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.campaignDismissCustomID(campaignId: "campaign-1", debug: false)
         }))
     }
 
@@ -197,6 +207,10 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertNil(result.embed["url"])
         XCTAssertTrue(hasField(result, matching: { _, value in
             value.contains("https://www.twitch.tv/drops/inventory")
+        }))
+        XCTAssertTrue(componentButton(result, matching: { button in
+            button["label"] as? String == "Prioritise" &&
+                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.priorityCustomID(accountId: nil, debug: false)
         }))
         XCTAssertTrue(componentButton(result, matching: { button in
             button["label"] as? String == "Open Twitch Drops" &&

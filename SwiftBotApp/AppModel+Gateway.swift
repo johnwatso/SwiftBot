@@ -550,6 +550,26 @@ extension AppModel {
                 await handleSwiftMinerWhyBlockedButton(event: event, context: context)
                 return
             }
+            if customID.hasPrefix(SwiftMinerDMEmbedBuilders.prioritiseGameCustomIDPrefix) ||
+                customID.hasPrefix(SwiftMinerDMEmbedBuilders.prioritiseGameTestCustomIDPrefix) {
+                await handleSwiftMinerPrioritiseGameButton(
+                    event: event,
+                    context: context,
+                    customID: customID,
+                    isDebug: customID.hasPrefix(SwiftMinerDMEmbedBuilders.prioritiseGameTestCustomIDPrefix)
+                )
+                return
+            }
+            if customID.hasPrefix(SwiftMinerDMEmbedBuilders.campaignDismissCustomIDPrefix) ||
+                customID.hasPrefix(SwiftMinerDMEmbedBuilders.campaignDismissTestCustomIDPrefix) {
+                await handleSwiftMinerCampaignDismissButton(
+                    event: event,
+                    context: context,
+                    customID: customID,
+                    isDebug: customID.hasPrefix(SwiftMinerDMEmbedBuilders.campaignDismissTestCustomIDPrefix)
+                )
+                return
+            }
             if customID.hasPrefix("music:") {
                 await handleMusicComponentInteraction(event: event, context: context)
                 return

@@ -86,6 +86,20 @@ struct SwiftMinerControlResponse: Codable, Sendable {
     }
 }
 
+struct SwiftMinerPriorityUpdateResponse: Codable, Sendable {
+    let prioritised: Bool
+    let accountId: String
+    let gameName: String
+    let priorityGames: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case prioritised
+        case accountId = "account_id"
+        case gameName = "game_name"
+        case priorityGames = "priority_games"
+    }
+}
+
 enum SwiftMinerClientError: LocalizedError {
     case disabled
     case invalidBaseURL
@@ -163,6 +177,28 @@ struct SwiftMinerClient {
             method: "POST",
             body: Body(scope: scope)
         )
+    }
+
+    func prioritiseGame(discordUserId: String, accountId: String, gameName: String, gameId: String? = nil) async throws -> SwiftMinerPriorityUpdateResponse {
+        struct Body: Encodable {
+            let gameId: String?
+            let gameName: String
+            let placement: String
+
+            enum CodingKeys: String, CodingKey {
+                case gameId = "game_id"
+                case gameName = "game_name"
+                case placement
+            }
+        }
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let encodedAccount = accountId.addingPercentEncoding(withAllowedCharacters: allowed) ?? accountId
+        let data = try await request(
+            path: "/v1/users/\(discordUserId)/miners/\(encodedAccount)/priorities",
+            method: "POST",
+            body: Body(gameId: gameId, gameName: gameName, placement: "top")
+        )
+        return try decoder.decode(SwiftMinerPriorityUpdateResponse.self, from: data)
     }
 
     /// Dismiss the "needs linking" warning/DM for a game. Returns whether the
