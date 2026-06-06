@@ -143,6 +143,10 @@ enum SwiftMinerDMEmbedBuilders {
     static let whyBlockedCustomID = "swiftminer:blocker:why"
     static let pauseLinkWarningCustomID = "swiftminer:link-warning:pause"
     static let pauseLinkWarningTestCustomID = "swiftminer:link-warning:pause:test"
+    static let prioritiseGameCustomIDPrefix = "swiftminer:priority:top"
+    static let prioritiseGameTestCustomIDPrefix = "swiftminer:priority:top:test"
+    static let campaignDismissCustomIDPrefix = "swiftminer:campaign:dismiss"
+    static let campaignDismissTestCustomIDPrefix = "swiftminer:campaign:dismiss:test"
 
     // MARK: - Welcome
 
@@ -471,6 +475,34 @@ enum SwiftMinerDMEmbedBuilders {
         return embed
     }
 
+    static func buildCampaignDetectedComponents(
+        accountId: String?,
+        campaignId: String?,
+        debug: Bool
+    ) -> [[String: Any]] {
+        var buttons: [[String: Any]] = [[
+            "type": 2,
+            "style": 1,
+            "label": "Prioritise",
+            "custom_id": priorityCustomID(accountId: accountId, debug: debug)
+        ]]
+        if let campaignId, !campaignId.isEmpty {
+            buttons.append([
+                "type": 2,
+                "style": 2,
+                "label": "Dismiss",
+                "custom_id": campaignDismissCustomID(campaignId: campaignId, debug: debug)
+            ])
+        }
+        buttons.append([
+            "type": 2,
+            "style": 5,
+            "label": "Open inventory",
+            "url": twitchDropsURL
+        ])
+        return [["type": 1, "components": buttons]]
+    }
+
     // MARK: - Account Action Required
 
     static func buildAccountActionRequiredEmbed(
@@ -543,6 +575,7 @@ enum SwiftMinerDMEmbedBuilders {
 
     static func buildPrioritisedGameNeedsLinkingComponents(
         affectedGame: String?,
+        accountId: String?,
         debug: Bool,
         theme: SwiftMinerDMTheme = .default
     ) -> [[String: Any]] {
@@ -551,6 +584,12 @@ enum SwiftMinerDMEmbedBuilders {
         return [[
             "type": 1,
             "components": [
+                [
+                    "type": 2,
+                    "style": 1,
+                    "label": "Prioritise",
+                    "custom_id": priorityCustomID(accountId: accountId, debug: debug)
+                ],
                 [
                     "type": 2,
                     "style": 5,
@@ -614,5 +653,16 @@ enum SwiftMinerDMEmbedBuilders {
     private static func truncatedButtonLabel(_ label: String) -> String {
         guard label.count > 80 else { return label }
         return String(label.prefix(77)) + "..."
+    }
+
+    static func priorityCustomID(accountId: String?, debug: Bool) -> String {
+        let prefix = debug ? prioritiseGameTestCustomIDPrefix : prioritiseGameCustomIDPrefix
+        guard let accountId, !accountId.isEmpty else { return prefix }
+        return "\(prefix):\(accountId)"
+    }
+
+    static func campaignDismissCustomID(campaignId: String, debug: Bool) -> String {
+        let prefix = debug ? campaignDismissTestCustomIDPrefix : campaignDismissCustomIDPrefix
+        return "\(prefix):\(campaignId)"
     }
 }

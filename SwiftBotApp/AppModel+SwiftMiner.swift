@@ -61,6 +61,34 @@ extension AppModel {
         return title
     }
 
+    private func gameNameFromSwiftMinerComponentMessage(_ rawMap: [String: DiscordJSON]) -> String? {
+        guard let title = componentMessageEmbedTitle(from: rawMap) else { return nil }
+        if let game = SwiftMinerLinkWarningDismiss.game(fromNeedsLinkingTitle: title) {
+            return game
+        }
+        let trimmed = title
+            .replacingOccurrences(of: "[TEST] ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("🆕"), let range = trimmed.range(of: "— New campaign") {
+            let game = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 1)..<range.lowerBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return game.isEmpty ? nil : game
+        }
+        return nil
+    }
+
+    private func accountIdFromPriorityCustomID(_ customID: String) -> String? {
+        let prefixes = [
+            SwiftMinerDMEmbedBuilders.prioritiseGameCustomIDPrefix,
+            SwiftMinerDMEmbedBuilders.prioritiseGameTestCustomIDPrefix
+        ]
+        guard let prefix = prefixes.first(where: { customID.hasPrefix($0) }) else { return nil }
+        let suffix = customID.dropFirst(prefix.count)
+        guard suffix.hasPrefix(":") else { return nil }
+        let accountId = String(suffix.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        return accountId.isEmpty ? nil : accountId
+    }
+
     /// Handles a possible "reply to dismiss" on a "Link Twitch for {game}" DM.
     /// Returns true when the message was a dismiss reply (handled — caller should
     /// stop processing it), false otherwise.
@@ -124,6 +152,76 @@ extension AppModel {
             await respondToSwiftMinerButton(
                 event: event,
                 message: "I couldn't update that right now — please try again later. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    func handleSwiftMinerPrioritiseGameButton(
+        event: GatewayInteractionCreateEvent,
+        context: SlashContext,
+        customID: String,
+        isDebug: Bool
+    ) async {
+        guard let game = gameNameFromSwiftMinerComponentMessage(event.rawMap) else {
+            await respondToSwiftMinerButton(event: event, message: "I couldn't tell which game this button was for.")
+            return
+        }
+        if isDebug {
+            await respondToSwiftMinerButton(event: event, message: "Test priority received for **\(game)** - no real settings changed.")
+            return
+        }
+
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let accountId: String
+            if let id = accountIdFromPriorityCustomID(customID) {
+                accountId = id
+            } else if let projectionAccount = try await client.projection(discordUserId: userId).account?.twitchAccountId {
+                accountId = projectionAccount
+            } else {
+                await respondToSwiftMinerButton(event: event, message: "I couldn't find your linked SwiftMiner account yet. Try **Refresh status** first.")
+                return
+            }
+            let response = try await client.prioritiseGame(discordUserId: userId, accountId: accountId, gameName: game)
+            let top = response.priorityGames.first ?? game
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "Done - **\(top)** is now priority #1 for your miner."
+            )
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't update that priority right now - please try again later. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    func handleSwiftMinerCampaignDismissButton(
+        event: GatewayInteractionCreateEvent,
+        context: SlashContext,
+        customID: String,
+        isDebug: Bool
+    ) async {
+        let prefix = isDebug ? SwiftMinerDMEmbedBuilders.campaignDismissTestCustomIDPrefix : SwiftMinerDMEmbedBuilders.campaignDismissCustomIDPrefix
+        let campaignId = customID.dropFirst(prefix.count).dropFirst()
+        guard !campaignId.isEmpty else {
+            await respondToSwiftMinerButton(event: event, message: "I couldn't tell which campaign this button was for.")
+            return
+        }
+        if isDebug {
+            await respondToSwiftMinerButton(event: event, message: "Test dismiss received - no real settings changed.")
+            return
+        }
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            try await client.ignoreCampaign(discordUserId: userId, campaignId: String(campaignId), scope: "campaign")
+            await respondToSwiftMinerButton(event: event, message: "Done - I won't remind you about that campaign again.")
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't dismiss that campaign right now - please try again later. (\(error.localizedDescription))"
             )
         }
     }

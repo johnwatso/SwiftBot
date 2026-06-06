@@ -55,6 +55,9 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
     let campaignName: String?
     let milestoneTitle: String?
     let gameArtworkURL: String?
+    let accountId: String?
+    let minerDisplayName: String?
+    let affectedGameId: String?
     let recoveryReason: String?
     /// Opaque event identifier for persistent deduplication. E.g. "drop:<id>", "campaign:<id>".
     let eventId: String?
@@ -72,6 +75,9 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         campaignName: String? = nil,
         milestoneTitle: String? = nil,
         gameArtworkURL: String? = nil,
+        accountId: String? = nil,
+        minerDisplayName: String? = nil,
+        affectedGameId: String? = nil,
         recoveryReason: String? = nil,
         eventId: String? = nil
     ) {
@@ -87,6 +93,9 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.campaignName = campaignName
         self.milestoneTitle = milestoneTitle
         self.gameArtworkURL = gameArtworkURL
+        self.accountId = accountId
+        self.minerDisplayName = minerDisplayName
+        self.affectedGameId = affectedGameId
         self.recoveryReason = recoveryReason
         self.eventId = eventId
     }
@@ -109,6 +118,9 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         self.campaignName = try container.decodeIfPresent(String.self, forKey: .campaignName)
         self.milestoneTitle = try container.decodeIfPresent(String.self, forKey: .milestoneTitle)
         self.gameArtworkURL = try container.decodeIfPresent(String.self, forKey: .gameArtworkURL)
+        self.accountId = try container.decodeIfPresent(String.self, forKey: .accountId)
+        self.minerDisplayName = try container.decodeIfPresent(String.self, forKey: .minerDisplayName)
+        self.affectedGameId = try container.decodeIfPresent(String.self, forKey: .affectedGameId)
         self.recoveryReason = try container.decodeIfPresent(String.self, forKey: .recoveryReason)
         self.eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
     }
@@ -126,6 +138,9 @@ struct SwiftMinerDMRequest: Codable, Sendable, Equatable {
         case campaignName = "campaign_name"
         case milestoneTitle = "milestone_title"
         case gameArtworkURL = "game_artwork_url"
+        case accountId = "account_id"
+        case minerDisplayName = "miner_display_name"
+        case affectedGameId = "affected_game_id"
         case recoveryReason = "recovery_reason"
         case eventId = "event_id"
     }
