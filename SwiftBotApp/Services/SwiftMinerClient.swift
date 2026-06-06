@@ -52,6 +52,7 @@ struct SwiftMinerUserProjection: Codable, Sendable {
     let recentCompletedCampaigns: [RecentCampaign]?
     let issues: [Issue]
     let priorityGames: [String]?
+    let personalPriorityGames: [String]?
 }
 
 struct SwiftMinerActivationSession: Codable, Sendable {
@@ -199,6 +200,25 @@ struct SwiftMinerClient {
             body: Body(gameId: gameId, gameName: gameName, placement: "top")
         )
         return try decoder.decode(SwiftMinerPriorityUpdateResponse.self, from: data)
+    }
+
+    /// Replace a miner's personal priority games with the given list (whole-list edit
+    /// from the Discord "edit games" modal). Returns the resulting effective list.
+    @discardableResult
+    func setPriorities(discordUserId: String, accountId: String, games: [String]) async throws -> [String] {
+        struct Body: Encodable { let games: [String] }
+        struct Response: Decodable {
+            let priorityGames: [String]
+            enum CodingKeys: String, CodingKey { case priorityGames = "priority_games" }
+        }
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let encodedAccount = accountId.addingPercentEncoding(withAllowedCharacters: allowed) ?? accountId
+        let data = try await request(
+            path: "/v1/users/\(discordUserId)/miners/\(encodedAccount)/priorities",
+            method: "PUT",
+            body: Body(games: games)
+        )
+        return (try? decoder.decode(Response.self, from: data))?.priorityGames ?? games
     }
 
     /// Dismiss the "needs linking" warning/DM for a game. Returns whether the

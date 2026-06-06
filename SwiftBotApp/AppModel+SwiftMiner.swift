@@ -245,13 +245,83 @@ extension AppModel {
         let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
         do {
             let projection = try await client.projection(discordUserId: userId)
-            await respondToSwiftMinerButton(event: event, message: renderSwiftMinerPriorities(projection))
+            await respondToSwiftMinerButton(
+                event: event,
+                message: renderSwiftMinerPriorities(projection),
+                components: SwiftMinerDMEmbedBuilders.buildEditGamesComponents()
+            )
         } catch {
             await respondToSwiftMinerButton(
                 event: event,
                 message: "I couldn't fetch your SwiftMiner priorities right now - please try `/miner action:status` in a moment. (\(error.localizedDescription))"
             )
         }
+    }
+
+    /// Opens the "edit games" modal, pre-filled with the user's personal priority games.
+    /// Triggered by the Edit games button (component) and the `/miner action:games` slash.
+    func handleSwiftMinerEditGamesButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        let currentGames = (try? await client.projection(discordUserId: userId))?.personalPriorityGames ?? []
+        do {
+            try await service.respondToInteraction(
+                interactionID: event.interactionID,
+                interactionToken: event.interactionToken,
+                payload: SwiftMinerDMEmbedBuilders.buildEditGamesModal(currentGames: currentGames)
+            )
+        } catch {
+            logs.append("❌ Failed to open SwiftMiner edit-games modal: \(error.localizedDescription)")
+        }
+    }
+
+    /// Handles the "edit games" modal submission: replaces the user's personal priority
+    /// games with the submitted list and confirms ephemerally.
+    func handleSwiftMinerEditGamesModalSubmit(event: GatewayInteractionCreateEvent, context: SlashContext) async {
+        let userId = authorId(from: context.rawLikeMessage) ?? "unknown-user"
+        let rawInput = modalTextInputValue(in: event.data, customID: SwiftMinerDMEmbedBuilders.editGamesInputID) ?? ""
+        let games = SwiftMinerDMEmbedBuilders.parseEditGamesInput(rawInput)
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let projection = try await client.projection(discordUserId: userId)
+            guard let accountId = projection.account?.twitchAccountId, !accountId.isEmpty else {
+                await respondToSwiftMinerButton(
+                    event: event,
+                    message: "I couldn't find a linked SwiftMiner account for you yet. Use `/miner action:setup` first."
+                )
+                return
+            }
+            _ = try await client.setPriorities(discordUserId: userId, accountId: accountId, games: games)
+            let message: String
+            if games.isEmpty {
+                message = "Cleared your personal priority games. SwiftMiner will use your global priorities."
+            } else {
+                let list = games.map { "• \($0)" }.joined(separator: "\n")
+                message = "Updated your priority games:\n\(list)"
+            }
+            await respondToSwiftMinerButton(event: event, message: message)
+        } catch {
+            await respondToSwiftMinerButton(
+                event: event,
+                message: "I couldn't update your priority games right now - please try again in a moment. (\(error.localizedDescription))"
+            )
+        }
+    }
+
+    /// Extracts a modal text-input value (from interaction `data.components`) by custom_id.
+    private func modalTextInputValue(in data: [String: DiscordJSON], customID: String) -> String? {
+        guard case let .array(rows)? = data["components"] else { return nil }
+        for row in rows {
+            guard case let .object(rowObject) = row,
+                  case let .array(inputs)? = rowObject["components"] else { continue }
+            for input in inputs {
+                guard case let .object(field) = input,
+                      case let .string(id)? = field["custom_id"], id == customID,
+                      case let .string(value)? = field["value"] else { continue }
+                return value
+            }
+        }
+        return nil
     }
 
     func handleSwiftMinerWhyBlockedButton(event: GatewayInteractionCreateEvent, context: SlashContext) async {
@@ -327,17 +397,25 @@ extension AppModel {
         )
     }
 
-    private func respondToSwiftMinerButton(event: GatewayInteractionCreateEvent, message: String) async {
+    private func respondToSwiftMinerButton(
+        event: GatewayInteractionCreateEvent,
+        message: String,
+        components: [[String: Any]]? = nil
+    ) async {
         do {
+            nonisolated(unsafe) var data: [String: Any] = [
+                "content": message,
+                "flags": 64
+            ]
+            if let components, !components.isEmpty {
+                data["components"] = components
+            }
             try await service.respondToInteraction(
                 interactionID: event.interactionID,
                 interactionToken: event.interactionToken,
                 payload: [
                     "type": 4,
-                    "data": [
-                        "content": message,
-                        "flags": 64
-                    ]
+                    "data": data
                 ]
             )
         } catch {
