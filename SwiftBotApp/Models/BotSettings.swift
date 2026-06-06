@@ -276,7 +276,7 @@ struct BotSettings: Codable, Hashable {
     var slashCommandsEnabled: Bool = true
     var bugTrackingEnabled: Bool = true
     var disabledCommandKeys: Set<String> = []
-    var autoStart: Bool = false
+    var autoStart: Bool = true
     var guildSettings: [String: GuildSettings] = [:]
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
@@ -408,7 +408,7 @@ struct BotSettings: Codable, Hashable {
         slashCommandsEnabled = try container.decodeIfPresent(Bool.self, forKey: .slashCommandsEnabled) ?? true
         bugTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugTrackingEnabled) ?? true
         disabledCommandKeys = try container.decodeIfPresent(Set<String>.self, forKey: .disabledCommandKeys) ?? []
-        autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
+        autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? true
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
         clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
         clusterNodeName = try container.decodeIfPresent(String.self, forKey: .clusterNodeName) ?? (Host.current().localizedName ?? "SwiftBot Node")
