@@ -27,14 +27,16 @@ extension AppModel {
                 ["type": 3, "name": "artist", "description": "Artist name", "required": false]
             ]],
             ["name": "miner", "description": "Check or set up your SwiftMiner drops miner", "type": 1, "options": [
-                ["type": 3, "name": "action", "description": "status | setup | pause | resume | refresh | health", "required": false, "choices": [
+                ["type": 3, "name": "action", "description": "status | setup | prioritise | pause | resume | refresh | health", "required": false, "choices": [
                     ["name": "status", "value": "status"],
                     ["name": "setup", "value": "setup"],
+                    ["name": "prioritise", "value": "prioritise"],
                     ["name": "pause", "value": "pause"],
                     ["name": "resume", "value": "resume"],
                     ["name": "refresh", "value": "refresh"],
                     ["name": "health", "value": "health"]
-                ]]
+                ]],
+                ["type": 3, "name": "game", "description": "Game to prioritise, e.g. Marvel Rivals", "required": false]
             ]],
             ["name": "playlist", "description": "Import a playlist URL into a thread with per-track links", "type": 1, "options": [
                 ["type": 3, "name": "url", "description": "Playlist URL (Spotify/Apple/YouTube)", "required": true],

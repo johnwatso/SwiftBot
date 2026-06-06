@@ -245,6 +245,46 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join`.")
     }
 
+    func testSlashMinerPrioritiseRoutesGameToSwiftMiner() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            swiftMinerSlashCommand: { action, game, userId, _ in
+                XCTAssertEqual(action, "prioritise")
+                XCTAssertEqual(game, "Marvel Rivals")
+                XCTAssertEqual(userId, "user-9")
+                return (true, "Now prioritising Marvel Rivals.", [
+                    "title": "Now prioritising Marvel Rivals",
+                    "image": ["url": "https://example.com/marvel-rivals.jpg"]
+                ])
+            }
+        )
+
+        let response = await processor.executeSlashCommand(
+            command: "miner",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("action"),
+                        "value": .string("prioritise")
+                    ]),
+                    .object([
+                        "name": .string("game"),
+                        "value": .string("Marvel Rivals")
+                    ])
+                ])
+            ],
+            context: .init(
+                channelId: "channel-1",
+                username: "Taylor",
+                rawLikeMessage: ["author": .object(["id": .string("user-9")])]
+            )
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Now prioritising Marvel Rivals")
+        XCTAssertNotNil(response.embeds?.first?["image"])
+    }
+
     func testAnnounceJoinRequiresConfiguredChannel() async {
         let app = AppModel()
 
@@ -384,6 +424,9 @@ final class CommandProcessorTests: XCTestCase {
         defaultWikiCommand: @escaping () -> CommandProcessor.ResolvedWikiCommand? = { nil },
         announceCommand: @escaping ([String: DiscordJSON]) async -> (ok: Bool, message: String) = { _ in
             (ok: true, message: "Announcer result")
+        },
+        swiftMinerSlashCommand: @escaping (String, String?, String, String) async -> (ok: Bool, message: String, embed: [String: Any]?) = { _, _, _, _ in
+            (true, "SwiftMiner result", nil)
         }
     ) -> CommandProcessor {
         let catalog = CommandCatalog(
@@ -468,6 +511,9 @@ final class CommandProcessorTests: XCTestCase {
                 },
                 swiftMinerCommand: { _, _, _ in
                     (true, "SwiftMiner result")
+                },
+                swiftMinerSlashCommand: { action, game, userId, channelId in
+                    await swiftMinerSlashCommand(action, game, userId, channelId)
                 },
                 fetchSteamAppInfo: { _ in
                     (ok: true, embed: ["title": "Steam Game"])

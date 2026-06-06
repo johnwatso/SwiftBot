@@ -385,11 +385,92 @@ extension AppModel {
                 let response = try await client.controlMiner(discordUserId: userId, action: normalizedAction)
                 return (response.ok, response.message)
             default:
-                return (false, "Usage: `/miner action:status`, `/miner action:setup`, `/miner action:pause`, `/miner action:resume`, `/miner action:refresh`, or `/miner action:health`.")
+                return (false, "Usage: `/miner action:status`, `/miner action:setup`, `/miner action:prioritise game:Marvel Rivals`, `/miner action:pause`, `/miner action:resume`, `/miner action:refresh`, or `/miner action:health`.")
             }
         } catch {
             return (false, error.localizedDescription)
         }
+    }
+
+    func swiftMinerSlashCommand(
+        action: String,
+        game: String?,
+        userId: String,
+        channelId: String
+    ) async -> (ok: Bool, message: String, embed: [String: Any]?) {
+        let normalizedAction = action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedAction == "prioritise" || normalizedAction == "prioritize" else {
+            let result = await swiftMinerCommand(action: action, userId: userId, channelId: channelId)
+            return (result.ok, result.message, nil)
+        }
+
+        let gameName = game?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !gameName.isEmpty else {
+            return (false, "Usage: `/miner action:prioritise game:Marvel Rivals`.", nil)
+        }
+
+        let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
+        do {
+            let projection = try await client.projection(discordUserId: userId)
+            guard let account = projection.account else {
+                return (false, "I couldn't find your linked SwiftMiner account yet. Run `/miner action:setup` first.", nil)
+            }
+
+            let response = try await client.prioritiseGame(
+                discordUserId: userId,
+                accountId: account.twitchAccountId,
+                gameName: gameName
+            )
+            let topGame = response.priorityGames.first ?? response.gameName
+            let embed = await swiftMinerPriorityConfirmationEmbed(
+                requestedGame: gameName,
+                topGame: topGame,
+                account: account,
+                priorityGames: response.priorityGames
+            )
+            return (true, "Now prioritising \(topGame).", embed)
+        } catch {
+            return (false, "I couldn't update that priority right now - please try again later. (\(error.localizedDescription))", nil)
+        }
+    }
+
+    private func swiftMinerPriorityConfirmationEmbed(
+        requestedGame: String,
+        topGame: String,
+        account: SwiftMinerUserProjection.Account,
+        priorityGames: [String]
+    ) async -> [String: Any] {
+        let steamInfo = try? await SteamService().fetchAppInfo(query: requestedGame)
+        let steamName = steamInfo?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let displayName = steamName.isEmpty ? topGame : steamName
+        let priorityPreview = priorityGames.prefix(5).enumerated().map { index, game in
+            "**\(index + 1).** \(game)"
+        }.joined(separator: "\n")
+        let extra = priorityGames.count > 5 ? "\n…and \(priorityGames.count - 5) more" : ""
+
+        var embed: [String: Any] = [
+            "title": "Now prioritising \(displayName)",
+            "description": "SwiftMiner will try **\(topGame)** first for @\(account.username).",
+            "color": 3_062_954,
+            "fields": [[
+                "name": "Miner priority list",
+                "value": priorityPreview.isEmpty ? topGame : priorityPreview + extra,
+                "inline": false
+            ], [
+                "name": "Inventory",
+                "value": "[Open Twitch Drops inventory](\(SwiftMinerDMEmbedBuilders.twitchDropsURL))",
+                "inline": false
+            ]],
+            "footer": ["text": "Use /miner action:status to check progress"]
+        ]
+
+        if let headerImageURL = steamInfo?.headerImageURL, !headerImageURL.isEmpty {
+            embed["image"] = ["url": headerImageURL]
+        }
+        if let storeURL = steamInfo?.storeURL, !storeURL.isEmpty {
+            embed["url"] = storeURL
+        }
+        return embed
     }
 
     func fetchSwiftMinerRegisteredUsers() async -> [String: String] {
