@@ -138,6 +138,12 @@ extension AppModel {
                     }
                     return await self.swiftMinerCommand(action: action, userId: userID, channelId: channelID)
                 },
+                swiftMinerSlashCommand: { [weak self] action, game, userID, channelID in
+                    guard let self else {
+                        return (ok: false, message: "SwiftMiner integration is unavailable right now.", embed: nil)
+                    }
+                    return await self.swiftMinerSlashCommand(action: action, game: game, userId: userID, channelId: channelID)
+                },
                 fetchSteamAppInfo: { [weak self] query in
                     guard let self else { return (ok: false, embed: nil) }
                     return await self.fetchSteamAppInfo(query: query)

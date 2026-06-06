@@ -55,6 +55,7 @@ final class CommandProcessor {
         var runMusicLookup: (String?, String?, String?, String, String) async -> (ok: Bool, message: String)
         var pickMusicLookup: (Int, String, String) async -> (ok: Bool, message: String)
         var swiftMinerCommand: (String, String, String) async -> (ok: Bool, message: String)
+        var swiftMinerSlashCommand: (String, String?, String, String) async -> (ok: Bool, message: String, embed: [String: Any]?)
         var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
         var sweepCommand: (String) async -> (ok: Bool, message: String)
         var announceCommand: ([String: DiscordJSON]) async -> (ok: Bool, message: String)
@@ -155,6 +156,14 @@ final class CommandProcessor {
         case "miner", "swiftminer":
             let action = tokens.dropFirst().first ?? "status"
             let userId = dependencies.authorId(context.raw) ?? "unknown-user"
+            if action.lowercased() == "prioritise" || action.lowercased() == "prioritize" {
+                let game = tokens.dropFirst(2).joined(separator: " ")
+                let result = await dependencies.swiftMinerSlashCommand(action, game, userId, context.channelId)
+                if let embed = result.embed {
+                    return await dependencies.sendEmbed(context.channelId, embed)
+                }
+                return await dependencies.send(context.channelId, result.message)
+            }
             let result = await dependencies.swiftMinerCommand(action, userId, context.channelId)
             return await dependencies.send(context.channelId, result.message)
         case "userinfo":
@@ -341,7 +350,15 @@ final class CommandProcessor {
             return embed(title: "Music Lookup", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "miner":
             let action = Self.slashOptionString(named: "action", in: data) ?? "status"
+            let game = Self.slashOptionString(named: "game", in: data)
             let userId = dependencies.authorId(context.rawLikeMessage) ?? "unknown-user"
+            if action.lowercased() == "prioritise" || action.lowercased() == "prioritize" {
+                let result = await dependencies.swiftMinerSlashCommand(action, game, userId, context.channelId)
+                if let embed = result.embed {
+                    return (content: nil, embeds: [embed])
+                }
+                return embed(title: "SwiftMiner", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
+            }
             let result = await dependencies.swiftMinerCommand(action, userId, context.channelId)
             return embed(title: "SwiftMiner", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "steam":
