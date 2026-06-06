@@ -379,8 +379,19 @@ extension AppModel {
     /// Must only be called after a successful `validateAndOnboard()`.
     func completeOnboarding() {
         viewMode = .local
+        settings.autoStart = true
         saveSettings()
         isOnboardingComplete = true
+
+        if shouldStartAfterOnboarding {
+            Task { await startBot() }
+        }
+    }
+
+    private var shouldStartAfterOnboarding: Bool {
+        if isRemoteLaunchMode { return false }
+        if settings.clusterMode == .standby { return true }
+        return !normalizedDiscordToken(from: settings.token).isEmpty
     }
 
     func completeRemoteModeOnboarding(primaryNodeAddress: String, accessToken: String) {
