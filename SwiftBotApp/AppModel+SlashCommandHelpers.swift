@@ -27,9 +27,10 @@ extension AppModel {
                 ["type": 3, "name": "artist", "description": "Artist name", "required": false]
             ]],
             ["name": "miner", "description": "Check or set up your SwiftMiner drops miner", "type": 1, "options": [
-                ["type": 3, "name": "action", "description": "status | setup | prioritise | pause | resume | refresh | health", "required": false, "choices": [
+                ["type": 3, "name": "action", "description": "status | setup | games | prioritise | pause | resume | refresh | health", "required": false, "choices": [
                     ["name": "status", "value": "status"],
                     ["name": "setup", "value": "setup"],
+                    ["name": "games", "value": "games"],
                     ["name": "prioritise", "value": "prioritise"],
                     ["name": "pause", "value": "pause"],
                     ["name": "resume", "value": "resume"],

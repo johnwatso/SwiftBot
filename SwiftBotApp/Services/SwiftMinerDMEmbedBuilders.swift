@@ -139,6 +139,9 @@ enum SwiftMinerDMEmbedBuilders {
     static let linkWarningDismissTestCustomID = "swiftminer:link-warning:dismiss:test"
     static let statusRefreshCustomID = "swiftminer:status:refresh"
     static let prioritiesCustomID = "swiftminer:priorities:view"
+    static let editGamesCustomID = "swiftminer:games:edit"
+    static let editGamesModalCustomID = "swiftminer:games:edit:submit"
+    static let editGamesInputID = "games"
     static let quietModeCustomID = "swiftminer:quiet-mode:enable"
     static let whyBlockedCustomID = "swiftminer:blocker:why"
     static let pauseLinkWarningCustomID = "swiftminer:link-warning:pause"
@@ -636,6 +639,12 @@ enum SwiftMinerDMEmbedBuilders {
                 ],
                 [
                     "type": 2,
+                    "style": 1,
+                    "label": "Edit games",
+                    "custom_id": editGamesCustomID
+                ],
+                [
+                    "type": 2,
                     "style": 2,
                     "label": "Fewer DMs",
                     "custom_id": quietModeCustomID
@@ -648,6 +657,60 @@ enum SwiftMinerDMEmbedBuilders {
                 ]
             ]
         ]]
+    }
+
+    /// A single-button action row that opens the "edit games" modal. Used on the
+    /// ephemeral "View priorities" reply so the user can jump straight to editing.
+    static func buildEditGamesComponents() -> [[String: Any]] {
+        [[
+            "type": 1,
+            "components": [[
+                "type": 2,
+                "style": 1,
+                "label": "Edit games",
+                "custom_id": editGamesCustomID
+            ]]
+        ]]
+    }
+
+    /// A Discord modal (interaction callback type 9) with a single multi-line text
+    /// input pre-filled with the user's personal priority games, one per line.
+    static func buildEditGamesModal(currentGames: [String]) -> [String: Any] {
+        let prefill = currentGames.joined(separator: "\n")
+        return [
+            "type": 9,
+            "data": [
+                "custom_id": editGamesModalCustomID,
+                "title": "Your priority games",
+                "components": [[
+                    "type": 1,
+                    "components": [[
+                        "type": 4, // TEXT_INPUT
+                        "custom_id": editGamesInputID,
+                        "style": 2, // PARAGRAPH (multi-line)
+                        "label": "Games to prioritise (one per line)",
+                        "required": false,
+                        "max_length": 2000,
+                        "value": String(prefill.prefix(2000)),
+                        "placeholder": "Marvel Rivals\nDelta Force\nFortnite"
+                    ]]
+                ]]
+            ]
+        ]
+    }
+
+    /// Parse the modal's multi-line text into a normalised game list: trims each line,
+    /// drops blanks, and de-duplicates case-insensitively while preserving order.
+    static func parseEditGamesInput(_ text: String) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for line in text.split(whereSeparator: { $0.isNewline }) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            guard seen.insert(trimmed.lowercased()).inserted else { continue }
+            result.append(trimmed)
+        }
+        return result
     }
 
     private static func truncatedButtonLabel(_ label: String) -> String {

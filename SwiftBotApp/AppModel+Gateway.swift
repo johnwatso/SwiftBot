@@ -449,6 +449,13 @@ extension AppModel {
                 await handlePlaylistImportSlash(event: event, context: context)
                 return
             }
+            // `/miner action:games` opens a modal, which must be the initial interaction
+            // response — so it cannot go through the deferred-ACK path below.
+            if slashName == "miner",
+               (slashOptionString(named: "action", in: event.data) ?? "").lowercased() == "games" {
+                await handleSwiftMinerEditGamesButton(event: event, context: context)
+                return
+            }
 
             do {
                 try await service.respondToInteraction(
@@ -542,6 +549,10 @@ extension AppModel {
                 await handleSwiftMinerPrioritiesButton(event: event, context: context)
                 return
             }
+            if customID == SwiftMinerDMEmbedBuilders.editGamesCustomID {
+                await handleSwiftMinerEditGamesButton(event: event, context: context)
+                return
+            }
             if customID == SwiftMinerDMEmbedBuilders.quietModeCustomID {
                 await handleSwiftMinerQuietModeButton(event: event)
                 return
@@ -576,6 +587,12 @@ extension AppModel {
             }
             if customID.hasPrefix("playlist:") {
                 await handlePlaylistComponentInteraction(event: event, context: context)
+                return
+            }
+        case 5: // MODAL_SUBMIT
+            let customID = slashCustomID(in: event.data)
+            if customID == SwiftMinerDMEmbedBuilders.editGamesModalCustomID {
+                await handleSwiftMinerEditGamesModalSubmit(event: event, context: context)
                 return
             }
         default:
