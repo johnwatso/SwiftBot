@@ -74,6 +74,41 @@ Do not break:
 
 If you edit release metadata, build the app and verify the resulting Info.plist values before calling the work done.
 
+## ShipHook API
+
+ShipHook is the service used for SwiftBot publishing and release operations. Treat ShipHook work as release/publish work, including the versioning and Sparkle metadata discipline described above.
+
+ShipHook API base URL:
+
+- `https://shiphook.thehewetts.co.nz/api`
+
+Reference:
+
+- `https://github.com/maxhewett/ShipHook/blob/main/API.md`
+
+Use `/api` in the web UI for interactive docs, token generation, and try-it requests. Automation should authenticate with bearer tokens:
+
+```sh
+curl -H 'Authorization: Bearer shiphook_xxx' https://shiphook.thehewetts.co.nz/api/v1/status
+```
+
+Important endpoints:
+
+- `GET /api/v1/status` returns the dashboard snapshot; add `?id=REPOSITORY_ID` for one repository runtime status.
+- `GET /api/v1/repositories` returns configured repositories, runtime state, recent builds, and recent releases.
+- `GET /api/v1/repository?id=REPOSITORY_ID` returns one repository snapshot.
+- `GET /api/v1/log?id=REPOSITORY_ID&tail=200` returns a JSON log tail; `tail` is clamped to `1...2000`.
+- `POST /api/v1/check` checks for work and may start a build when a repository has a buildable update.
+- `POST /api/v1/build` is an alias for `check`.
+- `POST /api/v1/pull` pulls the configured branch locally without publishing.
+- `POST /api/v1/reclone` deletes and reclones the configured local checkout; requires `repositoryID`.
+- `POST /api/v1/restart` requests a soft restart of the ShipHook agent.
+- `POST /api/v1/hard-restart` schedules a recovery restart for wedged agents; use only when ordinary endpoints do not respond.
+- `GET /api/v1/files/list?repositoryID=REPOSITORY_ID&path=Sources` lists visible checkout files, limited to 200 entries.
+- `GET /api/v1/files/read?repositoryID=REPOSITORY_ID&path=README.md` reads a UTF-8 text file from the checkout.
+
+Token management endpoints are `POST /api/auth/tokens` and `POST /api/auth/tokens/revoke`. Tokens are stored hashed and are only shown once. ShipHook records token, build/check, pull, reclone, restart, and hard-restart actions in the web UI audit log.
+
 ## Project Generation Rules
 
 - `project.yml` is the source of truth for generated Xcode settings.
