@@ -312,15 +312,27 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        let payloadData = try Self.encodeDiscordPayload(payload)
+        try await respondToInteraction(
+            interactionID: interactionID,
+            interactionToken: interactionToken,
+            payloadData: payloadData
+        )
+    }
+
+    func respondToInteraction(
+        interactionID: String,
+        interactionToken: String,
+        payloadData: Data
+    ) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: respondToInteraction blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        nonisolated(unsafe) let safePayload = payload
         try await interactionRESTClient.respondToInteraction(
             interactionID: interactionID,
             interactionToken: interactionToken,
-            payload: safePayload
+            payloadData: payloadData
         )
     }
 
@@ -341,15 +353,27 @@ actor DiscordService {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        let payloadData = try Self.encodeDiscordPayload(payload)
+        try await editOriginalInteractionResponse(
+            applicationID: applicationID,
+            interactionToken: interactionToken,
+            payloadData: payloadData
+        )
+    }
+
+    func editOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String,
+        payloadData: Data
+    ) async throws {
         guard outputAllowed else {
             discordLogger.warning("[DiscordService] Secondary guard: editOriginalInteractionResponse blocked — outputAllowed is false (node is not Primary).")
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
-        nonisolated(unsafe) let safePayload = payload
         try await interactionRESTClient.editOriginalInteractionResponse(
             applicationID: applicationID,
             interactionToken: interactionToken,
-            payload: safePayload
+            payloadData: payloadData
         )
     }
 
@@ -385,6 +409,14 @@ actor DiscordService {
             throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
         }
         let payloadData = try Self.encodeDiscordPayload(payload)
+        try await editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: token)
+    }
+
+    func editMessage(channelId: String, messageId: String, payloadData: Data, token: String) async throws {
+        guard outputAllowed else {
+            discordLogger.warning("[DiscordService] Secondary guard: editMessage blocked — outputAllowed is false (node is not Primary).")
+            throw NSError(domain: "DiscordService", code: 403, userInfo: [NSLocalizedDescriptionKey: "Output blocked: node is not Primary."])
+        }
         try await messageRESTClient.editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: token)
     }
 

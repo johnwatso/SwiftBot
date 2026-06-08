@@ -3949,6 +3949,10 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
     private var hasWrittenResponse = false
     private var processorTask: Task<Void, Never>?
 
+    private struct SendableContext: @unchecked Sendable {
+        let value: ChannelHandlerContext
+    }
+
     init(maxHTTPRequestSize: Int, processor: @escaping @Sendable (Data) async -> Data) {
         self.maxHTTPRequestSize = maxHTTPRequestSize
         self.processor = processor
@@ -3980,16 +3984,17 @@ private final class AdminWebNIOHTTPHandler: ChannelInboundHandler, @unchecked Se
         buffer = frame.remainder
         let clientRequestedClose = frame.connectionClose
 
-        nonisolated(unsafe) let unsafeContext = context
+        let contextBox = SendableContext(value: context)
         let eventLoop = context.eventLoop
+        let processor = processor
         processorTask = Task { [weak self] in
-            guard let self else { return }
-            let response = await self.processor(requestData)
+            let response = await processor(requestData)
             let serverRequestedClose = Self.responseRequestsClose(response)
-            eventLoop.execute {
-                self.writeResponse(
+            eventLoop.execute { [weak self] in
+                guard let handler = self else { return }
+                handler.writeResponse(
                     response,
-                    context: unsafeContext,
+                    context: contextBox.value,
                     closeAfterWrite: clientRequestedClose || serverRequestedClose
                 )
             }

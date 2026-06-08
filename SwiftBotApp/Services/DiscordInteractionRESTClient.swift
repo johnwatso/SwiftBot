@@ -61,10 +61,23 @@ struct DiscordInteractionRESTClient {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        let payloadData = try JSONSerialization.data(withJSONObject: payload)
+        try await respondToInteraction(
+            interactionID: interactionID,
+            interactionToken: interactionToken,
+            payloadData: payloadData
+        )
+    }
+
+    func respondToInteraction(
+        interactionID: String,
+        interactionToken: String,
+        payloadData: Data
+    ) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("interactions/\(interactionID)/\(interactionToken)/callback"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        req.httpBody = payloadData
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
@@ -83,10 +96,23 @@ struct DiscordInteractionRESTClient {
         interactionToken: String,
         payload: [String: Any]
     ) async throws {
+        let payloadData = try JSONSerialization.data(withJSONObject: payload)
+        try await editOriginalInteractionResponse(
+            applicationID: applicationID,
+            interactionToken: interactionToken,
+            payloadData: payloadData
+        )
+    }
+
+    func editOriginalInteractionResponse(
+        applicationID: String,
+        interactionToken: String,
+        payloadData: Data
+    ) async throws {
         var req = URLRequest(url: restBase.appendingPathComponent("webhooks/\(applicationID)/\(interactionToken)/messages/@original"))
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        req.httpBody = payloadData
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
