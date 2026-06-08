@@ -410,13 +410,14 @@ extension AppModel {
             if let components, !components.isEmpty {
                 data["components"] = components
             }
+            let payloadData = try JSONSerialization.data(withJSONObject: [
+                "type": 4,
+                "data": data
+            ])
             try await service.respondToInteraction(
                 interactionID: event.interactionID,
                 interactionToken: event.interactionToken,
-                payload: [
-                    "type": 4,
-                    "data": data
-                ]
+                payloadData: payloadData
             )
         } catch {
             logs.append("❌ Failed responding to SwiftMiner button: \(error.localizedDescription)")
