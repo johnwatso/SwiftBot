@@ -945,22 +945,28 @@ actor WikiLookupService {
             minimumLength: 40
         )
 
-        let imageURL = firstSoupAttribute(
+        var imageURL = firstSoupAttribute(
             in: contentRoot,
-            selector: "meta[property=og:image], meta[name=twitter:image]",
-            attributes: ["content"],
-            baseURL: pageURL
-        ) ?? firstSoupAttribute(
-            in: contentRoot,
-            selector: ".portable-infobox img, .infobox img, figure img, a.image img, .mw-parser-output img",
-            attributes: ["src", "data-src"],
-            baseURL: pageURL
-        ) ?? firstSoupAttribute(
-            in: document,
             selector: "meta[property=og:image], meta[name=twitter:image]",
             attributes: ["content"],
             baseURL: pageURL
         )
+        if imageURL == nil {
+            imageURL = firstSoupAttribute(
+                in: contentRoot,
+                selector: ".portable-infobox img, .infobox img, figure img, a.image img, .mw-parser-output img",
+                attributes: ["src", "data-src"],
+                baseURL: pageURL
+            )
+        }
+        if imageURL == nil {
+            imageURL = firstSoupAttribute(
+                in: document,
+                selector: "meta[property=og:image], meta[name=twitter:image]",
+                attributes: ["content"],
+                baseURL: pageURL
+            )
+        }
 
         let fields = extractSoupFields(from: contentRoot)
         let pageType = inferredPageType(from: fields, title: title)

@@ -197,9 +197,11 @@ extension AppModel {
     }
 
     func editMessagePayload(channelId: String, messageId: String, payload: [String: Any]) async -> Bool {
-        nonisolated(unsafe) let safePayload = payload
+        guard let payloadData = try? JSONSerialization.data(withJSONObject: payload) else {
+            return false
+        }
         return await performOutputAction(action: "editMessage") {
-            try await service.editMessage(channelId: channelId, messageId: messageId, payload: safePayload, token: settings.token)
+            try await service.editMessage(channelId: channelId, messageId: messageId, payloadData: payloadData, token: settings.token)
         }
     }
 
