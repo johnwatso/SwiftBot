@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.20.1 - Release Notes</title>
+  <title>Release 1.20.1 bug fixes - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -24,8 +24,8 @@
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
     .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
     p { margin: 0 0 16px; }
-    ul { margin: 0 0 16px; padding-left: 22px; }
-    li { margin: 0 0 8px; }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
       body { background: #0b1015; color: #edf2f7; }
       main {
@@ -33,20 +33,16 @@
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
       }
       .meta { color: #9fb0c2; }
+      a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.20.1</h1>
-    <p class="meta">Version 1.20.1 &middot; Build 2026060911</p>
-    <p>This release focuses on bug fixes for Patchy monitoring and Cloudflare setup.</p>
-    <ul>
-      <li>Fixed Patchy showing monitoring as off after enabled targets were added or edited.</li>
-      <li>Removed the extra Patchy Run Now control strip above the targets list.</li>
-      <li>Improved Cloudflare token handling when pasted values include bearer or authorization header text.</li>
-      <li>Improved Cloudflare verification errors so invalid request headers and authentication failures show clearer feedback.</li>
-    </ul>
+    <h1>Release 1.20.1 bug fixes</h1>
+    <p class="meta">Version 1.20.1</p>
+    <p>Release 1.20.1 bug fixes</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/6368cf1058e248f6072bee7d246fe07f5dacd1c0">6368cf1</a></p>
   </main>
 </body>
 </html>
