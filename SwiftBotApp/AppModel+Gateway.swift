@@ -731,14 +731,15 @@ extension AppModel {
 
             let components = musicPickerComponents(sessionID: sessionID, results: results)
             let content = "🎵 Matches for `\(effectiveQuery)`\nChoose a track below. Only you can see this."
+            let payloadData = try JSONSerialization.data(withJSONObject: [
+                "content": String(content.prefix(1900)),
+                "embeds": [musicSearchSummaryEmbed(query: effectiveQuery, results: results)],
+                "components": components
+            ])
             try await service.editOriginalInteractionResponse(
                 applicationID: applicationID,
                 interactionToken: event.interactionToken,
-                payload: [
-                    "content": String(content.prefix(1900)),
-                    "embeds": [musicSearchSummaryEmbed(query: effectiveQuery, results: results)],
-                    "components": components
-                ]
+                payloadData: payloadData
             )
         } catch {
             logs.append("❌ Failed interactive /music response: \(error.localizedDescription)")
@@ -846,13 +847,14 @@ extension AppModel {
             } else {
                 data["embeds"] = []
             }
+            let payloadData = try JSONSerialization.data(withJSONObject: [
+                "type": 7,
+                "data": data
+            ])
             try await service.respondToInteraction(
                 interactionID: event.interactionID,
                 interactionToken: event.interactionToken,
-                payload: [
-                    "type": 7,
-                    "data": data
-                ]
+                payloadData: payloadData
             )
         } catch {
             logs.append("❌ Failed music component update: \(error.localizedDescription)")
