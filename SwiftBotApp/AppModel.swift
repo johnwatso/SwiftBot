@@ -306,6 +306,8 @@ final class AppModel: ObservableObject {
     var registeredWorkersDebugCount: Int = 0
     var registeredWorkersDebugSummary: String = "none"
     private var lastSettingsSaveAt: Date = .distantPast
+    private var lastPersistedSettingsSnapshot: BotSettings?
+    private var lastPersistedMediaLibrarySettingsSnapshot: MediaLibrarySettings?
     // P1b: off-peak background mesh refresh
     var backgroundRefreshScheduler: NSBackgroundActivityScheduler?
     @Published var botUsername: String = "OnlineBot"
@@ -551,6 +553,11 @@ final class AppModel: ObservableObject {
             if migrateLegacyPatchySettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
+            let previousPatchyMonitoringEnabled = loadedSettings.patchy.monitoringEnabled
+            loadedSettings.patchy.syncMonitoringEnabledWithTargets()
+            if loadedSettings.patchy.monitoringEnabled != previousPatchyMonitoringEnabled {
+                migrated = true
+            }
             if migrateLegacyWikiBridgeSettingsIfNeeded(&loadedSettings) {
                 migrated = true
             }
@@ -567,6 +574,8 @@ final class AppModel: ObservableObject {
             }
 
             settings = loadedSettings
+            lastPersistedSettingsSnapshot = loadedSettings
+            lastPersistedMediaLibrarySettingsSnapshot = loadedMediaSettings
             restoreCachedBotIdentity()
             isOnboardingComplete = onboardingCompleted(for: loadedSettings)
 
@@ -587,6 +596,7 @@ final class AppModel: ObservableObject {
             if migrated {
                 try? await store.save(loadedSettings)
                 try? await swiftMeshConfigStore.save(loadedSettings.swiftMeshSettings)
+                lastPersistedSettingsSnapshot = loadedSettings
             }
 
             guard loadedSettings.launchMode != .remoteControl else {
@@ -714,8 +724,9 @@ final class AppModel: ObservableObject {
             await cluster.setTermChangedHandler { [weak self] newTerm in
                 guard let self else { return }
                 await MainActor.run { [weak self] in
-                    self?.settings.clusterLeaderTerm = newTerm
-                    self?.saveSettings()
+                    guard let self, self.settings.clusterLeaderTerm != newTerm else { return }
+                    self.settings.clusterLeaderTerm = newTerm
+                    self.saveSettings()
                 }
             }
             await cluster.setCursorsChangedHandler { [weak self] cursors in
@@ -902,7 +913,7 @@ final class AppModel: ObservableObject {
         }
         settings.adminWebUI.localAuthPassword = settings.adminWebUI.localAuthPassword.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.hostname = settings.adminWebUI.normalizedHostname
-        settings.adminWebUI.cloudflareAPIToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.adminWebUI.cloudflareAPIToken = CloudflareDNSProvider.normalizedAPIToken(from: settings.adminWebUI.cloudflareAPIToken)
         settings.adminWebUI.publicAccessTunnelToken = settings.adminWebUI.publicAccessTunnelToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.importedCertificateFile = settings.adminWebUI.normalizedImportedCertificateFile
         settings.adminWebUI.importedPrivateKeyFile = settings.adminWebUI.normalizedImportedPrivateKeyFile
@@ -910,14 +921,24 @@ final class AppModel: ObservableObject {
         settings.adminWebUI.publicBaseURL = settings.adminWebUI.publicBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.adminWebUI.allowedUserIDs = settings.adminWebUI.normalizedAllowedUserIDs
         settings.remoteMode.normalize()
+        settings.patchy.syncMonitoringEnabledWithTargets()
         isOnboardingComplete = onboardingCompleted(for: settings)
+
+        let settingsSnapshot = settings
+        let mediaLibrarySettingsSnapshot = mediaLibrarySettings
+        if lastPersistedSettingsSnapshot == settingsSnapshot,
+           lastPersistedMediaLibrarySettingsSnapshot == mediaLibrarySettingsSnapshot {
+            return
+        }
 
         Task {
             do {
-                try await store.save(settings)
-                try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
-                try await mediaLibraryConfigStore.save(mediaLibrarySettings)
+                try await store.save(settingsSnapshot)
+                try await swiftMeshConfigStore.save(settingsSnapshot.swiftMeshSettings)
+                try await mediaLibraryConfigStore.save(mediaLibrarySettingsSnapshot)
                 await mediaLibraryIndexer.invalidate()
+                lastPersistedSettingsSnapshot = settingsSnapshot
+                lastPersistedMediaLibrarySettingsSnapshot = mediaLibrarySettingsSnapshot
                 logs.append("[OK] Settings saved")
                 await refreshAIStatus()
             } catch {

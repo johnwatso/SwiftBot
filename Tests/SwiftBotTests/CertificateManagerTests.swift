@@ -168,6 +168,225 @@ final class CertificateManagerTests: XCTestCase {
         )
     }
 
+    func testCloudflareTokenVerificationSucceedsForActiveToken() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+            XCTAssertEqual(request.url?.path, "/client/v4/user/tokens/verify")
+
+            let data = """
+            {
+              "success": true,
+              "result": {
+                "id": "token-id",
+                "status": "active"
+              },
+              "errors": []
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+        try await provider.verifyAPITokenDetailed()
+        let isValid = await provider.verifyAPIToken()
+
+        XCTAssertTrue(isValid)
+    }
+
+    func testCloudflareTokenNormalization() async throws {
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: "Bearer token-123"),
+            "token-123"
+        )
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: "Authorization: Bearer token-123"),
+            "token-123"
+        )
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: #"curl -H 'Authorization: Bearer token-123' https://api.cloudflare.com/client/v4/user/tokens/verify"#),
+            "token-123"
+        )
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: #""Bearer token-123""#),
+            "token-123"
+        )
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: "<token-123>"),
+            "token-123"
+        )
+        XCTAssertEqual(
+            CloudflareDNSProvider.normalizedAPIToken(from: "CLOUDFLARE_API_TOKEN=token-123"),
+            "token-123"
+        )
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+
+            let data = """
+            {
+              "success": true,
+              "result": {
+                "id": "token-id",
+                "status": "active"
+              },
+              "errors": []
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "Authorization: Bearer token-123", session: session)
+        try await provider.verifyAPITokenDetailed()
+    }
+
+    func testCloudflareTokenVerificationRejectsMalformedHeaderText() async throws {
+        let provider = CloudflareDNSProvider(apiToken: "curl token-123")
+
+        do {
+            try await provider.verifyAPITokenDetailed()
+            XCTFail("Expected malformed token text to fail before making a Cloudflare request.")
+        } catch let error as CloudflareDNSProvider.Error {
+            XCTAssertEqual(
+                error.errorDescription,
+                "Cloudflare rejected the authorization header. Paste only a Cloudflare API Token value, not a Global API Key, tunnel token, curl command, or full Authorization header."
+            )
+        }
+    }
+
+    func testCloudflareTokenVerificationExplainsInvalidRequestHeaders() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-123")
+
+            let data = """
+            {
+              "success": false,
+              "result": null,
+              "errors": [
+                {
+                  "code": 6003,
+                  "message": "Invalid request headers"
+                }
+              ]
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 400,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+
+        do {
+            try await provider.verifyAPITokenDetailed()
+            XCTFail("Expected Cloudflare invalid request headers response to fail.")
+        } catch let error as CloudflareDNSProvider.Error {
+            XCTAssertEqual(
+                error.errorDescription,
+                "Cloudflare rejected the authorization header. Paste only a Cloudflare API Token value, not a Global API Key, tunnel token, curl command, or full Authorization header."
+            )
+        }
+    }
+
+    func testCloudflareTokenVerificationReportsCloudflareErrorMessage() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockCloudflareURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockCloudflareURLProtocol.requestHandler = nil
+            session.invalidateAndCancel()
+        }
+
+        MockCloudflareURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/client/v4/user/tokens/verify")
+
+            let data = """
+            {
+              "success": false,
+              "result": null,
+              "errors": [
+                {
+                  "code": 10000,
+                  "message": "Authentication error"
+                }
+              ]
+            }
+            """.data(using: .utf8)!
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 403,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            return (response, data)
+        }
+
+        let provider = CloudflareDNSProvider(apiToken: "token-123", session: session)
+
+        do {
+            try await provider.verifyAPITokenDetailed()
+            XCTFail("Expected Cloudflare token verification to fail.")
+        } catch let error as CloudflareDNSProvider.Error {
+            XCTAssertEqual(error.errorDescription, "Authentication error")
+        }
+    }
+
     func testCloudflareDNSRecordLookupDecodesSuccessfulResponseAndFindsMatchingRecord() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockCloudflareURLProtocol.self]

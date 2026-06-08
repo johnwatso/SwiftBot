@@ -1903,7 +1903,7 @@ extension AppModel {
             throw CertificateManager.Error.missingHostname
         }
 
-        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: settings.adminWebUI.cloudflareAPIToken)
         guard !trimmedToken.isEmpty else {
             throw CertificateManager.Error.missingCloudflareToken
         }
@@ -2015,7 +2015,7 @@ extension AppModel {
             throw AdminWebPublicAccessError.missingHostname
         }
 
-        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: settings.adminWebUI.cloudflareAPIToken)
         guard !trimmedToken.isEmpty else {
             logs.append("❌ Missing Cloudflare API token")
             throw CertificateManager.Error.missingCloudflareToken
@@ -2216,11 +2216,8 @@ extension AppModel {
 
         let dnsProvider = CloudflareDNSProvider(apiToken: trimmedToken)
 
-        // First verify the token is valid by checking user info
-        let isValid = await dnsProvider.verifyAPIToken()
-        guard isValid else {
-            throw CertificateManager.Error.inactiveCloudflareToken
-        }
+        // First verify the token is valid by checking Cloudflare token status.
+        try await dnsProvider.verifyAPITokenDetailed()
 
         // Then list all available zones
         return try await dnsProvider.listZones()
@@ -2239,7 +2236,7 @@ extension AppModel {
             throw AdminWebPublicAccessError.missingHostname
         }
 
-        let trimmedToken = settings.adminWebUI.cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: settings.adminWebUI.cloudflareAPIToken)
         guard !trimmedToken.isEmpty else {
             logs.append("❌ Missing Cloudflare API token")
             throw CertificateManager.Error.missingCloudflareToken

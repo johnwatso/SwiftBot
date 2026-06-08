@@ -676,7 +676,7 @@ struct InternetAccessConfigurationSection: View {
 
     private func pasteAndVerifyCloudflareToken() {
         let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
-        let trimmed = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = CloudflareDNSProvider.normalizedAPIToken(from: clipboard)
         guard !trimmed.isEmpty else {
             setupFeedback = InternetAccessFeedback(
                 status: .warning,
@@ -708,7 +708,9 @@ struct InternetAccessConfigurationSection: View {
 
         tokenVerificationTask = Task { @MainActor in
             do {
-                let zones = try await app.verifyCloudflareTokenAndListZones(token: app.settings.adminWebUI.cloudflareAPIToken)
+                let token = CloudflareDNSProvider.normalizedAPIToken(from: app.settings.adminWebUI.cloudflareAPIToken)
+                app.settings.adminWebUI.cloudflareAPIToken = token
+                let zones = try await app.verifyCloudflareTokenAndListZones(token: token)
                 guard !Task.isCancelled else { return }
 
                 self.availableZones = zones
@@ -1334,4 +1336,3 @@ struct AdminWebAuthMissingBanner: View {
         )
     }
 }
-

@@ -200,7 +200,7 @@ actor CertificateManager {
         cloudflareAPIToken: String
     ) async -> AutomaticHTTPSValidation {
         let normalizedDomain = normalizeDomain(domain)
-        let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: cloudflareAPIToken)
 
         var tokenIsValid = false
         var zoneFound = false
@@ -418,16 +418,16 @@ actor CertificateManager {
 
     func createAutomaticHTTPSDNSRecord(
         for domain: String,
-            cloudflareAPIToken: String,
-            publicBaseURL: String,
-            bindHost: String
+        cloudflareAPIToken: String,
+        publicBaseURL: String,
+        bindHost: String
     ) async throws -> DNSRecordCreation {
         let normalizedDomain = normalizeDomain(domain)
         guard !normalizedDomain.isEmpty else {
             throw Error.missingHostname
         }
 
-        let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: cloudflareAPIToken)
         guard !trimmedToken.isEmpty else {
             throw Error.missingCloudflareToken
         }
@@ -541,7 +541,7 @@ actor CertificateManager {
         }
         await log("☁️ Using cloudflared at \(cloudflaredPath)")
 
-        let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: cloudflareAPIToken)
         guard !trimmedToken.isEmpty else {
             throw Error.missingCloudflareToken
         }
@@ -588,7 +588,7 @@ actor CertificateManager {
             return existing
         }
 
-        let trimmedToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = CloudflareDNSProvider.normalizedAPIToken(from: cloudflareAPIToken)
         if trimmedToken.isEmpty {
             if let existing {
                 if existing.expiresAt > Date() {

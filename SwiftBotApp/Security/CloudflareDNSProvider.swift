@@ -84,6 +84,10 @@ struct CloudflareDNSProvider: Sendable {
         }
     }
 
+    private struct TokenVerificationResult: Decodable {
+        let status: String?
+    }
+
     private struct CloudflareZoneResponse: Decodable {
         let success: Bool
         let result: [Zone]
@@ -170,8 +174,69 @@ struct CloudflareDNSProvider: Sendable {
     private let baseURL = URL(string: "https://api.cloudflare.com/client/v4")!
 
     init(apiToken: String, session: URLSession = .shared) {
-        self.apiToken = apiToken
+        self.apiToken = Self.normalizedAPIToken(from: apiToken)
         self.session = session
+    }
+
+    static func normalizedAPIToken(from rawToken: String) -> String {
+        var token = rawToken
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`<>"))
+
+        if let bearerToken = firstRegexCapture(
+            in: token,
+            pattern: #"(?i)\bbearer\s+([^\s"'`<>\\]+)"#
+        ) {
+            token = bearerToken
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`<>"))
+        } else if let assignedToken = firstRegexCapture(
+            in: token,
+            pattern: #"(?i)\b(?:cloudflare[_-]?api[_-]?token|cf[_-]?api[_-]?token|api[_-]?token)\s*[:=]\s*([^\s"'`<>\\]+)"#
+        ) {
+            token = assignedToken
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`<>"))
+        }
+
+        if token.localizedCaseInsensitiveCompare("Bearer") == .orderedSame {
+            return ""
+        }
+
+        if token.lowercased().hasPrefix("authorization:") {
+            token = String(token.dropFirst("authorization:".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        if token.lowercased().hasPrefix("bearer ") {
+            token = String(token.dropFirst("bearer ".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`<>"))
+    }
+
+    private static func firstRegexCapture(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text)
+        else {
+            return nil
+        }
+
+        return String(text[captureRange])
+    }
+
+    private static func hasInvalidAuthorizationHeaderCharacters(_ token: String) -> Bool {
+        token.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
+            || token.rangeOfCharacter(from: CharacterSet(charactersIn: "\":;'`<>\\{}[]")) != nil
+            || token.localizedCaseInsensitiveContains("authorization:")
+            || token.localizedCaseInsensitiveContains("curl ")
     }
 
     func createACMEChallengeRecord(for hostname: String, content: String, ttl: Int = 120) async throws -> TXTRecord {
@@ -277,8 +342,20 @@ struct CloudflareDNSProvider: Sendable {
     }
 
     func verifyAPIToken() async -> Bool {
-        guard !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        do {
+            try await verifyAPITokenDetailed()
+            return true
+        } catch {
             return false
+        }
+    }
+
+    func verifyAPITokenDetailed() async throws {
+        guard !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw Error.apiFailed("Cloudflare API token is missing.")
+        }
+        guard !Self.hasInvalidAuthorizationHeaderCharacters(apiToken) else {
+            throw Error.apiFailed(Self.invalidRequestHeadersMessage)
         }
 
         let requestURL = baseURL
@@ -293,23 +370,57 @@ struct CloudflareDNSProvider: Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            // Non-blocking failure: return false instead of throwing
-            return false
+            throw Error.apiFailed("Could not reach Cloudflare to verify the API token. Check your internet connection and try again.")
         }
 
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let success = json["success"] as? Bool,
-              success,
-              let result = json["result"] as? [String: Any],
-              let status = result["status"] as? String
-        else {
-            // Non-blocking failure: return false instead of throwing
-            return false
+        guard let http = response as? HTTPURLResponse else {
+            throw Error.apiFailed("Cloudflare returned an invalid response.")
         }
 
-        return status.lowercased() == "active"
+        let envelope: APIEnvelope<TokenVerificationResult>
+        do {
+            envelope = try decoder.decode(APIEnvelope<TokenVerificationResult>.self, from: data)
+        } catch {
+            throw Error.apiFailed("Cloudflare token verification failed.")
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message = envelope.errors.isEmpty
+                ? "Cloudflare token verification failed with HTTP \(http.statusCode)."
+                : envelope.errors.map(\.message).joined(separator: ", ")
+            if Self.isInvalidRequestHeadersMessage(message) {
+                throw Error.apiFailed(Self.invalidRequestHeadersMessage)
+            }
+            throw Error.apiFailed(message)
+        }
+
+        guard envelope.success else {
+            let message = envelope.errors.isEmpty
+                ? "Cloudflare token verification failed."
+                : envelope.errors.map(\.message).joined(separator: ", ")
+            if Self.isInvalidRequestHeadersMessage(message) {
+                throw Error.apiFailed(Self.invalidRequestHeadersMessage)
+            }
+            throw Error.apiFailed(message)
+        }
+
+        let status = envelope.result?.status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard status.localizedCaseInsensitiveCompare("active") == .orderedSame else {
+            if status.isEmpty {
+                throw Error.apiFailed("Cloudflare token verification did not return an active token status.")
+            }
+
+            throw Error.apiFailed("Cloudflare API token is \(status). Create or choose an active API token and try again.")
+        }
+    }
+
+    private static let invalidRequestHeadersMessage = """
+    Cloudflare rejected the authorization header. Paste only a Cloudflare API Token value, \
+    not a Global API Key, tunnel token, curl command, or full Authorization header.
+    """
+
+    private static func isInvalidRequestHeadersMessage(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("invalid request headers")
     }
 
     func listZones() async throws -> [ZoneSummary] {

@@ -291,6 +291,10 @@ struct PatchySettings: Codable, Hashable {
     var steamAppID: String = PatchyDefaults.steamAppID
     var saveAfterFetch: Bool = true
     var targets: [PatchyDeliveryTarget] = []
+
+    mutating func syncMonitoringEnabledWithTargets() {
+        monitoringEnabled = sourceTargets.contains(where: \.isEnabled)
+    }
 }
 
 // MARK: - SwiftMesh Settings
