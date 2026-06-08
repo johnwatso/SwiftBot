@@ -2,6 +2,52 @@ import XCTest
 @testable import SwiftBot
 
 final class PatchyValidationTests: XCTestCase {
+    @MainActor
+    func testAddingEnabledPatchyTargetEnablesMonitoring() async {
+        let app = AppModel()
+        app.settings.patchy.monitoringEnabled = false
+
+        app.addPatchyTarget(PatchySourceTarget(isEnabled: true, source: .nvidia))
+
+        XCTAssertTrue(app.settings.patchy.monitoringEnabled)
+    }
+
+    @MainActor
+    func testEnablingExistingPatchyTargetEnablesMonitoring() async {
+        let app = AppModel()
+        let target = PatchySourceTarget(isEnabled: false, source: .amd)
+        app.settings.patchy.sourceTargets = [target]
+        app.settings.patchy.monitoringEnabled = false
+
+        app.setPatchyTargetEnabled(target.id, enabled: true)
+
+        XCTAssertTrue(app.settings.patchy.monitoringEnabled)
+    }
+
+    @MainActor
+    func testUpdatingTargetToEnabledEnablesMonitoring() async {
+        let app = AppModel()
+        var target = PatchySourceTarget(isEnabled: false, source: .intel)
+        app.settings.patchy.sourceTargets = [target]
+        app.settings.patchy.monitoringEnabled = false
+
+        target.isEnabled = true
+        app.updatePatchyTarget(target)
+
+        XCTAssertTrue(app.settings.patchy.monitoringEnabled)
+    }
+
+    @MainActor
+    func testDisablingLastPatchyTargetDisablesMonitoring() async {
+        let app = AppModel()
+        let target = PatchySourceTarget(isEnabled: true, source: .nvidia)
+        app.settings.patchy.sourceTargets = [target]
+        app.settings.patchy.monitoringEnabled = true
+
+        app.setPatchyTargetEnabled(target.id, enabled: false)
+
+        XCTAssertFalse(app.settings.patchy.monitoringEnabled)
+    }
     
     @MainActor
     func testPatchyErrorDiagnosticMapping() async {

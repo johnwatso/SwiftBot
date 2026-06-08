@@ -17,8 +17,6 @@ struct PatchyView: View {
 
             statusRail
 
-            monitoringControlsSection
-
             sourceTargetList
         }
         .padding(.horizontal, 16)
@@ -197,59 +195,6 @@ struct PatchyView: View {
         }
         guard let last = app.patchyLastCycleAt else { return "No failed sources" }
         return "Last cycle \(relativeTimestamp(last))"
-    }
-
-    // MARK: - Monitoring Controls Section
-
-    private var monitoringControlsSection: some View {
-        HStack(spacing: 8) {
-            PatchyControlPill(
-                title: "Monitoring",
-                detail: app.settings.patchy.monitoringEnabled ? "Active" : "Paused",
-                symbol: app.settings.patchy.monitoringEnabled ? "record.circle.fill" : "circle",
-                color: app.settings.patchy.monitoringEnabled ? .green : .secondary,
-                isActive: app.settings.patchy.monitoringEnabled
-            ) {
-                app.settings.patchy.monitoringEnabled.toggle()
-                app.saveSettings()
-            }
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                if app.patchyIsCycleRunning {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Running…")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else if let last = app.patchyLastCycleAt {
-                    Text(last, style: .relative)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Button {
-                app.runPatchyManualCheck()
-            } label: {
-                Label("Run Now", systemImage: "play.fill")
-                    .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.mini)
-            .disabled(app.patchyIsCycleRunning)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
     }
 
     // MARK: - Source Target List
@@ -539,44 +484,6 @@ struct PatchyView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-}
-
-// MARK: - Compact Controls
-
-private struct PatchyControlPill: View {
-    let title: String
-    let detail: String
-    let symbol: String
-    let color: Color
-    let isActive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(color)
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(detail)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(color)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(color.opacity(isActive ? 0.12 : 0.045))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(color.opacity(isActive ? 0.28 : 0.12), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 

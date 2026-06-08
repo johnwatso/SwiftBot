@@ -265,6 +265,18 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 ## Session log
 
+### 2026-06-09 — Patchy monitoring target sync
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Synced Patchy monitoring with enabled source targets so added/enabled targets show monitoring as active, healed older saved settings on load/save, and removed the Run Now monitoring control strip above the targets list. |
+
+### 2026-06-09 — Cloudflare token verification feedback
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Preserved detailed Cloudflare token verification failures and normalized pasted `Bearer`/`Authorization` token headers so adding a token reports Cloudflare's actual error instead of failing with generic authentication/header states. |
+
 ### 2026-06-04 — Shutdown QoS + Discord payload safety
 
 | Commit | Summary |

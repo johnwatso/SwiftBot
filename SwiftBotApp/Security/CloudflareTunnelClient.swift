@@ -89,7 +89,7 @@ struct CloudflareTunnelClient: Sendable {
     private let baseURL = URL(string: "https://api.cloudflare.com/client/v4")!
 
     init(apiToken: String, session: URLSession = .shared) {
-        self.apiToken = apiToken
+        self.apiToken = CloudflareDNSProvider.normalizedAPIToken(from: apiToken)
         self.session = session
     }
 

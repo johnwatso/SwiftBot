@@ -33,6 +33,7 @@ extension AppModel {
 
     func addPatchyTarget(_ target: PatchySourceTarget) {
         settings.patchy.sourceTargets.append(target)
+        settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
         resolveSteamNameIfNeeded(for: target)
     }
@@ -40,24 +41,28 @@ extension AppModel {
     func updatePatchyTarget(_ target: PatchySourceTarget) {
         guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == target.id }) else { return }
         settings.patchy.sourceTargets[idx] = target
+        settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
         resolveSteamNameIfNeeded(for: target)
     }
 
     func deletePatchyTarget(_ targetID: UUID) {
         settings.patchy.sourceTargets.removeAll { $0.id == targetID }
+        settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
     }
 
     func togglePatchyTargetEnabled(_ targetID: UUID) {
         guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
         settings.patchy.sourceTargets[idx].isEnabled.toggle()
+        settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
     }
 
     func setPatchyTargetEnabled(_ targetID: UUID, enabled: Bool) {
         guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
         settings.patchy.sourceTargets[idx].isEnabled = enabled
+        settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
     }
 
@@ -206,7 +211,7 @@ extension AppModel {
                 await self.runPatchyMonitoringCycle(trigger: "Scheduled")
             }
         }
-        appendPatchyLog("Patchy monitoring paused.")
+        appendPatchyLog("Patchy monitoring active.")
     }
 
     struct PatchySourceGroupKey: Hashable {
