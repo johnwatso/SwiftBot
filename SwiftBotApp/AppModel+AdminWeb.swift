@@ -61,6 +61,7 @@ extension AppModel {
             token: settings.token,
             prefix: settings.prefix,
             autoStart: settings.autoStart,
+            presenceMode: settings.presenceMode,
             clusterMode: settings.clusterMode,
             clusterNodeName: settings.clusterNodeName,
             clusterLeaderAddress: settings.clusterLeaderAddress,

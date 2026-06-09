@@ -320,6 +320,7 @@ struct AppPreferencesSnapshot: Equatable {
     var token = ""
     var prefix = "/"
     var autoStart = false
+    var presenceMode: AppPresenceMode = .dock
 
     // SwiftMesh
     var clusterMode: ClusterMode = .standalone

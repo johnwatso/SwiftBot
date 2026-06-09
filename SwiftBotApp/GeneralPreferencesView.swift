@@ -71,6 +71,13 @@ struct GeneralPreferencesView: View {
                         .controlSize(.mini)
                         .help(app.settings.autoStart ? "Disable auto-start" : "Enable auto-start")
                 }
+
+                Picker("Show SwiftBot as", selection: $app.settings.presenceMode) {
+                    ForEach(AppPresenceMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
             }
 
             Section {

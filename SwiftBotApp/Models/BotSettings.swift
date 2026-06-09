@@ -51,6 +51,33 @@ struct OAuthProviderSettings: Codable, Hashable {
     var clientSecret: String = ""
 }
 
+enum AppPresenceMode: String, Codable, Hashable, CaseIterable, Identifiable {
+    case dock
+    case dockAndMenuBar
+    case menuBar
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .dock:
+            return "Dock Icon"
+        case .dockAndMenuBar:
+            return "Dock Icon + Menu Bar Icon"
+        case .menuBar:
+            return "Menu Bar Icon"
+        }
+    }
+
+    var showsDockIcon: Bool {
+        self != .menuBar
+    }
+
+    var showsMenuBarIcon: Bool {
+        self != .dock
+    }
+}
+
 struct AdminWebUISettings: Codable, Hashable {
     // Internal constants (not user-configurable)
     static let defaultBindHost = "127.0.0.1"
@@ -277,6 +304,7 @@ struct BotSettings: Codable, Hashable {
     var bugTrackingEnabled: Bool = true
     var disabledCommandKeys: Set<String> = []
     var autoStart: Bool = true
+    var presenceMode: AppPresenceMode = .dock
     var guildSettings: [String: GuildSettings] = [:]
     var clusterMode: ClusterMode = .standalone
     var clusterNodeName: String = Host.current().localizedName ?? "SwiftBot Node"
@@ -365,6 +393,7 @@ struct BotSettings: Codable, Hashable {
         case bugTrackingEnabled
         case disabledCommandKeys
         case autoStart
+        case presenceMode
         case guildSettings
         case clusterMode
         case clusterNodeName
@@ -409,6 +438,7 @@ struct BotSettings: Codable, Hashable {
         bugTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .bugTrackingEnabled) ?? true
         disabledCommandKeys = try container.decodeIfPresent(Set<String>.self, forKey: .disabledCommandKeys) ?? []
         autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? true
+        presenceMode = try container.decodeIfPresent(AppPresenceMode.self, forKey: .presenceMode) ?? .dock
         guildSettings = try container.decodeIfPresent([String: GuildSettings].self, forKey: .guildSettings) ?? [:]
         clusterMode = try container.decodeIfPresent(ClusterMode.self, forKey: .clusterMode) ?? .standalone
         clusterNodeName = try container.decodeIfPresent(String.self, forKey: .clusterNodeName) ?? (Host.current().localizedName ?? "SwiftBot Node")
@@ -458,6 +488,7 @@ struct BotSettings: Codable, Hashable {
         try container.encode(bugTrackingEnabled, forKey: .bugTrackingEnabled)
         try container.encode(disabledCommandKeys, forKey: .disabledCommandKeys)
         try container.encode(autoStart, forKey: .autoStart)
+        try container.encode(presenceMode, forKey: .presenceMode)
         try container.encode(guildSettings, forKey: .guildSettings)
         try container.encode(clusterMode, forKey: .clusterMode)
         try container.encode(clusterNodeName, forKey: .clusterNodeName)
