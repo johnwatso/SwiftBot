@@ -6,6 +6,7 @@ struct SwiftBotApp: App {
     @NSApplicationDelegateAdaptor(SwiftBotAppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
     @StateObject private var updater = AppUpdater()
+    @StateObject private var statusItemController = SwiftBotStatusItemController()
 
     private func applyAppIconIfAvailable() {
         // Only apply once, cache the result (prevents icon flash on settings save)
@@ -141,6 +142,8 @@ struct SwiftBotApp: App {
                     .frame(minWidth: 1200, minHeight: 760)
                     .onAppear {
                         applyAppIconIfAvailable()
+                        applyPresenceMode(appModel.settings.presenceMode)
+                        statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode)
                         updater.checkForUpdatesInBackground()
                     }
                     .onOpenURL { url in
@@ -150,6 +153,13 @@ struct SwiftBotApp: App {
                         applyMainWindowChrome(to: window)
                     })
             }
+        }
+        .onChange(of: appModel.settings.presenceMode) { _, newValue in
+            applyPresenceMode(newValue)
+            statusItemController.update(appModel: appModel, mode: newValue)
+        }
+        .onChange(of: appModel.status) { _, _ in
+            statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -219,6 +229,10 @@ struct SwiftBotApp: App {
         }
     }
 
+    private func applyPresenceMode(_ mode: AppPresenceMode) {
+        NSApp.setActivationPolicy(mode.showsDockIcon ? .regular : .accessory)
+    }
+
     private func handleAuthDeepLink(_ url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let queryItems = components.queryItems else { return }
@@ -245,6 +259,175 @@ struct SwiftBotApp: App {
         UserDefaults.standard.set(3, forKey: "swiftbot.preferences.selectedTab")
         NSApp.activate(ignoringOtherApps: true)
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+}
+
+@MainActor
+private final class SwiftBotStatusItemController: NSObject, ObservableObject {
+    private var statusItem: NSStatusItem?
+    private weak var appModel: AppModel?
+
+    func update(appModel: AppModel, mode: AppPresenceMode) {
+        self.appModel = appModel
+
+        guard mode.showsMenuBarIcon else {
+            removeStatusItem()
+            return
+        }
+
+        if statusItem == nil {
+            createStatusItem()
+        }
+
+        rebuildMenu()
+    }
+
+    private func createStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.toolTip = "SwiftBot"
+
+        let image = NSImage(named: "SwiftBirdMenuBar") ?? NSImage(named: "SwiftBird3")
+        image?.isTemplate = true
+        image?.size = NSSize(width: 22, height: 17)
+        item.button?.image = image
+
+        statusItem = item
+    }
+
+    private func removeStatusItem() {
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+        }
+        statusItem = nil
+    }
+
+    private func rebuildMenu() {
+        let menu = NSMenu()
+
+        menu.addItem(NSMenuItem(
+            title: "Show SwiftBot",
+            action: #selector(showMainWindow),
+            keyEquivalent: ""
+        ))
+        menu.items.last?.target = self
+
+        menu.addItem(NSMenuItem(
+            title: "Settings...",
+            action: #selector(showSettingsWindow),
+            keyEquivalent: ","
+        ))
+        menu.items.last?.target = self
+
+        menu.addItem(.separator())
+
+        let statusText = appModel?.primaryServiceStatusText ?? "Status unavailable"
+        let status = NSMenuItem()
+        status.view = statusMenuRow(title: statusText)
+        menu.addItem(status)
+
+        menu.addItem(.separator())
+
+        menu.addItem(NSMenuItem(
+            title: "Quit SwiftBot",
+            action: #selector(quit),
+            keyEquivalent: "q"
+        ))
+        menu.items.last?.target = self
+
+        statusItem?.menu = menu
+    }
+
+    private func statusMenuRow(title: String) -> NSView {
+        let imageView = NSImageView()
+        imageView.image = NSImage(
+            systemSymbolName: statusSymbolName,
+            accessibilityDescription: title
+        )
+        imageView.contentTintColor = statusSymbolColor
+        imageView.symbolConfiguration = .init(pointSize: 13, weight: .semibold)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 13)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [imageView, label])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 14, bottom: 3, right: 14)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 210, height: 26))
+        view.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 16),
+            imageView.heightAnchor.constraint(equalToConstant: 16),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: view.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        return view
+    }
+
+    private var statusSymbolName: String {
+        guard let appModel else { return "questionmark.circle.fill" }
+
+        if appModel.primaryServiceIsOnline {
+            return "checkmark.circle.fill"
+        }
+
+        switch appModel.status {
+        case .connecting:
+            return "bolt.horizontal.circle.fill"
+        case .reconnecting:
+            return "arrow.clockwise.circle.fill"
+        case .running:
+            return "checkmark.circle.fill"
+        case .stopped:
+            return "xmark.circle.fill"
+        }
+    }
+
+    private var statusSymbolColor: NSColor {
+        guard let appModel else { return .secondaryLabelColor }
+
+        if appModel.primaryServiceIsOnline {
+            return .systemGreen
+        }
+
+        switch appModel.status {
+        case .connecting, .reconnecting:
+            return .systemOrange
+        case .running:
+            return .systemGreen
+        case .stopped:
+            return .systemRed
+        }
+    }
+
+    @objc private func showMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = NSApp.windows.first(where: { $0.identifier == .mainWindow }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            showSettingsWindow()
+        }
+    }
+
+    @objc private func showSettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
     }
 }
 
