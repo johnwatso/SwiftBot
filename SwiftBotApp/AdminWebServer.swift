@@ -640,6 +640,11 @@ actor AdminWebServer {
         let expiresAt: Date
         let appRedirectURL: String?
         let codeVerifier: String?
+        /// When set, this OAuth flow authenticates a companion app's user
+        /// (e.g. SwiftMiner's web dashboard): on success we redirect here with
+        /// a short-lived signed identity assertion instead of creating an
+        /// admin session.
+        var companionReturnURL: String? = nil
     }
 
     private struct DiscordUser {
@@ -761,6 +766,13 @@ actor AdminWebServer {
     /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
     /// Cloudflare tunnel. HMAC-authenticated inside the handler; fail-closed.
     private var swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
+    /// Read-only tunnel info (domain, readiness) for companion apps. No auth:
+    /// it reveals only the public domain, which the tunnel URL itself exposes.
+    private var swiftMinerTunnelInfoProvider: (@Sendable () async -> (status: String, body: Data))?
+    /// Companion SSO config: the hostnames registered on the tunnel (allowed
+    /// `return_to` targets) and the shared pairing secret used to sign identity
+    /// assertions. Empty secret disables the flow (fail-closed).
+    private var companionSSOConfigProvider: (@Sendable () async -> (hostnames: [String], secret: String))?
     private var discordUsersProvider: (@Sendable () async -> [AdminWebDiscordUser])?
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var swiftMinerPairedProvider: (@Sendable () async -> Bool)?
@@ -867,6 +879,8 @@ actor AdminWebServer {
         generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
         swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
+        swiftMinerTunnelInfoProvider: (@Sendable () async -> (status: String, body: Data))? = nil,
+        companionSSOConfigProvider: (@Sendable () async -> (hostnames: [String], secret: String))? = nil,
         discordUsersProvider: @escaping @Sendable () async -> [AdminWebDiscordUser],
         swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
         swiftMinerPairedProvider: @escaping @Sendable () async -> Bool,
@@ -943,6 +957,8 @@ actor AdminWebServer {
         self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
         self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
+        self.swiftMinerTunnelInfoProvider = swiftMinerTunnelInfoProvider
+        self.companionSSOConfigProvider = companionSSOConfigProvider
         self.discordUsersProvider = discordUsersProvider
         self.swiftMinerTestDMSender = swiftMinerTestDMSender
         self.swiftMinerPairedProvider = swiftMinerPairedProvider
@@ -1468,6 +1484,12 @@ actor AdminWebServer {
                 return jsonResponse(["error": "swiftminer_unavailable"], status: "503 Service Unavailable")
             }
             let result = await handler(request.headers, request.body)
+            return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
+        case ("GET", "/v1/tunnel/info"):
+            guard let provider = swiftMinerTunnelInfoProvider else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
+            }
+            let result = await provider()
             return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
         case ("POST", "/v1/tunnel/hostnames"):
             // Companion-app (SwiftMiner) hostname registration. The handler
@@ -2574,6 +2596,8 @@ actor AdminWebServer {
         //
         case ("GET", "/auth/discord/login"):
             return await handleDiscordLogin(request: request)
+        case ("GET", "/auth/companion/discord"):
+            return await handleCompanionDiscordLogin(request: request)
         case ("POST", "/auth/local/login"):
             return handleLocalLogin(request: request)
         case ("POST", "/auth/logout"):
@@ -2820,7 +2844,93 @@ actor AdminWebServer {
 
         // Bind the OAuth state to the originating browser so a leaked `state`
         // query value can't be redeemed from a different client.
-        let stateCookie = "swiftbot_oauth_state=\(state); Path=/; Max-Age=\(Int(stateTTL)); HttpOnly; Secure; SameSite=Lax"
+        let stateCookie = cookieHeader(
+            name: "swiftbot_oauth_state",
+            value: state,
+            maxAge: Int(stateTTL)
+        )
+        return redirectResponse(to: url.absoluteString, headers: ["Set-Cookie": stateCookie])
+    }
+
+    /// Starts a Discord OAuth flow on behalf of a companion app (SwiftMiner's
+    /// web dashboard). Identity-only: on success the callback redirects back to
+    /// the companion with a short-lived HMAC-signed assertion of the Discord
+    /// user id — no admin session, no allow-list or MFA requirements, because
+    /// the companion only lets a user manage their own miner.
+    private func handleCompanionDiscordLogin(request: HTTPRequest) async -> Data {
+        let clientID = config.discordOAuth.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientSecret = config.discordOAuth.clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clientID.isEmpty, !clientSecret.isEmpty else {
+            return oauthErrorPageResponse(
+                status: "503 Service Unavailable",
+                title: "Discord sign-in unavailable",
+                message: "Discord OAuth hasn't been configured on this SwiftBot instance.",
+                detail: "Ask the operator to add the Discord client ID and secret in SwiftBot's settings."
+            )
+        }
+
+        guard let sso = await companionSSOConfigProvider?(),
+              !sso.secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return oauthErrorPageResponse(
+                status: "503 Service Unavailable",
+                title: "Companion sign-in unavailable",
+                message: "SwiftBot isn't paired with a companion app.",
+                detail: "Pair SwiftMiner with SwiftBot first."
+            )
+        }
+
+        // `return_to` must be an https URL on a hostname this tunnel actually
+        // carries for a companion — anything else is an open-redirect attempt.
+        guard let returnRaw = request.query["return_to"],
+              let returnURL = URL(string: returnRaw),
+              returnURL.scheme?.lowercased() == "https",
+              let returnHost = returnURL.host?.lowercased(),
+              sso.hostnames.contains(where: { $0.lowercased() == returnHost }) else {
+            await logger?("Companion SSO rejected: return_to not a registered companion hostname")
+            return oauthErrorPageResponse(
+                status: "400 Bad Request",
+                title: "Sign-in request rejected",
+                message: "The return address isn't a registered companion app.",
+                detail: "Register the companion's hostname on SwiftBot's tunnel first."
+            )
+        }
+
+        let state = randomToken()
+        let codeVerifier = randomToken()
+        let codeChallenge = base64URLEncode(sha256(codeVerifier))
+
+        pendingStates[state] = PendingState(
+            value: state,
+            expiresAt: Date().addingTimeInterval(stateTTL),
+            appRedirectURL: nil,
+            codeVerifier: codeVerifier,
+            companionReturnURL: returnURL.absoluteString
+        )
+
+        var components = URLComponents(string: "https://discord.com/oauth2/authorize")
+        components?.queryItems = [
+            URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "redirect_uri", value: redirectURI()),
+            URLQueryItem(name: "scope", value: "identify"),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
+        ]
+        guard let url = components?.url else {
+            return oauthErrorPageResponse(
+                status: "500 Internal Server Error",
+                title: "Something went wrong",
+                message: "We couldn't build the Discord sign-in URL.",
+                detail: "Try again in a moment."
+            )
+        }
+
+        let stateCookie = cookieHeader(
+            name: "swiftbot_oauth_state",
+            value: state,
+            maxAge: Int(stateTTL)
+        )
         return redirectResponse(to: url.absoluteString, headers: ["Set-Cookie": stateCookie])
     }
 
@@ -2930,6 +3040,18 @@ actor AdminWebServer {
             )
         }
 
+        // Companion SSO: hand the verified Discord identity back to the
+        // companion app as a short-lived signed assertion. Deliberately no
+        // admin session, allow-list, or MFA gate — the companion only lets a
+        // user manage their own miner, and authorization happens there.
+        if let companionReturnURL = pendingState.companionReturnURL {
+            return await completeCompanionSSO(
+                code: code,
+                codeVerifier: pendingState.codeVerifier,
+                returnURL: companionReturnURL
+            )
+        }
+
         do {
             let token = try await exchangeDiscordCode(code: code, codeVerifier: pendingState.codeVerifier)
             let user = try await fetchDiscordUser(accessToken: token)
@@ -2999,6 +3121,88 @@ actor AdminWebServer {
         }
     }
 
+    /// Finishes a companion SSO flow: exchanges the code, fetches the Discord
+    /// identity, and redirects to the companion with `sso` (base64url payload)
+    /// + `sig` (hex HMAC-SHA256 over the payload, keyed by the pairing secret).
+    /// The payload carries a 120s expiry and a single-use nonce; the companion
+    /// enforces both.
+    private func completeCompanionSSO(code: String, codeVerifier: String?, returnURL: String) async -> Data {
+        guard let sso = await companionSSOConfigProvider?() else {
+            return oauthErrorPageResponse(
+                status: "503 Service Unavailable",
+                title: "Companion sign-in unavailable",
+                message: "SwiftBot isn't paired with a companion app.",
+                detail: "Pair SwiftMiner with SwiftBot first."
+            )
+        }
+        let secret = sso.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Re-validate the return host against the *current* registrations — the
+        // pending state could outlive a removed companion.
+        guard !secret.isEmpty,
+              let returnComponentsURL = URL(string: returnURL),
+              let returnHost = returnComponentsURL.host?.lowercased(),
+              sso.hostnames.contains(where: { $0.lowercased() == returnHost }) else {
+            return oauthErrorPageResponse(
+                status: "400 Bad Request",
+                title: "Sign-in request rejected",
+                message: "The return address is no longer a registered companion app.",
+                detail: "Register the companion's hostname on SwiftBot's tunnel first."
+            )
+        }
+
+        do {
+            let token = try await exchangeDiscordCode(code: code, codeVerifier: codeVerifier)
+            let user = try await fetchDiscordUser(accessToken: token)
+
+            let payloadObject: [String: Any] = [
+                "discordUserId": user.id,
+                "username": user.username,
+                "exp": Int(Date().timeIntervalSince1970) + 120,
+                "nonce": randomToken()
+            ]
+            let payloadData = try JSONSerialization.data(withJSONObject: payloadObject, options: [.sortedKeys])
+            let payload = base64URLEncode(payloadData)
+            let key = SymmetricKey(data: Data(secret.utf8))
+            let mac = HMAC<SHA256>.authenticationCode(for: Data(payload.utf8), using: key)
+            let signature = mac.map { String(format: "%02x", $0) }.joined()
+
+            guard var components = URLComponents(string: returnURL) else {
+                return oauthErrorPageResponse(
+                    status: "500 Internal Server Error",
+                    title: "Something went wrong",
+                    message: "We couldn't build the return address.",
+                    detail: "Try signing in again."
+                )
+            }
+            var items = components.queryItems ?? []
+            items.removeAll { $0.name == "sso" || $0.name == "sig" }
+            items.append(URLQueryItem(name: "sso", value: payload))
+            items.append(URLQueryItem(name: "sig", value: signature))
+            components.queryItems = items
+            guard let destination = components.url?.absoluteString else {
+                return oauthErrorPageResponse(
+                    status: "500 Internal Server Error",
+                    title: "Something went wrong",
+                    message: "We couldn't build the return address.",
+                    detail: "Try signing in again."
+                )
+            }
+
+            await logger?("Companion SSO issued for \(user.username) (\(user.id)) → \(returnHost)")
+            audit(source: "Web Auth", actor: "\(user.username) (\(user.id))", action: "Companion SSO issued", detail: returnHost, level: "ok")
+            return redirectResponse(to: destination)
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            await logger?("Companion SSO failed: \(message)")
+            return oauthErrorPageResponse(
+                status: "502 Bad Gateway",
+                title: "Discord sign-in failed",
+                message: "We couldn't complete the Discord sign-in.",
+                detail: message
+            )
+        }
+    }
+
     private func handleLogout(request: HTTPRequest) -> Data {
         if let sessionID = cookie(named: "swiftbot_admin_session", request: request) {
             if let session = sessions[sessionID] {
@@ -3009,7 +3213,13 @@ actor AdminWebServer {
         }
         return jsonResponse(
             ["ok": true],
-            headers: ["Set-Cookie": "swiftbot_admin_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"]
+            headers: [
+                "Set-Cookie": cookieHeader(
+                    name: "swiftbot_admin_session",
+                    value: "",
+                    maxAge: 0
+                )
+            ]
         )
     }
 
@@ -3504,7 +3714,16 @@ actor AdminWebServer {
     }
 
     private func sessionCookie(for sessionID: String) -> String {
-        "swiftbot_admin_session=\(sessionID); Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=\(Int(sessionTTL))"
+        cookieHeader(
+            name: "swiftbot_admin_session",
+            value: sessionID,
+            maxAge: Int(sessionTTL)
+        )
+    }
+
+    private func cookieHeader(name: String, value: String, maxAge: Int) -> String {
+        let secure = activeTransportUsesTLS ? "; Secure" : ""
+        return "\(name)=\(value); Path=/; Max-Age=\(maxAge); HttpOnly\(secure); SameSite=Lax"
     }
 
     private func pruneExpiredState() {

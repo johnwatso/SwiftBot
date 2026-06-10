@@ -51,4 +51,16 @@ final class AdminWebCopyTests: XCTestCase {
         XCTAssertFalse(html.contains("logs.classList"), "Use activityView/logsPanels instead of the removed logs view variable")
         XCTAssertFalse(html.contains("actions.classList"), "Use automationsView instead of the removed actions view variable")
     }
+
+    func testAuthScreenExplainsMissingDiscordOAuthButton() throws {
+        let adminHTML = try XCTUnwrap(
+            Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "admin")
+        )
+        let html = try String(contentsOf: adminHTML, encoding: .utf8)
+
+        XCTAssertTrue(html.contains(#"id="discordAuthButton""#))
+        XCTAssertTrue(html.contains(#"id="authSetupHint""#))
+        XCTAssertTrue(html.contains("Discord sign-in is not configured yet."))
+        XCTAssertTrue(html.contains("setupHint.style.display = authOptions.discordEnabled ? 'none' : '';"))
+    }
 }
