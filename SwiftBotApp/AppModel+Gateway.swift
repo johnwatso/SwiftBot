@@ -170,6 +170,8 @@ extension AppModel {
                     SwiftBotStorage.clusterStateFileName
                 ])
             )
+        case "live-snapshot":
+            return try? JSONEncoder().encode(buildMeshLiveSnapshot())
         default:
             return nil
         }

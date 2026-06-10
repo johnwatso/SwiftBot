@@ -2422,6 +2422,7 @@ actor ClusterCoordinator {
             snapshot.workerStatusText = mode == .standby ? "Standby Registered with Primary" : "Worker Registered with Primary"
             if let ack {
                 currentLeaderNodeName = ack.leaderNodeName
+                await adoptRegisteredLeaderTerm(ack.leaderTerm, leaderBaseURL: leaderBaseURL)
                 snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary \(ack.leaderNodeName) (\(ack.registeredWorkers) nodes total)"
             } else {
                 snapshot.diagnostics = "\(mode == .standby ? "Standby" : "Worker") registered with Primary via \(url.absoluteString)"
@@ -2451,6 +2452,19 @@ actor ClusterCoordinator {
         guard initialSyncCompletedLeaderBaseURL != key else { return }
         initialSyncCompletedLeaderBaseURL = key
         await onLeaderRegistrationSyncNeeded?(leaderBaseURL)
+    }
+
+    private func adoptRegisteredLeaderTerm(_ term: Int, leaderBaseURL: String) async {
+        guard mode == .worker || mode == .standby else { return }
+        guard term >= 0, leaderTerm != term else { return }
+
+        meshLogger.notice("Adopting registered Primary term \(term, privacy: .public) from \(leaderBaseURL, privacy: .public) (was \(self.leaderTerm, privacy: .public))")
+        leaderTerm = term
+        leaderAddress = leaderBaseURL
+        snapshot.leaderTerm = term
+        snapshot.leaderAddress = leaderBaseURL
+        initialSyncCompletedLeaderBaseURL = nil
+        await onTermChanged?(term)
     }
 
     private func handleWorkerRegistration(_ body: Data, remoteHost: String?) async -> Data {
@@ -2508,7 +2522,8 @@ actor ClusterCoordinator {
         let response = WorkerRegistrationResponse(
             status: "ok",
             leaderNodeName: nodeName,
-            registeredWorkers: workerCount
+            registeredWorkers: workerCount,
+            leaderTerm: leaderTerm
         )
         let payload = (try? encoder.encode(response)) ?? Data()
         return httpResponse(status: "200 OK", body: payload)
@@ -3328,6 +3343,8 @@ actor ClusterCoordinator {
         // Also fetch current image usage if this is the last page (or just always for simplicity)
         let imageUsage = await meshHandler?("image-usage")
         let decodedUsage = imageUsage.flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) }
+        let liveSnapshotData = await meshHandler?("live-snapshot")
+        let liveSnapshot = liveSnapshotData.flatMap { try? JSONDecoder().decode(MeshLiveSnapshot.self, from: $0) }
 
         let payload = MeshSyncPayload(
             conversations: records,
@@ -3335,7 +3352,8 @@ actor ClusterCoordinator {
             leaderTerm: leaderTerm,
             cursorRecordID: lastID,
             hasMore: hasMore,
-            fromCursorRecordID: req.fromRecordID
+            fromCursorRecordID: req.fromRecordID,
+            liveSnapshot: liveSnapshot
         )
         guard let body = try? encoder.encode(payload) else {
             return httpResponse(status: "500 Internal Server Error", body: Data(#"{"error":"encode_failed"}"#.utf8))
@@ -3689,6 +3707,29 @@ private struct WorkerRegistrationResponse: Codable {
     let status: String
     let leaderNodeName: String
     let registeredWorkers: Int
+    let leaderTerm: Int
+
+    init(status: String, leaderNodeName: String, registeredWorkers: Int, leaderTerm: Int) {
+        self.status = status
+        self.leaderNodeName = leaderNodeName
+        self.registeredWorkers = registeredWorkers
+        self.leaderTerm = leaderTerm
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case leaderNodeName
+        case registeredWorkers
+        case leaderTerm
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        leaderNodeName = try container.decode(String.self, forKey: .leaderNodeName)
+        registeredWorkers = try container.decode(Int.self, forKey: .registeredWorkers)
+        leaderTerm = try container.decodeIfPresent(Int.self, forKey: .leaderTerm) ?? 0
+    }
 }
 
 private struct HTTPRequest {
