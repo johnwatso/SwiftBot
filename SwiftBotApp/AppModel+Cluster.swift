@@ -702,7 +702,8 @@ extension AppModel {
         let bundle = SwiftMeshJoinBundle(
             leaderAddresses: addresses,
             leaderPort: port,
-            sharedSecret: sharedSecret
+            sharedSecret: sharedSecret,
+            leaderTerm: settings.clusterLeaderTerm
         )
 
         // Surface what's in the code so the user can see at a glance whether
@@ -777,6 +778,7 @@ extension AppModel {
             settings.clusterLeaderPort = bundle.leaderPort
             settings.clusterListenPort = bundle.leaderPort // Keep them aligned by default
             settings.clusterSharedSecret = bundle.sharedSecret
+            settings.clusterLeaderTerm = max(0, bundle.leaderTerm)
             settings.clusterMode = .standby
             settings.launchMode = .swiftMeshClusterNode
 
@@ -887,6 +889,29 @@ struct SwiftMeshJoinBundle: Codable {
     let leaderAddresses: [String]
     let leaderPort: Int
     let sharedSecret: String
+    let leaderTerm: Int
+
+    init(leaderAddresses: [String], leaderPort: Int, sharedSecret: String, leaderTerm: Int = 0) {
+        self.leaderAddresses = leaderAddresses
+        self.leaderPort = leaderPort
+        self.sharedSecret = sharedSecret
+        self.leaderTerm = leaderTerm
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case leaderAddresses
+        case leaderPort
+        case sharedSecret
+        case leaderTerm
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        leaderAddresses = try container.decode([String].self, forKey: .leaderAddresses)
+        leaderPort = try container.decode(Int.self, forKey: .leaderPort)
+        sharedSecret = try container.decode(String.self, forKey: .sharedSecret)
+        leaderTerm = try container.decodeIfPresent(Int.self, forKey: .leaderTerm) ?? 0
+    }
 }
 
 /// Pending deep-link join request, presented as a confirmation sheet in `RootView`.
