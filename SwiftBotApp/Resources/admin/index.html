@@ -500,6 +500,10 @@
       color: #ff8f8f;
     }
 
+    .auth-feedback.warning {
+      color: #ffd28a;
+    }
+
     .primary-action {
       appearance: none;
       display: inline-flex;
@@ -4085,6 +4089,7 @@
           </div>
 
           <div id="authFeedback" class="auth-feedback"></div>
+          <div id="authSetupHint" class="auth-feedback warning" style="display: none; margin-top: 12px;">Discord sign-in is not configured yet. Add the Discord OAuth client ID and secret in SwiftBot Settings → Web UI → Authentication.</div>
 
           <div id="authDivider" class="auth-divider" style="margin-top: 32px; font-size: 10px;">administrative access</div>
           <form id="localAuthForm" class="auth-form" style="margin-top: 12px;">
@@ -5017,6 +5022,7 @@
       const discordButton = document.getElementById('discordAuthButton');
       const localForm = document.getElementById('localAuthForm');
       const divider = document.getElementById('authDivider');
+      const setupHint = document.getElementById('authSetupHint');
 
       // Local authentication is only allowed on local domains. 
       // This prevents local fallback login via cloud tunnels.
@@ -5032,6 +5038,9 @@
       }
       if (divider) {
         divider.style.display = authOptions.discordEnabled && localAllowed ? '' : 'none';
+      }
+      if (setupHint) {
+        setupHint.style.display = authOptions.discordEnabled ? 'none' : '';
       }
 
       const botName = (authOptions.botName || 'SwiftBot').trim() || 'SwiftBot';

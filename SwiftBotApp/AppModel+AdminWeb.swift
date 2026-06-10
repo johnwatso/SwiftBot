@@ -1781,6 +1781,21 @@ extension AppModel {
                 }
                 return await model.handleCompanionTunnelHostnameRequest(headers: headers, body: body)
             },
+            swiftMinerTunnelInfoProvider: { [weak self] in
+                guard let model = self else {
+                    return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))
+                }
+                return await MainActor.run { model.companionTunnelInfoResponse() }
+            },
+            companionSSOConfigProvider: { [weak self] in
+                guard let model = self else { return (hostnames: [], secret: "") }
+                return await MainActor.run {
+                    (
+                        hostnames: model.settings.adminWebUI.additionalTunnelHostnames.map(\.hostname),
+                        secret: model.settings.swiftMiner.webhookSecret
+                    )
+                }
+            },
             discordUsersProvider: { [weak self] in
                 guard let model = self else { return [] }
                 return await model.swiftMinerDiscordUsers()
@@ -2260,27 +2275,76 @@ extension AppModel {
 
         let swiftBotHostname = effectiveAdminWebHostname()
         let originURL = "http://localhost:\(settings.adminWebUI.port)"
-        try await tunnelClient.configureTunnel(
-            tunnel,
-            hostname: swiftBotHostname,
-            originURL: originURL,
-            additionalRules: additionalTunnelIngressRules()
-        )
+        do {
+            try await tunnelClient.configureTunnel(
+                tunnel,
+                hostname: swiftBotHostname,
+                originURL: originURL,
+                additionalRules: additionalTunnelIngressRules()
+            )
+        } catch {
+            logs.append("⚠️ Companion ingress update failed for \(hostname): \(error)")
+            throw CompanionTunnelStepError(step: "updating tunnel ingress", underlying: error)
+        }
         logs.append("Tunnel ingress updated with \(label) hostname \(hostname) → \(service)")
 
-        guard let zone = try await dnsProvider.findZone(for: hostname) else {
-            throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
+        do {
+            guard let zone = try await dnsProvider.findZone(for: hostname) else {
+                throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
+            }
+            let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnelID)
+            _ = try await dnsProvider.configureTunnelDNSRoute(
+                hostname: hostname,
+                tunnelTarget: tunnelTarget,
+                zoneID: zone.id,
+                force: false
+            )
+        } catch {
+            logs.append("⚠️ Companion DNS step failed for \(hostname): \(error)")
+            throw CompanionTunnelStepError(step: "creating the DNS record", underlying: error)
         }
-        let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnelID)
-        _ = try await dnsProvider.configureTunnelDNSRoute(
-            hostname: hostname,
-            tunnelTarget: tunnelTarget,
-            zoneID: zone.id,
-            force: false
-        )
         logs.append("DNS route ensured for \(hostname)")
 
         return "https://\(hostname)"
+    }
+
+    /// Wraps a Cloudflare error with which step failed, so the companion app
+    /// never shows a bare Foundation decode message like
+    /// "The data couldn't be read because it is missing."
+    struct CompanionTunnelStepError: LocalizedError {
+        let step: String
+        let underlying: Swift.Error
+
+        var errorDescription: String? {
+            "Cloudflare request failed while \(step): \(underlying.localizedDescription)"
+        }
+    }
+
+    /// HTTP entry point for `GET /v1/tunnel/info`. Read-only, unauthenticated
+    /// (like /health): exposes only the public domain — which the tunnel URL
+    /// itself already reveals — and whether the tunnel is ready for companions.
+    func companionTunnelInfoResponse() -> (status: String, body: Data) {
+        let ui = settings.adminWebUI
+        let hostname = effectiveAdminWebHostname().lowercased()
+
+        // Prefer the selected Cloudflare zone; otherwise derive the apex from
+        // the hostname by dropping its first label (swiftbot.example.com → example.com).
+        var domain = ui.selectedZoneName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if domain.isEmpty {
+            let labels = hostname.split(separator: ".")
+            if labels.count >= 2 { domain = labels.dropFirst().joined(separator: ".") }
+        }
+
+        let apiToken = CloudflareDNSProvider.normalizedAPIToken(from: ui.cloudflareAPIToken)
+        let ready = ui.internetAccessEnabled && !ui.publicAccessTunnelID.isEmpty && !apiToken.isEmpty
+
+        let object: [String: Any] = [
+            "internetAccessEnabled": ready,
+            "domain": domain,
+            "swiftBotHostname": hostname
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+        return ("200 OK", data)
     }
 
     /// HTTP entry point for `POST /v1/tunnel/hostnames`. Authenticates with the
