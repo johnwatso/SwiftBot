@@ -78,6 +78,18 @@ enum AppPresenceMode: String, Codable, Hashable, CaseIterable, Identifiable {
     }
 }
 
+/// An extra public hostname carried on SwiftBot's Cloudflare tunnel, routed to
+/// a companion app's local service (e.g. SwiftMiner's web dashboard). Persisted
+/// so tunnel reconfiguration always re-applies it instead of clobbering it.
+struct AdditionalTunnelHostname: Codable, Hashable {
+    /// Full hostname, e.g. "swiftminer.example.com".
+    var hostname: String = ""
+    /// Local origin the tunnel routes to, e.g. "http://localhost:8080".
+    var service: String = ""
+    /// Human-readable owner shown in logs/UI, e.g. "SwiftMiner".
+    var label: String = ""
+}
+
 struct AdminWebUISettings: Codable, Hashable {
     // Internal constants (not user-configurable)
     static let defaultBindHost = "127.0.0.1"
@@ -117,6 +129,10 @@ struct AdminWebUISettings: Codable, Hashable {
     var importedPrivateKeyFile: String = ""
     var importedCertificateChainFile: String = ""
     var dismissedDNSConflictHostnames: [String] = []
+    /// Extra hostnames companion apps registered on the tunnel (see
+    /// `AdditionalTunnelHostname`). Always merged into tunnel ingress on
+    /// reconfiguration so SwiftBot's own setup never wipes them.
+    var additionalTunnelHostnames: [AdditionalTunnelHostname] = []
 
     // OAuth Providers (Discord is active; older archived providers are ignored on decode)
     var discordOAuth = OAuthProviderSettings()
@@ -164,6 +180,7 @@ struct AdminWebUISettings: Codable, Hashable {
         case restrictAccessToSpecificUsers
         case allowedUserIDs
         case dismissedDNSConflictHostnames
+        case additionalTunnelHostnames
         // Legacy keys for migration
         case bindHost
         case port
@@ -223,6 +240,7 @@ struct AdminWebUISettings: Codable, Hashable {
         restrictAccessToSpecificUsers = try container.decodeIfPresent(Bool.self, forKey: .restrictAccessToSpecificUsers)
             ?? !allowedUserIDs.isEmpty
         dismissedDNSConflictHostnames = try container.decodeIfPresent([String].self, forKey: .dismissedDNSConflictHostnames) ?? []
+        additionalTunnelHostnames = try container.decodeIfPresent([AdditionalTunnelHostname].self, forKey: .additionalTunnelHostnames) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -252,6 +270,7 @@ struct AdminWebUISettings: Codable, Hashable {
         try container.encode(restrictAccessToSpecificUsers, forKey: .restrictAccessToSpecificUsers)
         try container.encode(allowedUserIDs, forKey: .allowedUserIDs)
         try container.encode(dismissedDNSConflictHostnames, forKey: .dismissedDNSConflictHostnames)
+        try container.encode(additionalTunnelHostnames, forKey: .additionalTunnelHostnames)
     }
 
     var normalizedAllowedUserIDs: [String] {

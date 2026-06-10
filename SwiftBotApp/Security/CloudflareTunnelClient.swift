@@ -166,7 +166,15 @@ struct CloudflareTunnelClient: Sendable {
             || message.contains("1001")
     }
 
-    func configureTunnel(_ tunnel: TunnelSummary, hostname: String, originURL: String) async throws {
+    /// Replaces the tunnel's ingress configuration. The PUT overwrites the whole
+    /// ingress array, so `additionalRules` (companion-app hostnames such as
+    /// SwiftMiner's) must always be passed or they would be silently dropped.
+    func configureTunnel(
+        _ tunnel: TunnelSummary,
+        hostname: String,
+        originURL: String,
+        additionalRules: [(hostname: String, service: String)] = []
+    ) async throws {
         let requestURL = baseURL
             .appendingPathComponent("accounts")
             .appendingPathComponent(tunnel.accountID)
@@ -174,13 +182,17 @@ struct CloudflareTunnelClient: Sendable {
             .appendingPathComponent(tunnel.id)
             .appendingPathComponent("configurations")
 
+        var ingress = [TunnelIngressRule(hostname: hostname, service: originURL)]
+        for rule in additionalRules {
+            let extraHost = rule.hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !extraHost.isEmpty,
+                  extraHost.caseInsensitiveCompare(hostname) != .orderedSame else { continue }
+            ingress.append(TunnelIngressRule(hostname: extraHost, service: rule.service))
+        }
+        ingress.append(TunnelIngressRule(hostname: nil, service: "http_status:404"))
+
         let config = TunnelConfigurationRequest(
-            config: TunnelConfiguration(
-                ingress: [
-                    TunnelIngressRule(hostname: hostname, service: originURL),
-                    TunnelIngressRule(hostname: nil, service: "http_status:404")
-                ]
-            )
+            config: TunnelConfiguration(ingress: ingress)
         )
 
         var request = makeRequest(url: requestURL, method: "PUT")

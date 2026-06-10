@@ -758,6 +758,9 @@ actor AdminWebServer {
     private var refreshSwiftMesh: (@Sendable () async -> Bool)?
     private var generateSwiftMeshJoinCode: (@Sendable () async -> String?)?
     private var swiftMinerWebhookHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
+    /// Registers a companion-app hostname (e.g. SwiftMiner's dashboard) on the
+    /// Cloudflare tunnel. HMAC-authenticated inside the handler; fail-closed.
+    private var swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))?
     private var discordUsersProvider: (@Sendable () async -> [AdminWebDiscordUser])?
     private var swiftMinerTestDMSender: (@Sendable (SwiftMinerDMRequest, String) async -> Bool)?
     private var swiftMinerPairedProvider: (@Sendable () async -> Bool)?
@@ -863,6 +866,7 @@ actor AdminWebServer {
         refreshSwiftMesh: @escaping @Sendable () async -> Bool,
         generateSwiftMeshJoinCode: @escaping @Sendable () async -> String?,
         swiftMinerWebhookHandler: @escaping @Sendable ([String: String], Data) async -> (status: String, body: Data),
+        swiftMinerTunnelHostnameHandler: (@Sendable ([String: String], Data) async -> (status: String, body: Data))? = nil,
         discordUsersProvider: @escaping @Sendable () async -> [AdminWebDiscordUser],
         swiftMinerTestDMSender: @escaping @Sendable (SwiftMinerDMRequest, String) async -> Bool,
         swiftMinerPairedProvider: @escaping @Sendable () async -> Bool,
@@ -938,6 +942,7 @@ actor AdminWebServer {
         self.refreshSwiftMesh = refreshSwiftMesh
         self.generateSwiftMeshJoinCode = generateSwiftMeshJoinCode
         self.swiftMinerWebhookHandler = swiftMinerWebhookHandler
+        self.swiftMinerTunnelHostnameHandler = swiftMinerTunnelHostnameHandler
         self.discordUsersProvider = discordUsersProvider
         self.swiftMinerTestDMSender = swiftMinerTestDMSender
         self.swiftMinerPairedProvider = swiftMinerPairedProvider
@@ -1461,6 +1466,15 @@ actor AdminWebServer {
         case ("POST", "/webhooks/swiftminer/events"):
             guard let handler = swiftMinerWebhookHandler else {
                 return jsonResponse(["error": "swiftminer_unavailable"], status: "503 Service Unavailable")
+            }
+            let result = await handler(request.headers, request.body)
+            return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")
+        case ("POST", "/v1/tunnel/hostnames"):
+            // Companion-app (SwiftMiner) hostname registration. The handler
+            // verifies the shared-secret HMAC itself and fails closed, since
+            // this endpoint mutates Cloudflare configuration.
+            guard let handler = swiftMinerTunnelHostnameHandler else {
+                return jsonResponse(["error": "unavailable"], status: "503 Service Unavailable")
             }
             let result = await handler(request.headers, request.body)
             return httpResponse(status: result.status, body: result.body, contentType: "application/json; charset=utf-8")

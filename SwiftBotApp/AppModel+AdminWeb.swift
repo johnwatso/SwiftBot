@@ -1775,6 +1775,12 @@ extension AppModel {
                 }
                 return await model.handleSwiftMinerWebhook(headers: headers, body: body)
             },
+            swiftMinerTunnelHostnameHandler: { [weak self] headers, body in
+                guard let model = self else {
+                    return ("503 Service Unavailable", Data("{\"error\":\"app_unavailable\"}".utf8))
+                }
+                return await model.handleCompanionTunnelHostnameRequest(headers: headers, body: body)
+            },
             discordUsersProvider: { [weak self] in
                 guard let model = self else { return [] }
                 return await model.swiftMinerDiscordUsers()
@@ -2071,7 +2077,12 @@ extension AppModel {
 
         logs.append("Configuring tunnel ingress...")
         do {
-            try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: originURL)
+            try await tunnelClient.configureTunnel(
+                tunnel,
+                hostname: hostname,
+                originURL: originURL,
+                additionalRules: additionalTunnelIngressRules()
+            )
             logs.append("Tunnel ingress configured")
         } catch let tunnelError as CloudflareTunnelClient.Error {
             logs.append("Tunnel configuration error: \(tunnelError.localizedDescription)")
@@ -2106,6 +2117,23 @@ extension AppModel {
             logs.append("Replaced existing \(previousType) record with Cloudflare Tunnel route for \(hostname)")
         }
         progress(.tunnelDNSRecordCreated(hostname: hostname))
+
+        // Re-apply DNS for companion-app hostnames (e.g. SwiftMiner) so a setup
+        // re-run repairs their records too. Non-fatal: a failure here must not
+        // break SwiftBot's own public access.
+        for extra in settings.adminWebUI.additionalTunnelHostnames {
+            do {
+                _ = try await dnsProvider.configureTunnelDNSRoute(
+                    hostname: extra.hostname,
+                    tunnelTarget: tunnelTarget,
+                    zoneID: zone.id,
+                    force: false
+                )
+                logs.append("DNS route ensured for companion hostname \(extra.hostname) (\(extra.label))")
+            } catch {
+                logs.append("⚠️ Could not ensure DNS for companion hostname \(extra.hostname): \(error.localizedDescription)")
+            }
+        }
 
         progress(.storingTunnelCredentials)
         settings.adminWebUI.internetAccessEnabled = true
@@ -2143,6 +2171,159 @@ extension AppModel {
             try await swiftMeshConfigStore.save(settings.swiftMeshSettings)
         } catch {
             logs.append("❌ Failed saving settings: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Companion-App Tunnel Hostnames (e.g. SwiftMiner)
+
+    /// Ingress rules for hostnames companion apps registered on the tunnel.
+    /// Passed to every `configureTunnel` call so SwiftBot's own reconfiguration
+    /// never wipes them (the Cloudflare PUT replaces the whole ingress array).
+    func additionalTunnelIngressRules() -> [(hostname: String, service: String)] {
+        settings.adminWebUI.additionalTunnelHostnames.map { ($0.hostname, $0.service) }
+    }
+
+    enum CompanionTunnelHostnameError: LocalizedError {
+        case tunnelNotConfigured
+        case invalidHostname
+        case invalidService
+        case conflictsWithSwiftBotHostname
+
+        var errorDescription: String? {
+            switch self {
+            case .tunnelNotConfigured:
+                return "SwiftBot's Internet Access (Cloudflare tunnel) is not set up yet."
+            case .invalidHostname:
+                return "Hostname must be a bare domain name like swiftminer.example.com."
+            case .invalidService:
+                return "Service must be a local http URL like http://localhost:8080."
+            case .conflictsWithSwiftBotHostname:
+                return "That hostname is already used by SwiftBot itself."
+            }
+        }
+    }
+
+    /// Registers (or updates) a companion app's hostname on SwiftBot's existing
+    /// Cloudflare tunnel: persists it, merges it into tunnel ingress, and
+    /// ensures the DNS CNAME. Idempotent. Returns the public URL.
+    func registerCompanionTunnelHostname(hostname rawHostname: String, service rawService: String, label: String) async throws -> String {
+        let hostname = rawHostname.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let service = rawService.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Hostname: bare DNS name, no scheme/path/port.
+        guard !hostname.isEmpty,
+              !hostname.contains("/"), !hostname.contains(":"),
+              hostname.contains("."),
+              hostname.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." }) else {
+            throw CompanionTunnelHostnameError.invalidHostname
+        }
+        guard hostname != effectiveAdminWebHostname().lowercased() else {
+            throw CompanionTunnelHostnameError.conflictsWithSwiftBotHostname
+        }
+        // Service: strictly a loopback http origin — the tunnel must only ever
+        // route into this machine.
+        guard let serviceURL = URL(string: service),
+              serviceURL.scheme?.lowercased() == "http",
+              let serviceHost = serviceURL.host?.lowercased(),
+              serviceHost == "localhost" || serviceHost == "127.0.0.1",
+              serviceURL.path.isEmpty || serviceURL.path == "/" else {
+            throw CompanionTunnelHostnameError.invalidService
+        }
+
+        let apiToken = CloudflareDNSProvider.normalizedAPIToken(from: settings.adminWebUI.cloudflareAPIToken)
+        let tunnelID = settings.adminWebUI.publicAccessTunnelID
+        let accountID = settings.adminWebUI.publicAccessTunnelAccountID
+        guard settings.adminWebUI.internetAccessEnabled,
+              !apiToken.isEmpty, !tunnelID.isEmpty, !accountID.isEmpty else {
+            throw CompanionTunnelHostnameError.tunnelNotConfigured
+        }
+
+        // Upsert into settings first so every later reconfiguration includes it.
+        var entries = settings.adminWebUI.additionalTunnelHostnames
+        if let index = entries.firstIndex(where: { $0.hostname.lowercased() == hostname }) {
+            entries[index].service = service
+            entries[index].label = label
+        } else {
+            entries.append(AdditionalTunnelHostname(hostname: hostname, service: service, label: label))
+        }
+        settings.adminWebUI.additionalTunnelHostnames = entries
+        saveSettings()
+
+        let tunnel = CloudflareTunnelClient.TunnelSummary(
+            accountID: accountID,
+            id: tunnelID,
+            name: settings.adminWebUI.publicAccessTunnelName,
+            token: settings.adminWebUI.publicAccessTunnelToken
+        )
+        let tunnelClient = CloudflareTunnelClient(apiToken: apiToken)
+        let dnsProvider = CloudflareDNSProvider(apiToken: apiToken)
+
+        let swiftBotHostname = effectiveAdminWebHostname()
+        let originURL = "http://localhost:\(settings.adminWebUI.port)"
+        try await tunnelClient.configureTunnel(
+            tunnel,
+            hostname: swiftBotHostname,
+            originURL: originURL,
+            additionalRules: additionalTunnelIngressRules()
+        )
+        logs.append("Tunnel ingress updated with \(label) hostname \(hostname) → \(service)")
+
+        guard let zone = try await dnsProvider.findZone(for: hostname) else {
+            throw CloudflareDNSProvider.Error.zoneNotFound(hostname)
+        }
+        let tunnelTarget = CloudflareTunnelClient.tunnelTargetHostname(for: tunnelID)
+        _ = try await dnsProvider.configureTunnelDNSRoute(
+            hostname: hostname,
+            tunnelTarget: tunnelTarget,
+            zoneID: zone.id,
+            force: false
+        )
+        logs.append("DNS route ensured for \(hostname)")
+
+        return "https://\(hostname)"
+    }
+
+    /// HTTP entry point for `POST /v1/tunnel/hostnames`. Authenticates with the
+    /// SwiftMiner pairing HMAC and **fails closed**: no shared secret, no access.
+    /// (The general webhook validator is deliberately fail-open for unpaired
+    /// installs; a Cloudflare-mutating endpoint must not be.)
+    func handleCompanionTunnelHostnameRequest(headers: [String: String], body: Data) async -> (status: String, body: Data) {
+        func json(_ object: [String: Any], _ status: String) -> (String, Data) {
+            ((try? JSONSerialization.data(withJSONObject: object)).map { (status, $0) }) ?? (status, Data())
+        }
+
+        let secret = settings.swiftMiner.webhookSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !secret.isEmpty, validateSwiftMinerSignature(headers: headers, body: body) else {
+            return json(["error": "unauthorized", "message": "Missing or invalid SwiftMiner signature."], "401 Unauthorized")
+        }
+
+        struct Payload: Decodable {
+            let hostname: String
+            let service: String
+            let label: String?
+        }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: body) else {
+            return json(["error": "invalid_payload", "message": "Body must include hostname and service."], "400 Bad Request")
+        }
+
+        do {
+            let publicURL = try await registerCompanionTunnelHostname(
+                hostname: payload.hostname,
+                service: payload.service,
+                label: payload.label ?? "Companion"
+            )
+            return json(["ok": true, "publicURL": publicURL], "200 OK")
+        } catch let error as CompanionTunnelHostnameError {
+            let code: String
+            switch error {
+            case .tunnelNotConfigured: code = "tunnel_not_configured"
+            case .invalidHostname: code = "invalid_hostname"
+            case .invalidService: code = "invalid_service"
+            case .conflictsWithSwiftBotHostname: code = "hostname_conflict"
+            }
+            return json(["error": code, "message": error.localizedDescription], "409 Conflict")
+        } catch {
+            return json(["error": "cloudflare_error", "message": error.localizedDescription], "502 Bad Gateway")
         }
     }
 
@@ -2291,7 +2472,12 @@ extension AppModel {
         // Configure tunnel ingress
         logs.append("Configuring tunnel ingress...")
         do {
-            try await tunnelClient.configureTunnel(tunnel, hostname: hostname, originURL: "http://localhost:\(settings.adminWebUI.port)")
+            try await tunnelClient.configureTunnel(
+                tunnel,
+                hostname: hostname,
+                originURL: "http://localhost:\(settings.adminWebUI.port)",
+                additionalRules: additionalTunnelIngressRules()
+            )
             logs.append("Tunnel ingress configured")
         } catch let tunnelError as CloudflareTunnelClient.Error {
             logs.append("Tunnel configuration error: \(tunnelError.localizedDescription)")

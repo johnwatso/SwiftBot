@@ -883,7 +883,7 @@ extension AppModel {
         return "**\(campaign.game)** — \(campaign.campaignName)"
     }
 
-    private func validateSwiftMinerSignature(headers: [String: String], body: Data) -> Bool {
+    func validateSwiftMinerSignature(headers: [String: String], body: Data) -> Bool {
         let secret = settings.swiftMiner.webhookSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !secret.isEmpty else { return true }
         guard let timestamp = headers["x-swiftminer-timestamp"],
