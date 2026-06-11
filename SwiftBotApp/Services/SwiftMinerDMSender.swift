@@ -45,10 +45,11 @@ struct SwiftMinerDMSender: Sendable {
 
     init(
         dependencies: Dependencies,
-        theme: SwiftMinerDMTheme = .default
+        theme: SwiftMinerDMTheme = .default,
+        dashboardURL: String? = nil
     ) {
         self.dependencies = dependencies
-        self.router = SwiftMinerDMRouter(theme: theme)
+        self.router = SwiftMinerDMRouter(theme: theme, dashboardURL: dashboardURL)
     }
 
     // MARK: - Public API

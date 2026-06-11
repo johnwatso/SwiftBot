@@ -18,6 +18,7 @@ enum SwiftMinerDMMessageType: String, Codable, CaseIterable, Sendable, Identifia
     case campaignDetected = "campaign_detected"
     case accountActionRequired = "account_action_required"
     case prioritisedGameNeedsLinking = "prioritised_game_needs_linking"
+    case webDashboardAvailable = "web_dashboard_available"
 
     var id: String { rawValue }
 
@@ -34,6 +35,7 @@ enum SwiftMinerDMMessageType: String, Codable, CaseIterable, Sendable, Identifia
         case .campaignDetected: return "New Campaign"
         case .accountActionRequired: return "Needs a Look"
         case .prioritisedGameNeedsLinking: return "Link Twitch to Claim Drops"
+        case .webDashboardAvailable: return "Web Dashboard Live"
         }
     }
 }

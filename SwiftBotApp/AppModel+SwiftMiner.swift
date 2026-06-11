@@ -245,11 +245,11 @@ extension AppModel {
         let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
         do {
             let projection = try await client.projection(discordUserId: userId)
-            await respondToSwiftMinerButton(
-                event: event,
-                message: renderSwiftMinerPriorities(projection),
-                components: SwiftMinerDMEmbedBuilders.buildEditGamesComponents()
-            )
+            var message = renderSwiftMinerPriorities(projection)
+            if let dashboard = companionDashboardURL() {
+                message += "\n\n🌐 Edit your priorities on the web: \(dashboard)"
+            }
+            await respondToSwiftMinerButton(event: event, message: message)
         } catch {
             await respondToSwiftMinerButton(
                 event: event,
@@ -643,8 +643,17 @@ extension AppModel {
                         self.addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: message))
                     }
                 }
-            )
+            ),
+            dashboardURL: companionDashboardURL()
         )
+    }
+
+    /// Public URL of the SwiftMiner web dashboard riding this bot's tunnel,
+    /// or nil if no companion hostname is registered yet.
+    func companionDashboardURL() -> String? {
+        guard let host = settings.adminWebUI.additionalTunnelHostnames.first?.hostname,
+              !host.isEmpty else { return nil }
+        return "https://\(host)"
     }
 
     func sendSwiftMinerDM(request: SwiftMinerDMRequest, discordUserId: String) async -> Bool {

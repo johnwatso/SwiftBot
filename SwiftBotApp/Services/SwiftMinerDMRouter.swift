@@ -15,14 +15,20 @@ import Foundation
 struct SwiftMinerDMRouter: Sendable {
 
     let theme: SwiftMinerDMTheme
+    /// Public URL of the companion web dashboard (e.g. https://swiftminer.example.com).
+    /// When set, every DM gets a "manage it on the web" footer instead of buttons.
+    let dashboardURL: String?
 
-    init(theme: SwiftMinerDMTheme = .default) {
+    init(theme: SwiftMinerDMTheme = .default, dashboardURL: String? = nil) {
         self.theme = theme
+        self.dashboardURL = dashboardURL
     }
 
     func route(request: SwiftMinerDMRequest, discordName: String?) -> SwiftMinerDMResult {
-        let embed: [String: Any]
-        var components = SwiftMinerDMEmbedBuilders.buildStandardActionComponents()
+        var embed: [String: Any]
+        // DMs are notifications only — actions live on the web dashboard, so no
+        // buttons or modals are attached anymore.
+        let components: [[String: Any]] = []
         var shouldTrackWelcome = false
         var shouldTrackCompletion = false
         let analyticsDescription: String
@@ -118,11 +124,6 @@ struct SwiftMinerDMRouter: Sendable {
                 debug: request.debug,
                 theme: theme
             )
-            components = SwiftMinerDMEmbedBuilders.buildCampaignDetectedComponents(
-                accountId: request.accountId,
-                campaignId: Self.campaignId(fromEventId: request.eventId),
-                debug: request.debug
-            ) + components
             analyticsDescription = "campaign_detected"
 
         case .accountActionRequired:
@@ -141,13 +142,21 @@ struct SwiftMinerDMRouter: Sendable {
                 debug: request.debug,
                 theme: theme
             )
-            components = SwiftMinerDMEmbedBuilders.buildPrioritisedGameNeedsLinkingComponents(
-                affectedGame: request.affectedGame,
-                accountId: request.accountId,
-                debug: request.debug,
-                theme: theme
-            ) + components
             analyticsDescription = "prioritised_game_needs_linking"
+
+        case .webDashboardAvailable:
+            embed = [
+                "title": (request.debug ? "[TEST] " : "") + "🌐 Your web dashboard is live",
+                "description": "You can now check mining progress, see completed drops, and manage your game priorities from your browser — no commands needed."
+            ]
+            analyticsDescription = "web_dashboard_available"
+        }
+
+        // Single, consistent pointer to the dashboard on every DM.
+        if let dashboardURL, !dashboardURL.isEmpty {
+            var description = (embed["description"] as? String) ?? ""
+            description += "\n\n🌐 Manage your miner: \(dashboardURL)"
+            embed["description"] = description
         }
 
         return SwiftMinerDMResult(
