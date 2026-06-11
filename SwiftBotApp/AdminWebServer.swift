@@ -2912,7 +2912,7 @@ actor AdminWebServer {
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "redirect_uri", value: redirectURI()),
-            URLQueryItem(name: "scope", value: "identify"),
+            URLQueryItem(name: "scope", value: "identify guilds"),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256")
@@ -3153,12 +3153,15 @@ actor AdminWebServer {
         do {
             let token = try await exchangeDiscordCode(code: code, codeVerifier: codeVerifier)
             let user = try await fetchDiscordUser(accessToken: token)
+            let guilds = try await fetchDiscordGuilds(accessToken: token)
+            let isGuildMember = await isMemberOfConnectedGuild(guilds: guilds)
 
             let payloadObject: [String: Any] = [
                 "discordUserId": user.id,
                 "username": user.username,
                 "exp": Int(Date().timeIntervalSince1970) + 120,
-                "nonce": randomToken()
+                "nonce": randomToken(),
+                "isGuildMember": isGuildMember
             ]
             let payloadData = try JSONSerialization.data(withJSONObject: payloadObject, options: [.sortedKeys])
             let payload = base64URLEncode(payloadData)
@@ -3399,8 +3402,7 @@ actor AdminWebServer {
         }
 
         let connectedGuildIDs = await connectedGuildIDsProvider?() ?? []
-        guard !connectedGuildIDs.isEmpty else { return false }
-
+        guard Self.isMemberOfConnectedGuild(guilds: guilds, connectedGuildIDs: connectedGuildIDs) else { return false }
         return guilds.contains { guild in
             guard connectedGuildIDs.contains(guild.id) else { return false }
             if guild.owner == true { return true }
@@ -3409,6 +3411,16 @@ actor AdminWebServer {
             let manageGuildBit: UInt64 = 1 << 5
             return (permissions & administratorBit) != 0 || (permissions & manageGuildBit) != 0
         }
+    }
+
+    private func isMemberOfConnectedGuild(guilds: [DiscordGuildSummary]) async -> Bool {
+        let connectedGuildIDs = await connectedGuildIDsProvider?() ?? []
+        return Self.isMemberOfConnectedGuild(guilds: guilds, connectedGuildIDs: connectedGuildIDs)
+    }
+
+    private static func isMemberOfConnectedGuild(guilds: [DiscordGuildSummary], connectedGuildIDs: Set<String>) -> Bool {
+        guard !connectedGuildIDs.isEmpty else { return false }
+        return guilds.contains { connectedGuildIDs.contains($0.id) }
     }
 
     private func exchangeDiscordCode(code: String, codeVerifier: String?) async throws -> String {
