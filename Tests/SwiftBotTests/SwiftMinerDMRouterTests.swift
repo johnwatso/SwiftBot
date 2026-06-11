@@ -10,7 +10,7 @@ final class SwiftMinerDMRouterTests: XCTestCase {
     func testWelcomeRouteHasWelcomeSemantics() {
         let result = router.route(request: .init(messageType: .welcome), discordName: "Taylor")
         XCTAssertTrue(embedHasWelcomeSemantics(result))
-        XCTAssertTrue(hasStandardDMControls(result))
+        XCTAssertTrue(result.components.isEmpty)
         XCTAssertTrue(result.shouldTrackWelcome)
         XCTAssertFalse(result.shouldTrackCompletion)
     }
@@ -178,14 +178,8 @@ final class SwiftMinerDMRouterTests: XCTestCase {
             value.contains("Open Twitch Drops inventory") &&
             value.contains("https://www.twitch.tv/drops/inventory")
         }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Prioritise" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.priorityCustomID(accountId: "account-1", debug: false)
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Dismiss" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.campaignDismissCustomID(campaignId: "campaign-1", debug: false)
-        }))
+        // Actions moved to the web dashboard — DMs carry no buttons.
+        XCTAssertTrue(result.components.isEmpty)
     }
 
     func testAccountActionRequiredRouteHasAlertSemantics() {
@@ -208,46 +202,32 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         XCTAssertTrue(hasField(result, matching: { _, value in
             value.contains("https://www.twitch.tv/drops/inventory")
         }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Prioritise" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.priorityCustomID(accountId: nil, debug: false)
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Open Twitch Drops" &&
-                button["url"] as? String == "https://www.twitch.tv/drops/inventory"
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Dismiss Valorant reminders" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissCustomID
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Why blocked?" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.whyBlockedCustomID
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["label"] as? String == "Pause 7 days" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.pauseLinkWarningCustomID
-        }))
-        XCTAssertTrue(hasStandardDMControls(result))
+        XCTAssertTrue(result.components.isEmpty)
     }
 
-    func testStandardDMControlsIncludeStatusPrioritiesQuietAndInventory() {
-        let result = router.route(request: .init(messageType: .campaignCompleted), discordName: nil)
-        XCTAssertTrue(hasStandardDMControls(result))
+    func testDMsCarryNoInteractiveControls() {
+        // Actions live on the web dashboard now; every DM is buttonless.
+        for type in SwiftMinerDMMessageType.allCases {
+            let result = router.route(request: .init(messageType: type), discordName: nil)
+            XCTAssertTrue(result.components.isEmpty, "expected no components for \(type.rawValue)")
+        }
     }
 
-    func testPrioritisedGameNeedsLinkingDebugRouteUsesTestDismissButton() {
-        let result = router.route(
-            request: .init(messageType: .prioritisedGameNeedsLinking, debug: true, affectedGame: "Valorant"),
-            discordName: nil
-        )
+    func testDashboardFooterAppendedWhenURLConfigured() {
+        let dashboardRouter = SwiftMinerDMRouter(dashboardURL: "https://swiftminer.example.com")
+        let result = dashboardRouter.route(request: .init(messageType: .campaignCompleted), discordName: nil)
+        XCTAssertTrue(embedDescription(result).contains("https://swiftminer.example.com"))
+        XCTAssertTrue(result.components.isEmpty)
+    }
 
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.linkWarningDismissTestCustomID
-        }))
-        XCTAssertTrue(componentButton(result, matching: { button in
-            button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.pauseLinkWarningTestCustomID
-        }))
+    func testWebDashboardAvailableRouteIsSimpleAnnouncement() {
+        let dashboardRouter = SwiftMinerDMRouter(dashboardURL: "https://swiftminer.example.com")
+        let result = dashboardRouter.route(request: .init(messageType: .webDashboardAvailable), discordName: nil)
+        XCTAssertTrue(embedTitle(result).contains("dashboard"))
+        XCTAssertTrue(embedDescription(result).contains("https://swiftminer.example.com"))
+        XCTAssertTrue(result.components.isEmpty)
+        XCTAssertFalse(result.shouldTrackWelcome)
+        XCTAssertFalse(result.shouldTrackCompletion)
     }
 
     func testWelcomeBackRouteHasWelcomeBackSemantics() {
@@ -333,34 +313,6 @@ final class SwiftMinerDMRouterTests: XCTestCase {
         }
     }
 
-    private func componentButton(
-        _ result: SwiftMinerDMResult,
-        matching predicate: ([String: Any]) -> Bool
-    ) -> Bool {
-        result.components.contains { row in
-            let buttons = row["components"] as? [[String: Any]] ?? []
-            return buttons.contains(where: predicate)
-        }
-    }
-
-    private func hasStandardDMControls(_ result: SwiftMinerDMResult) -> Bool {
-        componentButton(result, matching: { button in
-            button["label"] as? String == "Refresh status" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.statusRefreshCustomID
-        }) &&
-        componentButton(result, matching: { button in
-            button["label"] as? String == "View priorities" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.prioritiesCustomID
-        }) &&
-        componentButton(result, matching: { button in
-            button["label"] as? String == "Fewer DMs" &&
-                button["custom_id"] as? String == SwiftMinerDMEmbedBuilders.quietModeCustomID
-        }) &&
-        componentButton(result, matching: { button in
-            button["label"] as? String == "Open inventory" &&
-                button["url"] as? String == SwiftMinerDMEmbedBuilders.twitchDropsURL
-        })
-    }
 
     // Semantic checks that are resilient to exact wording changes
 

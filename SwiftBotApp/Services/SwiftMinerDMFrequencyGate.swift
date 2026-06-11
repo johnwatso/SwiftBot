@@ -32,6 +32,10 @@ actor SwiftMinerDMNotificationFilter {
             return preferences.campaignDetectedEnabled
         case .accountActionRequired:
             return preferences.accountActionRequiredEnabled
+        case .webDashboardAvailable:
+            // One-time announcement, sent only when the dashboard first goes
+            // live — always allowed through.
+            return true
         }
     }
 }
