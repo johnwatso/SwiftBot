@@ -3,46 +3,158 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Update AGENTS.md - Release Notes</title>
+  <title>SwiftBot 1.20 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
-      color: #0f1720;
+      background: #f5f7fb;
+      color: #111827;
     }
     main {
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto;
-      padding: 28px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.86);
-      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.security { --accent: #a21caf; }
+    section.mesh { --accent: #4f46a5; }
+    section.automation { --accent: #0f766e; }
+    section.ui { --accent: #b45309; }
+    section.core { --accent: #0a67a3; }
+    section.docs { --accent: #52606d; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body { background: #0b1017; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.88);
+        background: rgba(15, 23, 32, 0.92);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta { color: #9fb0c2; }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Update AGENTS.md</h1>
-    <p class="meta">Version 1.20</p>
-    <p>Update AGENTS.md</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/7846b1f1af975bcf8521a470ad45a74b33bc5e66">7846b1f</a></p>
+    <h1>SwiftBot 1.20</h1>
+    <p class="meta">Version 1.20 · Build 2026060313</p>
+    <p class="intro">The biggest SwiftBot update yet, with a security overhaul, stronger SwiftMesh clustering, the new Sweep subsystem, richer automations, and the migration to Swift 6.</p>
+
+    <section class="security">
+      <h2><span class="badge" aria-hidden="true">🛡️</span>Security and Auditing</h2>
+      <p class="summary">Admin access and web sessions are now much more tightly controlled.</p>
+      <ul>
+        <li><strong>Role-Based Access Control:</strong> Added Viewer and Admin roles, with state-changing Web UI operations gated behind admin permissions.</li>
+        <li><strong>Payload Validation:</strong> Added field-level validation for automations, Sweep policies, and webhook payloads so configuration stays inside safe operating bounds.</li>
+        <li><strong>HTTPS Enforcement:</strong> Added Require HTTPS mode and cleartext blocking for routable addresses, while keeping local loopback access practical.</li>
+        <li><strong>Hardened Login:</strong> Added PKCE for Discord OAuth, mandatory Discord MFA checks, session binding, and IP-based rate limiting.</li>
+        <li><strong>Audit Trail:</strong> Added persistent audit logging for authentication, configuration changes, and moderation activity.</li>
+      </ul>
+    </section>
+
+    <section class="mesh">
+      <h2><span class="badge" aria-hidden="true">🕸️</span>SwiftMesh and Clustering</h2>
+      <p class="summary">Multi-node SwiftBot setups became safer and easier to understand.</p>
+      <ul>
+        <li><strong>Encrypted Mesh Traffic:</strong> SwiftMesh sync traffic now uses AES-GCM encryption keyed from the shared secret.</li>
+        <li><strong>Failover Hardening:</strong> Added split-brain protection, confirmed-retry behavior, cursor preservation, and auto-reclaim for configured Primary nodes.</li>
+        <li><strong>Cluster Visibility:</strong> Added a compact cluster map, node icon overrides, live latency tracking, healthy-node summaries, and better diagnostic status.</li>
+        <li><strong>Handover Testing:</strong> Added tools for testing handover behavior before relying on a cluster during a real outage.</li>
+      </ul>
+    </section>
+
+    <section class="automation">
+      <h2><span class="badge" aria-hidden="true">🧹</span>Sweep and Automations</h2>
+      <p class="summary">Server maintenance and member workflows got more capable.</p>
+      <ul>
+        <li><strong>Sweep:</strong> Added a subsystem for finding missing permissions, inactive roles, and other server health issues.</li>
+        <li><strong>Dry-Run Previews:</strong> Added previews so Sweep policies and automation rules can be checked before they make changes.</li>
+        <li><strong>Welcome Flow:</strong> Refactored member join and leave handling with rich embeds, invite tracking, and account-age gating.</li>
+        <li><strong>Lookup Expansion:</strong> Expanded Lookup and Patchy source handling with GitHub, Steam, and improved wiki behavior.</li>
+      </ul>
+    </section>
+
+    <section class="ui">
+      <h2><span class="badge" aria-hidden="true">✨</span>UI and Experience</h2>
+      <p class="summary">The native app and Web UI were brought into a more consistent shape.</p>
+      <ul>
+        <li><strong>Visual Refresh:</strong> Updated native views and the admin Web UI with clearer hierarchy, more consistent controls, and better dashboard density.</li>
+        <li><strong>Activity View:</strong> Merged command and system logs into a unified Activity view with smarter filtering for Gateway, Audit, and Mesh events.</li>
+        <li><strong>Login Polish:</strong> Refined the Web UI login and MFA screens while preserving performance on heavier pages.</li>
+        <li><strong>Automation Editing:</strong> Added variable autocomplete and improved preview placement for workflow configuration.</li>
+      </ul>
+    </section>
+
+    <section class="core">
+      <h2><span class="badge" aria-hidden="true">⚙️</span>Core Infrastructure</h2>
+      <p class="summary">The app foundation moved forward for the next release cycle.</p>
+      <ul>
+        <li><strong>Swift 6:</strong> Migrated the codebase to Swift 6 with stricter concurrency checking.</li>
+        <li><strong>Voice Runtime:</strong> Updated Opus, UDP, TTS, and Discord voice handling for more reliable playback.</li>
+        <li><strong>Recording Playback:</strong> Improved recording streaming and playback behavior.</li>
+        <li><strong>Timezone Support:</strong> Added local timezone and timestamp formatting support in command responses.</li>
+      </ul>
+    </section>
+
+    <section class="docs">
+      <h2><span class="badge" aria-hidden="true">📖</span>Documentation</h2>
+      <p class="summary">Setup and deployment guidance is easier to find.</p>
+      <ul>
+        <li>Added bot setup documentation covering tokens, intents, OAuth, and invite links.</li>
+        <li>Added Web UI setup documentation, including Cloudflare Tunnel guidance.</li>
+        <li>Updated agent and architecture notes for the new release workflow.</li>
+      </ul>
+    </section>
+
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/7846b1f1af975bcf8521a470ad45a74b33bc5e66">7846b1f</a></p>
   </main>
 </body>
 </html>
