@@ -3,46 +3,119 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Release 1.20.1 bug fixes - Release Notes</title>
+  <title>SwiftBot 1.20.1 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
-      color: #0f1720;
+      background: #f5f7fb;
+      color: #111827;
     }
     main {
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto;
-      padding: 28px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.86);
-      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.reliability { --accent: #a21caf; }
+    section.security { --accent: #0f766e; }
+    section.release { --accent: #0a67a3; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body { background: #0b1017; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.88);
+        background: rgba(15, 23, 32, 0.92);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta { color: #9fb0c2; }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Release 1.20.1 bug fixes</h1>
-    <p class="meta">Version 1.20.1</p>
-    <p>Release 1.20.1 bug fixes</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/6368cf1058e248f6072bee7d246fe07f5dacd1c0">6368cf1</a></p>
+    <h1>SwiftBot 1.20.1</h1>
+    <p class="meta">Version 1.20.1 · Build 2026060912</p>
+    <p class="intro">A focused maintenance release for the 1.20 line, tightening Patchy validation, certificate handling, Cloudflare DNS behavior, and release build metadata.</p>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">✅</span>Patchy Reliability</h2>
+      <p class="summary">Patchy received fixes for validation and runtime edge cases.</p>
+      <ul>
+        <li>Improved Patchy validation coverage so malformed or incomplete update data is handled more predictably.</li>
+        <li>Removed stale Patchy UI code that no longer matched the current monitoring flow.</li>
+        <li>Refined app model wiring around Patchy status updates and release checks.</li>
+      </ul>
+    </section>
+
+    <section class="security">
+      <h2><span class="badge" aria-hidden="true">🔐</span>Certificates and Cloudflare</h2>
+      <p class="summary">The Web UI setup path is more robust when certificates and DNS records are involved.</p>
+      <ul>
+        <li>Hardened certificate handling and added regression coverage for certificate-management behavior.</li>
+        <li>Improved Cloudflare DNS provider handling for tunnel and hostname setup.</li>
+        <li>Adjusted Cloudflare tunnel client behavior for the current Web UI preferences flow.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2><span class="badge" aria-hidden="true">🚢</span>Release Polish</h2>
+      <p class="summary">The 1.20.1 build keeps release metadata and project generation aligned.</p>
+      <ul>
+        <li>Updated the Xcode project and XcodeGen configuration for the 1.20.1 release build.</li>
+        <li>Refreshed the appcast entry for the signed 1.20.1 download.</li>
+        <li>Captured the maintenance work in the project roadmap for the next development pass.</li>
+      </ul>
+    </section>
+
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/6368cf1058e248f6072bee7d246fe07f5dacd1c0">6368cf1</a></p>
   </main>
 </body>
 </html>
