@@ -20,6 +20,11 @@ struct PreferencesView: View {
                             .font(.body)
                             .foregroundStyle(.secondary)
                     }
+
+                    SettingsForm {
+                        LocalRecordingsPreferencesSection()
+                    }
+                    .autosavesPreferences(for: app)
                 }
             } else {
                 TabView(selection: $selectedTab) {

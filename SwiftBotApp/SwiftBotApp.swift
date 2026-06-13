@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct SwiftBotApp: App {
     @NSApplicationDelegateAdaptor(SwiftBotAppDelegate.self) private var appDelegate
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var appModel = AppModel()
     @StateObject private var updater = AppUpdater()
     @StateObject private var statusItemController = SwiftBotStatusItemController()
@@ -143,7 +144,9 @@ struct SwiftBotApp: App {
                     .onAppear {
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)
-                        statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode)
+                        statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode) {
+                            openSettings()
+                        }
                         updater.checkForUpdatesInBackground()
                     }
                     .onOpenURL { url in
@@ -156,10 +159,14 @@ struct SwiftBotApp: App {
         }
         .onChange(of: appModel.settings.presenceMode) { _, newValue in
             applyPresenceMode(newValue)
-            statusItemController.update(appModel: appModel, mode: newValue)
+            statusItemController.update(appModel: appModel, mode: newValue) {
+                openSettings()
+            }
         }
         .onChange(of: appModel.status) { _, _ in
-            statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode)
+            statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode) {
+                openSettings()
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -258,7 +265,7 @@ struct SwiftBotApp: App {
 
         UserDefaults.standard.set(3, forKey: "swiftbot.preferences.selectedTab")
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openSettings()
     }
 }
 
@@ -266,9 +273,11 @@ struct SwiftBotApp: App {
 private final class SwiftBotStatusItemController: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
     private weak var appModel: AppModel?
+    private var openSettings: (() -> Void)?
 
-    func update(appModel: AppModel, mode: AppPresenceMode) {
+    func update(appModel: AppModel, mode: AppPresenceMode, openSettings: @escaping () -> Void) {
         self.appModel = appModel
+        self.openSettings = openSettings
 
         guard mode.showsMenuBarIcon else {
             removeStatusItem()
@@ -423,7 +432,7 @@ private final class SwiftBotStatusItemController: NSObject, ObservableObject {
 
     @objc private func showSettingsWindow() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openSettings?()
     }
 
     @objc private func quit() {

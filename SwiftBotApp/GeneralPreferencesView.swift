@@ -17,13 +17,6 @@ struct GeneralPreferencesView: View {
         !app.settings.token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var recordingsSummary: String {
-        let sources = app.mediaLibrarySettings.sources
-        if sources.isEmpty { return "No folders configured" }
-        let enabled = sources.filter(\.isEnabled).count
-        return "\(enabled) of \(sources.count) enabled"
-    }
-
     private var statusTint: Color {
         if !canGenerateInviteLink { return .secondary }
         switch app.status {
@@ -55,7 +48,7 @@ struct GeneralPreferencesView: View {
     var body: some View {
         SettingsForm(
             readOnlyBannerText: app.isFailoverManagedNode
-                ? "Read-only on Failover nodes. These settings sync from Primary."
+                ? "Bot settings are read-only on Failover nodes. Recording folders stay local to this Mac."
                 : nil
         ) {
             Section {
@@ -79,6 +72,7 @@ struct GeneralPreferencesView: View {
                 }
                 .pickerStyle(.menu)
             }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
 
             Section {
                 LabeledContent("Bot Token") {
@@ -112,34 +106,9 @@ struct GeneralPreferencesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
 
-            Section {
-                LabeledContent("Recordings") {
-                    Text(recordingsSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                ForEach($app.mediaLibrarySettings.sources) { $source in
-                    RecordingSourceRow(source: $source) {
-                        app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
-                    }
-                }
-
-                Button {
-                    app.mediaLibrarySettings.sources.append(MediaLibrarySource())
-                } label: {
-                    Label("Add Folder", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-            } header: {
-                Text("Recordings")
-            } footer: {
-                Text("Folders are local to this Mac and surfaced inside the shared Web UI media browser.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            LocalRecordingsPreferencesSection()
 
             Section {
                 Button {
@@ -162,6 +131,7 @@ struct GeneralPreferencesView: View {
             } header: {
                 Text("Setup")
             }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
         }
         .alert("Replace Bot Token?", isPresented: $showingClearTokenConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -176,7 +146,6 @@ struct GeneralPreferencesView: View {
         .sheet(isPresented: $showingPermissionsCheck) {
             BotPermissionsCheckView(token: app.settings.token)
         }
-        .preferencesCardDisabled(when: app.isFailoverManagedNode)
         .overlay(alignment: .topTrailing) {
             if let transientToastMessage {
                 Text(transientToastMessage)
@@ -320,6 +289,47 @@ struct GeneralPreferencesView: View {
                     transientToastMessage = nil
                 }
             }
+        }
+    }
+}
+
+struct LocalRecordingsPreferencesSection: View {
+    @EnvironmentObject private var app: AppModel
+
+    private var recordingsSummary: String {
+        let sources = app.mediaLibrarySettings.sources
+        if sources.isEmpty { return "No folders configured" }
+        let enabled = sources.filter(\.isEnabled).count
+        return "\(enabled) of \(sources.count) enabled"
+    }
+
+    var body: some View {
+        Section {
+            LabeledContent("Recordings") {
+                Text(recordingsSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach($app.mediaLibrarySettings.sources) { $source in
+                RecordingSourceRow(source: $source) {
+                    app.mediaLibrarySettings.sources.removeAll { $0.id == source.id }
+                }
+            }
+
+            Button {
+                app.mediaLibrarySettings.sources.append(MediaLibrarySource())
+            } label: {
+                Label("Add Folder", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        } header: {
+            Text("Recordings")
+        } footer: {
+            Text("Folders are local to this Mac and surfaced inside the shared Web UI media browser.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

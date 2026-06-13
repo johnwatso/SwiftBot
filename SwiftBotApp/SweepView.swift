@@ -316,7 +316,7 @@ enum SweepSchedule: Codable, Hashable {
 struct SweepNotice: Codable, Hashable {
     var isEnabled: Bool = false
     var template: String = ":swiftbird: Swiftbot is managing this channel — it is cleared {time} {frequency}."
-    /// When true, the pinned embed includes a 7-day rolling voice average field
+    /// When true, the pinned embed includes a 7-day rolling voice leaderboard
     /// sourced from SwiftBot's Analytics voice-session history.
     var showVoiceAverages: Bool = false
     /// Set after the notice is first posted + pinned, so subsequent runs edit
@@ -763,9 +763,9 @@ struct LiveSweepDispatcher: SweepDispatcher {
         var embed: [String: Any] = ["title": title, "description": body, "color": 0x5B5BD6]
         if !voiceAverages.isEmpty {
             embed["fields"] = [[
-                "name": "7 Day Average",
+                "name": "7 Day Voice Leaderboard",
                 "value": voiceAverages.enumerated().map { index, average in
-                    "\(index + 1). \(mentionText(for: average)) @ \(formatDuration(average.averageSecondsPerDay))"
+                    "\(index + 1). \(mentionText(for: average)) @ \(formatDuration(average.totalSeconds))"
                 }.joined(separator: "\n"),
                 "inline": false
             ]]
@@ -3525,7 +3525,7 @@ struct SweepPolicyEditor: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Toggle("Show 7-day voice average", isOn: notice.showVoiceAverages)
+                Toggle("Show 7-day voice leaderboard", isOn: notice.showVoiceAverages)
                     .toggleStyle(.switch)
                     .font(.caption)
 
@@ -3556,7 +3556,7 @@ struct SweepPolicyEditor: View {
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
                         if notice.wrappedValue.showVoiceAverages {
-                            Text("7 Day Average\n1. John @ 7 hours\n2. Max @ 6.4 hours\n3. Gabe @ 2 hours")
+                            Text("7 Day Voice Leaderboard\n1. John @ 20 hours\n2. Max @ 6.4 hours\n3. Gabe @ 2 hours")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

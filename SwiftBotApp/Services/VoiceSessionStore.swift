@@ -41,10 +41,12 @@ actor VoiceSessionStore {
     private var isLoaded = false
     private let maxHistoryCount = 10_000
 
-    init() {
-        let folder = SwiftBotStorage.folderURL()
-        self.activeURL = folder.appendingPathComponent(SwiftBotStorage.voiceActiveSessionsFileName)
-        self.historyURL = folder.appendingPathComponent(SwiftBotStorage.voiceSessionHistoryFileName)
+    init(
+        activeURL: URL = SwiftBotStorage.folderURL().appendingPathComponent(SwiftBotStorage.voiceActiveSessionsFileName),
+        historyURL: URL = SwiftBotStorage.folderURL().appendingPathComponent(SwiftBotStorage.voiceSessionHistoryFileName)
+    ) {
+        self.activeURL = activeURL
+        self.historyURL = historyURL
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
@@ -142,12 +144,14 @@ actor VoiceSessionStore {
     func getVoiceActivityLast7Days() -> [(date: Date, count: Int)] {
         let calendar = Calendar.current
         let now = Date()
-        let recentSessions = sessionsInLast7Days(relativeTo: now)
+        let recentSessions = sessionsOverlappingLast7Days(relativeTo: now)
         return (0..<7).reversed().map { daysAgo in
             let day = calendar.date(byAdding: .day, value: -daysAgo, to: now)!
             let startOfDay = calendar.startOfDay(for: day)
             let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-            let count = recentSessions.filter { $0.joinedAt >= startOfDay && $0.joinedAt < endOfDay }.count
+            let count = recentSessions.filter { session in
+                session.joinedAt < endOfDay && (session.leftAt ?? now) >= startOfDay
+            }.count
             return (startOfDay, count)
         }
     }
@@ -155,26 +159,40 @@ actor VoiceSessionStore {
     func getVoiceActivityByHour() -> [(hour: Int, count: Int)] {
         let calendar = Calendar.current
         var counts = [Int: Int]()
-        for session in sessionsInLast7Days() {
+        for session in sessionsOverlappingLast7Days() {
             let hour = calendar.component(.hour, from: session.joinedAt)
             counts[hour, default: 0] += 1
         }
         return (0..<24).map { (hour: $0, count: counts[$0, default: 0]) }
     }
 
-    func getTopVoiceUsers(limit: Int = 5) -> [(username: String, seconds: Int)] {
-        var totals = [String: Int]()
-        for session in sessionsInLast7Days() {
-            totals[session.username, default: 0] += session.durationSeconds ?? 0
+    func getTopVoiceUsers(limit: Int = 5, relativeTo now: Date = Date()) -> [(username: String, seconds: Int)] {
+        var totals = [String: (username: String, seconds: Int)]()
+        for contribution in voiceSessionContributionsLast7Days(relativeTo: now) {
+            var current = totals[contribution.session.userId, default: (username: contribution.session.username, seconds: 0)]
+            current.username = contribution.session.username
+            current.seconds += contribution.seconds
+            totals[contribution.session.userId] = current
         }
-        return totals.sorted { $0.value > $1.value }.prefix(limit).map { ($0.key, $0.value) }
+        return totals.values
+            .sorted {
+                if $0.seconds != $1.seconds { return $0.seconds > $1.seconds }
+                return $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
+            }
+            .prefix(limit)
+            .map { ($0.username, $0.seconds) }
     }
 
-    func getTopVoiceUserRollingAveragesLast7Days(guildId: String? = nil, limit: Int = 5) -> [VoiceUserRollingAverage] {
+    func getTopVoiceUserRollingAveragesLast7Days(
+        guildId: String? = nil,
+        limit: Int = 5,
+        relativeTo now: Date = Date()
+    ) -> [VoiceUserRollingAverage] {
         var totals = [String: (username: String, seconds: Int, sessions: Int)]()
-        for session in sessionsInLast7Days() {
+        for contribution in voiceSessionContributionsLast7Days(guildId: guildId, relativeTo: now) {
+            let session = contribution.session
             if let guildId, session.guildId != guildId { continue }
-            let duration = max(0, session.durationSeconds ?? 0)
+            let duration = max(0, contribution.seconds)
             guard duration > 0 else { continue }
             var current = totals[session.userId, default: (username: session.username, seconds: 0, sessions: 0)]
             current.username = session.username
@@ -195,8 +213,8 @@ actor VoiceSessionStore {
             }
             .filter { $0.averageSecondsPerDay > 0 }
             .sorted {
-                if $0.averageSecondsPerDay != $1.averageSecondsPerDay {
-                    return $0.averageSecondsPerDay > $1.averageSecondsPerDay
+                if $0.totalSeconds != $1.totalSeconds {
+                    return $0.totalSeconds > $1.totalSeconds
                 }
                 return $0.username.localizedCaseInsensitiveCompare($1.username) == .orderedAscending
             }
@@ -206,7 +224,7 @@ actor VoiceSessionStore {
 
     func getTopUserStreakLast7Days() -> (username: String, days: Int)? {
         let calendar = Calendar.current
-        let recentSessions = sessionsInLast7Days()
+        let recentSessions = sessionsOverlappingLast7Days()
         let groupedDays = Dictionary(grouping: recentSessions, by: \.username).mapValues { sessions in
             Set(sessions.map { calendar.startOfDay(for: $0.joinedAt) })
         }
@@ -237,14 +255,14 @@ actor VoiceSessionStore {
 
     func getTotalVoiceTimeThisWeek() -> TimeInterval {
         return TimeInterval(
-            sessionsInLast7Days()
-                .compactMap { $0.durationSeconds }
+            voiceSessionContributionsLast7Days()
+                .map(\.seconds)
                 .reduce(0, +)
         )
     }
 
     func getSessionCountThisWeek() -> Int {
-        sessionsInLast7Days().count
+        sessionsOverlappingLast7Days().count
     }
 
     // MARK: - Private
@@ -253,11 +271,30 @@ actor VoiceSessionStore {
         "\(guildId)-\(userId)"
     }
 
-    private func sessionsInLast7Days(relativeTo now: Date = Date()) -> [VoiceSession] {
-        let calendar = Calendar.current
-        let windowStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now))
-            ?? now.addingTimeInterval(-6 * 24 * 60 * 60)
-        return history.filter { $0.joinedAt >= windowStart && $0.joinedAt <= now }
+    private func sessionsOverlappingLast7Days(relativeTo now: Date = Date()) -> [VoiceSession] {
+        let windowStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        return allSessions().filter { session in
+            session.joinedAt <= now && (session.leftAt ?? now) >= windowStart
+        }
+    }
+
+    private func voiceSessionContributionsLast7Days(
+        guildId: String? = nil,
+        relativeTo now: Date = Date()
+    ) -> [(session: VoiceSession, seconds: Int)] {
+        let windowStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        return allSessions().compactMap { session in
+            if let guildId, session.guildId != guildId { return nil }
+            let end = min(session.leftAt ?? now, now)
+            let start = max(session.joinedAt, windowStart)
+            let seconds = max(0, Int(end.timeIntervalSince(start)))
+            guard seconds > 0 else { return nil }
+            return (session, seconds)
+        }
+    }
+
+    private func allSessions() -> [VoiceSession] {
+        history + Array(activeSessions.values)
     }
 
     private func currentDayStreak(from activeDays: Set<Date>, calendar: Calendar) -> Int {
