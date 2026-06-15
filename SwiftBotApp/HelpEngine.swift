@@ -187,6 +187,15 @@ struct CommandCatalog {
                 isAdminOnly: false
             ),
             CommandEntry(
+                name: "randomteams",
+                aliases: [],
+                usage: "\(prefix)randomteams <teams> [max size <n>]",
+                description: "Suggests balanced random teams from the caller's current voice channel.",
+                examples: ["\(prefix)randomteams 2", "\(prefix)randomteams 2 max size 3"],
+                category: .fun,
+                isAdminOnly: false
+            ),
+            CommandEntry(
                 name: "announce",
                 aliases: [],
                 usage: "/announce join",

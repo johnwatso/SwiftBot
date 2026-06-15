@@ -85,8 +85,10 @@ struct UnifiedRootView: View {
         switch selection {
         case .overview:
             OverviewView(onOpenSwiftMesh: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    selection = .swiftMesh
+                if !shouldHideSwiftMesh {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selection = .swiftMesh
+                    }
                 }
             })
         case .patchy: PatchyView()
@@ -100,9 +102,18 @@ struct UnifiedRootView: View {
         case .voice: VoiceView()
         case .recordings: RecordingsView()
         case .analytics: AnalyticsView()
-        case .swiftMesh: SwiftMeshView()
+        case .swiftMesh:
+            if shouldHideSwiftMesh {
+                OverviewView(onOpenSwiftMesh: {})
+            } else {
+                SwiftMeshView()
+            }
         case .sweep: SweepView()
         }
+    }
+
+    private var shouldHideSwiftMesh: Bool {
+        app.settings.clusterMode == .standalone
     }
 }
 
@@ -176,7 +187,9 @@ struct DashboardSidebar: View {
                         sidebarListRow(.appleIntelligence)
                         sidebarListRow(.analytics)
                         sidebarListRow(.activity)
-                        sidebarListRow(.swiftMesh)
+                        if !shouldHideSwiftMesh {
+                            sidebarListRow(.swiftMesh)
+                        }
                     }
                 }
                 .listStyle(.sidebar)
@@ -253,6 +266,16 @@ struct DashboardSidebar: View {
         .padding(.leading, 8)
         .padding(.trailing, 4)
         .padding(.vertical, 8)
+        .onAppear {
+            if shouldHideSwiftMesh && selection == .swiftMesh {
+                selection = .overview
+            }
+        }
+        .onChange(of: app.settings.clusterMode) { _, newValue in
+            if newValue == .standalone && selection == .swiftMesh {
+                selection = .overview
+            }
+        }
     }
 
     @ViewBuilder
@@ -321,6 +344,10 @@ struct DashboardSidebar: View {
         case .worker: return "cpu"
         case .standby: return "arrow.triangle.2.circlepath"
         }
+    }
+
+    private var shouldHideSwiftMesh: Bool {
+        app.settings.clusterMode == .standalone
     }
 
     private var startButtonTitle: String {

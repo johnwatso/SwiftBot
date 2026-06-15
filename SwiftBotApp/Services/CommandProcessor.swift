@@ -59,6 +59,7 @@ final class CommandProcessor {
         var fetchSteamAppInfo: (String) async -> (ok: Bool, embed: [String: Any]?)
         var sweepCommand: (String) async -> (ok: Bool, message: String)
         var announceCommand: ([String: DiscordJSON]) async -> (ok: Bool, message: String)
+        var randomTeamsCommand: (Int, Int?, [String: DiscordJSON]) async -> (ok: Bool, message: String)
         var lookupUserTimeZone: (String) -> String?
     }
 
@@ -188,6 +189,16 @@ final class CommandProcessor {
             return await dependencies.sendEmbed(context.channelId, dependencies.debugSummaryEmbed())
         case "weekly":
             return await dependencies.send(context.channelId, dependencies.weeklySummary())
+        case "randomteams":
+            let parsed = Self.parseRandomTeamsArguments(Array(tokens.dropFirst()))
+            if let message = parsed.error {
+                return await dependencies.send(context.channelId, message)
+            }
+            if let request = parsed.request {
+                let result = await dependencies.randomTeamsCommand(request.teamCount, request.maxSize, context.raw)
+                return await dependencies.send(context.channelId, result.message)
+            }
+            return await dependencies.send(context.channelId, "Usage: `/randomteams 2 max size 3`.")
         case "meta":
             if let result = await dependencies.fetchFinalsMeta() {
                 return await dependencies.send(context.channelId, result)
@@ -302,6 +313,11 @@ final class CommandProcessor {
             return embed(title: "Announcer", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "weekly":
             return embed(title: "Weekly Summary", description: dependencies.weeklySummary())
+        case "randomteams":
+            let teamCount = Self.slashOptionInt(named: "teams", in: data) ?? 0
+            let maxSize = Self.slashOptionInt(named: "max_size", in: data)
+            let result = await dependencies.randomTeamsCommand(teamCount, maxSize, context.rawLikeMessage)
+            return embed(title: "Random Teams", description: result.message, color: result.ok ? 3_062_954 : 15_790_767)
         case "debug":
             guard await dependencies.canRunDebugCommand(context.rawLikeMessage) else {
                 return embed(title: "Debug", description: "⛔ Restricted to server owners or admins.", color: 15_790_767)
@@ -522,6 +538,46 @@ final class CommandProcessor {
             }
         }
         return nil
+    }
+
+    private struct RandomTeamsRequest {
+        let teamCount: Int
+        let maxSize: Int?
+    }
+
+    private static func parseRandomTeamsArguments(_ tokens: [String]) -> (request: RandomTeamsRequest?, error: String?) {
+        guard let teamToken = tokens.first, let teamCount = Int(teamToken) else {
+            return (nil, "Usage: `/randomteams teams:<count> max_size:<size>` or `/randomteams 2 max size 3`.")
+        }
+
+        var maxSize: Int?
+        var index = 1
+        while index < tokens.count {
+            let token = tokens[index].lowercased()
+            if token == "max" {
+                if index + 2 < tokens.count,
+                   tokens[index + 1].lowercased() == "size",
+                   let parsed = Int(tokens[index + 2]) {
+                    maxSize = parsed
+                    index += 3
+                    continue
+                }
+                if index + 1 < tokens.count, let parsed = Int(tokens[index + 1]) {
+                    maxSize = parsed
+                    index += 2
+                    continue
+                }
+            } else if (token == "maxsize" || token == "max_size"),
+                      index + 1 < tokens.count,
+                      let parsed = Int(tokens[index + 1]) {
+                maxSize = parsed
+                index += 2
+                continue
+            }
+            index += 1
+        }
+
+        return (RandomTeamsRequest(teamCount: teamCount, maxSize: maxSize), nil)
     }
 
     static func timestampReply(for input: String, savedTimeZoneID: String?) -> String {

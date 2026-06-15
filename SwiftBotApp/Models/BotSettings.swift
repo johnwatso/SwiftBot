@@ -94,6 +94,11 @@ struct AdminWebUISettings: Codable, Hashable {
     // Internal constants (not user-configurable)
     static let defaultBindHost = "127.0.0.1"
     static let defaultPort = 38888
+#if DEBUG
+    static let defaultSubdomain = "test"
+#else
+    static let defaultSubdomain = "swiftbot"
+#endif
 
     var enabled: Bool = false
     /// When `true`, the Admin Web UI server refuses to start if HTTPS isn't
@@ -110,7 +115,7 @@ struct AdminWebUISettings: Codable, Hashable {
     /// terminate/network-change recovery paths can't see.
     var tunnelHealthCheckEnabled: Bool = true
     var hostname: String = ""
-    var subdomain: String = "swiftbot"
+    var subdomain: String = Self.defaultSubdomain
     var selectedZoneID: String = ""
     var selectedZoneName: String = ""
     var cloudflareAPIToken: String = ""
@@ -207,7 +212,7 @@ struct AdminWebUISettings: Codable, Hashable {
 
         // Migration: prefer hostname
         hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? ""
-        subdomain = try container.decodeIfPresent(String.self, forKey: .subdomain) ?? "swiftbot"
+        subdomain = try container.decodeIfPresent(String.self, forKey: .subdomain) ?? Self.defaultSubdomain
         selectedZoneID = try container.decodeIfPresent(String.self, forKey: .selectedZoneID) ?? ""
         selectedZoneName = try container.decodeIfPresent(String.self, forKey: .selectedZoneName) ?? ""
 

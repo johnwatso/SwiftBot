@@ -245,6 +245,72 @@ final class CommandProcessorTests: XCTestCase {
         XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join`.")
     }
 
+    func testPrefixRandomTeamsParsesTeamCountAndMaxSize() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            randomTeamsCommand: { teamCount, maxSize, raw in
+                await recorder.recordRandomTeams(teamCount: teamCount, maxSize: maxSize, raw: raw)
+                return (true, "Random teams result")
+            }
+        )
+
+        let ok = await processor.executePrefixCommand(
+            .init(
+                commandText: "randomteams 2 max size 3",
+                username: "Taylor",
+                channelId: "channel-1",
+                raw: ["author": .object(["id": .string("user-9")])],
+                bypassSystemToggles: false
+            )
+        )
+
+        XCTAssertTrue(ok)
+        let calls = await recorder.randomTeams()
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.teamCount, 2)
+        XCTAssertEqual(calls.first?.maxSize, 3)
+    }
+
+    func testSlashRandomTeamsRoutesOptions() async {
+        let recorder = CommandRecorder()
+        let processor = makeProcessor(
+            recorder: recorder,
+            randomTeamsCommand: { teamCount, maxSize, raw in
+                await recorder.recordRandomTeams(teamCount: teamCount, maxSize: maxSize, raw: raw)
+                return (true, "Random teams result")
+            }
+        )
+
+        let response = await processor.executeSlashCommand(
+            command: "randomteams",
+            data: [
+                "options": .array([
+                    .object([
+                        "name": .string("teams"),
+                        "value": .int(2)
+                    ]),
+                    .object([
+                        "name": .string("max_size"),
+                        "value": .int(3)
+                    ])
+                ])
+            ],
+            context: .init(
+                channelId: "channel-1",
+                username: "Taylor",
+                rawLikeMessage: ["author": .object(["id": .string("user-9")])]
+            )
+        )
+
+        XCTAssertEqual(response.embeds?.first?["title"] as? String, "Random Teams")
+        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Random teams result")
+        let calls = await recorder.randomTeams()
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.teamCount, 2)
+        XCTAssertEqual(calls.first?.maxSize, 3)
+    }
+
     func testSlashMinerPrioritiseRoutesGameToSwiftMiner() async {
         let recorder = CommandRecorder()
         let processor = makeProcessor(
@@ -313,6 +379,26 @@ final class CommandProcessorTests: XCTestCase {
 
         XCTAssertFalse(result.ok)
         XCTAssertEqual(result.message, "Join a configured voice channel first, then run `/announce join` again.")
+    }
+
+    func testRandomTeamsUsesCallersCurrentVoiceChannelAndMaxSize() async {
+        let app = AppModel()
+        await app.replaceVoicePresence([
+            VoiceMemberPresence(id: "guild-1-user-1", userId: "user-1", username: "Alex", guildId: "guild-1", channelId: "voice-1", channelName: "General", joinedAt: Date()),
+            VoiceMemberPresence(id: "guild-1-user-2", userId: "user-2", username: "Blair", guildId: "guild-1", channelId: "voice-1", channelName: "General", joinedAt: Date()),
+            VoiceMemberPresence(id: "guild-1-user-3", userId: "user-3", username: "Casey", guildId: "guild-1", channelId: "voice-1", channelName: "General", joinedAt: Date()),
+            VoiceMemberPresence(id: "guild-1-user-4", userId: "user-4", username: "Devon", guildId: "guild-1", channelId: "voice-1", channelName: "General", joinedAt: Date()),
+            VoiceMemberPresence(id: "guild-1-user-5", userId: "user-5", username: "Elliot", guildId: "guild-1", channelId: "voice-2", channelName: "Other", joinedAt: Date())
+        ])
+
+        let result = await app.suggestRandomTeams(
+            teamCount: 2,
+            maxSize: 1,
+            raw: announceRaw(userID: "user-1", guildID: "guild-1")
+        )
+
+        XCTAssertFalse(result.ok)
+        XCTAssertEqual(result.message, "General has 4 member(s), but 2 teams with max size 1 only fit 2.")
     }
 
     func testAnnouncerVoiceChannelConfigDecodesManualIntroDefault() throws {
@@ -425,6 +511,9 @@ final class CommandProcessorTests: XCTestCase {
         announceCommand: @escaping ([String: DiscordJSON]) async -> (ok: Bool, message: String) = { _ in
             (ok: true, message: "Announcer result")
         },
+        randomTeamsCommand: @escaping (Int, Int?, [String: DiscordJSON]) async -> (ok: Bool, message: String) = { _, _, _ in
+            (ok: true, message: "Random teams result")
+        },
         swiftMinerSlashCommand: @escaping (String, String?, String, String) async -> (ok: Bool, message: String, embed: [String: Any]?) = { _, _, _, _ in
             (true, "SwiftMiner result", nil)
         }
@@ -522,6 +611,7 @@ final class CommandProcessorTests: XCTestCase {
                     (ok: true, message: "Sweep result")
                 },
                 announceCommand: announceCommand,
+                randomTeamsCommand: randomTeamsCommand,
                 lookupUserTimeZone: { _ in nil }
             )
         )
@@ -542,6 +632,7 @@ private actor CommandRecorder {
     private var musicLookupRecords: [(query: String?, title: String?, artist: String?, userId: String, channelId: String)] = []
     private var musicPickRecords: [(selection: Int, userId: String, channelId: String)] = []
     private var announceRecords: [[String: DiscordJSON]] = []
+    private var randomTeamRecords: [(teamCount: Int, maxSize: Int?, raw: [String: DiscordJSON])] = []
 
     func recordMessage(channelId: String, content: String) {
         messages.append((channelId, content))
@@ -565,6 +656,10 @@ private actor CommandRecorder {
 
     func recordAnnounce(raw: [String: DiscordJSON]) {
         announceRecords.append(raw)
+    }
+
+    func recordRandomTeams(teamCount: Int, maxSize: Int?, raw: [String: DiscordJSON]) {
+        randomTeamRecords.append((teamCount, maxSize, raw))
     }
 
     func sentMessages() -> [(channelId: String, content: String)] {
@@ -594,5 +689,9 @@ private actor CommandRecorder {
 
     func announces() -> [[String: DiscordJSON]] {
         announceRecords
+    }
+
+    func randomTeams() -> [(teamCount: Int, maxSize: Int?, raw: [String: DiscordJSON])] {
+        randomTeamRecords
     }
 }

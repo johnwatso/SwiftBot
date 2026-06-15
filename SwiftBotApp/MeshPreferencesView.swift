@@ -74,6 +74,10 @@ struct MeshPreferencesView: View {
         app.settings.clusterMode == .leader
     }
 
+    private var shouldShowConfigurationDetails: Bool {
+        app.settings.clusterMode == .standby || app.settings.clusterMode == .worker
+    }
+
     private var workerOffloadBinding: Binding<Bool> {
         Binding(
             get: { app.settings.clusterWorkerOffloadEnabled },
@@ -104,26 +108,28 @@ struct MeshPreferencesView: View {
                 }
                 .pickerStyle(.menu)
 
-                TextField(
-                    "Node Name",
-                    text: $app.settings.clusterNodeName,
-                    prompt: Text("SwiftBot Node")
-                )
-
-                if app.settings.clusterMode == .standby {
+                if shouldShowConfigurationDetails {
                     TextField(
-                        "Primary Host",
-                        text: $app.settings.clusterLeaderAddress,
-                        prompt: Text("192.168.1.100")
+                        "Node Name",
+                        text: $app.settings.clusterNodeName,
+                        prompt: Text("SwiftBot Node")
                     )
-                }
 
-                LabeledContent("Shared Secret") {
-                    RevealableSecretField(
-                        text: $app.settings.clusterSharedSecret,
-                        placeholder: "Required for clustered mode",
-                        allowRegenerate: true
-                    )
+                    if app.settings.clusterMode == .standby {
+                        TextField(
+                            "Primary Host",
+                            text: $app.settings.clusterLeaderAddress,
+                            prompt: Text("192.168.1.100")
+                        )
+                    }
+
+                    LabeledContent("Shared Secret") {
+                        RevealableSecretField(
+                            text: $app.settings.clusterSharedSecret,
+                            placeholder: "Required for clustered mode",
+                            allowRegenerate: true
+                        )
+                    }
                 }
             } header: {
                 Label("Configuration", systemImage: "network")
@@ -175,58 +181,60 @@ struct MeshPreferencesView: View {
             // Join Code flow pre-fills everything correctly; only needed for
             // multi-instance, NAT port-forward, or split inbound/outbound
             // setups.
-            Section {
-                DisclosureGroup(isExpanded: $isAdvancedPortsExpanded) {
-                    LabeledContent("Mesh Port") {
-                        VStack(alignment: .trailing, spacing: 4) {
-                            TextField("38787", text: listenPortBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .labelsHidden()
-                                .frame(width: 120)
-                            if hasInvalidPort {
-                                Text("Port must be between 1 and 65535.")
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                    }
-
-                    Toggle("Use a different outbound port", isOn: $useSeparateLeaderPort)
-                        .onChange(of: useSeparateLeaderPort) { _, isOn in
-                            if !isOn {
-                                app.settings.clusterLeaderPort = app.settings.clusterListenPort
-                            }
-                        }
-
-                    if useSeparateLeaderPort {
-                        LabeledContent("Leader Port") {
+            if shouldShowConfigurationDetails {
+                Section {
+                    DisclosureGroup(isExpanded: $isAdvancedPortsExpanded) {
+                        LabeledContent("Mesh Port") {
                             VStack(alignment: .trailing, spacing: 4) {
-                                TextField("38787", text: leaderPortBinding)
+                                TextField("38787", text: listenPortBinding)
                                     .textFieldStyle(.roundedBorder)
                                     .labelsHidden()
                                     .frame(width: 120)
-                                if hasInvalidLeaderPort {
-                                    Text("Leader Port must be between 1 and 65535.")
+                                if hasInvalidPort {
+                                    Text("Port must be between 1 and 65535.")
                                         .font(.caption)
                                         .foregroundStyle(.red)
                                 }
                             }
                         }
-                        SettingsSecondaryText("Use when the Primary listens on a different port than this node (two SwiftBot instances on the same machine, or a NAT port-forward).")
+
+                        Toggle("Use a different outbound port", isOn: $useSeparateLeaderPort)
+                            .onChange(of: useSeparateLeaderPort) { _, isOn in
+                                if !isOn {
+                                    app.settings.clusterLeaderPort = app.settings.clusterListenPort
+                                }
+                            }
+
+                        if useSeparateLeaderPort {
+                            LabeledContent("Leader Port") {
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    TextField("38787", text: leaderPortBinding)
+                                        .textFieldStyle(.roundedBorder)
+                                        .labelsHidden()
+                                        .frame(width: 120)
+                                    if hasInvalidLeaderPort {
+                                        Text("Leader Port must be between 1 and 65535.")
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                            SettingsSecondaryText("Use when the Primary listens on a different port than this node (two SwiftBot instances on the same machine, or a NAT port-forward).")
+                        }
+                    } label: {
+                        Text("Advanced Ports")
+                            .font(.subheadline.weight(.medium))
                     }
-                } label: {
-                    Text("Advanced Ports")
-                        .font(.subheadline.weight(.medium))
+                } footer: {
+                    Text("The Join Code on the Primary node fills these in automatically — you only need to touch them for multi-instance or NAT setups.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            } footer: {
-                Text("The Join Code on the Primary node fills these in automatically — you only need to touch them for multi-instance or NAT setups.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             // MARK: - Join Code (Leader only)
 
-            if app.settings.clusterMode == .leader {
+            if app.settings.clusterMode == .leader && shouldShowConfigurationDetails {
                 Section {
                     Button {
                         isCopyingJoinCode = true
@@ -268,7 +276,7 @@ struct MeshPreferencesView: View {
 
             // MARK: - Auto-Reclaim (Leader only)
 
-            if app.settings.clusterMode == .leader {
+            if app.settings.clusterMode == .leader && shouldShowConfigurationDetails {
                 Section {
                     Toggle(
                         "Reclaim Primary automatically after failover",
@@ -302,39 +310,41 @@ struct MeshPreferencesView: View {
 
             // MARK: - Worker Offload
 
-            Section {
-                Toggle("Enable Worker Offload", isOn: workerOffloadBinding)
+            if shouldShowConfigurationDetails {
+                Section {
+                    Toggle("Enable Worker Offload", isOn: workerOffloadBinding)
 
-                if app.settings.clusterWorkerOffloadEnabled {
-                    Toggle("Offload AI replies to workers when Primary", isOn: $app.settings.clusterOffloadAIReplies)
-                    Toggle("Offload Wiki lookups to workers when Primary", isOn: $app.settings.clusterOffloadWikiLookups)
-                }
-            } header: {
-                Label("Worker Offload", systemImage: "point.3.connected.trianglepath.dotted")
-            } footer: {
-                Text("Allow SwiftBot to distribute certain workloads to worker nodes in the SwiftMesh cluster.")
-            }
-            .disabled(!canEditOffloadPolicy)
-            .opacity(canEditOffloadPolicy ? 1 : 0.62)
-            .animation(.easeInOut(duration: 0.2), value: app.settings.clusterWorkerOffloadEnabled)
-            .alert("Enable Worker Offload?", isPresented: $showWorkerOffloadWarning) {
-                Button("Cancel", role: .cancel) {}
-                Button("Enable Worker Offload") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        app.settings.clusterWorkerOffloadEnabled = true
+                    if app.settings.clusterWorkerOffloadEnabled {
+                        Toggle("Offload AI replies to workers when Primary", isOn: $app.settings.clusterOffloadAIReplies)
+                        Toggle("Offload Wiki lookups to workers when Primary", isOn: $app.settings.clusterOffloadWikiLookups)
                     }
+                } header: {
+                    Label("Worker Offload", systemImage: "point.3.connected.trianglepath.dotted")
+                } footer: {
+                    Text("Allow SwiftBot to distribute certain workloads to worker nodes in the SwiftMesh cluster.")
                 }
-                .keyboardShortcut(.defaultAction)
-            } message: {
-                Text(
-                    """
-                    Enabling Worker Offload allows SwiftBot to distribute certain responses to worker nodes.
+                .disabled(!canEditOffloadPolicy)
+                .opacity(canEditOffloadPolicy ? 1 : 0.62)
+                .animation(.easeInOut(duration: 0.2), value: app.settings.clusterWorkerOffloadEnabled)
+                .alert("Enable Worker Offload?", isPresented: $showWorkerOffloadWarning) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Enable Worker Offload") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            app.settings.clusterWorkerOffloadEnabled = true
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                } message: {
+                    Text(
+                        """
+                        Enabling Worker Offload allows SwiftBot to distribute certain responses to worker nodes.
 
-                    Worker nodes will use the same Discord API token as the primary bot instance. Running multiple bot processes with the same token may cause duplicate responses or rate-limit conflicts.
+                        Worker nodes will use the same Discord API token as the primary bot instance. Running multiple bot processes with the same token may cause duplicate responses or rate-limit conflicts.
 
-                    Discord recommends operating a single active bot connection per token. This feature should only be enabled in advanced or controlled environments.
-                    """
-                )
+                        Discord recommends operating a single active bot connection per token. This feature should only be enabled in advanced or controlled environments.
+                        """
+                    )
+                }
             }
 
             // MARK: - Cluster Status (Standby only)

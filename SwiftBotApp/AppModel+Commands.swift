@@ -155,6 +155,65 @@ extension AppModel {
         }
     }
 
+    func suggestRandomTeams(
+        teamCount: Int,
+        maxSize: Int?,
+        raw: [String: DiscordJSON]
+    ) async -> (ok: Bool, message: String) {
+        guard teamCount >= 2 else {
+            return (false, "Pick at least 2 teams. Example: `/randomteams teams:2 max_size:3`.")
+        }
+        if let maxSize, maxSize < 1 {
+            return (false, "Max size must be at least 1.")
+        }
+        guard let guildID = guildId(from: raw), !guildID.isEmpty else {
+            return (false, "`/randomteams` only works inside a server.")
+        }
+        guard let userID = authorId(from: raw), !userID.isEmpty else {
+            return (false, "Could not identify who ran the command.")
+        }
+        guard let caller = activeVoice.first(where: { $0.guildId == guildID && $0.userId == userID }) else {
+            return (false, "Join a voice channel first, then run `/randomteams` again.")
+        }
+
+        let botIDs = knownBotUserIds.union(botUserId.map { [$0] } ?? [])
+        let members = activeVoice
+            .filter { member in
+                member.guildId == guildID &&
+                member.channelId == caller.channelId &&
+                !botIDs.contains(member.userId)
+            }
+            .sorted { lhs, rhs in
+                lhs.username.localizedCaseInsensitiveCompare(rhs.username) == .orderedAscending
+            }
+
+        guard members.count >= teamCount else {
+            return (false, "\(caller.channelName) has \(members.count) member(s). Need at least \(teamCount) to make that many teams.")
+        }
+
+        if let maxSize, members.count > teamCount * maxSize {
+            return (
+                false,
+                "\(caller.channelName) has \(members.count) member(s), but \(teamCount) teams with max size \(maxSize) only fit \(teamCount * maxSize)."
+            )
+        }
+
+        var teams = Array(repeating: [VoiceMemberPresence](), count: teamCount)
+        for (index, member) in members.shuffled().enumerated() {
+            teams[index % teamCount].append(member)
+        }
+
+        var lines = ["🎲 Random teams from \(caller.channelName)"]
+        if let maxSize {
+            lines[0] += " · max \(maxSize)/team"
+        }
+        for (index, team) in teams.enumerated() {
+            let names = team.map(\.username).joined(separator: ", ")
+            lines.append("**Team \(index + 1)**: \(names)")
+        }
+        return (true, lines.joined(separator: "\n"))
+    }
+
     func buildSpotifySearchURL(query: String) -> String {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? query
         return "https://open.spotify.com/search/\(encoded)"

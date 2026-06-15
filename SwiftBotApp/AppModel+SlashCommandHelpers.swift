@@ -19,6 +19,10 @@ extension AppModel {
                 ["type": 7, "name": "channel", "description": "Channel for add/remove", "required": false]
             ]],
             ["name": "weekly", "description": "Show weekly summary", "type": 1],
+            ["name": "randomteams", "description": "Suggest balanced teams from your current voice channel", "type": 1, "options": [
+                ["type": 4, "name": "teams", "description": "Number of teams to make", "required": true, "min_value": 2],
+                ["type": 4, "name": "max_size", "description": "Optional maximum members per team", "required": false, "min_value": 1]
+            ]],
             ["name": "image", "description": "Generate an image with OpenAI", "type": 1, "options": [["type": 3, "name": "prompt", "description": "Image prompt", "required": true]]],
             ["name": "music", "description": "Search music and get Apple/Spotify/YouTube links", "type": 1, "options": [
                 ["type": 5, "name": "help", "description": "Show detailed music + playlist help", "required": false],

@@ -437,6 +437,7 @@ struct ViewSectionHeader: View {
 struct SettingsSectionHeader: View {
     let title: String
     let systemImage: String
+    var assetImage: String?
     var titleFont: Font = .headline
 
     var body: some View {
@@ -444,8 +445,15 @@ struct SettingsSectionHeader: View {
             Text(title)
                 .font(titleFont)
         } icon: {
-            Image(systemName: systemImage)
-                .imageScale(.medium)
+            if let assetImage {
+                Image(assetImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+            } else {
+                Image(systemName: systemImage)
+                    .imageScale(.medium)
+            }
         }
         .labelStyle(.titleAndIcon)
     }
@@ -494,6 +502,7 @@ enum PreferencesCardDensity {
 struct PreferencesCard<Content: View>: View {
     let title: String
     let systemImage: String?
+    let assetImage: String?
     let subtitle: String?
     let density: PreferencesCardDensity
     let content: Content
@@ -501,12 +510,14 @@ struct PreferencesCard<Content: View>: View {
     init(
         _ title: String,
         systemImage: String? = nil,
+        assetImage: String? = nil,
         subtitle: String? = nil,
         density: PreferencesCardDensity = .compact,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.systemImage = systemImage
+        self.assetImage = assetImage
         self.subtitle = subtitle
         self.density = density
         self.content = content()
@@ -516,7 +527,7 @@ struct PreferencesCard<Content: View>: View {
         VStack(alignment: .leading, spacing: density.innerSpacing) {
             VStack(alignment: .leading, spacing: 4) {
                 if let systemImage {
-                    SettingsSectionHeader(title: title, systemImage: systemImage)
+                    SettingsSectionHeader(title: title, systemImage: systemImage, assetImage: assetImage)
                 } else {
                     Text(title)
                         .font(.headline)
@@ -951,4 +962,3 @@ extension View {
         modifier(FadingEdgesModifier(top: top, bottom: bottom))
     }
 }
-

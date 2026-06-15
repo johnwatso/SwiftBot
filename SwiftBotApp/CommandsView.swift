@@ -292,7 +292,7 @@ struct CommandsView: View {
         switch commandName.lowercased() {
         case "help", "ping", "userinfo":
             return .general
-        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp", "announce":
+        case "roll", "8ball", "poll", "image", "music", "playlist", "wiki", "timestamp", "announce", "randomteams":
             return .utilities
         case "debug", "ignorechannel", "setchannel", "notifystatus":
             return .moderation
@@ -328,6 +328,7 @@ struct CommandsView: View {
         case "meta": return "crown.fill"
         case "timestamp": return "clock.fill"
         case "announce": return "speaker.wave.2.bubble.fill"
+        case "randomteams": return "person.3.sequence.fill"
         default: return "command"
         }
     }
