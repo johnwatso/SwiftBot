@@ -20,7 +20,7 @@ struct DiscordPreferencesView: View {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
             }
 
-            PreferencesCard("Discord Authentication", systemImage: "message") {
+            PreferencesCard("Discord Authentication", systemImage: "message", assetImage: "DiscordLogo") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Bot Token")
                         .font(.subheadline.weight(.medium))

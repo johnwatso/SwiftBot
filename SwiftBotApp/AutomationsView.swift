@@ -22,6 +22,12 @@ struct AutomationsView: View {
         app.automationStore.rules.filter { $0.category == category }
     }
 
+    private var conflictFindingsInCategory: [AutomationConflictDetector.Finding] {
+        let ruleIds = Set(rulesInCategory.map(\.id))
+        return AutomationConflictDetector.findings(in: app.automationStore.rules)
+            .filter { !Set($0.ruleIds).isDisjoint(with: ruleIds) }
+    }
+
     private var copy: ViewCopy { ViewCopy.for(category) }
 
     private struct ViewCopy {
@@ -102,6 +108,7 @@ struct AutomationsView: View {
             AutomationRuleEditor(
                 rule: target.rule,
                 isNew: target.isNew,
+                allRules: app.automationStore.rules,
                 serverContext: app.automationServerContext(),
                 onSave: { updated in
                     app.automationStore.upsert(updated)
@@ -288,6 +295,10 @@ struct AutomationsView: View {
     private var rulesListSection: some View {
         AutomationsSection(title: copy.listSection, symbol: "list.bullet") {
             VStack(spacing: 6) {
+                if !conflictFindingsInCategory.isEmpty {
+                    conflictSummary(findings: conflictFindingsInCategory)
+                        .padding(.bottom, 4)
+                }
                 if rulesInCategory.isEmpty {
                     Text(copy.emptyHint)
                         .font(.subheadline)
@@ -315,7 +326,8 @@ struct AutomationsView: View {
     }
 
     private func ruleRow(_ rule: Automations.Rule) -> some View {
-        HStack(spacing: 10) {
+        let findings = AutomationConflictDetector.findings(for: rule, in: app.automationStore.rules)
+        return HStack(spacing: 10) {
             Circle()
                 .fill(rule.enabled ? Color.green : Color.secondary.opacity(0.5))
                 .frame(width: 7, height: 7)
@@ -334,6 +346,13 @@ struct AutomationsView: View {
                     .lineLimit(1)
             }
             Spacer()
+            if !findings.isEmpty {
+                Label("\(findings.count)", systemImage: conflictIcon(for: findings))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(conflictColor(for: findings))
+                    .labelStyle(.iconOnly)
+                    .help(findings.map(\.title).joined(separator: "\n"))
+            }
             Toggle("", isOn: Binding(
                 get: { rule.enabled },
                 set: { _ in app.automationStore.toggleEnabled(id: rule.id) }
@@ -372,6 +391,44 @@ struct AutomationsView: View {
                 app.automationStore.remove(id: rule.id)
             }
         }
+    }
+
+    private func conflictSummary(findings: [AutomationConflictDetector.Finding]) -> some View {
+        let warnings = findings.filter { $0.severity == .warning }.count
+        let title = warnings > 0 ? "\(warnings) conflict warning\(warnings == 1 ? "" : "s")" : "\(findings.count) overlap note\(findings.count == 1 ? "" : "s")"
+        let detail = findings.first?.title ?? "Review overlapping rules"
+
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: warnings > 0 ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .foregroundStyle(warnings > 0 ? .orange : .blue)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill((warnings > 0 ? Color.orange : Color.blue).opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke((warnings > 0 ? Color.orange : Color.blue).opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func conflictIcon(for findings: [AutomationConflictDetector.Finding]) -> String {
+        findings.contains { $0.severity == .warning } ? "exclamationmark.triangle.fill" : "info.circle.fill"
+    }
+
+    private func conflictColor(for findings: [AutomationConflictDetector.Finding]) -> Color {
+        findings.contains { $0.severity == .warning } ? .orange : .blue
     }
 
     // MARK: - Mutations

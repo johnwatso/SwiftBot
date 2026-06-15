@@ -16,6 +16,7 @@ struct AutomationRuleEditor: View {
     @State private var isShowingSimulation: Bool = false
     @State private var isSimulatorExpanded: Bool = false
     let isNew: Bool
+    let allRules: [Automations.Rule]
     let serverContext: AutomationDrafter.ServerContext
     let onSave: (Automations.Rule) -> Void
     let onDelete: (String) -> Void
@@ -23,12 +24,14 @@ struct AutomationRuleEditor: View {
     init(
         rule: Automations.Rule,
         isNew: Bool,
+        allRules: [Automations.Rule] = [],
         serverContext: AutomationDrafter.ServerContext,
         onSave: @escaping (Automations.Rule) -> Void,
         onDelete: @escaping (String) -> Void
     ) {
         self._rule = State(initialValue: rule)
         self.isNew = isNew
+        self.allRules = allRules
         self.serverContext = serverContext
         self.onSave = onSave
         self.onDelete = onDelete
@@ -111,6 +114,12 @@ struct AutomationRuleEditor: View {
 
                     AutomationFormSection(title: "THEN do these steps", symbol: "arrow.triangle.branch") {
                         stepsEditor
+                    }
+
+                    if !currentConflictFindings.isEmpty {
+                        AutomationFormSection(title: "Conflict warnings", symbol: "exclamationmark.triangle.fill") {
+                            conflictFindingsView
+                        }
                     }
 
                     AutomationFormSection(title: "Rule Simulator (Dry Run)", symbol: "play.circle.fill") {
@@ -261,6 +270,20 @@ struct AutomationRuleEditor: View {
             && allRequiredChannelsSet
     }
 
+    private var currentRulesSnapshot: [Automations.Rule] {
+        var snapshot = allRules
+        if let index = snapshot.firstIndex(where: { $0.id == rule.id }) {
+            snapshot[index] = rule
+        } else {
+            snapshot.append(rule)
+        }
+        return snapshot
+    }
+
+    private var currentConflictFindings: [AutomationConflictDetector.Finding] {
+        AutomationConflictDetector.findings(for: rule, in: currentRulesSnapshot)
+    }
+
     /// Steps that target a specific channel must have one chosen before the
     /// rule can be saved — the channel picker no longer auto-fills a default.
     private var allRequiredChannelsSet: Bool {
@@ -284,6 +307,41 @@ struct AutomationRuleEditor: View {
     }
 
     // MARK: - Trigger editor
+
+    private var conflictFindingsView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(currentConflictFindings) { finding in
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: finding.severity == .warning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(finding.severity == .warning ? .orange : .blue)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(finding.title)
+                            .font(.subheadline.weight(.semibold))
+                        Text(finding.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill((finding.severity == .warning ? Color.orange : Color.blue).opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke((finding.severity == .warning ? Color.orange : Color.blue).opacity(0.18), lineWidth: 1)
+                )
+            }
+
+            Text("Warnings do not block saving. Use them to spot rules that may overlap or cancel each other out.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
 
     private var triggerEditor: some View {
         VStack(alignment: .leading, spacing: 14) {

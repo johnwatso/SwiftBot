@@ -194,6 +194,7 @@ struct InternetAccessConfigurationSection: View {
     @State private var lastError: Error?
     @State private var showingReRunSetupConfirmation = false
     @State private var showingNonPrimaryWarning = false
+    @State private var showingSetupStatusWindow = false
 
     // Progressive Setup State (Transients)
     @State private var availableZones: [CloudflareDNSProvider.ZoneSummary] = []
@@ -213,6 +214,32 @@ struct InternetAccessConfigurationSection: View {
 
         let hostname = app.settings.adminWebUI.normalizedHostname
         return hostname.isEmpty ? "" : "https://\(hostname)"
+    }
+
+    private var isInternetAccessActive: Bool {
+        app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled
+    }
+
+    private var selectedZoneDisplayName: String {
+        if let selectedZone {
+            return selectedZone.name
+        }
+
+        return app.settings.adminWebUI.selectedZoneName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hostnamePreviewString: String {
+        let subdomain = app.settings.adminWebUI.subdomain
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let zoneName = selectedZoneDisplayName
+
+        if !subdomain.isEmpty && !zoneName.isEmpty {
+            return "https://\(subdomain).\(zoneName)"
+        }
+
+        return publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString
     }
 
     private var sharedHostname: String {
@@ -331,133 +358,34 @@ struct InternetAccessConfigurationSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            DisclosureGroup(isExpanded: $isCredentialsExpanded) {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Cloudflare API Token")
-                            .font(.subheadline.weight(.medium))
+            if isInternetAccessActive && !isEnabling && !isDisabling {
+                configuredInternetAccessSummary
+            } else {
+                DisclosureGroup(isExpanded: $isCredentialsExpanded) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Cloudflare API Token")
+                                .font(.subheadline.weight(.medium))
 
-                        cloudflareTokenControl
+                            cloudflareTokenControl
 
-                        Text("Stored securely in your macOS Keychain. The token needs DNS:Edit and Tunnel:Edit permissions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Hostname")
-                            .font(.subheadline.weight(.medium))
-
-                        // Inline hostname editor: [subdomain] . [zone ▼]
-                        HStack(spacing: 6) {
-                            TextField("swiftbot", text: $app.settings.adminWebUI.subdomain)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 120)
-                                .disabled(app.settings.adminWebUI.internetAccessEnabled)
-                                .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
-                                    let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
-                                    if filtered != newValue {
-                                        app.settings.adminWebUI.subdomain = filtered
-                                    }
-                                }
-
-                            Text(".")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-
-                            Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
-                                if availableZones.isEmpty {
-                                    if !app.settings.adminWebUI.selectedZoneName.isEmpty {
-                                        Text(app.settings.adminWebUI.selectedZoneName)
-                                            .tag(app.settings.adminWebUI.selectedZoneID)
-                                    } else {
-                                        Text("Verify token to load zones")
-                                            .tag("")
-                                    }
-                                } else {
-                                    ForEach(availableZones, id: \.id) { zone in
-                                        Text(zone.name).tag(zone.id)
-                                    }
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
-                            .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
-                                if let zone = availableZones.first(where: { $0.id == newValue }) {
-                                    app.settings.adminWebUI.selectedZoneName = zone.name
-                                }
-                            }
-
-                            Spacer()
-                        }
-
-                        // Live URL preview
-                        HStack(spacing: 4) {
-                            Text("SwiftBot will be available at:")
+                            Text("Stored securely in your macOS Keychain. The token needs DNS:Edit and Tunnel:Edit permissions.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(publicURLString.isEmpty ? "https://swiftbot.example.com" : publicURLString)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        hostnameEditor
                     }
+                    .padding(.top, 6)
+                } label: {
+                    Text("Cloudflare Setup")
+                        .font(.subheadline.weight(.semibold))
                 }
-                .padding(.top, 6)
-            } label: {
-                Text("Cloudflare Credentials & Hostname")
-                    .font(.subheadline.weight(.semibold))
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                if app.settings.adminWebUI.internetAccessEnabled && app.adminWebPublicAccessStatus.isEnabled && !publicURLString.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(.green)
-                                .font(.title3)
-                            Text("SwiftBot Dashboard")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                        }
-
-                        Text(publicURLString)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-
-                        HStack(spacing: 10) {
-                            Button {
-                                openURL()
-                            } label: {
-                                Label("Open in Browser", systemImage: "arrow.up.right.square")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.regular)
-
-                            Button {
-                                copyURL()
-                            } label: {
-                                Label("Copy URL", systemImage: "doc.on.doc")
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.regular)
-
-                            Button {
-                                showingReRunSetupConfirmation = true
-                            } label: {
-                                Label("Re-run Setup", systemImage: "arrow.clockwise")
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.regular)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                } else {
+                if !isInternetAccessActive {
                     HStack(spacing: 8) {
                         Text("Status:")
                             .font(.subheadline.weight(.medium))
@@ -472,31 +400,6 @@ struct InternetAccessConfigurationSection: View {
                             .font(.caption)
                             .foregroundStyle(feedback.status == .error ? .red : .secondary)
                     }
-                }
-            }
-
-            if !app.settings.adminWebUI.internetAccessEnabled || isEnabling || isDisabling {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Setup Status")
-                        .font(.headline.weight(.semibold))
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(checklistItems) { item in
-                            AdminWebStatusRow(
-                                title: item.title,
-                                detail: item.detail,
-                                status: item.status,
-                                isProcessing: isEnabling && checklistItems.first(where: { $0.status == .warning })?.id == item.id
-                            )
-                        }
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.05), lineWidth: 1)
-                    )
                 }
             }
 
@@ -563,6 +466,15 @@ struct InternetAccessConfigurationSection: View {
         } message: {
             Text("You can attempt to repair the existing configuration, or remove the configuration and start setup again.")
         }
+        .sheet(isPresented: $showingSetupStatusWindow) {
+            InternetAccessSetupStatusWindow(
+                items: checklistItems,
+                feedback: setupFeedback,
+                isProcessing: isEnabling,
+                currentProcessingItemID: checklistItems.first(where: { $0.status == .warning })?.id
+            )
+            .interactiveDismissDisabled(isEnabling)
+        }
         .alert("Web UI Configuration on Non-Primary Node", isPresented: $showingNonPrimaryWarning) {
             Button("Cancel", role: .cancel) { }
             Button("Continue Anyway") {
@@ -595,6 +507,135 @@ struct InternetAccessConfigurationSection: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var hostnameEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hostname")
+                .font(.subheadline.weight(.medium))
+
+            HStack(alignment: .top, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Subdomain")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    TextField(AdminWebUISettings.defaultSubdomain, text: $app.settings.adminWebUI.subdomain)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                        .disabled(app.settings.adminWebUI.internetAccessEnabled)
+                        .onChange(of: app.settings.adminWebUI.subdomain) { _, newValue in
+                            let filtered = newValue.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "-" }
+                            if filtered != newValue {
+                                app.settings.adminWebUI.subdomain = filtered
+                            }
+                        }
+                }
+
+                Text(".")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 27)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Domain")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $app.settings.adminWebUI.selectedZoneID) {
+                        if availableZones.isEmpty {
+                            if !app.settings.adminWebUI.selectedZoneName.isEmpty {
+                                Text(app.settings.adminWebUI.selectedZoneName)
+                                    .tag(app.settings.adminWebUI.selectedZoneID)
+                            } else {
+                                Text("Verify token to load zones")
+                                    .tag("")
+                            }
+                        } else {
+                            ForEach(availableZones, id: \.id) { zone in
+                                Text(zone.name).tag(zone.id)
+                            }
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(minWidth: 180, alignment: .leading)
+                    .disabled(availableZones.isEmpty || app.settings.adminWebUI.internetAccessEnabled)
+                    .onChange(of: app.settings.adminWebUI.selectedZoneID) { _, newValue in
+                        if let zone = availableZones.first(where: { $0.id == newValue }) {
+                            app.settings.adminWebUI.selectedZoneName = zone.name
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 4) {
+                Text("SwiftBot will be available at:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(hostnamePreviewString)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private var configuredInternetAccessSummary: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.green)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Internet access configured")
+                    .font(.subheadline.weight(.semibold))
+                Text(URL(string: publicURLString)?.host ?? publicURLString)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                openURL()
+            } label: {
+                Label("Open Webpage", systemImage: "safari")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .disabled(publicURLString.isEmpty)
+
+            Button {
+                copyURL()
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .disabled(publicURLString.isEmpty)
+            .help("Copy public URL")
+
+            Button {
+                showingReRunSetupConfirmation = true
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Repair or reset Internet Access")
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder
@@ -753,6 +794,7 @@ struct InternetAccessConfigurationSection: View {
         setupFeedback = nil
         lastError = nil
         setupProgress = InternetAccessSetupProgress(hostname: fullHostname)
+        showingSetupStatusWindow = true
 
         // Ensure settings are updated with the chosen hostname before starting
         app.settings.adminWebUI.hostname = fullHostname
@@ -956,6 +998,112 @@ private struct InternetAccessFeedback {
     let message: String
 }
 
+private struct InternetAccessSetupStatusWindow: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let items: [CertificateManager.ValidationItem]
+    let feedback: InternetAccessFeedback?
+    let isProcessing: Bool
+    let currentProcessingItemID: String?
+
+    private var title: String {
+        if isProcessing {
+            return "Setting Up Internet Access"
+        }
+
+        if feedback?.status == .error {
+            return "Setup Needs Attention"
+        }
+
+        return "Internet Access Setup"
+    }
+
+    private var iconName: String {
+        if isProcessing {
+            return "network"
+        }
+
+        switch feedback?.status {
+        case .success:
+            return "checkmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .error:
+            return "exclamationmark.octagon.fill"
+        case .pending, .none:
+            return "network"
+        }
+    }
+
+    private var iconColor: Color {
+        if isProcessing {
+            return .orange
+        }
+
+        return feedback?.status.color ?? .accentColor
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(iconColor)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(title)
+                    .font(.headline.weight(.semibold))
+
+                Spacer()
+
+                if isProcessing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(items) { item in
+                    AdminWebStatusRow(
+                        title: item.title,
+                        detail: item.detail,
+                        status: item.status,
+                        isProcessing: isProcessing && currentProcessingItemID == item.id
+                    )
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(.white.opacity(0.05), lineWidth: 1)
+            )
+
+            if let feedback {
+                Label(
+                    feedback.message,
+                    systemImage: feedback.status == .error ? "exclamationmark.octagon.fill" : "info.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(feedback.status == .error ? .red : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button(isProcessing ? "Setting Up..." : "Done") {
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isProcessing)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+}
+
 private struct AdminWebStatusRow: View {
     let title: String
     let detail: String?
@@ -1017,6 +1165,7 @@ struct AdminWebAuthenticationSection: View {
             OAuthProviderCard(
                 name: "Discord",
                 icon: "message.fill",
+                assetIcon: "DiscordLogo",
                 color: .indigo,
                 settings: $app.settings.adminWebUI.discordOAuth,
                 redirectURL: app.adminWebDiscordRedirectURL()
@@ -1108,11 +1257,14 @@ struct AdminWebAuthenticationSection: View {
 struct OAuthProviderCard: View {
     let name: String
     let icon: String
+    let assetIcon: String?
     let color: Color
     @Binding var settings: OAuthProviderSettings
     let redirectURL: String
 
-    @State private var isCredentialsExpanded = false
+    @State private var showingOAuthSetup = false
+    @State private var draftClientID = ""
+    @State private var draftClientSecret = ""
 
     private var isConfigured: Bool {
         !settings.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -1122,14 +1274,15 @@ struct OAuthProviderCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 24)
+                providerIcon
+                    .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
                         .font(.subheadline.weight(.semibold))
+                    Text("Sign in with \(name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -1165,89 +1318,148 @@ struct OAuthProviderCard: View {
                 Divider()
                     .padding(.horizontal, 14)
 
-                DisclosureGroup(isExpanded: $isCredentialsExpanded) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // Client ID
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Client ID")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            TextField("Enter Client ID", text: $settings.clientID)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        // Client Secret
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Client Secret")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            SecureField("Enter Client Secret", text: $settings.clientSecret)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        // Redirect URL
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Redirect URL")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-
-                            HStack(spacing: 8) {
-                                TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
-                                    .textFieldStyle(.roundedBorder)
-                                    .disabled(true)
-
-                                Button {
-                                    copyToClipboard(redirectURL)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(redirectURL.isEmpty)
-                                .help("Copy Redirect URL")
-                            }
-
-                            Text("Use this Redirect URL in your \(name) developer portal.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.top, 10)
-                    .padding(.bottom, 14)
-                    .padding(.horizontal, 14)
-                } label: {
+                if isConfigured {
                     HStack {
-                        Text("Client Credentials")
-                            .font(.subheadline.weight(.medium))
+                        Label("\(name) OAuth configured", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+
                         Spacer()
+
+                        Button {
+                            openOAuthSetup()
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Replace \(name) OAuth details")
+                        .accessibilityLabel("Replace \(name) OAuth details")
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 14)
+                    .padding(14)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Button {
+                            openOAuthSetup()
+                        } label: {
+                            Label("Set Up \(name) OAuth", systemImage: "key.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Label("\(name) OAuth is not configured yet.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(14)
                 }
-                .buttonStyle(.plain)
             }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onAppear {
-            isCredentialsExpanded = settings.enabled && !isConfigured
+        .sheet(isPresented: $showingOAuthSetup) {
+            oauthSetupSheet
         }
         .onChange(of: settings.enabled) { _, newValue in
-            if newValue {
-                isCredentialsExpanded = !isConfigured
-            }
-        }
-        .onChange(of: isConfigured) { _, newValue in
-            if newValue {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isCredentialsExpanded = false
-                }
-            } else if settings.enabled {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isCredentialsExpanded = true
-                }
+            if newValue && !isConfigured {
+                openOAuthSetup()
             }
         }
         .animation(.easeInOut(duration: 0.25), value: settings.enabled)
         .animation(.easeInOut(duration: 0.2), value: isConfigured)
+    }
+
+    private var oauthSetupSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                providerIcon
+                    .frame(width: 18, height: 18)
+                Text(isConfigured ? "Replace \(name) OAuth Details" : "Set Up \(name) OAuth")
+                    .font(.headline)
+            }
+
+            Text("Enter the client ID and client secret from your \(name) developer application. These are used only for Admin Web UI sign-in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Form {
+                TextField("Client ID", text: $draftClientID)
+                    .textContentType(.username)
+                SecureField("Client Secret", text: $draftClientSecret)
+                    .textContentType(.password)
+            }
+            .formStyle(.grouped)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Redirect URL")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    TextField("", text: .constant(redirectURL.isEmpty ? "Configure Hostname first" : redirectURL))
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(true)
+
+                    Button {
+                        copyToClipboard(redirectURL)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(redirectURL.isEmpty)
+                    .help("Copy Redirect URL")
+                }
+
+                Text("Register this exact URL in your \(name) developer portal.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    showingOAuthSetup = false
+                }
+                Button("Save") {
+                    saveOAuthDetails()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!draftOAuthIsValid)
+            }
+        }
+        .padding(24)
+        .frame(width: 430)
+    }
+
+    private var draftOAuthIsValid: Bool {
+        !draftClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private var providerIcon: some View {
+        if let assetIcon {
+            Image(assetIcon)
+                .resizable()
+                .scaledToFit()
+        } else {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(color)
+        }
+    }
+
+    private func openOAuthSetup() {
+        draftClientID = settings.clientID
+        draftClientSecret = settings.clientSecret
+        showingOAuthSetup = true
+    }
+
+    private func saveOAuthDetails() {
+        settings.clientID = draftClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.clientSecret = draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        draftClientID = ""
+        draftClientSecret = ""
+        showingOAuthSetup = false
     }
 
     private func copyToClipboard(_ value: String) {

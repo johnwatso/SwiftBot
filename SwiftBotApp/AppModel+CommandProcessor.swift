@@ -156,6 +156,10 @@ extension AppModel {
                     guard let self else { return (ok: false, message: "Announcer is unavailable.") }
                     return await self.handleAnnounceJoinSlash(raw: raw)
                 },
+                randomTeamsCommand: { [weak self] teamCount, maxSize, raw in
+                    guard let self else { return (ok: false, message: "Random teams are unavailable.") }
+                    return await self.suggestRandomTeams(teamCount: teamCount, maxSize: maxSize, raw: raw)
+                },
                 lookupUserTimeZone: { [weak self] userID in
                     guard let self else { return nil }
                     let value = self.settings.userTimezones[userID]?
