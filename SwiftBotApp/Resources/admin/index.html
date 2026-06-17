@@ -7114,6 +7114,7 @@
       if (k === 'intel arc') return { icon: 'monitor', brandIcon: 'intel', label: 'Intel Arc', category: 'drivers', color: '#0071C5' };
       if (k === 'steam') return { icon: 'gamepad-2', brandIcon: 'steam', label: 'Steam', category: 'gaming', color: '#2563EB' };
       if (k === 'github') return { icon: 'code', brandIcon: 'github', label: 'GitHub', category: 'github', color: '#7C3AED' };
+      if (k === 'swiftminer') return { icon: 'zap', label: 'SwiftMiner', category: 'gaming', color: '#00A7D8' };
       return { icon: 'refresh-cw', label: kind || 'Source', category: 'software', color: '#6366F1' };
     }
 
@@ -7136,6 +7137,10 @@
         const appID = (target.steamAppID || '').trim();
         const name = appID ? (patchyData.steamAppNames || {})[appID] : '';
         return name ? `Steam • ${name}` : 'Steam';
+      }
+      if (target.source === 'SwiftMiner') {
+        const game = (target.swiftMinerGameName || '').trim();
+        return game ? `SwiftMiner • ${game}` : 'SwiftMiner';
       }
       return meta.label;
     }
@@ -8161,6 +8166,12 @@
                   </label>
                 ` : ''}
 
+                ${target.source === 'SwiftMiner' ? `
+                  <label class="patchy-kv">Game
+                    <input class="field-input patchy-swiftminer-game" value="${(target.swiftMinerGameName || '').replaceAll('"', '&quot;')}" placeholder="The Finals" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                  </label>
+                ` : ''}
+
                 <label class="patchy-kv">Server
                   <select class="field-select patchy-server" ${patchyData.isFailoverManagedNode ? 'disabled' : ''}>${asOptions(patchyData.servers || [], target.serverId)}</select>
                 </label>
@@ -8184,9 +8195,13 @@
                   </div>
                 </div>
 
-                <label class="patchy-kv">Polling Interval (min)
-                  <input type="number" class="field-input patchy-interval" value="${target.pollingIntervalMinutes || 15}" min="5" max="1440" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
-                </label>
+                ${target.source === 'SwiftMiner' ? `
+                  <div class="patchy-kv">Delivery Mode<br><strong style="color:var(--text);">On campaign event</strong></div>
+                ` : `
+                  <label class="patchy-kv">Polling Interval (min)
+                    <input type="number" class="field-input patchy-interval" value="${target.pollingIntervalMinutes || 15}" min="5" max="1440" ${patchyData.isFailoverManagedNode ? 'readonly' : ''}>
+                  </label>
+                `}
 
                 <div class="patchy-kv">
                   Accent Color
@@ -8198,10 +8213,12 @@
                   </div>
                 </div>
 
-                <div class="patchy-kv">
-                  AI Summary
-                  <label class="switch" style="margin-top:4px;"><input class="patchy-ai" type="checkbox" ${target.summarizeWithAppleIntelligence ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
-                </div>
+                ${target.source === 'SwiftMiner' ? '' : `
+                  <div class="patchy-kv">
+                    AI Summary
+                    <label class="switch" style="margin-top:4px;"><input class="patchy-ai" type="checkbox" ${target.summarizeWithAppleIntelligence ? 'checked' : ''} ${patchyData.isFailoverManagedNode ? 'disabled' : ''}><span class="switch-track"><span class="switch-knob"></span></span></label>
+                  </div>
+                `}
               </div>
 
               ${target.source === 'GitHub' ? `
@@ -8274,6 +8291,7 @@
         card.querySelector('.patchy-steam')?.addEventListener('input', (e) => commit(t => { t.steamAppID = e.target.value; }));
         card.querySelector('.patchy-github-repo')?.addEventListener('input', (e) => commit(t => { t.githubRepo = e.target.value; }));
         card.querySelector('.patchy-github-branch')?.addEventListener('input', (e) => commit(t => { t.githubBranch = e.target.value; }));
+        card.querySelector('.patchy-swiftminer-game')?.addEventListener('input', (e) => commit(t => { t.swiftMinerGameName = e.target.value; }));
         card.querySelector('.patchy-github-all')?.addEventListener('change', (e) => commit(t => { t.githubWatchAllCommits = e.target.checked; }));
         card.querySelector('.patchy-github-mode')?.addEventListener('change', (e) => commit(t => { t.githubBranchMode = e.target.value; }));
         card.querySelector('.patchy-interval')?.addEventListener('input', (e) => commit(t => { t.pollingIntervalMinutes = parseInt(e.target.value) || 15; }));
