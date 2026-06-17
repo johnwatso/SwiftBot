@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct SwiftBotApp: App {
     @NSApplicationDelegateAdaptor(SwiftBotAppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @StateObject private var appModel = AppModel()
     @StateObject private var updater = AppUpdater()
@@ -133,7 +134,7 @@ struct SwiftBotApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("SwiftBot", id: "main") {
             if AppModel.isRunningUnderXCTest {
                 Color.clear.frame(width: 1, height: 1)
             } else {
@@ -144,13 +145,14 @@ struct SwiftBotApp: App {
                     .onAppear {
                         applyAppIconIfAvailable()
                         applyPresenceMode(appModel.settings.presenceMode)
-                        statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode) {
-                            openSettings()
-                        }
+                        updateStatusItem()
                         updater.checkForUpdatesInBackground()
                     }
                     .onOpenURL { url in
                         handleDeepLink(url)
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .swiftBotShowMainWindow)) { _ in
+                        presentMainWindow()
                     }
                     .background(WindowAccessor { window in
                         applyMainWindowChrome(to: window)
@@ -159,14 +161,10 @@ struct SwiftBotApp: App {
         }
         .onChange(of: appModel.settings.presenceMode) { _, newValue in
             applyPresenceMode(newValue)
-            statusItemController.update(appModel: appModel, mode: newValue) {
-                openSettings()
-            }
+            updateStatusItem(mode: newValue)
         }
         .onChange(of: appModel.status) { _, _ in
-            statusItemController.update(appModel: appModel, mode: appModel.settings.presenceMode) {
-                openSettings()
-            }
+            updateStatusItem()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -230,9 +228,40 @@ struct SwiftBotApp: App {
             // auto-apply — a malicious link could otherwise repoint the node.
             Task { @MainActor in
                 _ = appModel.handleSwiftMeshDeepLink(url)
+                presentMainWindow()
             }
         default:
             break
+        }
+    }
+
+    private func updateStatusItem(mode: AppPresenceMode? = nil) {
+        statusItemController.update(
+            appModel: appModel,
+            mode: mode ?? appModel.settings.presenceMode,
+            openMainWindow: {
+                presentMainWindow()
+            },
+            openSettings: {
+                openSettings()
+            }
+        )
+    }
+
+    private func presentMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = NSApp.windows.first(where: { $0.identifier == .mainWindow }) {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        openWindow(id: "main")
+
+        DispatchQueue.main.async {
+            NSApp.windows
+                .first(where: { $0.identifier == .mainWindow })?
+                .makeKeyAndOrderFront(nil)
         }
     }
 
@@ -264,8 +293,7 @@ struct SwiftBotApp: App {
             : result.message
 
         UserDefaults.standard.set(3, forKey: "swiftbot.preferences.selectedTab")
-        NSApp.activate(ignoringOtherApps: true)
-        openSettings()
+        presentMainWindow()
     }
 }
 
@@ -273,10 +301,17 @@ struct SwiftBotApp: App {
 private final class SwiftBotStatusItemController: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
     private weak var appModel: AppModel?
+    private var openMainWindow: (() -> Void)?
     private var openSettings: (() -> Void)?
 
-    func update(appModel: AppModel, mode: AppPresenceMode, openSettings: @escaping () -> Void) {
+    func update(
+        appModel: AppModel,
+        mode: AppPresenceMode,
+        openMainWindow: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) {
         self.appModel = appModel
+        self.openMainWindow = openMainWindow
         self.openSettings = openSettings
 
         guard mode.showsMenuBarIcon else {
@@ -421,13 +456,7 @@ private final class SwiftBotStatusItemController: NSObject, ObservableObject {
     }
 
     @objc private func showMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-
-        if let window = NSApp.windows.first(where: { $0.identifier == .mainWindow }) {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            showSettingsWindow()
-        }
+        openMainWindow?()
     }
 
     @objc private func showSettingsWindow() {
@@ -441,6 +470,17 @@ private final class SwiftBotStatusItemController: NSObject, ObservableObject {
 }
 
 private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            NotificationCenter.default.post(name: .swiftBotShowMainWindow, object: nil)
+        }
+        return true
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
             await TunnelManager.shared.stopForAppTermination()
@@ -448,6 +488,10 @@ private final class SwiftBotAppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
+}
+
+private extension Notification.Name {
+    static let swiftBotShowMainWindow = Notification.Name("SwiftBotShowMainWindow")
 }
 
 private extension NSUserInterfaceItemIdentifier {

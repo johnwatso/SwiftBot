@@ -13,6 +13,7 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
     case apple = "Apple"
     case steam = "Steam"
     case github = "GitHub"
+    case swiftMiner = "SwiftMiner"
 
     var id: String { rawValue }
 
@@ -30,12 +31,14 @@ enum PatchySourceKind: String, Codable, CaseIterable, Identifiable {
             return PatchyAccentColor(name: "Cobalt", hex: "#2563EB")
         case .github:
             return PatchyAccentColor(name: "Violet", hex: "#7C3AED")
+        case .swiftMiner:
+            return PatchyAccentColor(name: "SwiftMiner", hex: "#00A7D8")
         }
     }
 
     var supportsCustomAccentColor: Bool {
         switch self {
-        case .github, .steam, .apple:
+        case .github, .steam, .apple, .swiftMiner:
             return true
         case .nvidia, .amd, .intel:
             return false
@@ -99,6 +102,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
     var githubBranchMode: PatchyGitHubBranchMode = .main
     var appleProduct: PatchyAppleProduct = .macOS
     var appleIncludeBetas: Bool = false
+    var swiftMinerGameName: String = "The Finals"
     var pollingIntervalMinutes: Int = 60
     var embedColorHex: String = ""
     var summarizeWithAppleIntelligence: Bool = false
@@ -113,6 +117,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         case id, isEnabled, source, steamAppID, useSteamIcon
         case githubRepo, githubBranch, githubWatchAllCommits, githubBranchMode
         case appleProduct, appleIncludeBetas
+        case swiftMinerGameName
         case pollingIntervalMinutes, embedColorHex, summarizeWithAppleIntelligence
         case summarizeFixesWithAppleIntelligence
         case serverId, channelId, roleIDs
@@ -131,6 +136,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubBranchMode: PatchyGitHubBranchMode = .main,
         appleProduct: PatchyAppleProduct = .macOS,
         appleIncludeBetas: Bool = false,
+        swiftMinerGameName: String = "The Finals",
         pollingIntervalMinutes: Int = 60,
         embedColorHex: String = "",
         summarizeWithAppleIntelligence: Bool = false,
@@ -152,6 +158,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         self.githubBranchMode = githubBranchMode
         self.appleProduct = appleProduct
         self.appleIncludeBetas = appleIncludeBetas
+        self.swiftMinerGameName = swiftMinerGameName
         self.pollingIntervalMinutes = pollingIntervalMinutes
         self.embedColorHex = embedColorHex
         self.summarizeWithAppleIntelligence = summarizeWithAppleIntelligence
@@ -177,6 +184,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         githubBranchMode = try c.decodeIfPresent(PatchyGitHubBranchMode.self, forKey: .githubBranchMode) ?? (legacyHasSpecificBranch ? .specific : .main)
         appleProduct = try c.decodeIfPresent(PatchyAppleProduct.self, forKey: .appleProduct) ?? .macOS
         appleIncludeBetas = try c.decodeIfPresent(Bool.self, forKey: .appleIncludeBetas) ?? false
+        swiftMinerGameName = try c.decodeIfPresent(String.self, forKey: .swiftMinerGameName) ?? "The Finals"
         pollingIntervalMinutes = try c.decodeIfPresent(Int.self, forKey: .pollingIntervalMinutes) ?? PatchyEmbedAccent.defaultPollingIntervalMinutes(for: source)
         embedColorHex = try c.decodeIfPresent(String.self, forKey: .embedColorHex) ?? ""
         summarizeWithAppleIntelligence = try c.decodeIfPresent(Bool.self, forKey: .summarizeWithAppleIntelligence)
@@ -203,6 +211,7 @@ struct PatchySourceTarget: Codable, Hashable, Identifiable {
         try c.encode(githubBranchMode, forKey: .githubBranchMode)
         try c.encode(appleProduct, forKey: .appleProduct)
         try c.encode(appleIncludeBetas, forKey: .appleIncludeBetas)
+        try c.encode(swiftMinerGameName, forKey: .swiftMinerGameName)
         try c.encode(pollingIntervalMinutes, forKey: .pollingIntervalMinutes)
         try c.encode(embedColorHex, forKey: .embedColorHex)
         try c.encode(summarizeWithAppleIntelligence, forKey: .summarizeWithAppleIntelligence)
@@ -247,6 +256,7 @@ enum PatchyEmbedAccent {
         switch source {
         case .github: return 5
         case .apple: return 120
+        case .swiftMiner: return 60
         default: return 60
         }
     }

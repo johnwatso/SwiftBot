@@ -311,6 +311,8 @@ struct PatchyView: View {
             return .github
         case .steam:
             return .gamingPlatforms
+        case .swiftMiner:
+            return .gamingPlatforms
         case .apple:
             return .softwareReleases
         }
@@ -358,6 +360,9 @@ struct PatchyView: View {
         case .apple:
             let suffix = target.appleIncludeBetas ? "Releases + Betas" : "Releases"
             return "Apple • \(target.appleProduct.rawValue) (\(suffix))"
+        case .swiftMiner:
+            let game = target.swiftMinerGameName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return game.isEmpty ? "SwiftMiner" : "SwiftMiner • \(game)"
         default:
             return target.source.rawValue
         }
@@ -377,6 +382,9 @@ struct PatchyView: View {
             return repo.split(separator: "/").last.map(String.init) ?? repo
         case .apple:
             return target.appleProduct.rawValue
+        case .swiftMiner:
+            let game = target.swiftMinerGameName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return game.isEmpty ? "SwiftMiner" : game
         default:
             return target.source.rawValue.replacingOccurrences(of: " Arc", with: "")
         }
@@ -392,6 +400,8 @@ struct PatchyView: View {
             return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
         case .apple:
             return "apple:\(target.appleProduct.rawValue)"
+        case .swiftMiner:
+            return "swiftminer:\(target.swiftMinerGameName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
         default:
             return target.source.rawValue
         }
@@ -622,6 +632,8 @@ enum PatchyDashboardSummary {
             return .github
         case .steam:
             return .gamingPlatforms
+        case .swiftMiner:
+            return .gamingPlatforms
         case .apple:
             return .softwareReleases
         }
@@ -637,6 +649,8 @@ enum PatchyDashboardSummary {
             return "steam:\(target.steamAppID.trimmingCharacters(in: .whitespacesAndNewlines))"
         case .apple:
             return "apple:\(target.appleProduct.rawValue)"
+        case .swiftMiner:
+            return "swiftminer:\(target.swiftMinerGameName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
         default:
             return target.source.rawValue
         }
@@ -899,6 +913,8 @@ private struct PatchTargetCard: View {
             return target.githubWatchAllCommits ? "Commit activity" : "Release monitoring"
         case .steam:
             return "Platform updates"
+        case .swiftMiner:
+            return "Drops campaign events"
         case .apple:
             return target.appleIncludeBetas ? "Releases + betas" : "Stable releases"
         case .nvidia, .amd, .intel:
@@ -915,6 +931,7 @@ private struct PatchTargetCard: View {
 
     private func nextRunTimestamp() -> String {
         guard target.isEnabled else { return "Paused" }
+        if target.source == .swiftMiner { return "On event" }
         guard let lastCheckedAt = target.lastCheckedAt else { return "When started" }
         let clampedInterval = max(1, min(target.pollingIntervalMinutes, 10_080))
         return relativeTimestamp(lastCheckedAt.addingTimeInterval(Double(clampedInterval * 60)))
@@ -990,6 +1007,8 @@ private struct PatchySourceIcon: View {
         case .github: return "PatchyGitHub"
         case .apple:
             return nil
+        case .swiftMiner:
+            return nil
         }
     }
 
@@ -1001,6 +1020,7 @@ private struct PatchySourceIcon: View {
         case .apple: return "applelogo"
         case .steam: return "gamecontroller.fill"
         case .github: return "chevron.left.forwardslash.chevron.right"
+        case .swiftMiner: return "bolt.badge.clock.fill"
         }
     }
 }
@@ -1128,6 +1148,7 @@ private struct PatchyTargetDraft: Identifiable {
     var githubBranchMode: PatchyGitHubBranchMode
     var appleProduct: PatchyAppleProduct
     var appleIncludeBetas: Bool
+    var swiftMinerGameName: String
     var pollingIntervalMinutes: Int
     var embedColorHex: String
     var summarizeWithAppleIntelligence: Bool
@@ -1150,6 +1171,7 @@ private struct PatchyTargetDraft: Identifiable {
         githubBranchMode = target.githubBranchMode
         appleProduct = target.appleProduct
         appleIncludeBetas = target.appleIncludeBetas
+        swiftMinerGameName = target.swiftMinerGameName
         pollingIntervalMinutes = target.pollingIntervalMinutes
         embedColorHex = target.embedColorHex
         summarizeWithAppleIntelligence = target.summarizeWithAppleIntelligence
@@ -1193,6 +1215,7 @@ private struct PatchyTargetDraft: Identifiable {
             githubBranchMode: githubBranchMode,
             appleProduct: appleProduct,
             appleIncludeBetas: appleIncludeBetas,
+            swiftMinerGameName: swiftMinerGameName,
             pollingIntervalMinutes: pollingIntervalMinutes,
             embedColorHex: PatchyEmbedAccent.resolvedHex(embedColorHex, for: source),
             summarizeWithAppleIntelligence: summarizeWithAppleIntelligence,
@@ -1316,13 +1339,15 @@ private struct PatchyTargetEditorSheet: View {
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
-                        PatchyEditorRow(
-                            title: "AI Summary",
-                            detail: "Use Apple Intelligence to summarise this update before posting."
-                        ) {
-                            Toggle("", isOn: $draft.summarizeWithAppleIntelligence)
-                                .toggleStyle(.switch)
-                            .labelsHidden()
+                        if draft.source != .swiftMiner {
+                            PatchyEditorRow(
+                                title: "AI Summary",
+                                detail: "Use Apple Intelligence to summarise this update before posting."
+                            ) {
+                                Toggle("", isOn: $draft.summarizeWithAppleIntelligence)
+                                    .toggleStyle(.switch)
+                                .labelsHidden()
+                            }
                         }
                     }
                     .animation(.smooth(duration: 0.22), value: draft.source)
@@ -1528,6 +1553,18 @@ private struct PatchyTargetEditorSheet: View {
                         .font(.callout.monospacedDigit())
                 }
             }
+        case .swiftMiner:
+            PatchyEditorSection(title: "SwiftMiner Settings", systemImage: "bolt.badge.clock.fill") {
+                PatchyEditorRow(title: "Game", detail: "Campaign announcements are routed when SwiftMiner reports this game.") {
+                    TextField("The Finals", text: $draft.swiftMinerGameName)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Text("SwiftMiner sends campaign events to SwiftBot; Patchy handles the channel and role mentions here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         default:
             PatchyEditorSection(title: "\(draft.source.rawValue) Settings", systemImage: "cpu") {
                 Text("Patchy will monitor this provider using the built-in update source.")
@@ -1544,6 +1581,8 @@ private struct PatchyTargetEditorSheet: View {
             return "Configure repository monitoring and Discord delivery."
         case .steam:
             return "Configure Steam update monitoring and Discord delivery."
+        case .swiftMiner:
+            return "Route SwiftMiner campaign announcements to Discord."
         default:
             return "Configure provider monitoring and Discord delivery."
         }
@@ -1584,6 +1623,9 @@ private struct PatchyTargetEditorSheet: View {
                draft.githubBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return false
             }
+        }
+        if draft.source == .swiftMiner && draft.swiftMinerGameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return false
         }
         return !draft.serverId.isEmpty && !draft.channelId.isEmpty
     }

@@ -72,7 +72,7 @@ extension AppModel {
         }
     }
 
-    private func validatePatchyTarget(_ target: PatchySourceTarget, forceRefresh: Bool = false) async -> (isValid: Bool, detail: String) {
+    func validatePatchyTarget(_ target: PatchySourceTarget, forceRefresh: Bool = false) async -> (isValid: Bool, detail: String) {
         let channelId = target.channelId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !channelId.isEmpty else {
             return (false, "Target channel ID is empty.")
@@ -117,6 +117,24 @@ extension AppModel {
 
             do {
                 resolveSteamNameIfNeeded(for: target)
+                if target.source == .swiftMiner {
+                    let announcement = PatchySwiftMinerCampaignRouter.sampleAnnouncement(gameName: target.swiftMinerGameName)
+                    let delivery = await sendPatchyNotificationDetailed(
+                        channelId: target.channelId,
+                        message: PatchySwiftMinerCampaignRouter.fallbackMessage(for: announcement),
+                        embedJSON: PatchySwiftMinerCampaignRouter.embedJSON(for: announcement, target: target),
+                        roleIDs: target.roleIDs
+                    )
+
+                    updatePatchyTargetRuntimeState(id: target.id) { entry in
+                        entry.lastCheckedAt = Date()
+                        entry.lastRunAt = Date()
+                        entry.lastStatus = delivery.detail
+                    }
+                    persistSettingsQuietly()
+                    appendPatchyLog("Test send [SwiftMiner] -> \(delivery.detail)")
+                    return
+                }
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
@@ -158,6 +176,15 @@ extension AppModel {
 
             do {
                 resolveSteamNameIfNeeded(for: target)
+                if target.source == .swiftMiner {
+                    updatePatchyTargetRuntimeState(id: target.id) { entry in
+                        entry.lastCheckedAt = Date()
+                        entry.lastStatus = "Waiting for SwiftMiner campaign events."
+                    }
+                    persistSettingsQuietly()
+                    appendPatchyLog("Pull [SwiftMiner] -> waiting for SwiftMiner campaign events")
+                    return
+                }
                 let source = try PatchyRuntime.makeSource(from: target)
                 let item = try await source.fetchLatest()
                 let mapped = PatchyRuntime.map(item: item, change: .unchanged(identifier: item.identifier))
@@ -231,9 +258,9 @@ extension AppModel {
             appendPatchyLog("Patchy checker unavailable. Cycle skipped.")
             return
         }
-        let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty }
+        let enabledTargets = settings.patchy.sourceTargets.filter { $0.isEnabled && !$0.channelId.isEmpty && $0.source != .swiftMiner }
         guard !enabledTargets.isEmpty else {
-            appendPatchyLog("Patchy cycle (\(trigger)) skipped: no enabled targets.")
+            appendPatchyLog("Patchy cycle (\(trigger)) skipped: no polling targets.")
             setPatchyLastCycleAt(Date())
             return
         }

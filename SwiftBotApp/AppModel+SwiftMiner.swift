@@ -708,11 +708,17 @@ extension AppModel {
         guard let event = try? JSONDecoder().decode(SwiftMinerWebhookEvent.self, from: body) else {
             return swiftMinerWebhookResponse(status: "400 Bad Request", payload: ["error": "invalid_payload"])
         }
+        if event.eventType == "swiftminer.campaignAnnounced" {
+            return await handleSwiftMinerCampaignAnnouncementWebhook(body: body)
+        }
+        guard let discordUserId = event.subject?.discordUserId else {
+            return swiftMinerWebhookResponse(status: "400 Bad Request", payload: ["error": "missing_subject"])
+        }
 
         let client = SwiftMinerClient(settings: settings.swiftMiner, session: discordRESTSession)
         let projection: SwiftMinerUserProjection?
         do {
-            projection = try await client.projection(discordUserId: event.subject.discordUserId)
+            projection = try await client.projection(discordUserId: discordUserId)
         } catch {
             projection = nil
         }
@@ -722,13 +728,62 @@ extension AppModel {
             guard ActionDispatcher.canSend(clusterMode: runtimeClusterMode, action: "swiftMinerWebhookDM", log: { logs.append($0) }) else {
                 return swiftMinerWebhookResponse(status: "202 Accepted", payload: ["ok": true, "delivered": false])
             }
-            try await service.sendDM(userId: event.subject.discordUserId, content: bodyText)
+            try await service.sendDM(userId: discordUserId, content: bodyText)
             addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner event \(event.eventType) delivered"))
             return swiftMinerWebhookResponse(status: "200 OK", payload: ["ok": true])
         } catch {
             logs.append("SwiftMiner webhook DM failed: \(error.localizedDescription)")
             return swiftMinerWebhookResponse(status: "202 Accepted", payload: ["ok": true, "delivered": false])
         }
+    }
+
+    private func handleSwiftMinerCampaignAnnouncementWebhook(body: Data) async -> (status: String, body: Data) {
+        guard let announcement = try? PatchySwiftMinerCampaignRouter.decodeAnnouncement(from: body) else {
+            return swiftMinerWebhookResponse(status: "400 Bad Request", payload: ["error": "invalid_campaign_payload"])
+        }
+
+        let targets = settings.patchy.sourceTargets.filter { target in
+            target.isEnabled
+                && !target.channelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && PatchySwiftMinerCampaignRouter.target(target, matches: announcement)
+        }
+
+        guard !targets.isEmpty else {
+            appendPatchyLog("SwiftMiner campaign ignored: no Patchy target for \(announcement.gameName).")
+            return swiftMinerWebhookResponse(status: "202 Accepted", payload: ["ok": true, "delivered": false])
+        }
+
+        var delivered = 0
+        for target in targets {
+            let validation = await validatePatchyTarget(target)
+            guard validation.isValid else {
+                updatePatchyTargetRuntimeState(id: target.id) { entry in
+                    entry.lastCheckedAt = Date()
+                    entry.lastStatus = validation.detail
+                }
+                appendPatchyLog("SwiftMiner campaign skipped target \(target.channelId): \(validation.detail)")
+                continue
+            }
+
+            let delivery = await sendPatchyNotificationDetailed(
+                channelId: target.channelId,
+                message: PatchySwiftMinerCampaignRouter.fallbackMessage(for: announcement),
+                embedJSON: PatchySwiftMinerCampaignRouter.embedJSON(for: announcement, target: target),
+                roleIDs: target.roleIDs
+            )
+            updatePatchyTargetRuntimeState(id: target.id) { entry in
+                entry.lastCheckedAt = Date()
+                entry.lastRunAt = delivery.ok ? Date() : entry.lastRunAt
+                entry.lastStatus = delivery.detail
+            }
+            if delivery.ok {
+                delivered += 1
+            }
+        }
+        persistSettingsQuietly()
+
+        addEvent(ActivityEvent(timestamp: Date(), kind: .command, message: "SwiftMiner campaign \(announcement.gameName) routed to \(delivered) Patchy target(s)"))
+        return swiftMinerWebhookResponse(status: "200 OK", payload: ["ok": true, "delivered": delivered])
     }
 
     private func swiftMinerWebhookResponse(status: String, payload: [String: Any]) -> (status: String, body: Data) {
@@ -1047,5 +1102,5 @@ private struct SwiftMinerWebhookEvent: Codable {
 
     let eventId: String
     let eventType: String
-    let subject: Subject
+    let subject: Subject?
 }

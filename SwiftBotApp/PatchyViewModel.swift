@@ -54,6 +54,8 @@ enum PatchyRuntime {
                 mode = .releases
             }
             return GitHubUpdateSource(owner: parsed.owner, repo: parsed.repo, mode: mode)
+        case .swiftMiner:
+            throw NSError(domain: "Patchy", code: 0, userInfo: [NSLocalizedDescriptionKey: "SwiftMiner targets are event-driven."])
         }
     }
 
