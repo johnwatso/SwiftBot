@@ -85,8 +85,8 @@
 <body>
   <main>
     <h1>SwiftBot 1.21</h1>
-    <p class="meta">Version 1.21 · Changes since SwiftBot 1.20</p>
-    <p class="intro">SwiftBot 1.21 builds on the 1.20 security and clustering release with SwiftMiner companion sign-in, tunnel hostname sharing, better app presence controls, stronger failover pairing, and fixes carried forward from the 1.20.1 maintenance line.</p>
+    <p class="meta">Version 1.21 · Build 2026061811 · Changes since SwiftBot 1.20</p>
+    <p class="intro">SwiftBot 1.21 builds on the 1.20 security and clustering release with SwiftMiner companion sign-in, Patchy-routed SwiftMiner campaign announcements, tunnel hostname sharing, better app presence controls, stronger failover pairing, and fixes carried forward from the 1.20.1 maintenance line.</p>
 
     <section class="companion">
       <h2><span class="badge" aria-hidden="true">🔗</span>SwiftMiner Companion</h2>
@@ -97,6 +97,18 @@
         <li>Persisted companion hostname rules so tunnel reconfiguration keeps SwiftBot and SwiftMiner ingress routes together.</li>
         <li>Re-checks companion DNS records during tunnel setup reruns, reducing manual Cloudflare cleanup after changes.</li>
         <li>Requests Discord's guilds scope during OAuth and records whether the signed-in user belongs to a connected SwiftBot guild.</li>
+      </ul>
+    </section>
+
+    <section class="companion">
+      <h2><span class="badge" aria-hidden="true">📣</span>SwiftMiner Patchy Targets</h2>
+      <p class="summary">Patchy can now route new SwiftMiner campaign events into the Discord channels you choose.</p>
+      <ul>
+        <li>Added SwiftMiner as a Patchy source target, with per-target game selection and channel routing.</li>
+        <li>Routes <code>swiftminer.campaignAnnounced</code> webhooks separately from per-user SwiftMiner projection events so campaign announcements can fan out to matching Patchy targets.</li>
+        <li>Sends rich Discord embeds with game artwork plus up to three drop reward images, using the target's configured accent color and role mentions.</li>
+        <li>Treats SwiftMiner Patchy targets as event-driven, so they show as on-event targets instead of pretending to poll a release feed.</li>
+        <li>Adds focused coverage for campaign decoding, game matching, and artwork embed limiting.</li>
       </ul>
     </section>
 
@@ -151,6 +163,7 @@
       <p class="summary">The surrounding release and companion-dashboard experience received small but important refinements.</p>
       <ul>
         <li>Updated release notes styling and metadata for the 1.20 and 1.20.1 release pages.</li>
+        <li>Updated SwiftBot build metadata to 2026061811 for the current 1.21 release-note set.</li>
         <li>Simplified SwiftMiner DMs so actions live on the SwiftMiner web dashboard instead of inside Discord buttons and modals.</li>
         <li>Added a one-time web dashboard availability announcement and dashboard footer links in SwiftMiner notifications.</li>
         <li>Kept legacy button responses working for older SwiftMiner messages while moving new messages to the dashboard-first flow.</li>
