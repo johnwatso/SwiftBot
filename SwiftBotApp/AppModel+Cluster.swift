@@ -225,10 +225,15 @@ extension AppModel {
         )
     }
 
+    private struct PrimaryLiveProbePayload: Decodable {
+        let status: String
+        let discordConnected: Bool?
+    }
+
     /// Standby-side `/live` HTTPS probe. Used as a second opinion alongside
     /// the direct mesh socket before promoting:
-    /// - `true`  → Primary clearly online (abort promotion)
-    /// - `false` → Primary not publicly reachable (proceed with promotion)
+    /// - `true`  → Primary is connected to Discord (abort promotion)
+    /// - `false` → Primary is reachable but Discord is offline (promote)
     /// - `nil`   → no public URL configured / probe inapplicable (fall back
     ///   to mesh-only behavior)
     func probePrimaryLiveEndpoint() async -> Bool? {
@@ -247,18 +252,32 @@ extension AppModel {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 6
-        request.setValue("text/plain", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                return false
+                return nil
+            }
+            if let payload = try? JSONDecoder().decode(PrimaryLiveProbePayload.self, from: data) {
+                if let connected = payload.discordConnected {
+                    return connected
+                }
+                switch payload.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                case "online", "passive": return true
+                case "offline": return false
+                default: return nil
+                }
             }
             let body = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased() ?? ""
-            return body == "online"
+            switch body {
+            case "online", "passive": return true
+            case "offline": return false
+            default: return nil
+            }
         } catch {
-            return false
+            return nil
         }
     }
 
@@ -371,8 +390,11 @@ extension AppModel {
             isConfiguredPrimary: settings.clusterMode == .leader,
             afterHours: settings.clusterAutoReclaimAfterHours
         )
-        // Sync secondary safety guard: only Primary nodes may send Discord output.
-        let isPrimary = mode == .standalone || mode == .leader
+        // Sync secondary safety guard from the reconciled runtime role, not
+        // only the configured role. A returning Primary may start as Standby
+        // when another healthy Primary already exists.
+        let runtimeMode = await cluster.currentSnapshot().mode
+        let isPrimary = runtimeMode == .standalone || runtimeMode == .leader
         await service.setOutputAllowed(isPrimary)
         configureMeshSync()
         if mode == .standby {

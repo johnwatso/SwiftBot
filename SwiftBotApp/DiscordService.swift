@@ -6,7 +6,7 @@ actor DiscordService {
     /// Secondary safety guard — set by AppModel based on SwiftMesh cluster role.
     /// When `false`, all outbound Discord sends are blocked at the actor level.
     /// The primary gate is `ActionDispatcher`; this is a final backstop.
-    private(set) var outputAllowed: Bool = true
+    private(set) var outputAllowed: Bool = false
 
     func setOutputAllowed(_ allowed: Bool) {
         outputAllowed = allowed
