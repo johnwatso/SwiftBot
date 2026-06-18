@@ -5,9 +5,52 @@ import AppKit
 private let maxPatchyLogEntries = 100
 
 struct PatchyMonitoringSnapshot: Equatable {
-    let patchySettings: PatchySettings
+    let monitoringEnabled: Bool
+    let targets: [PatchyMonitoringTargetSnapshot]
     let clusterMode: ClusterMode
     let botStatus: BotStatus
+}
+
+struct PatchyMonitoringTargetSnapshot: Equatable {
+    let id: UUID
+    let isEnabled: Bool
+    let source: PatchySourceKind
+    let steamAppID: String
+    let useSteamIcon: Bool
+    let githubRepo: String
+    let githubBranch: String
+    let githubWatchAllCommits: Bool
+    let githubBranchMode: PatchyGitHubBranchMode
+    let appleProduct: PatchyAppleProduct
+    let appleIncludeBetas: Bool
+    let swiftMinerGameName: String
+    let pollingIntervalMinutes: Int
+    let embedColorHex: String
+    let summarizeWithAppleIntelligence: Bool
+    let serverId: String
+    let channelId: String
+    let roleIDs: [String]
+
+    init(_ target: PatchySourceTarget) {
+        id = target.id
+        isEnabled = target.isEnabled
+        source = target.source
+        steamAppID = target.steamAppID
+        useSteamIcon = target.useSteamIcon
+        githubRepo = target.githubRepo
+        githubBranch = target.githubBranch
+        githubWatchAllCommits = target.githubWatchAllCommits
+        githubBranchMode = target.githubBranchMode
+        appleProduct = target.appleProduct
+        appleIncludeBetas = target.appleIncludeBetas
+        swiftMinerGameName = target.swiftMinerGameName
+        pollingIntervalMinutes = target.pollingIntervalMinutes
+        embedColorHex = target.embedColorHex
+        summarizeWithAppleIntelligence = target.summarizeWithAppleIntelligence
+        serverId = target.serverId
+        channelId = target.channelId
+        roleIDs = target.roleIDs
+    }
 }
 
 extension AppModel {
@@ -210,7 +253,8 @@ extension AppModel {
 
     func configurePatchyMonitoring() {
         let snapshot = PatchyMonitoringSnapshot(
-            patchySettings: settings.patchy,
+            monitoringEnabled: settings.patchy.monitoringEnabled,
+            targets: settings.patchy.sourceTargets.map(PatchyMonitoringTargetSnapshot.init),
             clusterMode: runtimeClusterMode,
             botStatus: status
         )
@@ -811,7 +855,6 @@ extension AppModel {
         var target = settings.patchy.sourceTargets[idx]
         apply(&target)
         settings.patchy.sourceTargets[idx] = target
-        persistSettingsQuietly()
     }
 
     func persistSettingsQuietly() {
