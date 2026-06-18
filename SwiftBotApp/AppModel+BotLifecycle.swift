@@ -60,6 +60,8 @@ extension AppModel {
             return
         }
 
+        await service.setOutputAllowed(true)
+
         let normalizedToken = normalizedDiscordToken(from: settings.token)
         if settings.token != normalizedToken {
             settings.token = normalizedToken

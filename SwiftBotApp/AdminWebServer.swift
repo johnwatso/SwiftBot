@@ -36,6 +36,15 @@ struct AdminWebStatusPayload: Codable {
     let runtimeState: String?
 }
 
+struct AdminWebLivePayload: Codable {
+    let status: String
+    let discordConnected: Bool
+    let clusterMode: String?
+    let runtimeState: String?
+    let botUsername: String
+    let generatedAt: Date
+}
+
 struct AdminWebMetricPayload: Codable {
     let title: String
     let value: String
@@ -1441,7 +1450,19 @@ actor AdminWebServer {
                 pageVariant = .error
             }
 
-            let wantsHTML = (request.headers["accept"] ?? "").contains("text/html")
+            let acceptHeader = request.headers["accept"] ?? ""
+            if acceptHeader.contains("application/json") {
+                return codableResponse(AdminWebLivePayload(
+                    status: plainBody,
+                    discordConnected: isRunning,
+                    clusterMode: liveStatus?.clusterMode,
+                    runtimeState: liveStatus?.runtimeState,
+                    botUsername: botName,
+                    generatedAt: Date()
+                ))
+            }
+
+            let wantsHTML = acceptHeader.contains("text/html")
             if wantsHTML {
                 return authStatusPageResponse(
                     status: "200 OK",

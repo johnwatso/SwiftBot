@@ -2009,6 +2009,15 @@ actor ClusterCoordinator {
             guard mode == .standby else { return }
             isHealthy = await isWorkerReachable(leaderBaseURL)
         }
+        var unhealthyReason = "Primary health miss"
+        if isHealthy,
+           let primaryDiscordConnected = await onConfirmPrimaryPubliclyReachable?(),
+           primaryDiscordConnected == false {
+            isHealthy = false
+            unhealthyReason = "Primary Discord offline"
+            meshLogger.warning("Primary mesh endpoint is reachable, but /live reports Discord offline")
+        }
+
         if isHealthy {
             if standbyHealthMisses > 0 {
                 snapshot.diagnostics = "Primary recovered after \(standbyHealthMisses) misses"
@@ -2047,14 +2056,14 @@ actor ClusterCoordinator {
             // a fully-uninterrupted healthy window.
             standbyHealthySince = nil
             standbyHealthMisses += 1
-            snapshot.diagnostics = "Primary health miss \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
+            snapshot.diagnostics = "\(unhealthyReason) \(standbyHealthMisses)/\(Self.standbyPromotionThreshold)"
             // Mark as isolated once misses cross half the promotion threshold
             // — visible warning that we may promote soon, before we actually
             // commit to a promotion attempt.
             if standbyHealthMisses >= max(1, Self.standbyPromotionThreshold / 2) {
                 snapshot.runtimeState = .isolated
             }
-        meshLogger.warning("Primary health miss \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
+        meshLogger.warning("\(unhealthyReason, privacy: .public) \(self.standbyHealthMisses, privacy: .public)/\(Self.standbyPromotionThreshold, privacy: .public)")
             await publishSnapshot()
 
             if standbyHealthMisses >= Self.standbyPromotionThreshold {

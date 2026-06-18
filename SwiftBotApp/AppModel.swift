@@ -721,6 +721,8 @@ final class AppModel: ObservableObject {
                 aiReplies: settings.clusterOffloadAIReplies,
                 wikiLookups: settings.clusterOffloadWikiLookups
             )
+            let initialRuntimeMode = await cluster.currentSnapshot().mode
+            await service.setOutputAllowed(initialRuntimeMode == .standalone || initialRuntimeMode == .leader)
             await cluster.setTermChangedHandler { [weak self] newTerm in
                 guard let self else { return }
                 await MainActor.run { [weak self] in
