@@ -1384,21 +1384,21 @@ extension AppModel {
             upsertAutomation: { [weak self] rule in
                 guard let model = self else { return false }
                 return await MainActor.run {
-                    model.automationStore.upsert(rule)
+                    model.applyAutomationUpsert(rule)
                     return true
                 }
             },
             deleteAutomation: { [weak self] id in
                 guard let model = self else { return false }
                 return await MainActor.run {
-                    model.automationStore.remove(id: id)
+                    model.applyAutomationRemove(id: id)
                     return true
                 }
             },
             toggleAutomation: { [weak self] id in
                 guard let model = self else { return false }
                 return await MainActor.run {
-                    model.automationStore.toggleEnabled(id: id)
+                    model.applyAutomationToggle(id: id)
                     return true
                 }
             },

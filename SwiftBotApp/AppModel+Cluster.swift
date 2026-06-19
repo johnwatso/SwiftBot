@@ -4,6 +4,235 @@ import AppKit
 
 extension AppModel {
 
+    // MARK: - Bidirectional config mutations (Failover GUI → Primary)
+
+    /// Failover-side: push a GUI edit up to the Primary (the sole writer).
+    /// Fire-and-forget from the synchronous GUI mutators. On success we pull
+    /// config straight back so the local UI reconciles fast (works through
+    /// residential NAT, where the Primary's outbound push to us may not land).
+    /// On failure we surface a blocking error and apply nothing locally.
+    /// - Parameter revertOnFailure: when the GUI already applied the edit to a
+    ///   local copy optimistically (the whole-section views that bind straight
+    ///   to `settings`), pull the Primary's authoritative config on failure too
+    ///   so the optimistic change is rolled back rather than left diverged.
+    func forwardConfigMutationToPrimary(_ mutation: MeshConfigMutation, revertOnFailure: Bool = false) {
+        logs.append("[INFO] SwiftMesh: sending \(mutation.auditDescription) to Primary…")
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.cluster.sendConfigMutation(mutation)
+            await MainActor.run {
+                switch result {
+                case .success:
+                    self.logs.append("[OK] SwiftMesh: Primary accepted \(mutation.auditDescription).")
+                    self.meshConfigMutationError = nil
+                case .failure(let error):
+                    self.logs.append("[ERR] SwiftMesh: \(error.userMessage)")
+                    self.meshConfigMutationError = error.userMessage
+                }
+            }
+            // Reconcile from the Primary's authoritative copy: always on success,
+            // and on failure too when the edit was applied optimistically.
+            switch result {
+            case .success:
+                await self.pullConfigFilesFromLeader()
+            case .failure:
+                if revertOnFailure { await self.pullConfigFilesFromLeader() }
+            }
+        }
+    }
+
+    // MARK: Sweep (separate store — reconciles via its own pull channel)
+
+    /// Failover-side: pull the Primary's authoritative Sweep policies and adopt
+    /// them locally. Best-effort; a no-op when the Primary is unreachable.
+    func pullSweepPoliciesFromLeader() async {
+        guard let data = await cluster.fetchSweepPolicies() else { return }
+        sweepService.importSyncData(data)
+        logs.append("SwiftMesh: pulled Sweep policies from Primary")
+    }
+
+    /// Sweep edit entry points used by the GUI. Sweep is applied locally on
+    /// every node (its dispatcher is a no-op off-Primary), so on a Failover we
+    /// apply optimistically for instant feedback, forward the intent to the
+    /// Primary, then reconcile from the Primary's authoritative copy. A local
+    /// divergence while the Primary is unreachable self-heals on the next pull
+    /// (registration re-sync).
+    func sweepUpsertPolicy(_ policy: SweepPolicy) {
+        sweepService.upsert(policy)
+        if forwardsConfigEditsToPrimary { forwardSweepMutationToPrimary(.sweepUpsertPolicy(policy)) }
+    }
+
+    func sweepDeletePolicy(_ policyID: UUID) {
+        sweepService.delete(policyID: policyID)
+        if forwardsConfigEditsToPrimary { forwardSweepMutationToPrimary(.sweepDeletePolicy(policyID)) }
+    }
+
+    func sweepSetPolicyEnabled(_ policyID: UUID, enabled: Bool) {
+        sweepService.setEnabled(enabled, for: policyID)
+        if forwardsConfigEditsToPrimary { forwardSweepMutationToPrimary(.sweepSetPolicyEnabled(policyID, enabled)) }
+    }
+
+    func sweepSetGlobalPaused(_ paused: Bool) {
+        sweepService.globalPaused = paused
+        if forwardsConfigEditsToPrimary { forwardSweepMutationToPrimary(.sweepSetGlobalPaused(paused)) }
+    }
+
+    private func forwardSweepMutationToPrimary(_ mutation: MeshConfigMutation) {
+        logs.append("[INFO] SwiftMesh: sending \(mutation.auditDescription) to Primary…")
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.cluster.sendConfigMutation(mutation)
+            await MainActor.run {
+                switch result {
+                case .success:
+                    self.logs.append("[OK] SwiftMesh: Primary accepted \(mutation.auditDescription).")
+                    self.meshConfigMutationError = nil
+                case .failure(let error):
+                    self.logs.append("[ERR] SwiftMesh: \(error.userMessage)")
+                    self.meshConfigMutationError = error.userMessage
+                }
+            }
+            // Reconcile from the Primary's authoritative Sweep state either way:
+            // confirms on success, reverts the optimistic edit on a rejection.
+            await self.pullSweepPoliciesFromLeader()
+        }
+    }
+
+    /// Primary-side: apply a mutation received from a Failover's GUI. Runs on
+    /// the main actor (touches @Published settings and the @MainActor stores).
+    /// Persistence + replication is flushed *before* returning so that the
+    /// Failover's immediate post-success config pull reads a current copy
+    /// rather than racing the Primary's throttled/debounced save. The change
+    /// also reaches every follower via the normal config-files sync path.
+    @MainActor
+    func applyMeshConfigMutation(_ request: MeshConfigMutationRequest) async -> MeshConfigMutationResponse {
+        switch request.mutation {
+        case .patchyUpsertTarget(let target):
+            updatePatchyTargetLocally(target)   // upsert
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .patchyDeleteTarget(let id):
+            deletePatchyTargetLocally(id)
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .patchySetTargetEnabled(let id, let enabled):
+            guard settings.patchy.sourceTargets.contains(where: { $0.id == id }) else {
+                return MeshConfigMutationResponse(applied: false, reason: "No Patchy target with that id")
+            }
+            setPatchyTargetEnabledLocally(id, enabled: enabled)
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .automationUpsertRule(let rule):
+            do {
+                try rule.validate()
+            } catch {
+                return MeshConfigMutationResponse(applied: false, reason: "Invalid automation: \(error.localizedDescription)")
+            }
+            automationStore.upsert(rule)
+            await automationStore.saveNow()   // flush the 500ms debounce now
+            await notifyConfigFilesChangedIfLeader()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .automationDeleteRule(let id):
+            automationStore.remove(id: id)
+            await automationStore.saveNow()
+            await notifyConfigFilesChangedIfLeader()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .automationToggleRule(let id):
+            guard automationStore.rules.contains(where: { $0.id == id }) else {
+                return MeshConfigMutationResponse(applied: false, reason: "No automation with that id")
+            }
+            automationStore.toggleEnabled(id: id)
+            await automationStore.saveNow()
+            await notifyConfigFilesChangedIfLeader()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .commandSetEnabled(let name, let surfaces, let enabled):
+            guard !surfaces.isEmpty else {
+                return MeshConfigMutationResponse(applied: false, reason: "No command surfaces specified")
+            }
+            for surface in surfaces {
+                setCommandEnabled(name: name, surface: surface.lowercased(), enabled: enabled)
+            }
+            await flushSettingsToFollowersNow()
+            await registerSlashCommandsIfNeeded()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .replaceWelcomeFlow(let section):
+            settings.welcomeFlow = section
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .replaceVoice(let section):
+            settings.voice = section
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .replaceWikiBot(let section):
+            settings.wikiBot = section
+            settings.wikiBot.normalizeSources()
+            await flushSettingsToFollowersNow()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .sweepUpsertPolicy(let policy):
+            sweepService.upsert(policy)
+            await sweepService.flushPersist()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .sweepDeletePolicy(let id):
+            sweepService.delete(policyID: id)
+            await sweepService.flushPersist()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .sweepSetPolicyEnabled(let id, let enabled):
+            guard sweepService.policies.contains(where: { $0.id == id }) else {
+                return MeshConfigMutationResponse(applied: false, reason: "No Sweep policy with that id")
+            }
+            sweepService.setEnabled(enabled, for: id)
+            await sweepService.flushPersist()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        case .sweepSetGlobalPaused(let paused):
+            sweepService.globalPaused = paused
+            await sweepService.flushPersist()
+            return MeshConfigMutationResponse(applied: true, reason: nil)
+        }
+    }
+
+    /// Persist `settings` to disk now (bypassing the `saveSettings()` throttle)
+    /// and push the refreshed config files to followers. Used by the config
+    /// mutation handler so a Failover's immediate reconciliation pull is fresh.
+    @MainActor
+    private func flushSettingsToFollowersNow() async {
+        let snapshot = settings
+        do {
+            try await store.save(snapshot)
+        } catch {
+            logs.append("[ERR] SwiftMesh: failed to persist mutation: \(error.localizedDescription)")
+        }
+        await notifyConfigFilesChangedIfLeader()
+    }
+
+    /// Automation edit entry points used by the GUI (native + web). On a
+    /// Failover these forward to the Primary; otherwise they apply locally.
+    @MainActor
+    func applyAutomationUpsert(_ rule: Automations.Rule) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.automationUpsertRule(rule))
+            return
+        }
+        automationStore.upsert(rule)
+    }
+
+    @MainActor
+    func applyAutomationRemove(id: String) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.automationDeleteRule(id))
+            return
+        }
+        automationStore.remove(id: id)
+    }
+
+    @MainActor
+    func applyAutomationToggle(id: String) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.automationToggleRule(id))
+            return
+        }
+        automationStore.toggleEnabled(id: id)
+    }
+
     // MARK: - Cluster / SwiftMesh
 
     func refreshClusterStatus() {
@@ -347,6 +576,10 @@ extension AppModel {
         mediaLibrarySettings = currentLocalMedia
         await mediaLibraryIndexer.invalidate()
         await ruleStore.reloadFromDisk()
+        // Re-read automations from the replicated file so a Failover's GUI
+        // reflects rule edits that were applied on the Primary (and any the
+        // Failover itself just pushed up and reconciled back down).
+        automationStore.load()
         await aiService.configureLocalAIDMReplies(
             enabled: settings.localAIDMReplyEnabled,
             systemPrompt: settings.localAISystemPrompt

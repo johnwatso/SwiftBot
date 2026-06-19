@@ -74,35 +74,87 @@ extension AppModel {
 
     // MARK: - Patchy Update Monitoring
 
+    // The public mutators below route through the SwiftMesh authority model:
+    // on a Failover (Standby) node the edit is pushed up to the Primary, which
+    // is the sole writer; on a Primary/standalone node it is applied locally.
+    // The Primary's inbound mutation handler calls the `…Locally` variants
+    // directly (it runs while mode == .leader).
+
     func addPatchyTarget(_ target: PatchySourceTarget) {
-        settings.patchy.sourceTargets.append(target)
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.patchyUpsertTarget(target))
+            return
+        }
+        addPatchyTargetLocally(target)
+    }
+
+    func updatePatchyTarget(_ target: PatchySourceTarget) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.patchyUpsertTarget(target))
+            return
+        }
+        updatePatchyTargetLocally(target)
+    }
+
+    func deletePatchyTarget(_ targetID: UUID) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.patchyDeleteTarget(targetID))
+            return
+        }
+        deletePatchyTargetLocally(targetID)
+    }
+
+    func togglePatchyTargetEnabled(_ targetID: UUID) {
+        if forwardsConfigEditsToPrimary {
+            let current = settings.patchy.sourceTargets.first(where: { $0.id == targetID })?.isEnabled ?? false
+            forwardConfigMutationToPrimary(.patchySetTargetEnabled(targetID, !current))
+            return
+        }
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
+        setPatchyTargetEnabledLocally(targetID, enabled: !settings.patchy.sourceTargets[idx].isEnabled)
+    }
+
+    func setPatchyTargetEnabled(_ targetID: UUID, enabled: Bool) {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.patchySetTargetEnabled(targetID, enabled))
+            return
+        }
+        setPatchyTargetEnabledLocally(targetID, enabled: enabled)
+    }
+
+    // MARK: Local apply (Primary / standalone authority)
+
+    func addPatchyTargetLocally(_ target: PatchySourceTarget) {
+        if let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == target.id }) {
+            // Upsert semantics: a forwarded "add" for an existing id updates.
+            settings.patchy.sourceTargets[idx] = target
+        } else {
+            settings.patchy.sourceTargets.append(target)
+        }
         settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
         resolveSteamNameIfNeeded(for: target)
     }
 
-    func updatePatchyTarget(_ target: PatchySourceTarget) {
-        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == target.id }) else { return }
+    func updatePatchyTargetLocally(_ target: PatchySourceTarget) {
+        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == target.id }) else {
+            // Upsert: target may not exist yet on the Primary.
+            addPatchyTargetLocally(target)
+            return
+        }
         settings.patchy.sourceTargets[idx] = target
         settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
         resolveSteamNameIfNeeded(for: target)
     }
 
-    func deletePatchyTarget(_ targetID: UUID) {
+    func deletePatchyTargetLocally(_ targetID: UUID) {
         settings.patchy.sourceTargets.removeAll { $0.id == targetID }
         settings.patchy.syncMonitoringEnabledWithTargets()
         saveSettings()
     }
 
-    func togglePatchyTargetEnabled(_ targetID: UUID) {
-        guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
-        settings.patchy.sourceTargets[idx].isEnabled.toggle()
-        settings.patchy.syncMonitoringEnabledWithTargets()
-        saveSettings()
-    }
-
-    func setPatchyTargetEnabled(_ targetID: UUID, enabled: Bool) {
+    func setPatchyTargetEnabledLocally(_ targetID: UUID, enabled: Bool) {
         guard let idx = settings.patchy.sourceTargets.firstIndex(where: { $0.id == targetID }) else { return }
         settings.patchy.sourceTargets[idx].isEnabled = enabled
         settings.patchy.syncMonitoringEnabledWithTargets()

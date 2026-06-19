@@ -253,6 +253,12 @@ extension AppModel {
     /// Apply a new preferred-voice selection from the UI.
     func setPreferredAnnouncerVoice(_ identifier: String) async {
         settings.voice.preferredVoiceIdentifier = identifier
+        if forwardsConfigEditsToPrimary {
+            // Failover: the Primary owns the announcer config; forward the
+            // section (no local engine to apply to here).
+            forwardConfigMutationToPrimary(.replaceVoice(settings.voice), revertOnFailure: true)
+            return
+        }
         persistSettingsIfPossible()
         if let announcer = voiceAnnouncementService {
             applyPreferredVoiceFromSettings(to: announcer)

@@ -11,7 +11,9 @@ struct PatchyView: View {
         VStack(alignment: .leading, spacing: 20) {
             header
 
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Patchy settings sync from Primary.")
             }
 
@@ -23,8 +25,9 @@ struct PatchyView: View {
         .padding(.top, 12)
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .sheet(item: $editorDraft) { draft in
             PatchyTargetEditorSheet(
                 draft: draft,

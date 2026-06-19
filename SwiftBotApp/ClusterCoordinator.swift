@@ -52,6 +52,9 @@ actor ClusterCoordinator {
     /// Phase 3: each node implements this to report its current operational
     /// state so the primary can surface follower activity in its GUI.
     typealias FollowerStateProvider = @Sendable () async -> FollowerStateSummary
+    /// Primary-side: applies a config mutation requested by a Failover's GUI.
+    /// Runs on AppModel; returns whether the edit was accepted.
+    typealias ConfigMutationHandler = @Sendable (MeshConfigMutationRequest) async -> MeshConfigMutationResponse
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -200,6 +203,11 @@ actor ClusterCoordinator {
     private var onDiscordTokenFetched: (@Sendable (String) async -> Void)?
     private var onLeaderRegistrationSyncNeeded: (@Sendable (String) async -> Void)?
     private var followerStateProvider: FollowerStateProvider?
+    /// Primary-side handler for inbound config mutations from Failover GUIs.
+    private var configMutationHandler: ConfigMutationHandler?
+    /// Idempotency cache of recently-applied mutation IDs (bounded). Guards
+    /// against a retried POST double-applying after a flaky link.
+    private var appliedMutationIDs: [UUID: Date] = [:]
     // Phase 3: primary stores the last polled state for each follower, keyed
     // by node baseURL. Published into ClusterSnapshot on each refresh.
     private var followerStates: [String: FollowerStateSummary] = [:]
@@ -305,6 +313,12 @@ actor ClusterCoordinator {
     /// endpoint and used by the leader to seed its own slot in followerStates.
     func setFollowerStateProvider(_ provider: @escaping FollowerStateProvider) {
         self.followerStateProvider = provider
+    }
+
+    /// Wires the Primary-side handler that applies config mutations pushed up
+    /// from a Failover's GUI (`POST /v1/mesh/config/mutate`).
+    func setConfigMutationHandler(_ handler: @escaping ConfigMutationHandler) {
+        self.configMutationHandler = handler
     }
 
     /// Phase 4: tells the coordinator whether THIS node was configured as the
@@ -839,6 +853,92 @@ actor ClusterCoordinator {
             meshLogger.notice("Pulled Discord token from Primary after successful handshake")
         } catch {
             // best effort — next registration cycle will retry.
+        }
+    }
+
+    // MARK: - Bidirectional config mutations
+
+    /// Primary-side responder for `POST /v1/mesh/config/mutate`. The route is
+    /// already HMAC-authed (and decrypted) by `processHTTPRequest`. Only the
+    /// current Primary may apply config edits; a non-leader replies 409 with
+    /// the standard stale-term body so the caller knows to retarget. Applied
+    /// mutation IDs are remembered briefly so a retried POST is a no-op.
+    private func handleConfigMutation(_ body: Data) async -> Data {
+        guard mode == .leader else {
+            return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "leader_mode_required"))
+        }
+        guard let request = try? decoder.decode(MeshConfigMutationRequest.self, from: body) else {
+            return httpResponse(status: "400 Bad Request", body: Data(#"{"error":"invalid_payload"}"#.utf8))
+        }
+        guard let handler = configMutationHandler else {
+            return httpResponse(status: "503 Service Unavailable", body: Data(#"{"error":"mutations_unavailable"}"#.utf8))
+        }
+
+        // Idempotency: if we've already applied this exact mutation, ack
+        // success without re-applying.
+        pruneAppliedMutationIDs()
+        if appliedMutationIDs[request.clientMutationID] != nil {
+            let body = (try? encoder.encode(MeshConfigMutationResponse(applied: true, reason: "duplicate"))) ?? Data()
+            return httpResponse(status: "200 OK", body: body)
+        }
+
+        let response = await handler(request)
+        if response.applied {
+            appliedMutationIDs[request.clientMutationID] = Date()
+            meshLogger.notice("Applied config mutation from \(request.originNodeName, privacy: .public): \(request.mutation.auditDescription, privacy: .public)")
+        } else {
+            meshLogger.warning("Rejected config mutation from \(request.originNodeName, privacy: .public): \(response.reason ?? "unknown", privacy: .public)")
+        }
+        let bodyData = (try? encoder.encode(response)) ?? Data()
+        return httpResponse(status: "200 OK", body: bodyData)
+    }
+
+    private func pruneAppliedMutationIDs() {
+        let cutoff = Date().addingTimeInterval(-600)
+        appliedMutationIDs = appliedMutationIDs.filter { $0.value > cutoff }
+    }
+
+    /// Standby-side: POST a single config mutation up to the configured
+    /// Primary. Returns `.success` only when the Primary acks `applied == true`.
+    /// On any other outcome the caller should surface an error and NOT mutate
+    /// local state (block-with-error: the Primary stays the single writer).
+    func sendConfigMutation(_ mutation: MeshConfigMutation) async -> Result<Void, MeshConfigMutationError> {
+        guard mode == .standby || mode == .worker else {
+            return .failure(.notFollower)
+        }
+        guard let leaderBaseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort), !leaderBaseURL.isEmpty else {
+            return .failure(.noPrimaryConfigured)
+        }
+        guard let url = URL(string: leaderBaseURL + "/v1/mesh/config/mutate") else {
+            return .failure(.noPrimaryConfigured)
+        }
+        let envelope = MeshConfigMutationRequest(mutation: mutation, originNodeName: nodeName)
+        guard let payload = try? encoder.encode(envelope) else {
+            return .failure(.encodingFailed)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = payload
+        applyMeshAuth(to: &request, path: "/v1/mesh/config/mutate")
+        request.timeoutInterval = 8
+        do {
+            let (data, response) = try await meshSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.unreachable("no HTTP response"))
+            }
+            if http.statusCode == 409 {
+                return .failure(.notLeader)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                return .failure(.unreachable("HTTP \(http.statusCode)"))
+            }
+            guard let decoded = try? decoder.decode(MeshConfigMutationResponse.self, from: data) else {
+                return .failure(.unreachable("invalid response"))
+            }
+            return decoded.applied ? .success(()) : .failure(.rejected(decoded.reason ?? "rejected by Primary"))
+        } catch {
+            return .failure(.unreachable(error.localizedDescription))
         }
     }
 
@@ -1888,6 +1988,8 @@ actor ClusterCoordinator {
             return await handleMeshConversationResync(request.body)
         case ("GET", "/v1/mesh/sync/wiki-cache"):
             return await handleMeshWikiCacheSync()
+        case ("GET", "/v1/mesh/sync/sweep-policies"):
+            return await handleMeshSweepPoliciesSync()
         case ("GET", "/v1/mesh/sync/config-files"):
             return await handleMeshConfigFilesSync()
         case ("GET", "/v1/media/library"):
@@ -1920,6 +2022,8 @@ actor ClusterCoordinator {
             return await handleHandoverTestEnd(request.body)
         case ("GET", "/v1/mesh/discord-token"):
             return await handleDiscordTokenRequest()
+        case ("POST", "/v1/mesh/config/mutate"):
+            return await handleConfigMutation(request.body)
         default:
             return httpResponse(status: "404 Not Found", body: Data(#"{"error":"unknown_route"}"#.utf8))
         }
@@ -3377,6 +3481,13 @@ actor ClusterCoordinator {
         return httpResponse(status: "404 Not Found", body: Data(#"{"error":"cache_unavailable"}"#.utf8))
     }
 
+    private func handleMeshSweepPoliciesSync() async -> Data {
+        if let data = await meshHandler?("sweep-policies") {
+            return httpResponse(status: "200 OK", body: data)
+        }
+        return httpResponse(status: "404 Not Found", body: Data(#"{"error":"sweep_unavailable"}"#.utf8))
+    }
+
     private func handleMeshConfigFilesSync() async -> Data {
         if let data = await meshHandler?("config-files") {
             return httpResponse(status: "200 OK", body: data)
@@ -3663,6 +3774,26 @@ actor ClusterCoordinator {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyMeshAuth(to: &request, path: "/v1/mesh/sync/wiki-cache")
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await meshSession.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    /// Standby: fetch the Primary's Sweep policies (separate store, not part of
+    /// the replicated config files). Mirrors `fetchWikiCache`.
+    func fetchSweepPolicies() async -> Data? {
+        guard mode == .standby,
+              let baseURL = normalizedBaseURL(leaderAddress, defaultPort: leaderPort),
+              !baseURL.isEmpty,
+              let url = URL(string: baseURL + "/v1/mesh/sync/sweep-policies") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyMeshAuth(to: &request, path: "/v1/mesh/sync/sweep-policies")
         request.timeoutInterval = 15
         do {
             let (data, response) = try await meshSession.data(for: request)

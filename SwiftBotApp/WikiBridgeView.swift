@@ -24,7 +24,9 @@ struct WikiBridgeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Lookup settings sync from Primary.")
             }
 
@@ -38,8 +40,9 @@ struct WikiBridgeView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(item: $editorDraft) { draft in
             WikiSourceEditorSheet(
@@ -233,10 +236,7 @@ struct WikiBridgeView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                var updated = app.settings
-                updated.wikiBot.isEnabled = true
-                app.settings = updated
-                app.saveSettings()
+                app.setWikiBridgeEnabled(true)
             } label: {
                 Label("Enable Lookup", systemImage: "checkmark.circle.fill")
                     .font(.caption.weight(.semibold))

@@ -107,6 +107,10 @@ final class AppModel: ObservableObject {
     /// `nil` if auto-reclaim is disabled / not eligible. Refreshed by
     /// `pollClusterStatus()` on the regular mesh polling tick.
     @Published var autoReclaimRemainingSeconds: TimeInterval?
+    /// Set when a Failover GUI edit could not be pushed to the Primary
+    /// (block-with-error). The Patchy/Automations views present this and clear
+    /// it on dismiss; cleared automatically on the next successful mutation.
+    @Published var meshConfigMutationError: String?
     @Published var workerConnectionTestStatus: String = "Not tested"
     @Published var workerConnectionTestIsSuccess = false
     @Published var workerConnectionTestInProgress = false
@@ -768,6 +772,7 @@ final class AppModel: ObservableObject {
                 }
                 await self.pullConfigFilesFromLeader()
                 await self.pullWikiCacheFromLeader()
+                await self.pullSweepPoliciesFromLeader()
                 await self.requestResyncFromLeader(fromRecordID: await MainActor.run { self.localLastMergedRecordID })
             }
             await cluster.setHandoverTestPassedHandler { [weak self] in
@@ -815,6 +820,13 @@ final class AppModel: ObservableObject {
             // Called by the local /v1/mesh/follower-state endpoint when the
             // primary polls. Read on MainActor since most of the source fields
             // are @Published; bridge into a Sendable struct before returning.
+            // Primary-side: apply config edits pushed up from a Failover's GUI.
+            await cluster.setConfigMutationHandler { [weak self] request in
+                guard let self else {
+                    return MeshConfigMutationResponse(applied: false, reason: "node unavailable")
+                }
+                return await self.applyMeshConfigMutation(request)
+            }
             await cluster.setFollowerStateProvider { [weak self] in
                 guard let self else {
                     return FollowerStateSummary(
@@ -1079,6 +1091,17 @@ final class AppModel: ObservableObject {
 
     var isFailoverManagedNode: Bool {
         runtimeClusterMode == .worker || runtimeClusterMode == .standby
+    }
+
+    /// True when this node is acting as a Failover (Standby) and config edits
+    /// made in its GUI should be forwarded to the Primary (the sole writer)
+    /// instead of applied locally. Drives the editable surfaces that support
+    /// bidirectional sync (Patchy targets, Automations) — those views stay
+    /// enabled and route writes through `forwardConfigMutationToPrimary`.
+    /// Keyed on the *runtime* role so a demoted former-leader also forwards,
+    /// while a Standby temporarily promoted during a handover writes locally.
+    var forwardsConfigEditsToPrimary: Bool {
+        runtimeClusterMode == .standby
     }
 
     var shouldProcessPrimaryGatewayActions: Bool {

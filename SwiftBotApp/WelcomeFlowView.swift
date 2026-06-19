@@ -236,7 +236,10 @@ struct WelcomeFlowView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+                    .padding(.horizontal, 20)
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. These settings sync from Primary.")
                     .padding(.horizontal, 20)
             }
@@ -255,8 +258,9 @@ struct WelcomeFlowView: View {
             .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .sheet(isPresented: $showPreviewSheet) {
             previewSheet
         }
@@ -1659,7 +1663,14 @@ struct WelcomeFlowView: View {
     private func saveSettingsAfterViewUpdate() {
         Task { @MainActor in
             await Task.yield()
-            app.saveSettings()
+            // On a Failover, the binding already updated the local section
+            // optimistically; forward the whole Welcome Flow section to the
+            // Primary instead of persisting locally (revert on failure).
+            if app.forwardsConfigEditsToPrimary {
+                app.forwardConfigMutationToPrimary(.replaceWelcomeFlow(app.settings.welcomeFlow), revertOnFailure: true)
+            } else {
+                app.saveSettings()
+            }
         }
     }
 
