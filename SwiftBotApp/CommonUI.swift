@@ -660,6 +660,51 @@ struct PreferencesReadOnlyBanner: View {
     }
 }
 
+/// Banner for surfaces that are editable on a Failover node and push their
+/// edits up to the Primary (which remains the single writer). Distinguishes
+/// "you can edit, it just round-trips" from the lock-icon read-only state.
+struct PreferencesSyncsToPrimaryBanner: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.blue)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+/// Presents `AppModel.meshConfigMutationError` as a blocking alert. Attach to
+/// any Failover-editable surface so a failed push to the Primary surfaces
+/// clearly (block-with-error) rather than silently dropping the edit.
+private struct MeshConfigMutationErrorAlert: ViewModifier {
+    @EnvironmentObject var app: AppModel
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Couldn't sync to Primary",
+            isPresented: Binding(
+                get: { app.meshConfigMutationError != nil },
+                set: { if !$0 { app.meshConfigMutationError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { app.meshConfigMutationError = nil }
+        } message: {
+            Text(app.meshConfigMutationError ?? "")
+        }
+    }
+}
+
+extension View {
+    func meshConfigMutationErrorAlert() -> some View {
+        modifier(MeshConfigMutationErrorAlert())
+    }
+}
+
 // MARK: - Phase 2 settings primitives
 // SwiftMiner-style status surface, badges, inline actions, and a Form-friendly
 // container. Each preferences tab is moving toward a single status row at the

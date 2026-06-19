@@ -20,7 +20,10 @@ struct VoiceView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+                    .padding(.horizontal, 16)
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Announcer settings sync from Primary.")
                     .padding(.horizontal, 16)
             }
@@ -40,13 +43,21 @@ struct VoiceView: View {
             .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .onAppear { syncFromSettings() }
         .onChange(of: app.settings.voice) { _, _ in syncFromSettings() }
         .onChange(of: vcConfigs) { _, newValue in
             app.settings.voice.announcerConfigs = newValue
-            app.saveSettings()
+            // On a Failover, forward the whole Announcer section to the Primary
+            // (revert on failure). `syncFromSettings()` guards against echoing
+            // the reconciled value back, so this doesn't loop.
+            if app.forwardsConfigEditsToPrimary {
+                app.forwardConfigMutationToPrimary(.replaceVoice(app.settings.voice), revertOnFailure: true)
+            } else {
+                app.saveSettings()
+            }
         }
         .sheet(isPresented: Binding(
             get: { editingVCConfigIndex != nil },

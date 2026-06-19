@@ -1057,6 +1057,46 @@ final class SweepService: ObservableObject {
         Task { await persist() }
     }
 
+    // MARK: Mesh sync (Failover ⇄ Primary)
+    // Sweep policies live in their own store (not the replicated BotSettings),
+    // so they ride a dedicated pull channel — see `pullSweepPoliciesFromLeader`.
+
+    /// Encode the replicated slice of state (policies + global pause) for a
+    /// Failover to pull. Run reports / suggestions stay node-local.
+    func exportSyncData() -> Data? {
+        let snapshot = SweepSnapshot(
+            schemaVersion: 1,
+            policies: policies,
+            globalPaused: globalPaused,
+            recentReports: [],
+            suggestions: [],
+            lastSuggestionScanAt: nil
+        )
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        return try? enc.encode(snapshot)
+    }
+
+    /// Adopt a Primary-authored snapshot on a Failover. Only policies and the
+    /// global-pause flag are replaced; local run history is preserved.
+    func importSyncData(_ data: Data) {
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        guard let snapshot = try? dec.decode(SweepSnapshot.self, from: data) else { return }
+        policies = snapshot.policies
+        if globalPaused != snapshot.globalPaused {
+            globalPaused = snapshot.globalPaused   // didSet persists
+        }
+        recomputeNextRuns()
+        Task { await persist() }
+    }
+
+    /// Await a persist so a Failover's immediate reconcile pull reads fresh
+    /// data right after the Primary applies a forwarded mutation.
+    func flushPersist() async {
+        await persist()
+    }
+
     // MARK: Scheduling
 
     private func recomputeNextRuns() {
@@ -1813,7 +1853,10 @@ private struct SweepContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+                    .padding(.horizontal, 16)
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Sweep policies sync from Primary.")
                     .padding(.horizontal, 16)
             }
@@ -1843,8 +1886,9 @@ private struct SweepContentView: View {
             .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .sheet(isPresented: $showingNewPolicySheet) {
             SweepPolicyEditor(
                 policy: SweepPolicy(
@@ -1860,7 +1904,7 @@ private struct SweepContentView: View {
                 isNew: true,
                 connectedServers: app.connectedServers,
                 channelsByServer: app.availableTextChannelsByServer,
-                onSave: { service.upsert($0) },
+                onSave: { app.sweepUpsertPolicy($0) },
                 onTryRun: { await service.previewDraft($0) }
             )
         }
@@ -1870,7 +1914,7 @@ private struct SweepContentView: View {
                 isNew: false,
                 connectedServers: app.connectedServers,
                 channelsByServer: app.availableTextChannelsByServer,
-                onSave: { service.upsert($0) },
+                onSave: { app.sweepUpsertPolicy($0) },
                 onTryRun: { await service.previewDraft($0) }
             )
         }
@@ -1912,7 +1956,7 @@ private struct SweepContentView: View {
                     .font(.headline.weight(.semibold))
                 Spacer()
                 Button {
-                    service.globalPaused.toggle()
+                    app.sweepSetGlobalPaused(!service.globalPaused)
                 } label: {
                     Label(service.globalPaused ? "Resume" : "Pause All",
                           systemImage: service.globalPaused ? "play.fill" : "pause.fill")
@@ -2198,8 +2242,8 @@ private struct SweepContentView: View {
                             Task { await service.run(policyID: policy.id, manual: true) }
                         },
                         onEdit: { editingPolicy = policy },
-                        onToggleEnabled: { service.setEnabled(!policy.isEnabled, for: policy.id) },
-                        onDelete: { service.delete(policyID: policy.id) }
+                        onToggleEnabled: { app.sweepSetPolicyEnabled(policy.id, enabled: !policy.isEnabled) },
+                        onDelete: { app.sweepDeletePolicy(policy.id) }
                     )
                 }
             }

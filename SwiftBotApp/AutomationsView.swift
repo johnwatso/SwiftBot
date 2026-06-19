@@ -80,7 +80,10 @@ struct AutomationsView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+                    .padding(.horizontal, 16)
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. \(copy.title) sync from Primary.")
                     .padding(.horizontal, 16)
             }
@@ -99,8 +102,9 @@ struct AutomationsView: View {
             .fadingEdges(top: 16, bottom: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .onAppear {
             if !app.automationStore.isLoaded { app.automationStore.load() }
         }
@@ -111,10 +115,10 @@ struct AutomationsView: View {
                 allRules: app.automationStore.rules,
                 serverContext: app.automationServerContext(),
                 onSave: { updated in
-                    app.automationStore.upsert(updated)
+                    app.applyAutomationUpsert(updated)
                 },
                 onDelete: { id in
-                    app.automationStore.remove(id: id)
+                    app.applyAutomationRemove(id: id)
                 }
             )
             .frame(minWidth: 640, idealWidth: 760, minHeight: 560, idealHeight: 700)
@@ -209,7 +213,7 @@ struct AutomationsView: View {
             // Tag the rule with the current view's category so it lands in
             // the right tab, regardless of what the drafter picked.
             rule.category = category
-            app.automationStore.upsert(rule)
+            app.applyAutomationUpsert(rule)
             draftPrompt = ""
             // Open the editor on the freshly drafted rule so the user can tweak.
             editingRule = AutomationEditTarget(rule: rule, isNew: false)
@@ -355,7 +359,7 @@ struct AutomationsView: View {
             }
             Toggle("", isOn: Binding(
                 get: { rule.enabled },
-                set: { _ in app.automationStore.toggleEnabled(id: rule.id) }
+                set: { _ in app.applyAutomationToggle(id: rule.id) }
             ))
             .toggleStyle(.switch)
             .controlSize(.mini)
@@ -385,10 +389,10 @@ struct AutomationsView: View {
         }
         .contextMenu {
             Button(rule.enabled ? "Disable" : "Enable") {
-                app.automationStore.toggleEnabled(id: rule.id)
+                app.applyAutomationToggle(id: rule.id)
             }
             Button("Delete", role: .destructive) {
-                app.automationStore.remove(id: rule.id)
+                app.applyAutomationRemove(id: rule.id)
             }
         }
     }

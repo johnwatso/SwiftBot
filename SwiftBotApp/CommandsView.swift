@@ -124,6 +124,16 @@ struct CommandsView: View {
                 }
             },
             set: { enabled in
+                if app.forwardsConfigEditsToPrimary {
+                    app.forwardConfigMutationToPrimary(
+                        .commandSetEnabled(
+                            name: command.name,
+                            surfaces: command.surfaces.map { $0.lowercased() },
+                            enabled: enabled
+                        )
+                    )
+                    return
+                }
                 for surface in command.surfaces {
                     app.setCommandEnabled(name: command.name, surface: surface.lowercased(), enabled: enabled)
                 }
@@ -133,6 +143,11 @@ struct CommandsView: View {
     }
 
     private func persistCommandSettings(syncSlash: Bool) {
+        // On a Failover, command edits are owned by the Primary and reconciled
+        // back via config sync — never persist or register slash commands
+        // locally (the `.onChange` hooks also fire when those reconciled
+        // changes land).
+        guard !app.forwardsConfigEditsToPrimary else { return }
         app.persistSettingsQuietly()
         if syncSlash {
             Task { await app.registerSlashCommandsIfNeeded() }
@@ -157,7 +172,9 @@ struct CommandsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            if app.isFailoverManagedNode {
+            if app.forwardsConfigEditsToPrimary {
+                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+            } else if app.isFailoverManagedNode {
                 PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Command settings sync from Primary.")
             }
             metricRail
@@ -166,8 +183,9 @@ struct CommandsView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .disabled(app.isFailoverManagedNode)
-        .opacity(app.isFailoverManagedNode ? 0.62 : 1)
+        .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
+        .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
+        .meshConfigMutationErrorAlert()
         .overlay(alignment: .topTrailing) {
             if showSettingsUpdatedToast {
                 Text("Settings updated")

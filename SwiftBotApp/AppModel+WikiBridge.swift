@@ -5,36 +5,54 @@ extension AppModel {
 
     // MARK: - Wiki Bridge
 
+    /// Shared persist choke point for Lookup edits. On a Failover the local
+    /// mutation has already been applied optimistically; forward the whole
+    /// `wikiBot` section to the Primary (revert on failure). Otherwise persist
+    /// locally as usual.
+    func persistWikiBotEdit() {
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.replaceWikiBot(settings.wikiBot), revertOnFailure: true)
+        } else {
+            saveSettings()
+        }
+    }
+
+    func setWikiBridgeEnabled(_ enabled: Bool) {
+        settings.wikiBot.isEnabled = enabled
+        settings.wikiBot.normalizeSources()
+        persistWikiBotEdit()
+    }
+
     func addWikiBridgeSourceTarget(_ target: WikiSource) {
         settings.wikiBot.sources.append(target)
         settings.wikiBot.normalizeSources()
-        saveSettings()
+        persistWikiBotEdit()
     }
 
     func updateWikiBridgeSourceTarget(_ target: WikiSource) {
         guard let idx = settings.wikiBot.sources.firstIndex(where: { $0.id == target.id }) else { return }
         settings.wikiBot.sources[idx] = target
         settings.wikiBot.normalizeSources()
-        saveSettings()
+        persistWikiBotEdit()
     }
 
     func deleteWikiBridgeSourceTarget(_ targetID: UUID) {
         settings.wikiBot.sources.removeAll { $0.id == targetID }
         settings.wikiBot.normalizeSources()
-        saveSettings()
+        persistWikiBotEdit()
     }
 
     func toggleWikiBridgeSourceTargetEnabled(_ targetID: UUID) {
         guard let idx = settings.wikiBot.sources.firstIndex(where: { $0.id == targetID }) else { return }
         settings.wikiBot.sources[idx].enabled.toggle()
         settings.wikiBot.normalizeSources()
-        saveSettings()
+        persistWikiBotEdit()
     }
 
     func setWikiBridgePrimarySource(_ targetID: UUID) {
         settings.wikiBot.setPrimarySource(targetID)
         settings.wikiBot.normalizeSources()
-        saveSettings()
+        persistWikiBotEdit()
     }
 
     func testWikiBridgeSource(targetID: UUID) {

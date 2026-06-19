@@ -160,6 +160,7 @@
 		A03E7AB8F0B643B3271F1968 /* SwiftMinerDMEmbedBuilders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A7F34F7FFB7E1B2BD1C889 /* SwiftMinerDMEmbedBuilders.swift */; };
 		A0FD425E7CB10D15C1B2F630 /* BotSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2402E98DBD749BAE72E6B33 /* BotSettings.swift */; };
 		A19AE8F43B9B8CFB90BE7638 /* Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440472C1541FD0866542066B /* Automations.swift */; };
+		A3D21AC06D681B38BFB30556 /* MeshConfigMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D3C0B8AE7836B532CA6850D /* MeshConfigMutationTests.swift */; };
 		A463269B72381B592011FA78 /* WelcomeFlowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6500ABC0DD0B09C94F7C8C79 /* WelcomeFlowService.swift */; };
 		A47258F9FC57B429217A7D70 /* cloudflared in Resources */ = {isa = PBXBuildFile; fileRef = 8CEF7EB5B287F29B8308E663 /* cloudflared */; };
 		A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */; };
@@ -264,6 +265,7 @@
 		1C2C4E81E105509E3B80F76B /* NVIDIAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NVIDIAService.swift; sourceTree = "<group>"; };
 		1C5365D3471C752240ADA7D5 /* CloudflareDNSProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSProvider.swift; sourceTree = "<group>"; };
 		1C94C7FFA77694D945BCE26B /* ConnectionDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionDiagnosticsTests.swift; sourceTree = "<group>"; };
+		1D3C0B8AE7836B532CA6850D /* MeshConfigMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshConfigMutationTests.swift; sourceTree = "<group>"; };
 		1F6A9414610F28A00389D53E /* SwiftMinerLinkWarningDismissTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerLinkWarningDismissTests.swift; sourceTree = "<group>"; };
 		1F85AB8F509718DB2F217253 /* ClusterSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterSettingsTests.swift; sourceTree = "<group>"; };
 		20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
@@ -654,6 +656,7 @@
 				6632242ABEFD0ED1584C533C /* GitHubServiceTests.swift */,
 				3C6322EA38D64C533EA2EEF0 /* HelpEngineTests.swift */,
 				91960AD16EB08C958B6E0021 /* InviteLinkTests.swift */,
+				1D3C0B8AE7836B532CA6850D /* MeshConfigMutationTests.swift */,
 				966E05663ACF840FE2050750 /* MeshDiscoveryTests.swift */,
 				4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */,
 				E1C61277F888422928536026 /* MeshFailoverTests.swift */,
@@ -1144,6 +1147,7 @@
 				5F59E5DA9435761BB8FC767C /* GitHubServiceTests.swift in Sources */,
 				C0DDE65E5C04789A09133D38 /* HelpEngineTests.swift in Sources */,
 				BD11C919565D1D52DA750D7D /* InviteLinkTests.swift in Sources */,
+				A3D21AC06D681B38BFB30556 /* MeshConfigMutationTests.swift in Sources */,
 				3A9A3EA92417F085B752C785 /* MeshDiscoveryTests.swift in Sources */,
 				EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */,
 				0684186AD516210645A6083C /* MeshFailoverTests.swift in Sources */,

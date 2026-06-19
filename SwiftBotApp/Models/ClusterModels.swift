@@ -650,6 +650,107 @@ struct MeshHandoverTestPayload: Codable, Sendable {
     let currentLeaderTerm: Int?
 }
 
+// MARK: - Bidirectional config mutations (Failover GUI → Primary)
+
+/// A single config edit a Failover (Standby) node wants applied to the
+/// authoritative configuration. The Primary is the *sole writer*: it applies
+/// the mutation to its own state, persists, and the change replicates back
+/// down to followers through the normal config-files sync. Standbys never
+/// write the replicated config files directly — that would clobber on the
+/// Primary's next push (all of Patchy/Automations live in one replicated
+/// `BotSettings.json` blob). Sending a typed intent instead lets the Primary
+/// merge one entry rather than accept a competing whole file.
+enum MeshConfigMutation: Codable, Sendable, Hashable {
+    case patchyUpsertTarget(PatchySourceTarget)
+    case patchyDeleteTarget(UUID)
+    case patchySetTargetEnabled(UUID, Bool)
+    case automationUpsertRule(Automations.Rule)
+    case automationDeleteRule(String)          // Automations.Rule.id is a String UUID
+    case automationToggleRule(String)
+    /// Enable/disable a command across the given surfaces (e.g. "slash",
+    /// "prefix"). Maps to `settings.disabledCommandKeys`.
+    case commandSetEnabled(name: String, surfaces: [String], enabled: Bool)
+    // Whole-section replacements. These views bind directly to large
+    // `BotSettings` sub-structs across many fields, so a single "replace this
+    // section" intent is cleaner than dozens of per-field mutations. The
+    // Failover edits its local copy optimistically and forwards the resulting
+    // section; the Primary adopts it verbatim and replicates back.
+    case replaceWelcomeFlow(WelcomeFlowSettings)
+    case replaceVoice(VoiceSettings)
+    case replaceWikiBot(WikiBotSettings)
+    // Sweep policies — discrete actions (the SweepService exposes CRUD). Sweep
+    // has its own store outside BotSettings, so the Failover reconciles via the
+    // dedicated `/v1/mesh/sync/sweep-policies` pull rather than config-files.
+    case sweepUpsertPolicy(SweepPolicy)
+    case sweepDeletePolicy(UUID)
+    case sweepSetPolicyEnabled(UUID, Bool)
+    case sweepSetGlobalPaused(Bool)
+
+    /// Human-readable label for logs / the Activity feed.
+    var auditDescription: String {
+        switch self {
+        case .patchyUpsertTarget(let t):      return "Patchy target upsert (\(t.source.rawValue))"
+        case .patchyDeleteTarget:             return "Patchy target delete"
+        case .patchySetTargetEnabled(_, let on): return "Patchy target \(on ? "enable" : "disable")"
+        case .automationUpsertRule(let r):    return "Automation upsert (\(r.name))"
+        case .automationDeleteRule:           return "Automation delete"
+        case .automationToggleRule:           return "Automation toggle"
+        case .commandSetEnabled(let n, _, let on): return "Command \(n) \(on ? "enable" : "disable")"
+        case .replaceWelcomeFlow:             return "Welcome Flow settings update"
+        case .replaceVoice:                   return "Announcer settings update"
+        case .replaceWikiBot:                 return "Lookup settings update"
+        case .sweepUpsertPolicy(let p):       return "Sweep policy upsert (\(p.name))"
+        case .sweepDeletePolicy:              return "Sweep policy delete"
+        case .sweepSetPolicyEnabled(_, let on): return "Sweep policy \(on ? "enable" : "disable")"
+        case .sweepSetGlobalPaused(let p):    return "Sweep \(p ? "pause all" : "resume all")"
+        }
+    }
+}
+
+/// Standby → Primary envelope. `clientMutationID` is an idempotency key so a
+/// retried POST (e.g. after a flaky link) doesn't double-apply.
+struct MeshConfigMutationRequest: Codable, Sendable {
+    let mutation: MeshConfigMutation
+    let originNodeName: String
+    let clientMutationID: UUID
+
+    init(mutation: MeshConfigMutation, originNodeName: String, clientMutationID: UUID = UUID()) {
+        self.mutation = mutation
+        self.originNodeName = originNodeName
+        self.clientMutationID = clientMutationID
+    }
+}
+
+/// Primary → Standby reply. `applied == false` carries a `reason` the GUI can
+/// surface (e.g. validation failure). Transport/role errors are signalled by
+/// the HTTP status instead (409 when the addressed node isn't the Primary).
+struct MeshConfigMutationResponse: Codable, Sendable {
+    let applied: Bool
+    let reason: String?
+}
+
+/// Why a Failover-initiated config mutation could not be applied. Carries a
+/// user-facing message so the GUI can block-with-error.
+enum MeshConfigMutationError: Error, Sendable {
+    case notFollower            // local node isn't a Failover/Worker
+    case noPrimaryConfigured    // no Primary address set
+    case notLeader              // addressed node isn't the current Primary (409)
+    case unreachable(String)    // transport failure
+    case encodingFailed
+    case rejected(String)       // Primary validated and refused
+
+    var userMessage: String {
+        switch self {
+        case .notFollower:        return "This node isn't a Failover, so edits are applied locally."
+        case .noPrimaryConfigured: return "No Primary address is configured for this Failover."
+        case .notLeader:          return "The configured node isn't the active Primary right now. Try again in a moment."
+        case .unreachable(let d): return "Couldn't reach the Primary — change not saved. (\(d))"
+        case .encodingFailed:     return "Couldn't encode the change to send to the Primary."
+        case .rejected(let r):    return "The Primary rejected the change: \(r)"
+        }
+    }
+}
+
 /// Body returned with a 409 Conflict when a sender's leader term is stale.
 /// Carries the receiver's current term so the (now-demoted) sender can detect
 /// it is no longer authoritative and step down — preventing split-brain when

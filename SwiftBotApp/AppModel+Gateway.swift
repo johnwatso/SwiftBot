@@ -172,6 +172,8 @@ extension AppModel {
             )
         case "live-snapshot":
             return try? JSONEncoder().encode(buildMeshLiveSnapshot())
+        case "sweep-policies":
+            return sweepService.exportSyncData()
         default:
             return nil
         }
