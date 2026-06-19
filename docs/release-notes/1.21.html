@@ -3,174 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.21 - Release Notes</title>
+  <title>Add SwiftMesh failover config mutations - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f7fb;
-      color: #111827;
+      background: #f4f6f8;
+      color: #0f1720;
     }
     main {
-      max-width: 780px;
+      max-width: 760px;
       margin: 0 auto;
-      padding: 30px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
-      border: 1px solid rgba(82, 96, 109, 0.14);
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
-    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    .intro { margin: 0 0 22px; color: #364152; }
-    section {
-      margin: 18px 0 0;
-      padding: 18px 18px 14px;
-      border: 1px solid rgba(82, 96, 109, 0.18);
-      border-left: 5px solid var(--accent, #0a67a3);
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.56);
-    }
-    section.companion { --accent: #4f46a5; }
-    section.presence { --accent: #0f766e; }
-    section.mesh { --accent: #a21caf; }
-    section.voice { --accent: #b45309; }
-    section.reliability { --accent: #0a67a3; }
-    section.release { --accent: #52606d; }
-    .badge {
-      display: inline-grid;
-      width: 28px;
-      height: 28px;
-      place-items: center;
-      margin-right: 8px;
-      border-radius: 8px;
-      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
-      font-size: 16px;
-      vertical-align: middle;
-    }
-    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
-    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    ul { margin: 0; padding-left: 22px; }
-    li { margin: 0 0 8px; }
-    li:last-child { margin-bottom: 0; }
-    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
-    code {
-      padding: 1px 5px;
-      border-radius: 6px;
-      background: rgba(82, 96, 109, 0.12);
-      font-size: 0.92em;
-    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1017; color: #edf2f7; }
+      body { background: #0b1015; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.92);
+        background: rgba(15, 23, 32, 0.88);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta, .summary, .commit-link { color: #9fb0c2; }
-      .intro { color: #c8d3df; }
-      section {
-        border-color: rgba(159, 176, 194, 0.18);
-        background: rgba(255, 255, 255, 0.04);
-      }
-      code { background: rgba(159, 176, 194, 0.16); }
+      .meta { color: #9fb0c2; }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.21</h1>
-    <p class="meta">Version 1.21 · Build 2026061811 · Changes since SwiftBot 1.20</p>
-    <p class="intro">SwiftBot 1.21 builds on the 1.20 security and clustering release with SwiftMiner companion sign-in, Patchy-routed SwiftMiner campaign announcements, tunnel hostname sharing, better app presence controls, stronger failover pairing, and fixes carried forward from the 1.20.1 maintenance line.</p>
-
-    <section class="companion">
-      <h2><span class="badge" aria-hidden="true">🔗</span>SwiftMiner Companion</h2>
-      <p class="summary">SwiftBot and SwiftMiner now cooperate more cleanly when sharing Discord sign-in and hosted dashboards.</p>
-      <ul>
-        <li>Added a SwiftMiner companion OAuth entry point that validates registered return hosts and redirects with a short-lived signed identity assertion.</li>
-        <li>Added signed registration for SwiftMiner dashboard hostnames on SwiftBot-managed Cloudflare tunnels.</li>
-        <li>Persisted companion hostname rules so tunnel reconfiguration keeps SwiftBot and SwiftMiner ingress routes together.</li>
-        <li>Re-checks companion DNS records during tunnel setup reruns, reducing manual Cloudflare cleanup after changes.</li>
-        <li>Requests Discord's guilds scope during OAuth and records whether the signed-in user belongs to a connected SwiftBot guild.</li>
-      </ul>
-    </section>
-
-    <section class="companion">
-      <h2><span class="badge" aria-hidden="true">📣</span>SwiftMiner Patchy Targets</h2>
-      <p class="summary">Patchy can now route new SwiftMiner campaign events into the Discord channels you choose.</p>
-      <ul>
-        <li>Added SwiftMiner as a Patchy source target, with per-target game selection and channel routing.</li>
-        <li>Routes <code>swiftminer.campaignAnnounced</code> webhooks separately from per-user SwiftMiner projection events so campaign announcements can fan out to matching Patchy targets.</li>
-        <li>Sends rich Discord embeds with game artwork plus up to three drop reward images, using the target's configured accent color and role mentions.</li>
-        <li>Treats SwiftMiner Patchy targets as event-driven, so they show as on-event targets instead of pretending to poll a release feed.</li>
-        <li>Adds focused coverage for campaign decoding, game matching, and artwork embed limiting.</li>
-      </ul>
-    </section>
-
-    <section class="presence">
-      <h2><span class="badge" aria-hidden="true">🖥️</span>App Presence and Settings</h2>
-      <p class="summary">The Mac app is easier to keep where you want it: in the Dock, in the menu bar, or both.</p>
-      <ul>
-        <li>Added Dock and menu bar presence options, including a SwiftBot menu bar item with quick access to the app, Settings, status, dashboard, updates, and Quit.</li>
-        <li>Added a dedicated menu bar asset so the status item stays visually consistent with the app icon.</li>
-        <li>Made Settings opening use SwiftUI's Settings scene opener for modern macOS behavior.</li>
-        <li>Clarified Failover read-only behavior in General Settings while keeping local recording folders editable on each Mac.</li>
-      </ul>
-    </section>
-
-    <section class="mesh">
-      <h2><span class="badge" aria-hidden="true">🕸️</span>SwiftMesh Pairing</h2>
-      <p class="summary">Failover nodes recover and resync more reliably when they are paired again.</p>
-      <ul>
-        <li>Included the Primary leader term in SwiftMesh join codes and registration acknowledgements.</li>
-        <li>Made re-paired Failover nodes adopt the registered Primary term before initial sync, preventing stale local terms from rejecting Primary pushes.</li>
-        <li>Included the live dashboard snapshot in initial resync responses so Failover app views populate immediately after pairing.</li>
-        <li>Added integration coverage for stale-term re-pairing and initial live snapshot resync.</li>
-      </ul>
-    </section>
-
-    <section class="voice">
-      <h2><span class="badge" aria-hidden="true">🎙️</span>Voice and Sweep</h2>
-      <p class="summary">Voice analytics now better match what happened during the rolling seven-day window.</p>
-      <ul>
-        <li>Counts active voice sessions and sessions that overlap the seven-day window instead of only sessions that started inside it.</li>
-        <li>Clips long-running sessions to the rolling window so leaderboard totals are accurate.</li>
-        <li>Ranks voice users by total rolling voice time with deterministic name ordering for ties.</li>
-        <li>Renamed Sweep's pinned voice metric from an average to a seven-day voice leaderboard so the label matches the displayed total time.</li>
-        <li>Added focused tests for active sessions, clipped sessions, and rolling voice totals.</li>
-      </ul>
-    </section>
-
-    <section class="reliability">
-      <h2><span class="badge" aria-hidden="true">✅</span>1.20.1 Maintenance Fixes</h2>
-      <p class="summary">All 1.20.1 fixes are included in 1.21.</p>
-      <ul>
-        <li>Improved Patchy validation coverage for malformed or incomplete update data.</li>
-        <li>Removed stale Patchy UI code that no longer matched the current monitoring flow.</li>
-        <li>Hardened certificate handling and added regression coverage for certificate-management behavior.</li>
-        <li>Improved Cloudflare DNS provider behavior for tunnel and hostname setup.</li>
-        <li>Adjusted Cloudflare tunnel client behavior for the current Web UI preferences flow.</li>
-      </ul>
-    </section>
-
-    <section class="release">
-      <h2><span class="badge" aria-hidden="true">🚢</span>Release and Dashboard Polish</h2>
-      <p class="summary">The surrounding release and companion-dashboard experience received small but important refinements.</p>
-      <ul>
-        <li>Updated release notes styling and metadata for the 1.20 and 1.20.1 release pages.</li>
-        <li>Updated SwiftBot build metadata to 2026061811 for the current 1.21 release-note set.</li>
-        <li>Simplified SwiftMiner DMs so actions live on the SwiftMiner web dashboard instead of inside Discord buttons and modals.</li>
-        <li>Added a one-time web dashboard availability announcement and dashboard footer links in SwiftMiner notifications.</li>
-        <li>Kept legacy button responses working for older SwiftMiner messages while moving new messages to the dashboard-first flow.</li>
-      </ul>
-    </section>
-
-    <p class="commit-link">Changes: <a href="https://github.com/johnwatso/SwiftBot/compare/v1.20...main">v1.20...main</a></p>
+    <h1>Add SwiftMesh failover config mutations</h1>
+    <p class="meta">Version 1.21</p>
+    <p>Add SwiftMesh failover config mutations</p>
+<p>Allow supported Failover GUI surfaces to forward typed config edits to the Primary instead of writing replicated config locally. Adds mutation envelopes, Primary-side application/ack handling, idempotency, failure surfacing, and immediate reconciliation pulls.</p>
+<p>Routes Patchy, Automations, Commands, Welcome Flow, Voice, Lookup, and Sweep edits through the new authority path. Adds a dedicated Sweep policy sync endpoint because Sweep state lives outside BotSettings.</p>
+<p>Adds MeshConfigMutationTests for leader-only handling, mutation acknowledgement, Codable round-tripping, and duplicate client mutation IDs.</p>
+<p>Verification: xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Debug test -only-testing:SwiftBotTests/MeshConfigMutationTests passed. Full SwiftBot test run executed 259 tests with 2 existing failures in DiscordServiceDMTests.testSendDMEmbedSuccess().</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/57d7a22ca53ccc3c7b0e7f19bceae824d26421c9">57d7a22</a></p>
   </main>
 </body>
 </html>
