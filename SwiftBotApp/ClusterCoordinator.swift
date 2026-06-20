@@ -2289,8 +2289,10 @@ actor ClusterCoordinator {
         // Begin polling follower state now that we're primary.
         await reconcileFollowerStatePoll()
 
-        // Notify workers of the new leader
-        let workers = Array(registeredWorkers.values)
+        // Notify workers of the new leader. Use the self-filtered list so a
+        // synced registry that still lists this (now-promoted) node doesn't
+        // cause us to notify ourselves.
+        let workers = sortedRegisteredWorkers()
         if !workers.isEmpty {
             snapshot.diagnostics = "Promoted to Primary. Notifying \(workers.count) workers..."
             await publishSnapshot()
@@ -3221,6 +3223,49 @@ actor ClusterCoordinator {
         return min(100, max(0, (usedBytes / totalBytes) * 100))
     }
 
+    /// Local network IPs (v4/v6) of this machine, refreshed at most once a
+    /// minute. Needed because nodes register/advertise via their LAN IP (e.g.
+    /// `192.168.2.2`), not their hostname — so self-detection that only knew
+    /// loopback + hostname failed to recognise the node's own registry entry,
+    /// causing it to treat itself as a peer (and, on promotion, notify itself
+    /// as the new leader).
+    private var cachedLocalIPs: Set<String> = []
+    private var localIPsRefreshedAt: Date = .distantPast
+
+    private func localIPAddresses() -> Set<String> {
+        if !cachedLocalIPs.isEmpty, Date().timeIntervalSince(localIPsRefreshedAt) < 60 {
+            return cachedLocalIPs
+        }
+        var addresses = Set<String>()
+        var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
+        if getifaddrs(&ifaddrPtr) == 0, let first = ifaddrPtr {
+            var cursor: UnsafeMutablePointer<ifaddrs>? = first
+            while let entry = cursor {
+                let flags = Int32(entry.pointee.ifa_flags)
+                if (flags & (IFF_UP | IFF_RUNNING)) == (IFF_UP | IFF_RUNNING),
+                   let addr = entry.pointee.ifa_addr {
+                    let family = addr.pointee.sa_family
+                    if family == UInt8(AF_INET) || family == UInt8(AF_INET6) {
+                        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                        if getnameinfo(addr, socklen_t(addr.pointee.sa_len),
+                                       &host, socklen_t(host.count),
+                                       nil, 0, NI_NUMERICHOST) == 0 {
+                            let raw = String(cString: host)
+                            // Strip any IPv6 zone id (e.g. "fe80::1%en0").
+                            let cleaned = (raw.components(separatedBy: "%").first ?? raw).lowercased()
+                            if !cleaned.isEmpty { addresses.insert(cleaned) }
+                        }
+                    }
+                }
+                cursor = entry.pointee.ifa_next
+            }
+            freeifaddrs(ifaddrPtr)
+        }
+        cachedLocalIPs = addresses
+        localIPsRefreshedAt = Date()
+        return addresses
+    }
+
     private func isSelfClusterEndpoint(_ baseURL: String) -> Bool {
         guard let url = URL(string: baseURL),
               let host = url.host?.lowercased() else {
@@ -3228,6 +3273,8 @@ actor ClusterCoordinator {
         }
 
         let port = url.port ?? (url.scheme == "https" ? 443 : 80)
+        guard port == listenPort else { return false }
+
         let localHosts = Set([
             "127.0.0.1",
             "localhost",
@@ -3237,7 +3284,9 @@ actor ClusterCoordinator {
             Host.current().localizedName?.replacingOccurrences(of: " ", with: "-").lowercased()
         ].compactMap { $0 })
 
-        return localHosts.contains(host) && port == listenPort
+        if localHosts.contains(host) { return true }
+        // Also match this machine's own LAN/network IPs — nodes advertise by IP.
+        return localIPAddresses().contains(host)
     }
 
     func publishSnapshot() async {
@@ -3336,7 +3385,12 @@ actor ClusterCoordinator {
             return httpResponse(status: "409 Conflict", body: staleTermResponseBody(reason: "stale_term"))
         }
 
+        var stored = 0
         for worker in payload.workers {
+            // Never store ourselves as a worker. The leader's registry includes
+            // this standby; without this filter we'd treat our own endpoint as a
+            // peer and, on promotion, notify ourselves as the new leader.
+            if isSelfClusterEndpoint(worker.baseURL) { continue }
             let key = worker.baseURL.lowercased()
             registeredWorkers[key] = RegisteredWorker(
                 nodeName: worker.nodeName,
@@ -3344,9 +3398,10 @@ actor ClusterCoordinator {
                 listenPort: worker.listenPort,
                 lastSeen: Date()
             )
+            stored += 1
         }
 
-        snapshot.diagnostics = "Synced worker registry (\(payload.workers.count) workers)"
+        snapshot.diagnostics = "Synced worker registry (\(stored) workers)"
         await publishSnapshot()
 
         return httpResponse(status: "200 OK", body: Data(#"{"status":"ok"}"#.utf8))
