@@ -36,6 +36,42 @@ final class MeshSyncTests: XCTestCase {
         return c
     }
 
+    /// A standby must not store *itself* when it adopts the leader's worker
+    /// registry — otherwise, on promotion, it notifies its own endpoint as the
+    /// new leader ("trying to promote itself"). The leader's registry includes
+    /// the standby, so the sync handler must filter the local endpoint out.
+    func testWorkerRegistrySyncExcludesSelf() async {
+        let port = 39740
+        let standby = ClusterCoordinator()
+        await standby.applySettings(
+            mode: .standby,
+            nodeName: "Standby",
+            leaderAddress: "http://127.0.0.1:39999",
+            listenPort: port,
+            sharedSecret: "s",
+            leaderTerm: 0
+        )
+
+        let payload = MeshWorkerRegistryPayload(
+            workers: [
+                // This node's own entry (loopback + our listen port → self).
+                .init(nodeName: "Standby", baseURL: "http://127.0.0.1:\(port)", listenPort: port),
+                // A genuine peer that must be retained.
+                .init(nodeName: "OtherNode", baseURL: "http://10.0.0.5:\(port)", listenPort: port)
+            ],
+            leaderTerm: 1
+        )
+        let body = (try? JSONEncoder().encode(payload)) ?? Data()
+        let headers = await standby.testMakeHMACHeaders(path: "/v1/mesh/sync/worker-registry", body: body)
+        let raw = makeHTTPRequest(method: "POST", path: "/v1/mesh/sync/worker-registry", headers: headers, body: body)
+        let resp = await standby.testProcessHTTPRequest(raw)
+        XCTAssertEqual(statusCode(from: resp), 200)
+
+        let stored = await standby.registeredNodeInfo()
+        XCTAssertEqual(stored.count, 1, "the standby's own entry must be filtered out")
+        XCTAssertEqual(stored.first?.baseURL, "http://10.0.0.5:\(port)")
+    }
+
     private func configureLeader(_ c: ClusterCoordinator, fetcher: @escaping ClusterCoordinator.ConversationFetcher) async {
         await c.configureHandlers(
             aiHandler: { _, _, _, _ in nil },

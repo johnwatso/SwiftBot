@@ -75,7 +75,12 @@ struct MeshPreferencesView: View {
     }
 
     private var shouldShowConfigurationDetails: Bool {
-        app.settings.clusterMode == .standby || app.settings.clusterMode == .worker
+        // Any clustered role needs the node name / shared secret / port fields.
+        // Standalone is the only mode with no cluster configuration to show.
+        // (Previously excluded .leader, which also hid the Primary-only Join
+        // Code and Auto-Reclaim sections, since those are gated on
+        // `.leader && shouldShowConfigurationDetails`.)
+        app.settings.clusterMode != .standalone
     }
 
     private var workerOffloadBinding: Binding<Bool> {
