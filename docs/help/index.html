@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot Help - Setup and Support</title>
+  <meta name="description" content="SwiftBot Help Center: install SwiftBot, create a Discord bot, configure the Admin Web UI, and set up SwiftMesh failover.">
+  <link rel="canonical" href="https://swiftbot.dev/help/">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#f5f5f7">
+  <link rel="icon" type="image/png" href="../favicon.png">
+  <link rel="apple-touch-icon" href="../assets/landing/app-icon-light.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f7;
+      --surface: rgba(255, 255, 255, 0.82);
+      --surface-solid: #ffffff;
+      --text: #1d1d1f;
+      --secondary: #515154;
+      --tertiary: #6e6e73;
+      --border: rgba(0, 0, 0, 0.11);
+      --blue: #0071e3;
+      --green: #248a3d;
+      --orange: #bf5a00;
+      --purple: #8944ab;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: rgba(0, 0, 0, 0.06);
+      font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: rgba(245, 245, 247, 0.78);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .nav-inner,
+    .shell {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .nav-inner {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+
+    .brand img {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--secondary);
+      font-size: 0.92rem;
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+    }
+
+    .hero {
+      padding: clamp(54px, 8vw, 92px) 0 clamp(38px, 6vw, 72px);
+      text-align: center;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(2.8rem, 8vw, 5.8rem);
+      line-height: 1.03;
+      letter-spacing: 0;
+      font-weight: 760;
+    }
+
+    .hero p {
+      max-width: 690px;
+      margin: 18px auto 0;
+      color: var(--secondary);
+      font-size: clamp(1.08rem, 2.4vw, 1.38rem);
+    }
+
+    .search {
+      width: min(680px, 100%);
+      margin: 30px auto 0;
+      position: relative;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
+      color: var(--tertiary);
+    }
+
+    .search input {
+      width: 100%;
+      min-height: 54px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0 18px 0 50px;
+      background: var(--surface-solid);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.07);
+      color: var(--text);
+      font: inherit;
+      font-size: 1.04rem;
+      outline: none;
+    }
+
+    .search input:focus {
+      border-color: color-mix(in srgb, var(--blue), var(--border) 25%);
+      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12), 0 12px 36px rgba(0, 0, 0, 0.07);
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      padding-bottom: 54px;
+    }
+
+    .topic-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 210px;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-solid);
+      box-shadow: 0 10px 34px rgba(0, 0, 0, 0.05);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+    .topic-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(0, 113, 227, 0.32);
+      box-shadow: var(--shadow);
+    }
+
+    .topic-icon {
+      width: 42px;
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      color: var(--accent, var(--blue));
+      background: color-mix(in srgb, currentColor, transparent 88%);
+    }
+
+    .topic-icon svg {
+      width: 23px;
+      height: 23px;
+      fill: currentColor;
+    }
+
+    .topic-card h2 {
+      margin: 18px 0 8px;
+      font-size: 1.22rem;
+      letter-spacing: 0;
+    }
+
+    .topic-card p {
+      margin: 0;
+      color: var(--secondary);
+      font-size: 0.96rem;
+    }
+
+    .topic-card span:last-child {
+      margin-top: auto;
+      padding-top: 18px;
+      color: var(--blue);
+      font-weight: 650;
+      font-size: 0.94rem;
+    }
+
+    .topic-card:nth-child(2) { --accent: var(--green); }
+    .topic-card:nth-child(3) { --accent: var(--orange); }
+    .topic-card:nth-child(4) { --accent: var(--purple); }
+
+    .content {
+      padding: 12px 0 74px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 34px;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 76px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .sidebar a {
+      display: block;
+      border-radius: 7px;
+      padding: 9px 10px;
+      color: var(--secondary);
+      font-size: 0.94rem;
+    }
+
+    .sidebar a:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text);
+    }
+
+    .article {
+      scroll-margin-top: 78px;
+      margin-bottom: 22px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-solid);
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.045);
+      overflow: hidden;
+    }
+
+    .article-header {
+      padding: clamp(24px, 4vw, 38px);
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 252, 0.88));
+    }
+
+    .article-label {
+      color: var(--blue);
+      font-weight: 720;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .article h2 {
+      margin: 8px 0 0;
+      font-size: clamp(1.9rem, 4vw, 3rem);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .article-header p {
+      max-width: 760px;
+      margin: 12px 0 0;
+      color: var(--secondary);
+      font-size: 1.06rem;
+    }
+
+    .article-body {
+      padding: clamp(22px, 4vw, 36px);
+    }
+
+    .article-body h3 {
+      margin: 28px 0 10px;
+      font-size: 1.24rem;
+      letter-spacing: 0;
+    }
+
+    .article-body h3:first-child {
+      margin-top: 0;
+    }
+
+    .article-body p,
+    .article-body li {
+      color: var(--secondary);
+    }
+
+    .article-body ul,
+    .article-body ol {
+      padding-left: 24px;
+    }
+
+    .callout {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border: 1px solid rgba(0, 113, 227, 0.18);
+      border-radius: 8px;
+      background: rgba(0, 113, 227, 0.06);
+      color: var(--secondary);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 620px;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    th {
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.035);
+      font-weight: 700;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 15px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-solid);
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .empty {
+      display: none;
+      text-align: center;
+      padding: 36px;
+      color: var(--secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-solid);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 26px 0 38px;
+      color: var(--tertiary);
+      font-size: 0.9rem;
+    }
+
+    footer .shell {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    footer nav {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 900px) {
+      .quick-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav-inner,
+      .shell {
+        width: min(100% - 28px, 1120px);
+      }
+
+      .nav-links {
+        gap: 12px;
+      }
+
+      .nav-links a:nth-child(2),
+      .nav-links a:nth-child(3) {
+        display: none;
+      }
+
+      .quick-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .topic-card {
+        min-height: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav" aria-label="Main">
+    <div class="nav-inner">
+      <a class="brand" href="../">
+        <img src="../assets/landing/app-icon-light.png" alt="">
+        <span>SwiftBot Help</span>
+      </a>
+      <div class="nav-links">
+        <a href="#install">Install</a>
+        <a href="#bot-setup">Bot Setup</a>
+        <a href="#web-ui">Web UI</a>
+        <a href="#swiftmesh">SwiftMesh</a>
+        <a href="https://github.com/johnwatso/SwiftBot">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="shell">
+        <h1>How can we help?</h1>
+        <p>Find setup guides, connection checks, and troubleshooting steps for running SwiftBot on macOS.</p>
+        <label class="search" for="help-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m21 19.6-5.4-5.4a7 7 0 1 0-1.4 1.4L19.6 21 21 19.6ZM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z"/></svg>
+          <input id="help-search" type="search" placeholder="Search SwiftBot Help" autocomplete="off">
+        </label>
+      </div>
+    </section>
+
+    <section class="shell quick-grid" aria-label="Popular topics">
+      <a class="topic-card" href="#install" data-search-item data-keywords="install download releases sparkle beta stable requirements macos apple silicon">
+        <span class="topic-icon"><svg viewBox="0 0 24 24"><path d="M12 3v10.2l3.6-3.6L17 11l-5 5-5-5 1.4-1.4 3.6 3.6V3h2ZM5 19h14v2H5v-2Z"/></svg></span>
+        <h2>Install SwiftBot</h2>
+        <p>Download the latest release, move the app to Applications, and choose an update channel.</p>
+        <span>Start here</span>
+      </a>
+      <a class="topic-card" href="#bot-setup" data-search-item data-keywords="discord application bot token intents oauth redirect invite code grant unauthorized">
+        <span class="topic-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5l-4 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z"/></svg></span>
+        <h2>Set Up Discord</h2>
+        <p>Create the Discord application, copy the bot token, enable intents, and configure OAuth.</p>
+        <span>Configure bot</span>
+      </a>
+      <a class="topic-card" href="#web-ui" data-search-item data-keywords="web ui admin dashboard cloudflare tunnel public access localhost reverse proxy port forwarding oauth">
+        <span class="topic-icon"><svg viewBox="0 0 24 24"><path d="M3 5h18v12H3V5Zm2 2v8h14V7H5Zm4 12h6v2H9v-2Z"/></svg></span>
+        <h2>Admin Web UI</h2>
+        <p>Run the dashboard locally or publish it through Cloudflare Tunnel or your own reverse proxy.</p>
+        <span>Open guide</span>
+      </a>
+      <a class="topic-card" href="#swiftmesh" data-search-item data-keywords="swiftmesh failover primary standby worker join code port forwarding handover cluster live endpoint">
+        <span class="topic-icon"><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 4.7 3.4 8.7 8 10 4.6-1.3 8-5.3 8-10V6l-8-4Zm0 2.2 6 2.7V12c0 3.4-2.4 6.5-6 7.8-3.6-1.3-6-4.4-6-7.8V6.9l6-2.7Z"/></svg></span>
+        <h2>SwiftMesh</h2>
+        <p>Pair primary and standby Macs, rehearse handover, and understand what ports are needed.</p>
+        <span>Plan failover</span>
+      </a>
+    </section>
+
+    <section class="content">
+      <div class="shell layout">
+        <aside class="sidebar" aria-label="Help topics">
+          <a href="#install">Install SwiftBot</a>
+          <a href="#bot-setup">Discord Bot Setup</a>
+          <a href="#web-ui">Admin Web UI Setup</a>
+          <a href="#swiftmesh">SwiftMesh Failover</a>
+          <a href="#troubleshooting">Quick Troubleshooting</a>
+        </aside>
+
+        <div>
+          <p class="empty" id="no-results">No help topics matched your search.</p>
+
+          <article class="article" id="install" data-search-item data-keywords="install download release zip applications macos apple silicon sparkle beta stable updates">
+            <header class="article-header">
+              <span class="article-label">Install</span>
+              <h2>Install SwiftBot on macOS</h2>
+              <p>SwiftBot is a native Apple Silicon Mac app. Use the signed GitHub release for day-to-day installs.</p>
+            </header>
+            <div class="article-body">
+              <h3>Requirements</h3>
+              <ul>
+                <li>macOS 26 or later.</li>
+                <li>Apple Silicon Mac.</li>
+                <li>A Discord bot application and token.</li>
+                <li>Internet access for Discord, updates, and optional tunnels.</li>
+              </ul>
+
+              <h3>Install steps</h3>
+              <ol>
+                <li>Download the latest SwiftBot <code>.zip</code> from GitHub Releases.</li>
+                <li>Unzip it and move <code>SwiftBot.app</code> to <code>/Applications</code>.</li>
+                <li>Launch SwiftBot.</li>
+                <li>Paste your Discord bot token during onboarding. SwiftBot validates it and stores it in the macOS Keychain.</li>
+              </ol>
+
+              <h3>Updates</h3>
+              <p>SwiftBot uses Sparkle for in-app updates. Choose stable or beta under <strong>Settings &gt; Updates</strong>.</p>
+              <div class="button-row">
+                <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/latest">Download latest</a>
+                <a class="button" href="../appcast.xml">Stable appcast</a>
+                <a class="button" href="../beta/appcast.xml">Beta appcast</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="article" id="bot-setup" data-search-item data-keywords="discord developer portal application token bot privileged gateway intents message content server members presence oauth redirects invite code grant">
+            <header class="article-header">
+              <span class="article-label">Discord</span>
+              <h2>Create and connect your Discord bot</h2>
+              <p>One Discord application can provide both the bot token and the OAuth client used by the Admin Web UI.</p>
+            </header>
+            <div class="article-body">
+              <h3>1. Create the application</h3>
+              <p>Open the Discord Developer Portal, choose <strong>New Application</strong>, and give it a name users will recognize in Discord.</p>
+
+              <h3>2. Add the bot and copy its token</h3>
+              <ol>
+                <li>Open the application's <strong>Bot</strong> page.</li>
+                <li>Click <strong>Add Bot</strong>, or <strong>Reset Token</strong> if a bot already exists.</li>
+                <li>Copy the bot token immediately. Discord only shows it once.</li>
+                <li>Paste it into SwiftBot onboarding. SwiftBot stores it in Keychain, not in a plain text file.</li>
+              </ol>
+
+              <h3>3. Enable gateway intents</h3>
+              <p>On the Discord application's <strong>Bot</strong> page, enable these privileged gateway intents:</p>
+              <ul>
+                <li><strong>Server Members Intent</strong> for join and leave events.</li>
+                <li><strong>Message Content Intent</strong> for message rules and AI features.</li>
+                <li><strong>Presence Intent</strong> for voice and online-status tracking.</li>
+              </ul>
+
+              <h3>4. Configure OAuth for the Web UI</h3>
+              <p>Open <strong>OAuth2 &gt; General</strong> in Discord, then copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into <strong>SwiftBot &gt; Settings &gt; Web UI &gt; Authentication</strong>.</p>
+
+              <h3>5. Register redirect URIs</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Access mode</th><th>Redirect URI</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Local-only dashboard</td><td><code>http://localhost:8090/auth/discord/callback</code></td></tr>
+                    <tr><td>Public dashboard</td><td><code>https://your-bot.example.com/auth/discord/callback</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout">Leave <strong>Requires OAuth2 Code Grant</strong> off unless you specifically need it. If it is on, SwiftBot can generate working invite URLs only after Discord OAuth is configured.</div>
+
+              <div class="button-row">
+                <a class="button primary" href="https://discord.com/developers/applications">Open Discord Developer Portal</a>
+                <a class="button" href="#web-ui">Set up Web UI</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="article" id="web-ui" data-search-item data-keywords="web ui admin dashboard localhost cloudflare tunnel public access reverse proxy override public base url port forwarding unsupported oauth redirect">
+            <header class="article-header">
+              <span class="article-label">Admin Web UI</span>
+              <h2>Choose how the dashboard is reached</h2>
+              <p>The Web UI can stay local to your Mac or be published safely behind TLS through Cloudflare Tunnel or your own reverse proxy.</p>
+            </header>
+            <div class="article-body">
+              <h3>Access modes</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Mode</th><th>Reachable from</th><th>Supported</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Local-only</td><td>The Mac running SwiftBot, at <code>localhost</code></td><td>Yes, default</td></tr>
+                    <tr><td>Cloudflare Tunnel</td><td>Anywhere over HTTPS</td><td>Yes, recommended</td></tr>
+                    <tr><td>Custom reverse proxy</td><td>Wherever your proxy is reachable</td><td>Yes, with Override Public Base URL</td></tr>
+                    <tr><td>Router port forwarding</td><td>Public internet directly to SwiftBot</td><td>No</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>Local-only access</h3>
+              <ol>
+                <li>Open <strong>Settings &gt; Web UI</strong>.</li>
+                <li>Enable <strong>Admin Web UI</strong>.</li>
+                <li>Visit <code>http://localhost:8090</code>, or the port shown under Advanced.</li>
+              </ol>
+
+              <h3>Cloudflare Tunnel setup</h3>
+              <ol>
+                <li>Add your domain to Cloudflare and confirm the zone is active.</li>
+                <li>Create a scoped Cloudflare API token with tunnel edit, DNS edit, zone read, and user read permissions.</li>
+                <li>In SwiftBot, open <strong>Settings &gt; Web UI &gt; Internet Access</strong>.</li>
+                <li>Paste the token, verify it, choose a subdomain, then enable Internet Access.</li>
+                <li>Add <code>https://your-bot.example.com/auth/discord/callback</code> to Discord OAuth redirects.</li>
+              </ol>
+
+              <div class="callout">Do not expose SwiftBot's local port directly with router port forwarding. The local server is plain HTTP and expects a TLS-terminating tunnel or proxy for public access.</div>
+
+              <h3>Custom reverse proxy</h3>
+              <p>Forward your proxy to <code>http://localhost:8090</code>, terminate TLS at the proxy, then set <strong>Settings &gt; Web UI &gt; Advanced &gt; Override Public Base URL</strong> to the public URL.</p>
+            </div>
+          </article>
+
+          <article class="article" id="swiftmesh" data-search-item data-keywords="swiftmesh cluster failover primary standby worker join code shared secret rotate handover test live endpoint port forwarding firewall">
+            <header class="article-header">
+              <span class="article-label">SwiftMesh</span>
+              <h2>Set up failover with SwiftMesh</h2>
+              <p>SwiftMesh lets a standby Mac mirror the primary node and promote itself if the primary disappears.</p>
+            </header>
+            <div class="article-body">
+              <h3>Roles</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Role</th><th>What it does</th><th>When to use it</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>Standalone</td><td>Runs one local bot node.</td><td>Default single-Mac install.</td></tr>
+                    <tr><td>Primary</td><td>Owns the Discord gateway and accepts mesh connections.</td><td>Main production node.</td></tr>
+                    <tr><td>Fail Over</td><td>Mirrors state and promotes if the Primary fails.</td><td>Second Mac for uptime.</td></tr>
+                    <tr><td>Worker</td><td>Runs offloaded jobs for older setups.</td><td>Existing installs only.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>Network rule</h3>
+              <p>Standby nodes connect outbound to the Primary's mesh port, default <code>38787/TCP</code>. If both Macs are on the same LAN, no router port forwarding is needed. If the Standby is off-LAN, forward the Primary's mesh port to the Primary Mac.</p>
+
+              <h3>Pair with a Join Code</h3>
+              <ol>
+                <li>On the Primary, open <strong>Settings &gt; SwiftMesh</strong> and copy the SwiftMesh Join Code.</li>
+                <li>On the Standby, paste the Join Code during onboarding or under <strong>Settings &gt; SwiftMesh</strong>.</li>
+                <li>The Standby tests the embedded LAN and WAN addresses, saves the one that connects, and begins syncing.</li>
+              </ol>
+
+              <h3>Security and recovery</h3>
+              <ul>
+                <li>Treat Join Codes as bearer credentials.</li>
+                <li>Rotate the shared secret from the Primary if a Join Code leaks.</li>
+                <li>Use <strong>Run Handover Test</strong> to rehearse promotion and reclaim before an outage.</li>
+                <li>The public <code>/live</code> endpoint can act as both an uptime probe and a second failover signal.</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="article" id="troubleshooting" data-search-item data-keywords="troubleshooting invalid redirect uri unauthorized disallowed intents cloudflare 502 code grant token no sign in method">
+            <header class="article-header">
+              <span class="article-label">Troubleshooting</span>
+              <h2>Quick fixes for common setup issues</h2>
+              <p>Most setup failures come from mismatched Discord redirects, missing intents, or public access that is not terminating TLS.</p>
+            </header>
+            <div class="article-body">
+              <h3>Invalid OAuth2 redirect_uri</h3>
+              <p>Copy the exact redirect URI shown in <strong>Settings &gt; Web UI</strong> into Discord's <strong>OAuth2 &gt; Redirects</strong>. Scheme, host, port, path, and trailing slash all matter.</p>
+
+              <h3>Integration requires code grant</h3>
+              <p>Turn off <strong>Requires OAuth2 Code Grant</strong> in Discord unless you need it. If it must stay on, configure SwiftBot's Discord OAuth settings first.</p>
+
+              <h3>Bot logs in but cannot see members or messages</h3>
+              <p>Enable Server Members Intent and Message Content Intent in the Discord Developer Portal, then restart SwiftBot.</p>
+
+              <h3>Cloudflare hostname shows 502 Bad Gateway</h3>
+              <p>Confirm the Admin Web UI is enabled, the local port matches the SwiftBot setting, and the Cloudflare tunnel checklist is green. Restart SwiftBot if the tunnel process is stale.</p>
+
+              <h3>Standby cannot pair across the internet</h3>
+              <p>Check that the Primary's mesh port is forwarded to the Primary Mac, macOS Firewall allows SwiftBot inbound, and the ISP is not blocking inbound traffic with CGNAT.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">
+      <span>SwiftBot Help Center</span>
+      <nav aria-label="Footer">
+        <a href="../">SwiftBot</a>
+        <a href="README.md">Markdown docs</a>
+        <a href="https://github.com/johnwatso/SwiftBot/issues">GitHub Issues</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var input = document.getElementById("help-search");
+      var items = Array.prototype.slice.call(document.querySelectorAll("[data-search-item]"));
+      var empty = document.getElementById("no-results");
+
+      function textFor(item) {
+        return (item.innerText + " " + (item.getAttribute("data-keywords") || "")).toLowerCase();
+      }
+
+      var index = items.map(function (item) {
+        return { item: item, text: textFor(item) };
+      });
+
+      input.addEventListener("input", function () {
+        var query = input.value.trim().toLowerCase();
+        var visibleCount = 0;
+
+        index.forEach(function (entry) {
+          var visible = !query || entry.text.indexOf(query) !== -1;
+          entry.item.hidden = !visible;
+          if (visible && entry.item.classList.contains("article")) {
+            visibleCount += 1;
+          }
+        });
+
+        empty.style.display = query && visibleCount === 0 ? "block" : "none";
+      });
+    })();
+  </script>
+</body>
+</html>
