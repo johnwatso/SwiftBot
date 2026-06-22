@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot - Self-Hosted Discord Bot Manager for macOS</title>
-  <meta name="description" content="SwiftBot is a native macOS Discord bot manager for self-hosted moderation, automation rules, AI FAQ replies, onboarding flows, Web UI access, update alerts, and SwiftMesh failover.">
-  <meta name="keywords" content="Discord bot manager, self-hosted Discord bot, macOS Discord bot, Discord moderation bot, Discord automation bot, AI Discord bot, Discord FAQ bot, Discord onboarding bot">
+  <title>SwiftBot - Discord Bot for macOS</title>
+  <meta name="description" content="SwiftBot is a native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover.">
+  <meta name="keywords" content="Discord bot for Mac, macOS Discord bot, self-hosted Discord bot, Discord moderation bot, Discord automation bot, AI Discord bot, Discord FAQ bot, Discord onboarding bot">
   <link rel="canonical" href="https://swiftbot.dev/">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0d1020" media="(prefers-color-scheme: dark)">
@@ -17,14 +17,14 @@
   <meta property="og:site_name" content="SwiftBot">
   <meta property="og:locale" content="en_US">
   <meta property="og:url" content="https://swiftbot.dev/">
-  <meta property="og:title" content="SwiftBot - Self-Hosted Discord Bot Manager for macOS">
-  <meta property="og:description" content="Run a self-hosted Discord bot from a native Mac app with moderation rules, AI FAQ replies, onboarding, Web UI access, and failover.">
+  <meta property="og:title" content="SwiftBot - Discord Bot for macOS">
+  <meta property="og:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
   <meta property="og:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
   <meta property="og:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SwiftBot - Self-Hosted Discord Bot Manager for macOS">
-  <meta name="twitter:description" content="Run a self-hosted Discord bot from a native Mac app with moderation rules, AI FAQ replies, onboarding, Web UI access, and failover.">
+  <meta name="twitter:title" content="SwiftBot - Discord Bot for macOS">
+  <meta name="twitter:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
   <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
   <meta name="twitter:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
 
@@ -37,7 +37,7 @@
     "applicationCategory": "UtilitiesApplication",
     "url": "https://swiftbot.dev/",
     "downloadUrl": "https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip",
-    "description": "SwiftBot is a native macOS app for running a self-hosted Discord bot with moderation, automation rules, AI FAQ replies, onboarding flows, Web UI access, update alerts, and failover.",
+    "description": "SwiftBot is a native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and failover.",
     "image": "https://swiftbot.dev/assets/landing/ui-preview-dark.png",
     "softwareHelp": "https://swiftbot.dev/help/",
     "offers": {
@@ -54,15 +54,15 @@
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "Can I run a self-hosted Discord bot from my Mac?",
+        "name": "Can I run SwiftBot on my Discord server from a Mac?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. SwiftBot runs as a native Apple Silicon macOS app and stores your Discord bot token in the macOS Keychain."
+          "text": "Yes. SwiftBot runs as a native Apple Silicon macOS app, connects to your Discord server through your Discord application, and stores the bot token in the macOS Keychain."
         }
       },
       {
         "@type": "Question",
-        "name": "Can SwiftBot help with Discord moderation and onboarding?",
+        "name": "Can SwiftBot help moderate my Discord server?",
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "SwiftBot includes automation rules for messages, joins, voice events, moderation actions, role actions, DMs, and channel routing."
@@ -74,6 +74,22 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "SwiftBot can route AI replies through Apple Intelligence, Ollama, or OpenAI, and can use WikiBridge-backed lookup commands for server knowledge."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can SwiftBot run on more than one Discord server?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SwiftBot is designed around managing one primary Discord server. It can be invited to more than one server, but the dashboard and workflows are clearest when one server is the main home."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How much does SwiftBot cost?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SwiftBot is free and open source. It is actively maintained, shaped around real server use, and keeps getting better with every release."
         }
       }
     ]
@@ -304,8 +320,10 @@
     }
 
     h1 {
-      font-size: clamp(3.2rem, 9vw, 6.5rem);
-      font-weight: 900;
+      font-size: clamp(2.55rem, 6vw, 4.8rem);
+      font-weight: 880;
+      max-width: 860px;
+      margin: 0 auto;
     }
 
     .gradient-text {
@@ -328,6 +346,13 @@
       flex-wrap: wrap;
       justify-content: center;
       gap: 12px;
+    }
+
+    .hero-note {
+      margin: 12px auto 0;
+      color: var(--quiet);
+      font-size: 0.9rem;
+      font-weight: 650;
     }
 
     .trust-strip {
@@ -353,12 +378,23 @@
       font-weight: 760;
     }
 
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 18px color-mix(in srgb, var(--green), transparent 35%);
+    .mini-icon {
+      width: 19px;
+      height: 19px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      color: var(--accent, var(--green));
+      background: color-mix(in srgb, currentColor, transparent 88%);
+      border: 1px solid color-mix(in srgb, currentColor, transparent 56%);
+    }
+
+    .mini-icon svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
     }
 
     .screenshot-frame {
@@ -414,6 +450,16 @@
     .showcase img {
       width: 100%;
       height: auto;
+      object-fit: contain;
+    }
+
+    .hero-shot img,
+    .showcase img[src*="ui-preview"] {
+      aspect-ratio: 4064 / 2138;
+    }
+
+    .showcase img[src*="webui-preview"] {
+      aspect-ratio: 4058 / 2138;
     }
 
     .section-heading {
@@ -445,7 +491,9 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 24px;
-      background: var(--surface);
+      background:
+        radial-gradient(circle at 92% 92%, color-mix(in srgb, var(--accent, var(--cyan)), transparent 88%), transparent 58%),
+        var(--surface);
       box-shadow: 0 14px 40px rgba(0, 0, 0, 0.12);
     }
 
@@ -540,8 +588,72 @@
       margin: 0 auto;
     }
 
-    .faq-item h3 {
-      margin-top: 0;
+    .faq-item {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .faq-question {
+      width: 100%;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border: 0;
+      padding: 20px 22px;
+      color: var(--text);
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .faq-question h3 {
+      font-size: 1.05rem;
+      line-height: 1.25;
+      font-weight: 820;
+    }
+
+    .faq-toggle {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .faq-toggle::before {
+      content: "+";
+      font-size: 1.2rem;
+      line-height: 1;
+      transform: translateY(-1px);
+    }
+
+    .faq-answer {
+      display: none;
+      padding: 0 22px 22px;
+      color: var(--muted);
+    }
+
+    .faq-answer p {
+      margin: 0;
+      color: inherit;
+    }
+
+    .faq-item.is-open .faq-answer {
+      display: block;
+    }
+
+    .faq-item.is-open .faq-toggle {
+      color: var(--text);
+      border-color: color-mix(in srgb, var(--discord), var(--border) 35%);
+      transform: rotate(45deg);
     }
 
     .step-number {
@@ -560,6 +672,90 @@
       padding: clamp(24px, 5vw, 44px);
       background: linear-gradient(135deg, color-mix(in srgb, var(--discord), transparent 78%), var(--surface));
       box-shadow: var(--shadow);
+    }
+
+    .privacy-band {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      gap: 28px;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: clamp(26px, 5vw, 44px) 0;
+    }
+
+    .privacy-band h2 {
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      font-weight: 880;
+    }
+
+    .privacy-band p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      max-width: 560px;
+    }
+
+    .privacy-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .privacy-lock {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: var(--green);
+      background: color-mix(in srgb, var(--green), transparent 88%);
+      border: 1px solid color-mix(in srgb, var(--green), transparent 52%);
+    }
+
+    .privacy-lock svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    .privacy-points {
+      display: grid;
+      gap: 14px;
+    }
+
+    .privacy-point {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      color: var(--muted);
+    }
+
+    .privacy-point strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .privacy-check {
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      color: var(--green);
+      background: color-mix(in srgb, var(--green), transparent 88%);
+      border: 1px solid color-mix(in srgb, var(--green), transparent 52%);
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .privacy-check svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
     }
 
     .download-panel h2 {
@@ -632,7 +828,8 @@
         order: 0;
       }
 
-      .download-panel {
+      .download-panel,
+      .privacy-band {
         grid-template-columns: 1fr;
       }
     }
@@ -701,21 +898,25 @@
               <img src="./assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
               <span>SwiftBot</span>
             </div>
-            <h1>Self-hosted Discord bot control for <span class="gradient-text">macOS.</span></h1>
-            <p>Run, configure, monitor, and automate your Discord bot from a polished SwiftUI dashboard, with moderation workflows, onboarding rules, AI FAQ replies, Web UI access, Patchy update alerts, and SwiftMesh failover when uptime matters.</p>
+            <h1>A Discord bot for your server, <span class="gradient-text">running on macOS.</span></h1>
+            <p>Install SwiftBot on your Mac, connect it to your Discord server, and let it handle moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover when uptime matters.</p>
             <div class="hero-actions">
               <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.1-.46-2.1-.48-3.25 0-1.44.62-2.2.44-3.06-.35-4.9-5.05-4.17-12.75 1.39-13.03 1.35.07 2.3.74 3.08.8.78-.16 1.98-.92 3.34-.83 1.59.13 2.78.76 3.58 1.92-3.14 1.88-2.4 6 .49 7.15-.58 1.52-1.31 3.02-2.49 3.99ZM14.55 5.8c.68-.82 1.14-1.96 1-3.08-.98.04-2.17.66-2.88 1.47-.64.73-1.18 1.9-1.03 3 1.1.08 2.23-.55 2.91-1.39Z"/></svg>
                 Download for Mac
               </a>
               <a class="button" href="./help/#install">Install Guide</a>
-              <a class="button" href="https://github.com/johnwatso/SwiftBot">View on GitHub</a>
+              <a class="button" href="https://github.com/johnwatso/SwiftBot">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.29 9.42 7.86 10.95.58.11.79-.25.79-.56v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18A10.96 10.96 0 0 1 12 6.08c.98 0 1.96.13 2.88.39 2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+                View on GitHub
+              </a>
             </div>
+            <p class="hero-note">Free and open source. Runs on your Mac. No SwiftBot cloud account required.</p>
             <div class="trust-strip" aria-label="Highlights">
-              <span class="trust-badge"><span class="dot" aria-hidden="true"></span>Native macOS 26 app</span>
-              <span class="trust-badge">Self-hosted Discord bot</span>
-              <span class="trust-badge">SwiftUI dashboard</span>
-              <span class="trust-badge">Keychain-stored tokens</span>
+              <span class="trust-badge" style="--accent: var(--green);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.1-.46-2.1-.48-3.25 0-1.44.62-2.2.44-3.06-.35-4.9-5.05-4.17-12.75 1.39-13.03 1.35.07 2.3.74 3.08.8.78-.16 1.98-.92 3.34-.83 1.59.13 2.78.76 3.58 1.92-3.14 1.88-2.4 6 .49 7.15-.58 1.52-1.31 3.02-2.49 3.99ZM14.55 5.8c.68-.82 1.14-1.96 1-3.08-.98.04-2.17.66-2.88 1.47-.64.73-1.18 1.9-1.03 3 1.1.08 2.23-.55 2.91-1.39Z"/></svg></span>Built for Mac</span>
+              <span class="trust-badge" style="--accent: var(--discord);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.36 2c-.22.39-.47.92-.64 1.34a18.27 18.27 0 0 0-5.44 0C9.1 2.92 8.85 2.39 8.63 2a19.74 19.74 0 0 0-4.96 2.38C.53 9.05-.32 13.6.1 18.08a19.9 19.9 0 0 0 6.08 3.06c.49-.66.92-1.36 1.3-2.1-.71-.27-1.39-.6-2.03-.97.17-.12.34-.25.5-.38a14.18 14.18 0 0 0 12.1 0c.17.14.33.26.5.38-.64.38-1.32.7-2.03.97.38.74.82 1.44 1.3 2.1a19.86 19.86 0 0 0 6.08-3.06c.5-5.18-.84-9.69-3.58-13.71ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Z"/></svg></span>Discord server bot</span>
+              <span class="trust-badge" style="--accent: var(--cyan);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.508 0c-.287 0-.573 0-.86.002-.241.002-.483.003-.724.01-.132.003-.263.009-.395.015A9.154 9.154 0 0 0 4.348.15 5.492 5.492 0 0 0 2.85.645 5.04 5.04 0 0 0 .645 2.848c-.245.48-.4.972-.495 1.5-.093.52-.122 1.05-.136 1.576a35.2 35.2 0 0 0-.012.724C0 6.935 0 7.221 0 7.508v8.984c0 .287 0 .575.002.862.002.24.005.481.012.722.014.526.043 1.057.136 1.576.095.528.25 1.02.495 1.5a5.03 5.03 0 0 0 2.205 2.203c.48.244.97.4 1.498.495.52.093 1.05.124 1.576.138.241.007.483.009.724.01.287.002.573.002.86.002h8.984c.287 0 .573 0 .86-.002.241-.001.483-.003.724-.01a10.523 10.523 0 0 0 1.578-.138 5.322 5.322 0 0 0 1.498-.495 5.035 5.035 0 0 0 2.203-2.203c.245-.48.4-.972.495-1.5.093-.52.124-1.05.138-1.576.007-.241.009-.481.01-.722.002-.287.002-.575.002-.862V7.508c0-.287 0-.573-.002-.86a33.662 33.662 0 0 0-.01-.724 10.5 10.5 0 0 0-.138-1.576 5.328 5.328 0 0 0-.495-1.5A5.039 5.039 0 0 0 21.152.645 5.32 5.32 0 0 0 19.654.15a10.493 10.493 0 0 0-1.578-.138 34.98 34.98 0 0 0-.722-.01C17.067 0 16.779 0 16.492 0H7.508Zm6.035 3.41c4.114 2.47 6.545 7.162 5.549 11.131-.024.093-.05.181-.076.272l.002.001c2.062 2.538 1.5 5.258 1.236 4.745-1.072-2.086-3.066-1.568-4.088-1.043a6.803 6.803 0 0 1-.281.158l-.02.012-.002.002c-2.115 1.123-4.957 1.205-7.812-.022a12.568 12.568 0 0 1-5.64-4.838c.649.48 1.35.902 2.097 1.252 3.019 1.414 6.051 1.311 8.197-.002C9.651 12.73 7.101 9.67 5.146 7.191a10.628 10.628 0 0 1-1.005-1.384c2.34 2.142 6.038 4.83 7.365 5.576C8.69 8.408 6.208 4.743 6.324 4.86c4.436 4.47 8.528 6.996 8.528 6.996.154.085.27.154.36.213.085-.215.16-.437.224-.668.708-2.588-.09-5.548-1.893-7.992Z"/></svg></span>SwiftUI dashboard</span>
+              <span class="trust-badge" style="--accent: var(--gold);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Z"/></svg></span>Keychain-stored tokens</span>
             </div>
           </div>
 
@@ -731,40 +932,40 @@
       <section class="section" id="features">
         <div class="shell">
           <div class="section-heading reveal">
-            <h2>One control surface for the whole Discord bot.</h2>
-            <p>SwiftBot keeps self-hosted bot operations in one native app instead of scattered config files, terminal logs, hosted dashboards, and browser tabs.</p>
+            <h2>All your bot essentials, in one Mac app.</h2>
+            <p>Manage the bot running on your server from a Mac dashboard instead of scattered config files, terminal logs, hosted dashboards, and browser tabs.</p>
           </div>
 
           <div class="feature-grid">
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v4H4V4Zm0 6h7v10H4V10Zm9 0h7v10h-7V10Z"/></svg></span>
               <h3>Native dashboard</h3>
-              <p>Monitor gateway status, commands, logs, diagnostics, permissions, latency, and bot health from a SwiftUI macOS interface.</p>
+              <p>See bot status, Discord activity, slash commands, permissions, diagnostics, analytics, latency, and logs from one SwiftUI Mac app.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 2h6v3h4v6h3v6h-3v5H5v-5H2v-6h3V5h4V2Zm8 5H7v13h10V7Zm-7 3h4v2h-4v-2Zm-1 5h6v2H9v-2Z"/></svg></span>
-              <h3>Moderation and onboarding rules</h3>
-              <p>Build rules for messages, joins, voice events, moderation, welcome flows, role actions, DMs, and channel routing.</p>
+              <h3>Server automation</h3>
+              <p>Handle joins, welcome flows, message rules, moderation actions, role changes, DMs, channel routing, voice events, and scheduled cleanup.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5l-4 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7v1.17L13.17 15H19a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5Z"/></svg></span>
-              <h3>AI FAQ and knowledge replies</h3>
-              <p>Answer repeat Discord server questions with AI replies routed through Apple Intelligence, Ollama, or OpenAI, plus WikiBridge-backed lookup commands.</p>
+              <h3>AI and knowledge replies</h3>
+              <p>Answer repeat server questions with Apple Intelligence, Ollama, or OpenAI, plus WikiBridge lookup commands and configurable response rules.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.84 9.74 9 10 5.16-.26 9-5 9-10V6l-9-4Zm0 2.2 7 3.1V12c0 3.85-2.84 7.3-7 7.98C7.84 19.3 5 15.85 5 12V7.3l7-3.1Zm-1 9.39 5.3-5.3 1.4 1.42-6.7 6.7-3.7-3.7 1.4-1.42 2.3 2.3Z"/></svg></span>
-              <h3>SwiftMesh failover</h3>
-              <p>Run primary and standby nodes, sync live state, rehearse handovers, and keep Discord output gated to the active leader.</p>
+              <h3>SwiftMesh reliability</h3>
+              <p>Run primary and standby nodes, sync live state, rehearse handovers, keep output leader-gated, and recover cleanly when uptime matters.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v3H4V4Zm1 5h14l-1.2 11H6.2L5 9Zm4 3v5h2v-5H9Zm4 0v5h2v-5h-2Z"/></svg></span>
-              <h3>Patchy alerts</h3>
-              <p>Track AMD, NVIDIA, Intel, Steam, GitHub, and other update sources, then send clean Discord notifications.</p>
+              <h3>Patchy update monitoring</h3>
+              <p>Watch AMD, NVIDIA, Intel, Steam, GitHub, Apple, and other sources, then post clean release alerts to the right Discord channels.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5Zm3-1a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H7Zm2 3h6v2H9V7Zm0 4h6v2H9v-2Zm0 4h4v2H9v-2Z"/></svg></span>
-              <h3>Admin Web UI</h3>
-              <p>Manage SwiftBot from a browser when needed, with Discord OAuth and optional Cloudflare Tunnel setup.</p>
+              <h3>Remote admin access</h3>
+              <p>Use the built-in Web UI with Discord OAuth, optional Cloudflare Tunnel setup, and browser access for trusted admins when the Mac is elsewhere.</p>
             </article>
           </div>
         </div>
@@ -808,8 +1009,8 @@
       <section class="section" id="setup">
         <div class="shell">
           <div class="section-heading reveal">
-            <h2>Setup is guided, not mysterious.</h2>
-            <p>Bring your own Discord application and SwiftBot walks the rest of the operational pieces into place.</p>
+            <h2>Get SwiftBot running in minutes.</h2>
+            <p>Create the Discord application, paste the token, choose what SwiftBot should handle, and add failover when you need it.</p>
           </div>
 
           <div class="steps">
@@ -841,26 +1042,90 @@
         <div class="shell">
           <div class="section-heading reveal">
             <h2>Answers for common Discord bot searches.</h2>
-            <p>SwiftBot is built for server owners who want a private, configurable bot without writing a whole bot from scratch.</p>
+            <p>SwiftBot is built for server owners who want a practical Discord bot they can run themselves from a Mac.</p>
           </div>
 
           <div class="faq-list">
-            <article class="card faq-item reveal">
-              <h3>Can I run a self-hosted Discord bot from my Mac?</h3>
-              <p>Yes. SwiftBot runs locally on Apple Silicon Macs, connects to your own Discord application, stores the token in Keychain, and keeps bot control inside a native macOS app.</p>
+            <article class="card faq-item reveal is-open">
+              <button class="faq-question" type="button" aria-expanded="true">
+                <h3>Can I run SwiftBot on my Discord server from a Mac?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>Yes. SwiftBot runs locally on Apple Silicon Macs, connects through your Discord application, stores the bot token in Keychain, and operates in your server like a normal Discord bot.</p>
+              </div>
             </article>
             <article class="card faq-item reveal">
-              <h3>Can I make a Discord moderation bot without coding one?</h3>
-              <p>SwiftBot gives you configurable rules for message events, joins, roles, DMs, moderation actions, and channel routing, so routine server workflows can be managed from the dashboard.</p>
+              <button class="faq-question" type="button" aria-expanded="false">
+                <h3>Can SwiftBot help moderate my Discord server?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>SwiftBot gives you configurable rules for message events, joins, roles, DMs, moderation actions, and channel routing, so routine server workflows can be managed from the dashboard.</p>
+              </div>
             </article>
             <article class="card faq-item reveal">
-              <h3>Can a bot answer repeat questions from members?</h3>
-              <p>SwiftBot supports AI replies and WikiBridge lookup commands, which helps communities answer common setup, support, and knowledge-base questions without repeating the same response manually.</p>
+              <button class="faq-question" type="button" aria-expanded="false">
+                <h3>Can a bot answer repeat questions from members?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>SwiftBot supports AI replies and WikiBridge lookup commands, which helps communities answer common setup, support, and knowledge-base questions without repeating the same response manually.</p>
+              </div>
             </article>
             <article class="card faq-item reveal">
-              <h3>Can I access the bot dashboard away from the Mac?</h3>
-              <p>The Admin Web UI can stay local or be published through SwiftBot's Cloudflare Tunnel flow, giving trusted admins browser access when the Mac is running elsewhere.</p>
+              <button class="faq-question" type="button" aria-expanded="false">
+                <h3>Can SwiftBot run on more than one Discord server?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>SwiftBot is designed around managing one primary Discord server. It can be invited to more than one server, but the dashboard and workflows are clearest when one server is the main home.</p>
+              </div>
             </article>
+            <article class="card faq-item reveal">
+              <button class="faq-question" type="button" aria-expanded="false">
+                <h3>Can I access the bot dashboard away from the Mac?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>The Admin Web UI can stay local or be published through SwiftBot's Cloudflare Tunnel flow, giving trusted admins browser access when the Mac is running elsewhere.</p>
+              </div>
+            </article>
+            <article class="card faq-item reveal">
+              <button class="faq-question" type="button" aria-expanded="false">
+                <h3>How much does SwiftBot cost?</h3>
+                <span class="faq-toggle" aria-hidden="true"></span>
+              </button>
+              <div class="faq-answer">
+                <p>SwiftBot is free and open source. It is actively maintained, shaped around real server use, and keeps getting better with every release.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="privacy">
+        <div class="shell">
+          <div class="privacy-band reveal">
+            <div>
+              <span class="eyebrow privacy-label"><span class="privacy-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Zm3 4a2 2 0 0 0-1 3.73V19h2v-1.27A2 2 0 0 0 12 14Z"/></svg></span>Privacy first</span>
+              <h2>100% local.<br>Your server stays yours.</h2>
+              <p>SwiftBot runs on your Mac and talks directly to Discord. There is no SwiftBot cloud account, hosted dashboard, or third-party sync service sitting between you and your server.</p>
+            </div>
+            <div class="privacy-points" aria-label="Privacy highlights">
+              <div class="privacy-point">
+                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Z"/></svg></span>
+                <div><strong>Secrets stay in Keychain</strong>Bot tokens and API keys are stored in the macOS Keychain, not plain text config files.</div>
+              </div>
+              <div class="privacy-point">
+                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5c0-1.66 3.58-3 8-3s8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5Zm2 3.15V11c0 .2 1.98 1 6 1s6-.8 6-1V8.15C16.55 8.68 14.42 9 12 9s-4.55-.32-6-.85Zm0 5V16c0 .2 1.98 1 6 1s6-.8 6-1v-2.85c-1.45.53-3.58.85-6 .85s-4.55-.32-6-.85Z"/></svg></span>
+                <div><strong>Local app state</strong>Settings, rules, logs, and cached Discord metadata live on the Mac running SwiftBot.</div>
+              </div>
+              <div class="privacy-point">
+                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.84 9.74 9 10 5.16-.26 9-5 9-10V6l-9-4Zm-1 11.59 5.3-5.3 1.4 1.42-6.7 6.7-3.7-3.7 1.4-1.42 2.3 2.3Z"/></svg></span>
+                <div><strong>No required hosted account</strong>Remote access is optional and controlled by your own Web UI, OAuth, and tunnel settings.</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -869,13 +1134,12 @@
         <div class="shell">
           <div class="download-panel reveal">
             <div>
-              <h2>Ready to run your Discord bot from a real Mac app?</h2>
-              <p>SwiftBot is free and open source. Download the latest signed zip release, then use the setup guides for Discord OAuth, Web UI access, and SwiftMesh clustering.</p>
+              <h2>Ready to add SwiftBot to your server?</h2>
+              <p>SwiftBot is free and open source. Download the latest signed release, then use the setup guides for Discord OAuth, Web UI access, and SwiftMesh clustering.</p>
             </div>
             <div class="hero-actions">
-              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>Download latest zip</a>
+              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>Download</a>
               <a class="button" href="./help/#bot-setup">Bot setup</a>
-              <a class="button" href="./appcast.xml">Stable appcast</a>
             </div>
           </div>
         </div>
@@ -934,6 +1198,26 @@
           })
           .catch(function () {});
       }
+
+      document.querySelectorAll(".faq-question").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var item = button.closest(".faq-item");
+          var isOpening = !item.classList.contains("is-open");
+
+          document.querySelectorAll(".faq-item").forEach(function (faqItem) {
+            faqItem.classList.remove("is-open");
+            var faqButton = faqItem.querySelector(".faq-question");
+            if (faqButton) {
+              faqButton.setAttribute("aria-expanded", "false");
+            }
+          });
+
+          if (isOpening) {
+            item.classList.add("is-open");
+            button.setAttribute("aria-expanded", "true");
+          }
+        });
+      });
 
       var observer = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
