@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot - Native macOS Discord Bot Dashboard</title>
-  <meta name="description" content="SwiftBot is a native macOS app for running, configuring, monitoring, and automating a Discord bot with SwiftUI, Web UI access, AI replies, Patchy update monitoring, and SwiftMesh failover.">
+  <title>SwiftBot - Self-Hosted Discord Bot Manager for macOS</title>
+  <meta name="description" content="SwiftBot is a native macOS Discord bot manager for self-hosted moderation, automation rules, AI FAQ replies, onboarding flows, Web UI access, update alerts, and SwiftMesh failover.">
+  <meta name="keywords" content="Discord bot manager, self-hosted Discord bot, macOS Discord bot, Discord moderation bot, Discord automation bot, AI Discord bot, Discord FAQ bot, Discord onboarding bot">
   <link rel="canonical" href="https://swiftbot.dev/">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0d1020" media="(prefers-color-scheme: dark)">
@@ -16,14 +17,14 @@
   <meta property="og:site_name" content="SwiftBot">
   <meta property="og:locale" content="en_US">
   <meta property="og:url" content="https://swiftbot.dev/">
-  <meta property="og:title" content="SwiftBot - Native macOS Discord Bot Dashboard">
-  <meta property="og:description" content="Run, configure, monitor, and automate a Discord bot from a native macOS app.">
+  <meta property="og:title" content="SwiftBot - Self-Hosted Discord Bot Manager for macOS">
+  <meta property="og:description" content="Run a self-hosted Discord bot from a native Mac app with moderation rules, AI FAQ replies, onboarding, Web UI access, and failover.">
   <meta property="og:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
   <meta property="og:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SwiftBot - Native macOS Discord Bot Dashboard">
-  <meta name="twitter:description" content="Run, configure, monitor, and automate a Discord bot from a native macOS app.">
+  <meta name="twitter:title" content="SwiftBot - Self-Hosted Discord Bot Manager for macOS">
+  <meta name="twitter:description" content="Run a self-hosted Discord bot from a native Mac app with moderation rules, AI FAQ replies, onboarding, Web UI access, and failover.">
   <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
   <meta name="twitter:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
 
@@ -35,8 +36,8 @@
     "operatingSystem": "macOS 26.0 or later",
     "applicationCategory": "UtilitiesApplication",
     "url": "https://swiftbot.dev/",
-    "downloadUrl": "https://github.com/johnwatso/SwiftBot/releases/latest",
-    "description": "SwiftBot is a native macOS app for running, configuring, monitoring, and automating a Discord bot.",
+    "downloadUrl": "https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip",
+    "description": "SwiftBot is a native macOS app for running a self-hosted Discord bot with moderation, automation rules, AI FAQ replies, onboarding flows, Web UI access, update alerts, and failover.",
     "image": "https://swiftbot.dev/assets/landing/ui-preview-dark.png",
     "softwareHelp": "https://swiftbot.dev/help/",
     "offers": {
@@ -44,6 +45,38 @@
       "price": "0",
       "priceCurrency": "USD"
     }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Can I run a self-hosted Discord bot from my Mac?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. SwiftBot runs as a native Apple Silicon macOS app and stores your Discord bot token in the macOS Keychain."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can SwiftBot help with Discord moderation and onboarding?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SwiftBot includes automation rules for messages, joins, voice events, moderation actions, role actions, DMs, and channel routing."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can SwiftBot answer repeat questions in a Discord server?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SwiftBot can route AI replies through Apple Intelligence, Ollama, or OpenAI, and can use WikiBridge-backed lookup commands for server knowledge."
+        }
+      }
+    ]
   }
   </script>
 
@@ -500,6 +533,17 @@
       gap: 14px;
     }
 
+    .faq-list {
+      display: grid;
+      gap: 14px;
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    .faq-item h3 {
+      margin-top: 0;
+    }
+
     .step-number {
       color: var(--accent, var(--cyan));
       font-weight: 900;
@@ -657,10 +701,10 @@
               <img src="./assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
               <span>SwiftBot</span>
             </div>
-            <h1>Native Discord bot control for <span class="gradient-text">macOS.</span></h1>
-            <p>Run, configure, monitor, and automate your Discord bot from a polished SwiftUI dashboard, with Web UI access, AI replies, Patchy update alerts, and SwiftMesh failover when uptime matters.</p>
+            <h1>Self-hosted Discord bot control for <span class="gradient-text">macOS.</span></h1>
+            <p>Run, configure, monitor, and automate your Discord bot from a polished SwiftUI dashboard, with moderation workflows, onboarding rules, AI FAQ replies, Web UI access, Patchy update alerts, and SwiftMesh failover when uptime matters.</p>
             <div class="hero-actions">
-              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/latest">
+              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.1-.46-2.1-.48-3.25 0-1.44.62-2.2.44-3.06-.35-4.9-5.05-4.17-12.75 1.39-13.03 1.35.07 2.3.74 3.08.8.78-.16 1.98-.92 3.34-.83 1.59.13 2.78.76 3.58 1.92-3.14 1.88-2.4 6 .49 7.15-.58 1.52-1.31 3.02-2.49 3.99ZM14.55 5.8c.68-.82 1.14-1.96 1-3.08-.98.04-2.17.66-2.88 1.47-.64.73-1.18 1.9-1.03 3 1.1.08 2.23-.55 2.91-1.39Z"/></svg>
                 Download for Mac
               </a>
@@ -669,9 +713,9 @@
             </div>
             <div class="trust-strip" aria-label="Highlights">
               <span class="trust-badge"><span class="dot" aria-hidden="true"></span>Native macOS 26 app</span>
+              <span class="trust-badge">Self-hosted Discord bot</span>
               <span class="trust-badge">SwiftUI dashboard</span>
               <span class="trust-badge">Keychain-stored tokens</span>
-              <span class="trust-badge">Sparkle updates</span>
             </div>
           </div>
 
@@ -687,8 +731,8 @@
       <section class="section" id="features">
         <div class="shell">
           <div class="section-heading reveal">
-            <h2>One control surface for the whole bot.</h2>
-            <p>SwiftBot keeps day-to-day bot operations in one native app instead of scattered config files, terminal logs, and browser tabs.</p>
+            <h2>One control surface for the whole Discord bot.</h2>
+            <p>SwiftBot keeps self-hosted bot operations in one native app instead of scattered config files, terminal logs, hosted dashboards, and browser tabs.</p>
           </div>
 
           <div class="feature-grid">
@@ -699,13 +743,13 @@
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 2h6v3h4v6h3v6h-3v5H5v-5H2v-6h3V5h4V2Zm8 5H7v13h10V7Zm-7 3h4v2h-4v-2Zm-1 5h6v2H9v-2Z"/></svg></span>
-              <h3>Automation rules</h3>
-              <p>Build rules for messages, joins, voice events, moderation, AI replies, role actions, DMs, and channel routing.</p>
+              <h3>Moderation and onboarding rules</h3>
+              <p>Build rules for messages, joins, voice events, moderation, welcome flows, role actions, DMs, and channel routing.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5l-4 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7v1.17L13.17 15H19a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5Z"/></svg></span>
-              <h3>AI and knowledge</h3>
-              <p>Route AI replies through Apple Intelligence, Ollama, or OpenAI, and use WikiBridge-backed lookup commands.</p>
+              <h3>AI FAQ and knowledge replies</h3>
+              <p>Answer repeat Discord server questions with AI replies routed through Apple Intelligence, Ollama, or OpenAI, plus WikiBridge-backed lookup commands.</p>
             </article>
             <article class="card reveal">
               <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.84 9.74 9 10 5.16-.26 9-5 9-10V6l-9-4Zm0 2.2 7 3.1V12c0 3.85-2.84 7.3-7 7.98C7.84 19.3 5 15.85 5 12V7.3l7-3.1Zm-1 9.39 5.3-5.3 1.4 1.42-6.7 6.7-3.7-3.7 1.4-1.42 2.3 2.3Z"/></svg></span>
@@ -793,15 +837,43 @@
         </div>
       </section>
 
+      <section class="section" id="discord-bot-faq">
+        <div class="shell">
+          <div class="section-heading reveal">
+            <h2>Answers for common Discord bot searches.</h2>
+            <p>SwiftBot is built for server owners who want a private, configurable bot without writing a whole bot from scratch.</p>
+          </div>
+
+          <div class="faq-list">
+            <article class="card faq-item reveal">
+              <h3>Can I run a self-hosted Discord bot from my Mac?</h3>
+              <p>Yes. SwiftBot runs locally on Apple Silicon Macs, connects to your own Discord application, stores the token in Keychain, and keeps bot control inside a native macOS app.</p>
+            </article>
+            <article class="card faq-item reveal">
+              <h3>Can I make a Discord moderation bot without coding one?</h3>
+              <p>SwiftBot gives you configurable rules for message events, joins, roles, DMs, moderation actions, and channel routing, so routine server workflows can be managed from the dashboard.</p>
+            </article>
+            <article class="card faq-item reveal">
+              <h3>Can a bot answer repeat questions from members?</h3>
+              <p>SwiftBot supports AI replies and WikiBridge lookup commands, which helps communities answer common setup, support, and knowledge-base questions without repeating the same response manually.</p>
+            </article>
+            <article class="card faq-item reveal">
+              <h3>Can I access the bot dashboard away from the Mac?</h3>
+              <p>The Admin Web UI can stay local or be published through SwiftBot's Cloudflare Tunnel flow, giving trusted admins browser access when the Mac is running elsewhere.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="download">
         <div class="shell">
           <div class="download-panel reveal">
             <div>
-              <h2>Ready to run your bot from a real Mac app?</h2>
-              <p>SwiftBot is free and open source. Download the latest signed release, then use the setup guides for Discord OAuth, Web UI access, and SwiftMesh clustering.</p>
+              <h2>Ready to run your Discord bot from a real Mac app?</h2>
+              <p>SwiftBot is free and open source. Download the latest signed zip release, then use the setup guides for Discord OAuth, Web UI access, and SwiftMesh clustering.</p>
             </div>
             <div class="hero-actions">
-              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/latest">Download latest</a>
+              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>Download latest zip</a>
               <a class="button" href="./help/#bot-setup">Bot setup</a>
               <a class="button" href="./appcast.xml">Stable appcast</a>
             </div>
@@ -845,6 +917,22 @@
         toggle.addEventListener("click", function () {
           setTheme(!root.classList.contains("light"));
         });
+      }
+
+      if (window.location.protocol !== "file:") {
+        fetch("./appcast.xml", { cache: "no-store" })
+          .then(function (response) { return response.ok ? response.text() : ""; })
+          .then(function (text) {
+            if (!text) return;
+            var xml = new DOMParser().parseFromString(text, "application/xml");
+            var enclosure = xml.querySelector("enclosure[url]");
+            if (!enclosure) return;
+            var url = enclosure.getAttribute("url");
+            document.querySelectorAll("[data-latest-download]").forEach(function (link) {
+              link.href = url;
+            });
+          })
+          .catch(function () {});
       }
 
       var observer = new IntersectionObserver(function (entries) {
