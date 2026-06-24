@@ -7,9 +7,19 @@
   <meta name="description" content="SwiftBot Help Center: install SwiftBot, create a Discord bot, configure the Admin Web UI, and set up SwiftMesh failover.">
   <link rel="canonical" href="https://swiftbot.dev/help/">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#f5f5f7">
+  <meta name="theme-color" content="#0d1020" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/png" href="../favicon.png">
   <link rel="apple-touch-icon" href="../assets/landing/app-icon-light.png">
+  <script>
+    (function () {
+      var savedTheme = localStorage.getItem("swiftbot-theme");
+      var systemPrefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+      var isLight = savedTheme === "light" || (!savedTheme && systemPrefersLight);
+      document.documentElement.classList.toggle("light", isLight);
+      document.documentElement.classList.toggle("dark", !isLight);
+    })();
+  </script>
   <style>
     :root {
       color-scheme: light;
@@ -25,6 +35,22 @@
       --orange: #bf5a00;
       --purple: #8944ab;
       --shadow: 0 18px 60px rgba(0, 0, 0, 0.08);
+    }
+
+    html.dark {
+      color-scheme: dark;
+      --bg: #0d1020;
+      --surface: rgba(255, 255, 255, 0.06);
+      --surface-solid: #151a2d;
+      --text: rgba(255, 255, 255, 0.94);
+      --secondary: rgba(229, 236, 246, 0.70);
+      --tertiary: rgba(229, 236, 246, 0.52);
+      --border: rgba(255, 255, 255, 0.14);
+      --blue: #6f9bff;
+      --green: #53d18c;
+      --orange: #ffb15c;
+      --purple: #b08cff;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
     }
 
     * {
@@ -51,7 +77,7 @@
     code {
       padding: 2px 5px;
       border-radius: 5px;
-      background: rgba(0, 0, 0, 0.06);
+      background: color-mix(in srgb, var(--text), transparent 90%);
       font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
       font-size: 0.92em;
     }
@@ -60,8 +86,8 @@
       position: sticky;
       top: 0;
       z-index: 5;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-      background: rgba(245, 245, 247, 0.78);
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg), transparent 22%);
       backdrop-filter: blur(22px);
       -webkit-backdrop-filter: blur(22px);
     }
@@ -93,6 +119,50 @@
       border-radius: 7px;
     }
 
+    .brand-logo-light,
+    html.dark .brand-logo-dark {
+      display: block;
+    }
+
+    .brand-logo-dark,
+    html.dark .brand-logo-light {
+      display: none;
+    }
+
+    .icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: transparent;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .icon-button:hover {
+      border-color: color-mix(in srgb, var(--blue), var(--border) 35%);
+      background: var(--surface);
+    }
+
+    .icon-button svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .theme-sun,
+    html.light .theme-moon {
+      display: none;
+    }
+
+    html.light .theme-sun {
+      display: block;
+    }
+
     .nav-links {
       display: flex;
       align-items: center;
@@ -115,7 +185,7 @@
       font-size: clamp(2.8rem, 8vw, 5.8rem);
       line-height: 1.03;
       letter-spacing: 0;
-      font-weight: 760;
+      font-weight: 800;
     }
 
     .hero p {
@@ -218,7 +288,7 @@
       margin-top: auto;
       padding-top: 18px;
       color: var(--blue);
-      font-weight: 650;
+      font-weight: 600;
       font-size: 0.94rem;
     }
 
@@ -255,7 +325,7 @@
     }
 
     .sidebar a:hover {
-      background: rgba(0, 0, 0, 0.05);
+      background: color-mix(in srgb, var(--text), transparent 92%);
       color: var(--text);
     }
 
@@ -272,12 +342,12 @@
     .article-header {
       padding: clamp(24px, 4vw, 38px);
       border-bottom: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 252, 0.88));
+      background: var(--surface);
     }
 
     .article-label {
       color: var(--blue);
-      font-weight: 720;
+      font-weight: 700;
       font-size: 0.82rem;
       text-transform: uppercase;
       letter-spacing: 0;
@@ -358,7 +428,7 @@
 
     th {
       color: var(--text);
-      background: rgba(0, 0, 0, 0.035);
+      background: color-mix(in srgb, var(--text), transparent 94%);
       font-weight: 700;
     }
 
@@ -461,7 +531,8 @@
   <nav class="nav" aria-label="Main">
     <div class="nav-inner">
       <a class="brand" href="../">
-        <img src="../assets/landing/app-icon-light.png" alt="">
+        <img src="../assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
+        <img src="../assets/landing/app-icon-dark.png" alt="" class="brand-logo-dark">
         <span>SwiftBot Help</span>
       </a>
       <div class="nav-links">
@@ -470,6 +541,10 @@
         <a href="#web-ui">Web UI</a>
         <a href="#swiftmesh">SwiftMesh</a>
         <a href="https://github.com/johnwatso/SwiftBot">GitHub</a>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme">
+          <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8 8 0 0 1-9.45-9.45 1 1 0 0 0-1.18-1.18A10 10 0 1 0 21.78 14.05 1 1 0 0 0 21.64 13Z"/></svg>
+          <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0-5a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 17a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 11a1 1 0 1 1 0 2H3a1 1 0 1 1 0-2h1Zm17 0a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2h1ZM5.64 5.64a1 1 0 0 1 1.42 0l.7.71a1 1 0 1 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42Zm11.3 11.3a1 1 0 0 1 1.42 0l.7.7a1 1 0 1 1-1.41 1.42l-.71-.71a1 1 0 0 1 0-1.41ZM18.36 5.64a1 1 0 0 1 0 1.42l-.7.7a1 1 0 1 1-1.42-1.41l.71-.71a1 1 0 0 1 1.41 0ZM7.05 16.95a1 1 0 0 1 0 1.41l-.71.71a1 1 0 0 1-1.41-1.42l.7-.7a1 1 0 0 1 1.42 0Z"/></svg>
+        </button>
       </div>
     </div>
   </nav>
@@ -736,6 +811,19 @@
   </footer>
 
   <script>
+    (function () {
+      var toggle = document.getElementById("theme-toggle");
+      var root = document.documentElement;
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var isLight = !root.classList.contains("light");
+          root.classList.toggle("light", isLight);
+          root.classList.toggle("dark", !isLight);
+          localStorage.setItem("swiftbot-theme", isLight ? "light" : "dark");
+        });
+      }
+    })();
+
     (function () {
       var input = document.getElementById("help-search");
       var items = Array.prototype.slice.call(document.querySelectorAll("[data-search-item]"));

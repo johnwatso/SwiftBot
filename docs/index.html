@@ -89,7 +89,7 @@
         "name": "How much does SwiftBot cost?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SwiftBot is free and open source. It is actively maintained, shaped around real server use, and keeps getting better with every release."
+          "text": "SwiftBot is free and open source under the MIT license. It is actively developed and updated through regular releases on GitHub."
         }
       }
     ]
@@ -164,7 +164,7 @@
       position: relative;
     }
 
-    .noise {
+    .grid-overlay {
       position: fixed;
       inset: 0;
       pointer-events: none;
@@ -258,6 +258,40 @@
       display: block;
     }
 
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg), transparent 22%);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .nav-inner {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 8px 20px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+    }
+
     main {
       position: relative;
       z-index: 1;
@@ -299,7 +333,7 @@
       gap: 14px;
       margin-bottom: 24px;
       font-size: clamp(2rem, 5vw, 3.35rem);
-      font-weight: 850;
+      font-weight: 800;
       letter-spacing: 0;
     }
 
@@ -321,7 +355,7 @@
 
     h1 {
       font-size: clamp(2.55rem, 6vw, 4.8rem);
-      font-weight: 880;
+      font-weight: 900;
       max-width: 860px;
       margin: 0 auto;
     }
@@ -352,7 +386,7 @@
       margin: 12px auto 0;
       color: var(--quiet);
       font-size: 0.9rem;
-      font-weight: 650;
+      font-weight: 600;
     }
 
     .trust-strip {
@@ -375,7 +409,7 @@
       color: var(--muted);
       background: var(--surface);
       font-size: 0.78rem;
-      font-weight: 760;
+      font-weight: 800;
     }
 
     .mini-icon {
@@ -470,7 +504,7 @@
 
     .section-heading h2 {
       font-size: clamp(2.2rem, 5vw, 4.2rem);
-      font-weight: 870;
+      font-weight: 900;
     }
 
     .section-heading p {
@@ -500,7 +534,7 @@
     .card h3 {
       margin-top: 18px;
       font-size: 1.22rem;
-      font-weight: 850;
+      font-weight: 800;
     }
 
     .card p {
@@ -557,7 +591,7 @@
       align-items: center;
       gap: 8px;
       color: var(--cyan);
-      font-weight: 850;
+      font-weight: 800;
       font-size: 0.82rem;
       text-transform: uppercase;
       letter-spacing: 0;
@@ -566,7 +600,7 @@
 
     .showcase-copy h3 {
       font-size: clamp(1.7rem, 3vw, 2.6rem);
-      font-weight: 870;
+      font-weight: 900;
     }
 
     .showcase-copy p {
@@ -612,7 +646,7 @@
     .faq-question h3 {
       font-size: 1.05rem;
       line-height: 1.25;
-      font-weight: 820;
+      font-weight: 800;
     }
 
     .faq-toggle {
@@ -686,7 +720,7 @@
 
     .privacy-band h2 {
       font-size: clamp(2rem, 4vw, 3.4rem);
-      font-weight: 880;
+      font-weight: 900;
     }
 
     .privacy-band p {
@@ -760,7 +794,7 @@
 
     .download-panel h2 {
       font-size: clamp(2rem, 4vw, 3.5rem);
-      font-weight: 880;
+      font-weight: 900;
     }
 
     .download-panel p {
@@ -839,6 +873,16 @@
         padding-top: 34px;
       }
 
+      .nav-links {
+        gap: 14px;
+      }
+
+      .nav-links a:nth-child(1),
+      .nav-links a:nth-child(2),
+      .nav-links a:nth-child(3) {
+        display: none;
+      }
+
       .hero-actions .button {
         width: 100%;
       }
@@ -887,7 +931,28 @@
 </head>
 <body>
   <div class="page">
-    <div class="noise" aria-hidden="true"></div>
+    <div class="grid-overlay" aria-hidden="true"></div>
+
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#top" aria-label="SwiftBot home">
+          <img src="./assets/landing/app-icon-dark.png" alt="" class="brand-logo-dark">
+          <img src="./assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
+          <span>SwiftBot</span>
+        </a>
+        <nav class="nav-links" aria-label="Primary">
+          <a href="#features">Features</a>
+          <a href="#setup">Setup</a>
+          <a href="#discord-bot-faq">FAQ</a>
+          <a href="./help/">Help</a>
+          <a href="https://github.com/johnwatso/SwiftBot">GitHub</a>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme">
+            <svg class="icon theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8 8 0 0 1-9.45-9.45 1 1 0 0 0-1.18-1.18A10 10 0 1 0 21.78 14.05 1 1 0 0 0 21.64 13Z"/></svg>
+            <svg class="icon theme-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0-5a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 17a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 11a1 1 0 1 1 0 2H3a1 1 0 1 1 0-2h1Zm17 0a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2h1ZM5.64 5.64a1 1 0 0 1 1.42 0l.7.71a1 1 0 1 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42Zm11.3 11.3a1 1 0 0 1 1.42 0l.7.7a1 1 0 1 1-1.41 1.42l-.71-.71a1 1 0 0 1 0-1.41ZM18.36 5.64a1 1 0 0 1 0 1.42l-.7.7a1 1 0 1 1-1.42-1.41l.71-.71a1 1 0 0 1 1.41 0ZM7.05 16.95a1 1 0 0 1 0 1.41l-.71.71a1 1 0 0 1-1.41-1.42l.7-.7a1 1 0 0 1 1.42 0Z"/></svg>
+          </button>
+        </nav>
+      </div>
+    </header>
 
     <main id="top">
       <section class="hero section">
@@ -1097,7 +1162,7 @@
                 <span class="faq-toggle" aria-hidden="true"></span>
               </button>
               <div class="faq-answer">
-                <p>SwiftBot is free and open source. It is actively maintained, shaped around real server use, and keeps getting better with every release.</p>
+                <p>SwiftBot is free and open source under the MIT license. It is actively developed and updated through regular releases on GitHub.</p>
               </div>
             </article>
           </div>
