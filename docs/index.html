@@ -1,1302 +1,421 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot - Discord Bot for macOS</title>
-  <meta name="description" content="SwiftBot is a native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover.">
-  <meta name="keywords" content="Discord bot for Mac, macOS Discord bot, self-hosted Discord bot, Discord moderation bot, Discord automation bot, AI Discord bot, Discord FAQ bot, Discord onboarding bot">
-  <link rel="canonical" href="https://swiftbot.dev/">
-  <meta name="robots" content="index, follow, max-image-preview:large">
-  <meta name="theme-color" content="#0d1020" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f7f9fc" media="(prefers-color-scheme: light)">
-  <link rel="icon" type="image/png" href="./favicon.png">
-  <link rel="apple-touch-icon" href="./assets/landing/app-icon-light.png">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Discord Bot for macOS | Moderation, AI Replies &amp; Failover | SwiftBot</title>
+    <meta name="description" content="SwiftBot is a free, native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, a Web UI, and SwiftMesh failover. Runs locally on your Mac.">
+    <link rel="canonical" href="https://swiftbot.dev/">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta id="theme-color" name="theme-color" content="#0a0c14">
 
-  <meta property="og:type" content="website">
-  <meta property="og:site_name" content="SwiftBot">
-  <meta property="og:locale" content="en_US">
-  <meta property="og:url" content="https://swiftbot.dev/">
-  <meta property="og:title" content="SwiftBot - Discord Bot for macOS">
-  <meta property="og:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
-  <meta property="og:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
-  <meta property="og:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="./favicon.png">
+    <link rel="apple-touch-icon" href="./assets/landing/app-icon-light.png">
 
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SwiftBot - Discord Bot for macOS">
-  <meta name="twitter:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
-  <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
-  <meta name="twitter:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SwiftBot">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:url" content="https://swiftbot.dev/">
+    <meta property="og:title" content="SwiftBot - Discord Bot for macOS">
+    <meta property="og:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
+    <meta property="og:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
+    <meta property="og:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
 
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "SwiftBot",
-    "operatingSystem": "macOS 26.0 or later",
-    "applicationCategory": "UtilitiesApplication",
-    "url": "https://swiftbot.dev/",
-    "downloadUrl": "https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip",
-    "description": "SwiftBot is a native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and failover.",
-    "image": "https://swiftbot.dev/assets/landing/ui-preview-dark.png",
-    "softwareHelp": "https://swiftbot.dev/help/",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    }
-  }
-  </script>
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "Can I run SwiftBot on my Discord server from a Mac?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes. SwiftBot runs as a native Apple Silicon macOS app, connects to your Discord server through your Discord application, and stores the bot token in the macOS Keychain."
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SwiftBot - Discord Bot for macOS">
+    <meta name="twitter:description" content="A Discord bot for your server that runs from a native Mac app, with moderation, onboarding, AI FAQ replies, Web UI access, and failover.">
+    <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
+    <meta name="twitter:image:alt" content="SwiftBot running on macOS, showing its native bot dashboard.">
+
+    <!-- Structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://swiftbot.dev/#website",
+          "name": "SwiftBot",
+          "alternateName": ["SwiftBot for macOS", "Discord bot for Mac"],
+          "url": "https://swiftbot.dev/"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://swiftbot.dev/#app",
+          "name": "SwiftBot",
+          "operatingSystem": "macOS 26.0 or later",
+          "applicationCategory": "UtilitiesApplication",
+          "applicationSubCategory": "Discord bot for macOS",
+          "keywords": "Discord bot for Mac, macOS Discord bot, self-hosted Discord bot, moderation, AI FAQ bot",
+          "url": "https://swiftbot.dev/",
+          "downloadUrl": "https://github.com/johnwatso/SwiftBot/releases/latest",
+          "description": "SwiftBot is a free, native macOS Discord bot for your server, with moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover.",
+          "image": "https://swiftbot.dev/assets/landing/ui-preview-dark.png",
+          "softwareHelp": "https://swiftbot.dev/help/",
+          "sameAs": "https://github.com/johnwatso/SwiftBot",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
         }
-      },
-      {
-        "@type": "Question",
-        "name": "Can SwiftBot help moderate my Discord server?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SwiftBot includes automation rules for messages, joins, voice events, moderation actions, role actions, DMs, and channel routing."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Can SwiftBot answer repeat questions in a Discord server?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SwiftBot can route AI replies through Apple Intelligence, Ollama, or OpenAI, and can use WikiBridge-backed lookup commands for server knowledge."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Can SwiftBot run on more than one Discord server?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SwiftBot is designed around managing one primary Discord server. It can be invited to more than one server, but the dashboard and workflows are clearest when one server is the main home."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How much does SwiftBot cost?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SwiftBot is free and open source under the MIT license. It is actively developed and updated through regular releases on GitHub."
-        }
-      }
-    ]
-  }
-  </script>
-
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0d1020;
-      --bg-soft: #151a2d;
-      --surface: rgba(255, 255, 255, 0.075);
-      --surface-strong: rgba(255, 255, 255, 0.12);
-      --border: rgba(255, 255, 255, 0.14);
-      --text: rgba(255, 255, 255, 0.94);
-      --muted: rgba(229, 236, 246, 0.68);
-      --quiet: rgba(229, 236, 246, 0.52);
-      --discord: #5865f2;
-      --cyan: #37d5e8;
-      --green: #53d18c;
-      --rose: #ff6f91;
-      --gold: #ffd166;
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
-    }
-
-    html.light {
-      color-scheme: light;
-      --bg: #f7f9fc;
-      --bg-soft: #eaf0f8;
-      --surface: rgba(255, 255, 255, 0.78);
-      --surface-strong: rgba(255, 255, 255, 0.92);
-      --border: rgba(30, 42, 64, 0.13);
-      --text: rgba(16, 23, 42, 0.94);
-      --muted: rgba(43, 56, 78, 0.72);
-      --quiet: rgba(43, 56, 78, 0.55);
-      --shadow: 0 24px 70px rgba(17, 24, 39, 0.12);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      color: var(--text);
-      background:
-        linear-gradient(135deg, rgba(88, 101, 242, 0.22), transparent 28%),
-        linear-gradient(225deg, rgba(55, 213, 232, 0.14), transparent 34%),
-        linear-gradient(180deg, var(--bg), var(--bg-soft) 48%, var(--bg));
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      line-height: 1.5;
-      overflow-x: hidden;
-      transition: background 0.35s ease, color 0.35s ease;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    img {
-      display: block;
-      max-width: 100%;
-    }
-
-    .page {
-      min-height: 100dvh;
-      position: relative;
-    }
-
-    .grid-overlay {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: 0.18;
-      background-image: linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-      background-size: 44px 44px;
-      mask-image: linear-gradient(to bottom, black, transparent 88%);
-    }
-
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      font-weight: 800;
-      letter-spacing: 0;
-    }
-
-    .brand img {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
-    }
-
-    .brand-logo-light,
-    html.light .brand-logo-dark {
-      display: none;
-    }
-
-    html.light .brand-logo-light {
-      display: block;
-    }
-
-    .icon-button,
-    .button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 9px;
-      min-height: 40px;
-      border: 1px solid var(--border);
-      font: inherit;
-      font-weight: 800;
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .icon-button {
-      width: 40px;
-      border-radius: 999px;
-      color: var(--text);
-      background: transparent;
-    }
-
-    .button {
-      border-radius: 8px;
-      padding: 0 16px;
-      background: var(--surface);
-      color: var(--text);
-      white-space: nowrap;
-    }
-
-    .button.primary {
-      color: white;
-      border-color: rgba(255, 255, 255, 0.18);
-      background: linear-gradient(135deg, #b056ff 0%, #6b73ff 46%, #28c7e8 100%);
-      box-shadow: 0 14px 34px rgba(107, 115, 255, 0.34), 0 8px 22px rgba(40, 199, 232, 0.18);
-    }
-
-    .button:hover,
-    .icon-button:hover {
-      transform: translateY(-1px);
-      border-color: color-mix(in srgb, var(--discord), var(--border) 35%);
-      box-shadow: 0 16px 35px rgba(0, 0, 0, 0.14);
-    }
-
-    .icon {
-      width: 18px;
-      height: 18px;
-      fill: currentColor;
-      flex: 0 0 auto;
-    }
-
-    .theme-sun,
-    html.light .theme-moon {
-      display: none;
-    }
-
-    html.light .theme-sun {
-      display: block;
-    }
-
-    .nav {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      border-bottom: 1px solid var(--border);
-      background: color-mix(in srgb, var(--bg), transparent 22%);
-      backdrop-filter: blur(22px);
-      -webkit-backdrop-filter: blur(22px);
-    }
-
-    .nav-inner {
-      width: min(1180px, 100%);
-      margin: 0 auto;
-      min-height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 8px 20px;
-    }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      color: var(--muted);
-      font-size: 0.92rem;
-      font-weight: 600;
-    }
-
-    .nav-links a:hover {
-      color: var(--text);
-    }
-
-    main {
-      position: relative;
-      z-index: 1;
-    }
-
-    .section {
-      width: 100%;
-      padding: clamp(70px, 8vw, 116px) 20px;
-    }
-
-    .shell {
-      width: min(1180px, 100%);
-      margin: 0 auto;
-    }
-
-    .hero {
-      min-height: 100dvh;
-      display: flex;
-      align-items: center;
-      padding-top: 54px;
-      padding-bottom: 58px;
-    }
-
-    .hero-grid {
-      display: grid;
-      gap: clamp(32px, 5vw, 64px);
-      align-items: center;
-    }
-
-    .hero-copy {
-      text-align: center;
-      max-width: 920px;
-      margin: 0 auto;
-    }
-
-    .app-lockup {
-      display: inline-flex;
-      align-items: center;
-      gap: 14px;
-      margin-bottom: 24px;
-      font-size: clamp(2rem, 5vw, 3.35rem);
-      font-weight: 800;
-      letter-spacing: 0;
-    }
-
-    .app-lockup img {
-      width: clamp(52px, 8vw, 76px);
-      height: clamp(52px, 8vw, 76px);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-    }
-
-    h1,
-    h2,
-    h3 {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      letter-spacing: 0;
-      line-height: 1.06;
-    }
-
-    h1 {
-      font-size: clamp(2.55rem, 6vw, 4.8rem);
-      font-weight: 900;
-      max-width: 860px;
-      margin: 0 auto;
-    }
-
-    .gradient-text {
-      background: linear-gradient(100deg, #a855f7 0%, #6f73ff 48%, #37d5e8 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    .hero-copy p {
-      margin: 22px auto 0;
-      max-width: 780px;
-      color: var(--muted);
-      font-size: clamp(1.08rem, 2vw, 1.32rem);
-    }
-
-    .hero-actions {
-      margin-top: 34px;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 12px;
-    }
-
-    .hero-note {
-      margin: 12px auto 0;
-      color: var(--quiet);
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
-
-    .trust-strip {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      margin: 26px auto 0;
-      max-width: 900px;
-    }
-
-    .trust-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 34px;
-      padding: 0 12px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      color: var(--muted);
-      background: var(--surface);
-      font-size: 0.78rem;
-      font-weight: 800;
-    }
-
-    .mini-icon {
-      width: 19px;
-      height: 19px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      border-radius: 999px;
-      color: var(--accent, var(--green));
-      background: color-mix(in srgb, currentColor, transparent 88%);
-      border: 1px solid color-mix(in srgb, currentColor, transparent 56%);
-    }
-
-    .mini-icon svg {
-      width: 12px;
-      height: 12px;
-      fill: currentColor;
-    }
-
-    .screenshot-frame {
-      position: relative;
-      overflow: hidden;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      box-shadow: var(--shadow);
-    }
-
-    .screenshot-frame::before {
-      content: "";
-      display: block;
-      height: 28px;
-      border-bottom: 1px solid var(--border);
-      background: color-mix(in srgb, var(--surface-strong), transparent 20%);
-    }
-
-    .screenshot-frame.frameless {
-      border: 0;
-      background: transparent;
-      box-shadow: none;
-    }
-
-    .screenshot-frame.frameless::before,
-    .screenshot-frame.frameless .window-dots {
-      display: none;
-    }
-
-    .window-dots {
-      position: absolute;
-      top: 10px;
-      left: 12px;
-      display: flex;
-      gap: 7px;
-      z-index: 1;
-    }
-
-    .window-dots span {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--quiet);
-    }
-
-    .hero-shot {
-      margin: 26px auto 0;
-      width: min(1180px, 100%);
-    }
-
-    .hero-shot img,
-    .showcase img {
-      width: 100%;
-      height: auto;
-      object-fit: contain;
-    }
-
-    .hero-shot img,
-    .showcase img[src*="ui-preview"] {
-      aspect-ratio: 4064 / 2138;
-    }
-
-    .showcase img[src*="webui-preview"] {
-      aspect-ratio: 4058 / 2138;
-    }
-
-    .section-heading {
-      max-width: 760px;
-      margin: 0 auto 34px;
-      text-align: center;
-    }
-
-    .section-heading h2 {
-      font-size: clamp(2.2rem, 5vw, 4.2rem);
-      font-weight: 900;
-    }
-
-    .section-heading p {
-      margin: 14px auto 0;
-      max-width: 650px;
-      color: var(--muted);
-      font-size: 1.08rem;
-    }
-
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .card {
-      min-width: 0;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 24px;
-      background:
-        radial-gradient(circle at 92% 92%, color-mix(in srgb, var(--accent, var(--cyan)), transparent 88%), transparent 58%),
-        var(--surface);
-      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.12);
-    }
-
-    .card h3 {
-      margin-top: 18px;
-      font-size: 1.22rem;
-      font-weight: 800;
-    }
-
-    .card p {
-      margin: 10px 0 0;
-      color: var(--muted);
-      font-size: 0.96rem;
-    }
-
-    .card-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      border-radius: 8px;
-      border: 1px solid color-mix(in srgb, currentColor, transparent 62%);
-      color: var(--accent, var(--cyan));
-      background: color-mix(in srgb, currentColor, transparent 88%);
-    }
-
-    .card:nth-child(1) { --accent: var(--discord); }
-    .card:nth-child(2) { --accent: var(--green); }
-    .card:nth-child(3) { --accent: var(--cyan); }
-    .card:nth-child(4) { --accent: var(--gold); }
-    .card:nth-child(5) { --accent: var(--rose); }
-    .card:nth-child(6) { --accent: #9d7cff; }
-
-    .showcase {
-      display: grid;
-      gap: 22px;
-    }
-
-    .showcase-row {
-      display: grid;
-      grid-template-columns: minmax(250px, 0.55fr) minmax(0, 1.45fr);
-      gap: 24px;
-      align-items: center;
-    }
-
-    .showcase-row:nth-child(even) {
-      grid-template-columns: minmax(0, 1.45fr) minmax(250px, 0.55fr);
-    }
-
-    .showcase-row:nth-child(even) .showcase-copy {
-      order: 2;
-    }
-
-    .showcase-copy {
-      padding: 12px 0;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--cyan);
-      font-weight: 800;
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0;
-      margin-bottom: 12px;
-    }
-
-    .showcase-copy h3 {
-      font-size: clamp(1.7rem, 3vw, 2.6rem);
-      font-weight: 900;
-    }
-
-    .showcase-copy p {
-      color: var(--muted);
-      margin: 14px 0 0;
-      font-size: 1.02rem;
-    }
-
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .faq-list {
-      display: grid;
-      gap: 14px;
-      max-width: 920px;
-      margin: 0 auto;
-    }
-
-    .faq-item {
-      padding: 0;
-      overflow: hidden;
-    }
-
-    .faq-question {
-      width: 100%;
-      min-height: 68px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      border: 0;
-      padding: 20px 22px;
-      color: var(--text);
-      background: transparent;
-      font: inherit;
-      text-align: left;
-      cursor: pointer;
-    }
-
-    .faq-question h3 {
-      font-size: 1.05rem;
-      line-height: 1.25;
-      font-weight: 800;
-    }
-
-    .faq-toggle {
-      width: 26px;
-      height: 26px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      color: var(--muted);
-      transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-    }
-
-    .faq-toggle::before {
-      content: "+";
-      font-size: 1.2rem;
-      line-height: 1;
-      transform: translateY(-1px);
-    }
-
-    .faq-answer {
-      display: none;
-      padding: 0 22px 22px;
-      color: var(--muted);
-    }
-
-    .faq-answer p {
-      margin: 0;
-      color: inherit;
-    }
-
-    .faq-item.is-open .faq-answer {
-      display: block;
-    }
-
-    .faq-item.is-open .faq-toggle {
-      color: var(--text);
-      border-color: color-mix(in srgb, var(--discord), var(--border) 35%);
-      transform: rotate(45deg);
-    }
-
-    .step-number {
-      color: var(--accent, var(--cyan));
-      font-weight: 900;
-      font-size: 0.86rem;
-    }
-
-    .download-panel {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 24px;
-      align-items: center;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: clamp(24px, 5vw, 44px);
-      background: linear-gradient(135deg, color-mix(in srgb, var(--discord), transparent 78%), var(--surface));
-      box-shadow: var(--shadow);
-    }
-
-    .privacy-band {
-      display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-      gap: 28px;
-      align-items: center;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      padding: clamp(26px, 5vw, 44px) 0;
-    }
-
-    .privacy-band h2 {
-      font-size: clamp(2rem, 4vw, 3.4rem);
-      font-weight: 900;
-    }
-
-    .privacy-band p {
-      margin: 12px 0 0;
-      color: var(--muted);
-      max-width: 560px;
-    }
-
-    .privacy-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 9px;
-    }
-
-    .privacy-lock {
-      width: 26px;
-      height: 26px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      color: var(--green);
-      background: color-mix(in srgb, var(--green), transparent 88%);
-      border: 1px solid color-mix(in srgb, var(--green), transparent 52%);
-    }
-
-    .privacy-lock svg {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-    }
-
-    .privacy-points {
-      display: grid;
-      gap: 14px;
-    }
-
-    .privacy-point {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      color: var(--muted);
-    }
-
-    .privacy-point strong {
-      display: block;
-      color: var(--text);
-      margin-bottom: 2px;
-    }
-
-    .privacy-check {
-      width: 24px;
-      height: 24px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      border-radius: 999px;
-      color: var(--green);
-      background: color-mix(in srgb, var(--green), transparent 88%);
-      border: 1px solid color-mix(in srgb, var(--green), transparent 52%);
-      font-weight: 900;
-      line-height: 1;
-    }
-
-    .privacy-check svg {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-    }
-
-    .download-panel h2 {
-      font-size: clamp(2rem, 4vw, 3.5rem);
-      font-weight: 900;
-    }
-
-    .download-panel p {
-      margin: 12px 0 0;
-      color: var(--muted);
-      max-width: 640px;
-    }
-
-    footer {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 16px;
-      color: var(--quiet);
-      font-size: 0.88rem;
-      padding: 28px 20px 42px;
-      border-top: 1px solid var(--border);
-    }
-
-    footer .shell {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    footer nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-    }
-
-    footer a:hover {
-      color: var(--text);
-    }
-
-    .reveal {
-      opacity: 0;
-      transform: translateY(18px);
-      transition: opacity 0.55s ease, transform 0.55s ease;
-    }
-
-    .reveal.active {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .hero .reveal {
-      opacity: 1;
-      transform: none;
-    }
-
-    @media (max-width: 900px) {
-      .feature-grid,
-      .steps {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .showcase-row,
-      .showcase-row:nth-child(even) {
-        grid-template-columns: 1fr;
-      }
-
-      .showcase-row:nth-child(even) .showcase-copy {
-        order: 0;
-      }
-
-      .download-panel,
-      .privacy-band {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 640px) {
-      .hero {
-        padding-top: 34px;
-      }
-
-      .nav-links {
-        gap: 14px;
-      }
-
-      .nav-links a:nth-child(1),
-      .nav-links a:nth-child(2),
-      .nav-links a:nth-child(3) {
-        display: none;
-      }
-
-      .hero-actions .button {
-        width: 100%;
-      }
-
-      .feature-grid,
-      .steps {
-        grid-template-columns: 1fr;
-      }
-
-      .section {
-        padding-left: 14px;
-        padding-right: 14px;
-      }
-
-      .card {
-        padding: 20px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      html {
-        scroll-behavior: auto;
-      }
-
-      *,
-      *::before,
-      *::after {
-        transition: none !important;
-      }
-
-      .reveal {
-        opacity: 1 !important;
-        transform: none !important;
-      }
-    }
-  </style>
-  <script>
-    (function () {
-      var savedTheme = localStorage.getItem("swiftbot-theme");
-      var systemPrefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
-      var isLight = savedTheme === "light" || (!savedTheme && systemPrefersLight);
-      document.documentElement.classList.toggle("light", isLight);
-      document.documentElement.classList.toggle("dark", !isLight);
-    })();
-  </script>
+      ]
+    }
+    </script>
+
+    <!-- Tailwind CSS (precompiled static stylesheet; run the build in tailwind.config.js to rebuild) -->
+    <link rel="stylesheet" href="./assets/css/tailwind.css">
+    <!-- Site styles (custom components, layout, animations) -->
+    <link rel="stylesheet" href="./assets/css/site.css">
+
+    <script>
+        // Apply the system theme immediately to prevent layout flashing.
+        (function() {
+            const systemPrefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+            const root = document.documentElement;
+            root.classList.toggle('light', systemPrefersLight);
+            root.classList.toggle('dark', !systemPrefersLight);
+            root.dataset.theme = systemPrefersLight ? 'light' : 'dark';
+            document.querySelector('#theme-color').content = systemPrefersLight ? '#f8fafc' : '#0a0c14';
+            try { localStorage.removeItem('theme'); } catch (e) {}
+        })();
+        if ('scrollRestoration' in history) { history.scrollRestoration = 'manual'; }
+    </script>
 </head>
-<body>
-  <div class="page">
-    <div class="grid-overlay" aria-hidden="true"></div>
+<body class="antialiased selection:bg-brand-cyan selection:text-brand-dark relative">
 
-    <header class="nav">
-      <div class="nav-inner">
-        <a class="brand" href="#top" aria-label="SwiftBot home">
-          <img src="./assets/landing/app-icon-dark.png" alt="" class="brand-logo-dark">
-          <img src="./assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
-          <span>SwiftBot</span>
-        </a>
-        <nav class="nav-links" aria-label="Primary">
-          <a href="#features">Features</a>
-          <a href="#setup">Setup</a>
-          <a href="#discord-bot-faq">FAQ</a>
-          <a href="./help/">Help</a>
-          <a href="https://github.com/johnwatso/SwiftBot">GitHub</a>
-          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme">
-            <svg class="icon theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.64 13a1 1 0 0 0-1.05-.14 8 8 0 0 1-9.45-9.45 1 1 0 0 0-1.18-1.18A10 10 0 1 0 21.78 14.05 1 1 0 0 0 21.64 13Z"/></svg>
-            <svg class="icon theme-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0-5a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 17a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 11a1 1 0 1 1 0 2H3a1 1 0 1 1 0-2h1Zm17 0a1 1 0 1 1 0 2h-1a1 1 0 1 1 0-2h1ZM5.64 5.64a1 1 0 0 1 1.42 0l.7.71a1 1 0 1 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42Zm11.3 11.3a1 1 0 0 1 1.42 0l.7.7a1 1 0 1 1-1.41 1.42l-.71-.71a1 1 0 0 1 0-1.41ZM18.36 5.64a1 1 0 0 1 0 1.42l-.7.7a1 1 0 1 1-1.42-1.41l.71-.71a1 1 0 0 1 1.41 0ZM7.05 16.95a1 1 0 0 1 0 1.41l-.71.71a1 1 0 0 1-1.41-1.42l.7-.7a1 1 0 0 1 1.42 0Z"/></svg>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <!-- Inline icon sprite -->
+    <svg width="0" height="0" aria-hidden="true" style="position:absolute" focusable="false">
+      <symbol id="i-arrows-clockwise-fill" viewBox="0 0 256 256"><path d="M224,48V96a8,8,0,0,1-8,8H168a8,8,0,0,1-5.66-13.66L180.65,72a79.48,79.48,0,0,0-54.72-22.09h-.45A79.52,79.52,0,0,0,69.59,72.71,8,8,0,0,1,58.41,61.27,96,96,0,0,1,192,60.7l18.36-18.36A8,8,0,0,1,224,48ZM186.41,183.29A80,80,0,0,1,75.35,184l18.31-18.31A8,8,0,0,0,88,152H40a8,8,0,0,0-8,8v48a8,8,0,0,0,13.66,5.66L64,195.3a95.42,95.42,0,0,0,66,26.76h.53a95.36,95.36,0,0,0,67.07-27.33,8,8,0,0,0-11.18-11.44Z"/></symbol>
+      <symbol id="i-article-bold" viewBox="0 0 256 256"><path d="M216,36H40A20,20,0,0,0,20,56V200a20,20,0,0,0,20,20H216a20,20,0,0,0,20-20V56A20,20,0,0,0,216,36Zm-4,160H44V60H212ZM68,92A12,12,0,0,1,80,80h96a12,12,0,0,1,0,24H80A12,12,0,0,1,68,92Zm0,36a12,12,0,0,1,12-12h96a12,12,0,0,1,0,24H80A12,12,0,0,1,68,128Zm0,36a12,12,0,0,1,12-12h96a12,12,0,0,1,0,24H80A12,12,0,0,1,68,164Z"/></symbol>
+      <symbol id="i-browser-fill" viewBox="0 0 256 256"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V88H40V56Z"/></symbol>
+      <symbol id="i-browser-bold" viewBox="0 0 256 256"><path d="M216,36H40A20,20,0,0,0,20,56V200a20,20,0,0,0,20,20H216a20,20,0,0,0,20-20V56A20,20,0,0,0,216,36Zm-4,24V84H44V60ZM44,196V108H212v88Z"/></symbol>
+      <symbol id="i-database-bold" viewBox="0 0 256 256"><path d="M196,35.52C177.62,25.51,153.48,20,128,20S78.38,25.51,60,35.52C39.37,46.79,28,62.58,28,80v96c0,17.42,11.37,33.21,32,44.48,18.35,10,42.49,15.52,68,15.52s49.62-5.51,68-15.52c20.66-11.27,32-27.06,32-44.48V80C228,62.58,216.63,46.79,196,35.52ZM204,128c0,17-31.21,36-76,36s-76-19-76-36v-8.46a88.9,88.9,0,0,0,8,4.94c18.35,10,42.49,15.52,68,15.52s49.62-5.51,68-15.52a88.9,88.9,0,0,0,8-4.94ZM128,44c44.79,0,76,19,76,36s-31.21,36-76,36S52,97,52,80,83.21,44,128,44Zm0,168c-44.79,0-76-19-76-36v-8.46a88.9,88.9,0,0,0,8,4.94c18.35,10,42.49,15.52,68,15.52s49.62-5.51,68-15.52a88.9,88.9,0,0,0,8-4.94V176C204,193,172.79,212,128,212Z"/></symbol>
+      <symbol id="i-devices-fill" viewBox="0 0 256 256"><path d="M224,72H208V64a24,24,0,0,0-24-24H40A24,24,0,0,0,16,64v96a24,24,0,0,0,24,24H152v8a24,24,0,0,0,24,24h48a24,24,0,0,0,24-24V96A24,24,0,0,0,224,72Zm8,120a8,8,0,0,1-8,8H176a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Zm-96,16a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h40A8,8,0,0,1,136,208Zm80-96a8,8,0,0,1-8,8H192a8,8,0,0,1,0-16h16A8,8,0,0,1,216,112Z"/></symbol>
+      <symbol id="i-gauge-bold" viewBox="0 0 256 256"><path d="M209.88,69.83A115.19,115.19,0,0,0,128,36h-.41C63.85,36.22,12,88.76,12,153.13V176a20,20,0,0,0,20,20H224a20,20,0,0,0,20-20V152A115.25,115.25,0,0,0,209.88,69.83ZM220,172H127.32l46.44-65A12,12,0,1,0,154.24,93L97.82,172H36V153.13c0-1.72,0-3.43.14-5.13H56a12,12,0,0,0,0-24H40.62c10.91-33.39,40-58.52,75.38-63.21V80a12,12,0,0,0,24,0V60.8A92,92,0,0,1,215.66,124H200a12,12,0,0,0,0,24h19.9c.06,1.33.1,2.66.1,4Z"/></symbol>
+      <symbol id="i-key-bold" viewBox="0 0 256 256"><path d="M196,76a16,16,0,1,1-16-16A16,16,0,0,1,196,76Zm48,22.74A84.3,84.3,0,0,1,160.11,180H160a83.52,83.52,0,0,1-23.65-3.38l-7.86,7.87A12,12,0,0,1,120,188H108v12a12,12,0,0,1-12,12H84v12a12,12,0,0,1-12,12H40a20,20,0,0,1-20-20V187.31a19.86,19.86,0,0,1,5.86-14.14l53.52-53.52A84,84,0,1,1,244,98.74ZM202.43,53.57A59.48,59.48,0,0,0,158,36c-32,1-58,27.89-58,59.89a59.69,59.69,0,0,0,4.2,22.19,12,12,0,0,1-2.55,13.21L44,189v23H60V200a12,12,0,0,1,12-12H84V176a12,12,0,0,1,12-12h19l9.65-9.65a12,12,0,0,1,13.22-2.55A59.58,59.58,0,0,0,160,156h.08c32,0,58.87-26.07,59.89-58A59.55,59.55,0,0,0,202.43,53.57Z"/></symbol>
+      <symbol id="i-layout-bold" viewBox="0 0 256 256"><path d="M216,36H40A20,20,0,0,0,20,56V200a20,20,0,0,0,20,20H216a20,20,0,0,0,20-20V56A20,20,0,0,0,216,36Zm-4,24V92H44V60ZM44,116H92v80H44Zm72,80V116h96v80Z"/></symbol>
+      <symbol id="i-link-simple-break-bold" viewBox="0 0 256 256"><path d="M218.45,122.43l-30.08,30.06a12,12,0,0,1-17-17l30.08-30.07a36,36,0,0,0-50.93-50.92L120.48,84.59a12,12,0,0,1-17-17l30.07-30.06a60,60,0,0,1,84.87,84.88Zm-82.93,49-30.07,30.08a36,36,0,0,1-50.92-50.93l30.06-30.07a12,12,0,0,0-17-17L37.55,133.58a60,60,0,0,0,84.88,84.87l30.06-30.07a12,12,0,0,0-17-17Z"/></symbol>
+      <symbol id="i-magic-wand-fill" viewBox="0 0 256 256"><path d="M248,152a8,8,0,0,1-8,8H224v16a8,8,0,0,1-16,0V160H192a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,248,152ZM56,72H72V88a8,8,0,0,0,16,0V72h16a8,8,0,0,0,0-16H88V40a8,8,0,0,0-16,0V56H56a8,8,0,0,0,0,16ZM184,192h-8v-8a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0v-8h8a8,8,0,0,0,0-16ZM219.31,80,80,219.31a16,16,0,0,1-22.62,0L36.68,198.63a16,16,0,0,1,0-22.63L176,36.69a16,16,0,0,1,22.63,0l20.68,20.68A16,16,0,0,1,219.31,80ZM208,68.69,187.31,48l-32,32L176,100.69Z"/></symbol>
+      <symbol id="i-monitor-bold" viewBox="0 0 256 256"><path d="M208,36H48A28,28,0,0,0,20,64V176a28,28,0,0,0,28,28H208a28,28,0,0,0,28-28V64A28,28,0,0,0,208,36Zm4,140a4,4,0,0,1-4,4H48a4,4,0,0,1-4-4V64a4,4,0,0,1,4-4H208a4,4,0,0,1,4,4Zm-40,52a12,12,0,0,1-12,12H96a12,12,0,0,1,0-24h64A12,12,0,0,1,172,228Z"/></symbol>
+      <symbol id="i-seal-check-bold" viewBox="0 0 256 256"><path d="M228.75,100.05c-3.52-3.67-7.15-7.46-8.34-10.33-1.06-2.56-1.14-7.83-1.21-12.47-.15-10-.34-22.44-9.18-31.27s-21.27-9-31.27-9.18c-4.64-.07-9.91-.15-12.47-1.21-2.87-1.19-6.66-4.82-10.33-8.34C148.87,20.46,140.05,12,128,12s-20.87,8.46-27.95,15.25c-3.67,3.52-7.46,7.15-10.33,8.34-2.56,1.06-7.83,1.14-12.47,1.21C67.25,37,54.81,37.14,46,46S37,67.25,36.8,77.25c-.07,4.64-.15,9.91-1.21,12.47-1.19,2.87-4.82,6.66-8.34,10.33C20.46,107.13,12,116,12,128S20.46,148.87,27.25,156c3.52,3.67,7.15,7.46,8.34,10.33,1.06,2.56,1.14,7.83,1.21,12.47.15,10,.34,22.44,9.18,31.27s21.27,9,31.27,9.18c4.64.07,9.91.15,12.47,1.21,2.87,1.19,6.66,4.82,10.33,8.34C107.13,235.54,116,244,128,244s20.87-8.46,27.95-15.25c3.67-3.52,7.46-7.15,10.33-8.34,2.56-1.06,7.83-1.14,12.47-1.21,10-.15,22.44-.34,31.27-9.18s9-21.27,9.18-31.27c.07-4.64.15-9.91,1.21-12.47,1.19-2.87,4.82-6.66,8.34-10.33C235.54,148.87,244,140.05,244,128S235.54,107.13,228.75,100.05ZM176.49,95.51a12,12,0,0,1,0,17l-56,56a12,12,0,0,1-17,0l-24-24a12,12,0,1,1,17-17L112,143l47.51-47.52A12,12,0,0,1,176.49,95.51Z"/></symbol>
+      <symbol id="i-shield-check-bold" viewBox="0 0 256 256"><path d="M208,36H48A20,20,0,0,0,28,56v56c0,54.29,26.32,87.22,48.4,105.29,23.71,19.39,47.44,26,48.44,26.29a12.1,12.1,0,0,0,6.32,0c1-.28,24.73-6.9,48.44-26.29,22.08-18.07,48.4-51,48.4-105.29V56A20,20,0,0,0,208,36Zm-4,76c0,35.71-13.09,64.69-38.91,86.15A126.28,126.28,0,0,1,128,219.38a126.14,126.14,0,0,1-37.09-21.23C65.09,176.69,52,147.71,52,112V60H204ZM79.51,144.49a12,12,0,1,1,17-17L112,143l47.51-47.52a12,12,0,0,1,17,17l-56,56a12,12,0,0,1-17,0Z"/></symbol>
+      <symbol id="i-user-focus-bold" viewBox="0 0 256 256"><path d="M228,40V76a12,12,0,0,1-24,0V52H180a12,12,0,0,1,0-24h36A12,12,0,0,1,228,40ZM216,168a12,12,0,0,0-12,12v24H180a12,12,0,0,0,0,24h36a12,12,0,0,0,12-12V180A12,12,0,0,0,216,168ZM76,204H52V180a12,12,0,0,0-24,0v36a12,12,0,0,0,12,12H76a12,12,0,0,0,0-24ZM40,88A12,12,0,0,0,52,76V52H76a12,12,0,0,0,0-24H40A12,12,0,0,0,28,40V76A12,12,0,0,0,40,88Zm136,92a12,12,0,0,1-9.6-4.79,48,48,0,0,0-76.82,0,12,12,0,0,1-19.18-14.42,72.1,72.1,0,0,1,23.92-20.5,44,44,0,1,1,67.34,0,72.1,72.1,0,0,1,23.92,20.5A12,12,0,0,1,176,180Zm-48-48a20,20,0,1,0-20-20A20,20,0,0,0,128,132Z"/></symbol>
+      <symbol id="i-users-three-bold" viewBox="0 0 256 256"><path d="M164.38,181.1a52,52,0,1,0-72.76,0,75.89,75.89,0,0,0-30,28.89,12,12,0,0,0,20.78,12,53,53,0,0,1,91.22,0,12,12,0,1,0,20.78-12A75.89,75.89,0,0,0,164.38,181.1ZM100,144a28,28,0,1,1,28,28A28,28,0,0,1,100,144Zm147.21,9.59a12,12,0,0,1-16.81-2.39c-8.33-11.09-19.85-19.59-29.33-21.64a12,12,0,0,1-1.82-22.91,20,20,0,1,0-24.78-28.3,12,12,0,1,1-21-11.6,44,44,0,1,1,73.28,48.35,92.18,92.18,0,0,1,22.85,21.69A12,12,0,0,1,247.21,153.59Zm-192.28-24c-9.48,2.05-21,10.55-29.33,21.65A12,12,0,0,1,6.41,136.79,92.37,92.37,0,0,1,29.26,115.1a44,44,0,1,1,73.28-48.35,12,12,0,1,1-21,11.6,20,20,0,1,0-24.78,28.3,12,12,0,0,1-1.82,22.91Z"/></symbol>
+      <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></symbol>
+      <symbol id="i-discord" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.33,46,96.22,53,91.08,65.69,84.69,65.69Z"/></symbol>
+      <symbol id="i-apple" viewBox="0 0 384 512"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></symbol>
+      <symbol id="i-download" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm45.66-99.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32,0l-40-40a8,8,0,0,1,11.32-11.32L120,144.69V88a8,8,0,0,1,16,0v56.69l26.66-26.66A8,8,0,0,1,173.66,116.34Z"/></symbol>
+    </svg>
 
-    <main id="top">
-      <section class="hero section">
-        <div class="shell hero-grid">
-          <div class="hero-copy reveal">
-            <div class="app-lockup" aria-label="SwiftBot">
-              <img src="./assets/landing/app-icon-dark.png" alt="" class="brand-logo-dark">
-              <img src="./assets/landing/app-icon-light.png" alt="" class="brand-logo-light">
-              <span>SwiftBot</span>
+    <!-- Background Particle Canvas -->
+    <canvas id="particles" class="fixed inset-0 w-full h-full z-0 pointer-events-none opacity-60"></canvas>
+
+    <main class="snap-scroller z-10 relative">
+
+        <!-- Hero Section -->
+        <section class="hero-section min-h-[100dvh] flex items-center relative py-24 lg:py-0 overflow-hidden">
+            <div class="hero-shell mx-auto px-4 sm:px-6 lg:px-8 w-full">
+                <div class="flex flex-col items-center">
+                    <div class="hero-copy text-center reveal">
+                        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight mb-4 leading-[1.05] text-slate-900 dark:text-white drop-shadow-2xl">
+                            <span class="hero-title-line">A <span class="text-gradient">Discord bot</span> for your server,</span>
+                            <span class="hero-title-line">running on macOS.</span>
+                        </h1>
+
+                        <p class="text-lg sm:text-xl text-slate-600 dark:text-gray-400 mb-3 max-w-4xl mx-auto leading-relaxed font-light">
+                            Install SwiftBot on your Mac, connect it to your Discord server, and let it handle moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover when uptime matters.
+                        </p>
+
+                        <p class="text-sm sm:text-base text-slate-500 dark:text-gray-500 mb-6 max-w-3xl mx-auto leading-relaxed">
+                            Free and open source, with no subscriptions or paid tiers. SwiftBot runs locally on your Mac — no hosted account required.
+                        </p>
+
+                        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                            <a href="https://github.com/johnwatso/SwiftBot/releases/latest" data-latest-download class="hero-cta w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-4 bg-gradient-to-br from-brand-purple to-brand-violet rounded-xl text-white font-bold text-lg hover:shadow-[0_8px_30px_rgba(88,101,242,0.4)] hover:-translate-y-1 transition-all">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor" class="w-5 h-5"><use href="#i-download"/></svg>
+                                Download for Mac
+                            </a>
+                            <a href="https://github.com/johnwatso/SwiftBot" class="hero-cta w-full sm:w-auto px-5 py-4 glass-panel rounded-xl text-slate-900 dark:text-white font-bold text-lg hover:bg-black/5 dark:hover:bg-white/10 hover:-translate-y-1 transition-all flex items-center justify-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><use href="#i-github"/></svg>
+                                View on GitHub
+                            </a>
+                        </div>
+                        <p class="mt-4 text-xs text-slate-500 dark:text-gray-500 font-medium">
+                            Latest release: <span data-latest-version>v1.21</span> · Requires macOS 26.0 or later · Apple Silicon
+                        </p>
+                    </div>
+
+                    <!-- Hero Image -->
+                    <div class="hero-screenshot reveal" style="transition-delay: 200ms;">
+                        <div class="screenshot-frame">
+                            <img src="./assets/landing/ui-preview-dark.png" data-screenshot="ui-preview" width="4064" height="2138" fetchpriority="high" decoding="async" alt="SwiftBot native macOS dashboard showing bot status, activity, and controls" class="w-full rounded-2xl">
+                        </div>
+                    </div>
+
+                    <div class="trust-strip reveal" style="transition-delay: 280ms;">
+                        <span class="trust-badge"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="text-brand-cyan"><use href="#i-github"/></svg>Free &amp; Open Source</span>
+                        <span class="trust-badge"><svg class="ph-icon text-brand-purple" aria-hidden="true"><use href="#i-seal-check-bold"/></svg>Signed &amp; Notarized by Apple</span>
+                        <span class="trust-badge"><svg class="ph-icon text-brand-purple" aria-hidden="true"><use href="#i-discord"/></svg>Discord server bot</span>
+                        <span class="trust-badge"><svg class="ph-icon text-brand-purple" aria-hidden="true"><use href="#i-database-bold"/></svg>Runs 100% on your Mac</span>
+                        <span class="trust-badge"><svg class="ph-icon text-brand-cyan" aria-hidden="true"><use href="#i-key-bold"/></svg>Keychain-stored tokens</span>
+                    </div>
+
+                    <p class="hero-resource-links text-xs sm:text-sm text-slate-500 dark:text-gray-500 max-w-3xl mx-auto leading-relaxed text-center reveal" style="transition-delay: 320ms;">
+                        Learn more: <a href="./help/install/" class="font-semibold text-brand-purple hover:text-brand-magenta transition-colors">install SwiftBot</a> · <a href="./help/bot-setup/" class="font-semibold text-brand-purple hover:text-brand-magenta transition-colors">Discord bot setup</a> · <a href="./help/web-ui/" class="font-semibold text-brand-purple hover:text-brand-magenta transition-colors">Admin Web UI</a> · <a href="./help/" class="font-semibold text-brand-purple hover:text-brand-magenta transition-colors">help docs</a>
+                    </p>
+                </div>
             </div>
-            <h1>A Discord bot for your server, <span class="gradient-text">running on macOS.</span></h1>
-            <p>Install SwiftBot on your Mac, connect it to your Discord server, and let it handle moderation, onboarding, AI FAQ replies, update alerts, Web UI access, and SwiftMesh failover when uptime matters.</p>
-            <div class="hero-actions">
-              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.1-.46-2.1-.48-3.25 0-1.44.62-2.2.44-3.06-.35-4.9-5.05-4.17-12.75 1.39-13.03 1.35.07 2.3.74 3.08.8.78-.16 1.98-.92 3.34-.83 1.59.13 2.78.76 3.58 1.92-3.14 1.88-2.4 6 .49 7.15-.58 1.52-1.31 3.02-2.49 3.99ZM14.55 5.8c.68-.82 1.14-1.96 1-3.08-.98.04-2.17.66-2.88 1.47-.64.73-1.18 1.9-1.03 3 1.1.08 2.23-.55 2.91-1.39Z"/></svg>
-                Download for Mac
-              </a>
-              <a class="button" href="./help/install/">Install Guide</a>
-              <a class="button" href="https://github.com/johnwatso/SwiftBot">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.29 9.42 7.86 10.95.58.11.79-.25.79-.56v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18A10.96 10.96 0 0 1 12 6.08c.98 0 1.96.13 2.88.39 2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
-                View on GitHub
-              </a>
+        </section>
+
+        <!-- Bento Features Section -->
+        <section id="features" class="min-h-[100dvh] flex items-center py-24 relative">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+                <div class="text-center mb-16 reveal">
+                    <h2 class="text-3xl md:text-5xl font-bold mb-4 text-slate-900 dark:text-white drop-shadow-lg tracking-tight">All your bot essentials, <br/><span class="text-brand-purple">in one native Mac app.</span></h2>
+                    <p class="text-slate-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">Manage the bot running on your server from a Mac dashboard instead of scattered config files, terminal logs, and browser tabs.</p>
+                </div>
+
+                <div class="feature-grid grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="glass-panel card-glow-purple group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-purple/20 flex items-center justify-center text-brand-purple mb-4 border border-brand-purple/30 shadow-lg"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-layout-bold"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">Native dashboard</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">See bot status, Discord activity, slash commands, permissions, diagnostics, analytics, latency, and logs from one SwiftUI Mac app.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel card-glow-cyan group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 100ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-cyan/20 flex items-center justify-center text-brand-cyan mb-4 border border-brand-cyan/30"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-shield-check-bold"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">Server automation</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">Handle joins, welcome flows, message rules, moderation actions, role changes, DMs, channel routing, voice events, and scheduled cleanup.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel card-glow-magenta group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 200ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-magenta/20 flex items-center justify-center text-brand-magenta mb-4 border border-brand-magenta/30"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-magic-wand-fill"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">AI and knowledge replies</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">Answer repeat server questions with Apple Intelligence, Ollama, or OpenAI, plus WikiBridge lookup commands and configurable response rules.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel card-glow-discord group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 100ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-purple/20 flex items-center justify-center text-brand-purple mb-4 border border-brand-purple/30 shadow-lg"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-arrows-clockwise-fill"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">SwiftMesh reliability</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">Run primary and standby nodes, sync live state, rehearse handovers, keep output leader-gated, and recover cleanly when uptime matters.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel card-glow-white group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 200ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-slate-700 dark:text-white mb-4 border border-black/10 dark:border-white/20"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-article-bold"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">Patchy update alerts</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">Watch AMD, NVIDIA, Intel, Steam, GitHub, Apple, and other sources, then post clean release alerts to the right Discord channels.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel card-glow-white group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 300ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-slate-700 dark:text-white mb-4 border border-black/10 dark:border-white/20"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-gauge-bold"/></svg></div>
+                                <h3 class="text-xl font-bold mb-2 text-slate-900 dark:text-white">Diagnostics &amp; analytics</h3>
+                            </div>
+                            <p class="text-slate-500 dark:text-gray-400 text-xs leading-relaxed">Watch latency, gateway health, throughput, and rate limits, and dig into logs and diagnostics without leaving the app.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Web UI showcase -->
+                <div class="webui-showcase glass-panel card-glow-magenta rounded-3xl p-8 md:p-10 relative overflow-hidden reveal">
+                    <div class="webui-showcase-layout relative z-10">
+                        <div class="webui-showcase-copy">
+                            <div class="w-12 h-12 rounded-full bg-brand-magenta/20 flex items-center justify-center text-brand-magenta mb-5 border border-brand-magenta/30"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-browser-fill"/></svg></div>
+                            <h3 class="text-2xl md:text-3xl font-bold mb-3 text-slate-900 dark:text-white">Admin Web UI</h3>
+                            <p class="text-slate-500 dark:text-gray-400 text-sm md:text-base leading-relaxed">Check in and manage the bot from your phone, tablet, or any browser. Keep it local-only, or publish it over HTTPS through SwiftBot's Cloudflare Tunnel flow when the Mac is elsewhere.</p>
+                        </div>
+                        <img src="./assets/landing/webui-preview-dark.png" data-screenshot="webui-preview" width="4058" height="2138" loading="lazy" decoding="async" alt="SwiftBot browser-based admin Web UI preview" class="webui-showcase-image rounded-2xl">
+                    </div>
+                </div>
             </div>
-            <p class="hero-note">Free and open source. Runs on your Mac. No SwiftBot cloud account required.</p>
-            <div class="trust-strip" aria-label="Highlights">
-              <span class="trust-badge" style="--accent: var(--green);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.1-.46-2.1-.48-3.25 0-1.44.62-2.2.44-3.06-.35-4.9-5.05-4.17-12.75 1.39-13.03 1.35.07 2.3.74 3.08.8.78-.16 1.98-.92 3.34-.83 1.59.13 2.78.76 3.58 1.92-3.14 1.88-2.4 6 .49 7.15-.58 1.52-1.31 3.02-2.49 3.99ZM14.55 5.8c.68-.82 1.14-1.96 1-3.08-.98.04-2.17.66-2.88 1.47-.64.73-1.18 1.9-1.03 3 1.1.08 2.23-.55 2.91-1.39Z"/></svg></span>Built for Mac</span>
-              <span class="trust-badge" style="--accent: var(--discord);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.36 2c-.22.39-.47.92-.64 1.34a18.27 18.27 0 0 0-5.44 0C9.1 2.92 8.85 2.39 8.63 2a19.74 19.74 0 0 0-4.96 2.38C.53 9.05-.32 13.6.1 18.08a19.9 19.9 0 0 0 6.08 3.06c.49-.66.92-1.36 1.3-2.1-.71-.27-1.39-.6-2.03-.97.17-.12.34-.25.5-.38a14.18 14.18 0 0 0 12.1 0c.17.14.33.26.5.38-.64.38-1.32.7-2.03.97.38.74.82 1.44 1.3 2.1a19.86 19.86 0 0 0 6.08-3.06c.5-5.18-.84-9.69-3.58-13.71ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Z"/></svg></span>Discord server bot</span>
-              <span class="trust-badge" style="--accent: var(--cyan);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.508 0c-.287 0-.573 0-.86.002-.241.002-.483.003-.724.01-.132.003-.263.009-.395.015A9.154 9.154 0 0 0 4.348.15 5.492 5.492 0 0 0 2.85.645 5.04 5.04 0 0 0 .645 2.848c-.245.48-.4.972-.495 1.5-.093.52-.122 1.05-.136 1.576a35.2 35.2 0 0 0-.012.724C0 6.935 0 7.221 0 7.508v8.984c0 .287 0 .575.002.862.002.24.005.481.012.722.014.526.043 1.057.136 1.576.095.528.25 1.02.495 1.5a5.03 5.03 0 0 0 2.205 2.203c.48.244.97.4 1.498.495.52.093 1.05.124 1.576.138.241.007.483.009.724.01.287.002.573.002.86.002h8.984c.287 0 .573 0 .86-.002.241-.001.483-.003.724-.01a10.523 10.523 0 0 0 1.578-.138 5.322 5.322 0 0 0 1.498-.495 5.035 5.035 0 0 0 2.203-2.203c.245-.48.4-.972.495-1.5.093-.52.124-1.05.138-1.576.007-.241.009-.481.01-.722.002-.287.002-.575.002-.862V7.508c0-.287 0-.573-.002-.86a33.662 33.662 0 0 0-.01-.724 10.5 10.5 0 0 0-.138-1.576 5.328 5.328 0 0 0-.495-1.5A5.039 5.039 0 0 0 21.152.645 5.32 5.32 0 0 0 19.654.15a10.493 10.493 0 0 0-1.578-.138 34.98 34.98 0 0 0-.722-.01C17.067 0 16.779 0 16.492 0H7.508Zm6.035 3.41c4.114 2.47 6.545 7.162 5.549 11.131-.024.093-.05.181-.076.272l.002.001c2.062 2.538 1.5 5.258 1.236 4.745-1.072-2.086-3.066-1.568-4.088-1.043a6.803 6.803 0 0 1-.281.158l-.02.012-.002.002c-2.115 1.123-4.957 1.205-7.812-.022a12.568 12.568 0 0 1-5.64-4.838c.649.48 1.35.902 2.097 1.252 3.019 1.414 6.051 1.311 8.197-.002C9.651 12.73 7.101 9.67 5.146 7.191a10.628 10.628 0 0 1-1.005-1.384c2.34 2.142 6.038 4.83 7.365 5.576C8.69 8.408 6.208 4.743 6.324 4.86c4.436 4.47 8.528 6.996 8.528 6.996.154.085.27.154.36.213.085-.215.16-.437.224-.668.708-2.588-.09-5.548-1.893-7.992Z"/></svg></span>SwiftUI dashboard</span>
-              <span class="trust-badge" style="--accent: var(--gold);"><span class="mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Z"/></svg></span>Keychain-stored tokens</span>
+        </section>
+
+        <!-- How It Works Section -->
+        <section id="how-it-works" class="content-section">
+            <div class="section-shell relative z-10">
+                <div class="text-center mb-12 reveal">
+                    <h2 class="text-4xl md:text-5xl font-bold mb-4 text-slate-900 dark:text-white drop-shadow-lg tracking-tight">Get SwiftBot running <span class="text-brand-cyan">in minutes.</span></h2>
+                    <p class="text-slate-600 dark:text-gray-400 text-lg max-w-2xl mx-auto font-light">Create the Discord app, paste the token, choose what SwiftBot should handle, and add failover when you need it.</p>
+                </div>
+                <div class="step-grid">
+                    <div class="glass-panel card-glow-purple rounded-3xl utility-card reveal">
+                        <span class="text-brand-purple font-bold text-sm">01</span>
+                        <h3 class="text-xl font-bold mt-4 mb-3 text-slate-900 dark:text-white">Create your Discord app</h3>
+                        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Make a bot in the Discord Developer Portal, copy the token, and enable the required gateway intents.</p>
+                    </div>
+                    <div class="glass-panel card-glow-cyan rounded-3xl utility-card reveal" style="transition-delay: 80ms;">
+                        <span class="text-brand-cyan font-bold text-sm">02</span>
+                        <h3 class="text-xl font-bold mt-4 mb-3 text-slate-900 dark:text-white">Launch SwiftBot</h3>
+                        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Paste the token during onboarding. SwiftBot validates it, stores it in Keychain, and builds the invite URL.</p>
+                    </div>
+                    <div class="glass-panel card-glow-magenta rounded-3xl utility-card reveal" style="transition-delay: 160ms;">
+                        <span class="text-brand-magenta font-bold text-sm">03</span>
+                        <h3 class="text-xl font-bold mt-4 mb-3 text-slate-900 dark:text-white">Configure workflows</h3>
+                        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Set commands, automation rules, AI providers, Patchy sources, Sweep cleanup, and Web UI access.</p>
+                    </div>
+                    <div class="glass-panel card-glow-white rounded-3xl utility-card reveal" style="transition-delay: 240ms;">
+                        <span class="text-slate-400 font-bold text-sm">04</span>
+                        <h3 class="text-xl font-bold mt-4 mb-3 text-slate-900 dark:text-white">Add failover when ready</h3>
+                        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Pair standby or worker nodes with SwiftMesh join codes and test the handover path before you need it.</p>
+                    </div>
+                </div>
             </div>
-          </div>
+        </section>
 
-          <div class="hero-shot reveal">
-            <div class="screenshot-frame frameless">
-              <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-              <img src="./assets/landing/ui-preview-dark.png" data-dark-src="./assets/landing/ui-preview-dark.png" data-light-src="./assets/landing/ui-preview-light.png" width="4064" height="2138" fetchpriority="high" decoding="async" alt="SwiftBot native macOS dashboard showing bot status, activity, and controls.">
+        <!-- Security / Privacy Section -->
+        <section id="security" class="content-section">
+            <div class="section-shell relative z-10">
+                <div class="privacy-layout">
+                    <div class="reveal">
+                        <svg class="privacy-lock mb-6" viewBox="0 0 48 48" aria-hidden="true">
+                            <defs>
+                                <linearGradient id="shackle-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8b9bff" /><stop offset="50%" stop-color="#5865f2" /><stop offset="100%" stop-color="#237cff" /></linearGradient>
+                                <linearGradient id="body-grad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#e8edff" /><stop offset="100%" stop-color="#d6e0ff" /></linearGradient>
+                                <linearGradient id="body-border-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="rgba(88, 101, 242, 0.6)" /><stop offset="100%" stop-color="rgba(35, 124, 255, 0.2)" /></linearGradient>
+                                <linearGradient id="keyhole-grad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#5865f2" /><stop offset="100%" stop-color="#237cff" /></linearGradient>
+                            </defs>
+                            <path class="privacy-lock-shackle" d="M 16 18 L 16 15 A 8 8 0 0 1 32 15 L 32 18" fill="none" stroke="url(#shackle-grad)" stroke-width="4" stroke-linecap="round" />
+                            <rect class="privacy-lock-body" x="9" y="18" width="30" height="22" rx="6" ry="6" fill="url(#body-grad)" stroke="url(#body-border-grad)" stroke-width="1.5" />
+                            <path class="privacy-lock-keyhole" d="M24 25 C22.5 25 21.2 26.3 21.2 28 C21.2 29.2 21.9 30.2 22.8 30.6 L22 35 C22 35.6 22.4 36 23 36 L25 36 C25.6 36 26 35.6 26 35 L25.2 30.6 C26.1 30.2 26.8 29.2 26.8 28 C26.8 26.3 25.5 25 24 25 Z" fill="url(#keyhole-grad)" />
+                        </svg>
+                        <h2 class="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white drop-shadow-lg tracking-tight mb-4">Privacy first. <span class="text-brand-purple whitespace-nowrap">Your server stays yours.</span></h2>
+                        <p class="text-slate-600 dark:text-gray-400 text-lg font-light leading-relaxed">SwiftBot runs on your Mac and talks directly to Discord. There is no SwiftBot cloud account, hosted dashboard, or third-party sync service between you and your server.</p>
+                    </div>
+                    <div class="privacy-grid">
+                        <div class="glass-panel rounded-3xl utility-card reveal">
+                            <div class="privacy-icon"><svg class="ph-icon" aria-hidden="true"><use href="#i-key-bold"/></svg></div>
+                            <h3 class="font-bold text-xl mb-2 text-slate-900 dark:text-white">Secrets stay in Keychain</h3>
+                            <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Bot tokens and API keys are stored in the macOS Keychain, not in plain text config files.</p>
+                        </div>
+                        <div class="glass-panel rounded-3xl utility-card reveal" style="transition-delay: 80ms;">
+                            <div class="privacy-icon cyan"><svg class="ph-icon" aria-hidden="true"><use href="#i-database-bold"/></svg></div>
+                            <h3 class="font-bold text-xl mb-2 text-slate-900 dark:text-white">Local app state</h3>
+                            <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Settings, rules, logs, and cached Discord metadata live on the Mac running SwiftBot.</p>
+                        </div>
+                        <div class="glass-panel rounded-3xl utility-card reveal" style="transition-delay: 160ms;">
+                            <div class="privacy-icon magenta"><svg class="ph-icon" aria-hidden="true"><use href="#i-link-simple-break-bold"/></svg></div>
+                            <h3 class="font-bold text-xl mb-2 text-slate-900 dark:text-white">No required hosted account</h3>
+                            <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Remote access is optional and controlled by your own Web UI, OAuth, and tunnel settings.</p>
+                        </div>
+                        <div class="glass-panel rounded-3xl utility-card reveal" style="transition-delay: 240ms;">
+                            <div class="privacy-icon neutral"><svg class="ph-icon" aria-hidden="true"><use href="#i-user-focus-bold"/></svg></div>
+                            <h3 class="font-bold text-xl mb-2 text-slate-900 dark:text-white">Scoped Web UI access</h3>
+                            <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">The Admin Web UI uses Discord OAuth, so only trusted admins can sign in to manage the bot.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="section" id="features">
-        <div class="shell">
-          <div class="section-heading reveal">
-            <h2>All your bot essentials, in one Mac app.</h2>
-            <p>Manage the bot running on your server from a Mac dashboard instead of scattered config files, terminal logs, hosted dashboards, and browser tabs.</p>
-          </div>
-
-          <div class="feature-grid">
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v4H4V4Zm0 6h7v10H4V10Zm9 0h7v10h-7V10Z"/></svg></span>
-              <h3>Native dashboard</h3>
-              <p>See bot status, Discord activity, slash commands, permissions, diagnostics, analytics, latency, and logs from one SwiftUI Mac app.</p>
-            </article>
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 2h6v3h4v6h3v6h-3v5H5v-5H2v-6h3V5h4V2Zm8 5H7v13h10V7Zm-7 3h4v2h-4v-2Zm-1 5h6v2H9v-2Z"/></svg></span>
-              <h3>Server automation</h3>
-              <p>Handle joins, welcome flows, message rules, moderation actions, role changes, DMs, channel routing, voice events, and scheduled cleanup.</p>
-            </article>
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5l-4 4v-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7v1.17L13.17 15H19a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5Z"/></svg></span>
-              <h3>AI and knowledge replies</h3>
-              <p>Answer repeat server questions with Apple Intelligence, Ollama, or OpenAI, plus WikiBridge lookup commands and configurable response rules.</p>
-            </article>
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.84 9.74 9 10 5.16-.26 9-5 9-10V6l-9-4Zm0 2.2 7 3.1V12c0 3.85-2.84 7.3-7 7.98C7.84 19.3 5 15.85 5 12V7.3l7-3.1Zm-1 9.39 5.3-5.3 1.4 1.42-6.7 6.7-3.7-3.7 1.4-1.42 2.3 2.3Z"/></svg></span>
-              <h3>SwiftMesh reliability</h3>
-              <p>Run primary and standby nodes, sync live state, rehearse handovers, keep output leader-gated, and recover cleanly when uptime matters.</p>
-            </article>
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v3H4V4Zm1 5h14l-1.2 11H6.2L5 9Zm4 3v5h2v-5H9Zm4 0v5h2v-5h-2Z"/></svg></span>
-              <h3>Patchy update monitoring</h3>
-              <p>Watch AMD, NVIDIA, Intel, Steam, GitHub, Apple, and other sources, then post clean release alerts to the right Discord channels.</p>
-            </article>
-            <article class="card reveal">
-              <span class="card-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5Zm3-1a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H7Zm2 3h6v2H9V7Zm0 4h6v2H9v-2Zm0 4h4v2H9v-2Z"/></svg></span>
-              <h3>Remote admin access</h3>
-              <p>Use the built-in Web UI with Discord OAuth, optional Cloudflare Tunnel setup, and browser access for trusted admins when the Mac is elsewhere.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="screenshots">
-        <div class="shell">
-          <div class="section-heading reveal">
-            <h2>Native app first, browser access when useful.</h2>
-            <p>SwiftBot is built for macOS, but the Web UI makes remote checks and admin tasks easier when the bot is running elsewhere.</p>
-          </div>
-
-          <div class="showcase">
-            <article class="showcase-row reveal">
-              <div class="showcase-copy">
-                <span class="eyebrow">macOS dashboard</span>
-                <h3>Operate the bot without leaving the app.</h3>
-                <p>Use the sidebar to move between runtime status, commands, automations, Patchy, AI providers, diagnostics, SwiftMesh, logs, analytics, and settings.</p>
-              </div>
-              <div class="screenshot-frame frameless">
-                <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                <img src="./assets/landing/ui-preview-dark.png" data-dark-src="./assets/landing/ui-preview-dark.png" data-light-src="./assets/landing/ui-preview-light.png" width="4064" height="2138" loading="lazy" decoding="async" alt="SwiftBot macOS dashboard preview.">
-              </div>
-            </article>
-
-            <article class="showcase-row reveal">
-              <div class="showcase-copy">
-                <span class="eyebrow">Web admin</span>
-                <h3>Check in from another device.</h3>
-                <p>The built-in Web UI mirrors key management surfaces and can stay local-only or be published through SwiftBot's Cloudflare Tunnel flow.</p>
-              </div>
-              <div class="screenshot-frame frameless">
-                <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                <img src="./assets/landing/webui-preview-dark.png" data-dark-src="./assets/landing/webui-preview-dark.png" data-light-src="./assets/landing/webui-preview-light.png" width="4058" height="2138" loading="lazy" decoding="async" alt="SwiftBot browser-based admin Web UI preview.">
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="setup">
-        <div class="shell">
-          <div class="section-heading reveal">
-            <h2>Get SwiftBot running in minutes.</h2>
-            <p>Create the Discord application, paste the token, choose what SwiftBot should handle, and add failover when you need it.</p>
-          </div>
-
-          <div class="steps">
-            <article class="card reveal">
-              <span class="step-number">01</span>
-              <h3>Create your Discord app</h3>
-              <p>Make a bot in the Discord Developer Portal, copy the token, and enable the required gateway intents.</p>
-            </article>
-            <article class="card reveal">
-              <span class="step-number">02</span>
-              <h3>Launch SwiftBot</h3>
-              <p>Paste the token during onboarding. SwiftBot validates it, stores it in Keychain, and builds the invite URL.</p>
-            </article>
-            <article class="card reveal">
-              <span class="step-number">03</span>
-              <h3>Configure workflows</h3>
-              <p>Set commands, automation rules, AI providers, Patchy sources, Sweep cleanup, and Web UI access.</p>
-            </article>
-            <article class="card reveal">
-              <span class="step-number">04</span>
-              <h3>Add failover when ready</h3>
-              <p>Pair standby or worker nodes with SwiftMesh join codes and test the handover path before you need it.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="discord-bot-faq">
-        <div class="shell">
-          <div class="section-heading reveal">
-            <h2>Answers for common Discord bot searches.</h2>
-            <p>SwiftBot is built for server owners who want a practical Discord bot they can run themselves from a Mac.</p>
-          </div>
-
-          <div class="faq-list">
-            <article class="card faq-item reveal is-open">
-              <button class="faq-question" type="button" aria-expanded="true">
-                <h3>Can I run SwiftBot on my Discord server from a Mac?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>Yes. SwiftBot runs locally on Apple Silicon Macs, connects through your Discord application, stores the bot token in Keychain, and operates in your server like a normal Discord bot.</p>
-              </div>
-            </article>
-            <article class="card faq-item reveal">
-              <button class="faq-question" type="button" aria-expanded="false">
-                <h3>Can SwiftBot help moderate my Discord server?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>SwiftBot gives you configurable rules for message events, joins, roles, DMs, moderation actions, and channel routing, so routine server workflows can be managed from the dashboard.</p>
-              </div>
-            </article>
-            <article class="card faq-item reveal">
-              <button class="faq-question" type="button" aria-expanded="false">
-                <h3>Can a bot answer repeat questions from members?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>SwiftBot supports AI replies and WikiBridge lookup commands, which helps communities answer common setup, support, and knowledge-base questions without repeating the same response manually.</p>
-              </div>
-            </article>
-            <article class="card faq-item reveal">
-              <button class="faq-question" type="button" aria-expanded="false">
-                <h3>Can SwiftBot run on more than one Discord server?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>SwiftBot is designed around managing one primary Discord server. It can be invited to more than one server, but the dashboard and workflows are clearest when one server is the main home.</p>
-              </div>
-            </article>
-            <article class="card faq-item reveal">
-              <button class="faq-question" type="button" aria-expanded="false">
-                <h3>Can I access the bot dashboard away from the Mac?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>The Admin Web UI can stay local or be published through SwiftBot's Cloudflare Tunnel flow, giving trusted admins browser access when the Mac is running elsewhere.</p>
-              </div>
-            </article>
-            <article class="card faq-item reveal">
-              <button class="faq-question" type="button" aria-expanded="false">
-                <h3>How much does SwiftBot cost?</h3>
-                <span class="faq-toggle" aria-hidden="true"></span>
-              </button>
-              <div class="faq-answer">
-                <p>SwiftBot is free and open source under the MIT license. It is actively developed and updated through regular releases on GitHub.</p>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="privacy">
-        <div class="shell">
-          <div class="privacy-band reveal">
-            <div>
-              <span class="eyebrow privacy-label"><span class="privacy-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Zm3 4a2 2 0 0 0-1 3.73V19h2v-1.27A2 2 0 0 0 12 14Z"/></svg></span>Privacy first</span>
-              <h2>100% local.<br>Your server stays yours.</h2>
-              <p>SwiftBot runs on your Mac and talks directly to Discord. There is no SwiftBot cloud account, hosted dashboard, or third-party sync service sitting between you and your server.</p>
+        <!-- Performance & Architecture Section -->
+        <section id="performance" class="min-h-[100dvh] flex items-center py-24 relative overflow-hidden">
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none" style="background: radial-gradient(circle, rgba(100, 210, 255, 0.08) 0%, rgba(100, 210, 255, 0) 70%);"></div>
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10">
+                <div class="text-center mb-16 reveal">
+                    <h2 class="text-4xl md:text-5xl font-bold mb-4 text-slate-900 dark:text-white drop-shadow-lg tracking-tight">A bot host that feels like a Mac app. <br/><span class="text-brand-purple">Lightweight by design.</span></h2>
+                    <p class="text-slate-600 dark:text-gray-400 text-lg max-w-2xl mx-auto font-light">A native Swift app keeps your bot responsive and quiet in the background, with a low resource footprint instead of a heavyweight runtime.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto text-left">
+                    <div class="glass-panel card-glow-cyan group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal">
+                        <div class="relative z-10 flex flex-col h-full justify-between gap-4">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-cyan/20 flex items-center justify-center text-brand-cyan mb-6 border border-brand-cyan/30 shadow-lg"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-gauge-bold"/></svg></div>
+                                <h3 class="text-2xl font-bold mb-3 text-slate-900 dark:text-white">Quiet background work</h3>
+                                <p class="text-slate-500 dark:text-gray-400 text-sm leading-relaxed">Designed for low CPU, memory, and power use, so the bot can run quietly on your Mac while you work, play, or step away.</p>
+                            </div>
+                            <span class="text-[10px] text-brand-cyan font-bold uppercase tracking-wider">Low CPU &amp; memory</span>
+                        </div>
+                    </div>
+                    <div class="glass-panel card-glow-purple group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 100ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between gap-4">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-purple/20 flex items-center justify-center text-brand-purple mb-6 border border-brand-purple/30 shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor" class="w-6 h-6"><use href="#i-apple"/></svg></div>
+                                <h3 class="text-2xl font-bold mb-3 text-slate-900 dark:text-white">Built for Apple Silicon</h3>
+                                <p class="text-slate-500 dark:text-gray-400 text-sm leading-relaxed">A native Apple Silicon app for macOS 26 or later. Full speed, no emulation, and a UI that feels at home on the Mac.</p>
+                            </div>
+                            <span class="text-[10px] text-brand-purple font-bold uppercase tracking-wider">Apple Silicon · macOS 26+</span>
+                        </div>
+                    </div>
+                    <div class="glass-panel card-glow-magenta group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 200ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between gap-4">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-brand-magenta/20 flex items-center justify-center text-brand-magenta mb-6 border border-brand-magenta/30 shadow-lg"><svg class="swift-language-mark" viewBox="0 0 552 498" fill="currentColor" aria-hidden="true"><path d="M314 356.5L46 67.5L274 243L115.5 49L384.5 266.5L407 166L349 1L465.5 105L511.5 230.5L502 347.5L551.5 414.5V496L511.5 457L449.5 437L296 496L100.5 437L2 322.5L208.5 389.5L314 356.5Z"/></svg></div>
+                                <h3 class="text-2xl font-bold mb-3 text-slate-900 dark:text-white">Built with Swift</h3>
+                                <p class="text-slate-500 dark:text-gray-400 text-sm leading-relaxed">Written natively in Swift and SwiftUI instead of an Electron shell. The interface feels immediate and the app stays light.</p>
+                            </div>
+                            <span class="text-[10px] text-brand-magenta font-bold uppercase tracking-wider">100% Native Swift</span>
+                        </div>
+                    </div>
+                    <div class="glass-panel card-glow-white group rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden reveal" style="transition-delay: 300ms;">
+                        <div class="relative z-10 flex flex-col h-full justify-between gap-4">
+                            <div>
+                                <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-slate-700 dark:text-white mb-6 border border-black/10 dark:border-white/20 shadow-lg"><svg class="ph-icon text-2xl" aria-hidden="true"><use href="#i-shield-check-bold"/></svg></div>
+                                <h3 class="text-2xl font-bold mb-3 text-slate-900 dark:text-white">100% Open Source</h3>
+                                <p class="text-slate-500 dark:text-gray-400 text-sm leading-relaxed">Every part of SwiftBot is public and auditable, from the app to the update flow. Inspect the code, build it yourself, or follow along on GitHub.</p>
+                            </div>
+                            <span class="text-[10px] text-slate-400 dark:text-gray-500 font-bold uppercase tracking-wider">MIT Licensed · Auditable</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="privacy-points" aria-label="Privacy highlights">
-              <div class="privacy-point">
-                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V8a3 3 0 0 0-6 0v2Z"/></svg></span>
-                <div><strong>Secrets stay in Keychain</strong>Bot tokens and API keys are stored in the macOS Keychain, not plain text config files.</div>
-              </div>
-              <div class="privacy-point">
-                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5c0-1.66 3.58-3 8-3s8 1.34 8 3v14c0 1.66-3.58 3-8 3s-8-1.34-8-3V5Zm2 3.15V11c0 .2 1.98 1 6 1s6-.8 6-1V8.15C16.55 8.68 14.42 9 12 9s-4.55-.32-6-.85Zm0 5V16c0 .2 1.98 1 6 1s6-.8 6-1v-2.85c-1.45.53-3.58.85-6 .85s-4.55-.32-6-.85Z"/></svg></span>
-                <div><strong>Local app state</strong>Settings, rules, logs, and cached Discord metadata live on the Mac running SwiftBot.</div>
-              </div>
-              <div class="privacy-point">
-                <span class="privacy-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 3.84 9.74 9 10 5.16-.26 9-5 9-10V6l-9-4Zm-1 11.59 5.3-5.3 1.4 1.42-6.7 6.7-3.7-3.7 1.4-1.42 2.3 2.3Z"/></svg></span>
-                <div><strong>No required hosted account</strong>Remote access is optional and controlled by your own Web UI, OAuth, and tunnel settings.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="section" id="download">
-        <div class="shell">
-          <div class="download-panel reveal">
-            <div>
-              <h2>Ready to add SwiftBot to your server?</h2>
-              <p>SwiftBot is free and open source. Download the latest signed release, then use the setup guides for Discord OAuth, Web UI access, and SwiftMesh clustering.</p>
+        <!-- Download & Footer Section -->
+        <section class="min-h-[100dvh] flex flex-col relative justify-between pt-24">
+            <div class="flex-1 flex flex-col justify-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center">
+                <div class="glass-panel rounded-[2.5rem] p-10 md:p-16 border border-black/10 dark:border-white/10 shadow-2xl relative overflow-hidden group reveal">
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity duration-700" style="background: radial-gradient(circle, rgba(88, 101, 242, 0.25) 0%, rgba(88, 101, 242, 0) 70%);"></div>
+                    <div class="relative z-10 flex flex-col items-center">
+                        <img src="./assets/landing/app-icon-light.png" width="96" height="96" loading="lazy" decoding="async" class="w-24 h-24 rounded-[20px] shadow-[0_10px_30px_rgba(88,101,242,0.3)] mb-8" alt="SwiftBot icon">
+                        <h2 class="text-4xl md:text-6xl font-bold mb-6 text-slate-900 dark:text-white drop-shadow-lg tracking-tight">Ready to add SwiftBot <span class="text-brand-purple">to your server?</span></h2>
+                        <p class="text-lg text-slate-600 dark:text-gray-400 mb-10 max-w-xl mx-auto leading-relaxed">Free, open source, and ready in about a minute. Download the latest signed release, then follow the setup guides for Discord, the Web UI, and SwiftMesh.</p>
+                        <a href="https://github.com/johnwatso/SwiftBot/releases/latest" data-latest-download class="flex items-center gap-3 px-10 py-5 bg-gradient-to-br from-brand-purple to-brand-violet rounded-2xl text-white font-bold text-xl hover:shadow-[0_12px_40px_rgba(88,101,242,0.4)] hover:-translate-y-1 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor" class="w-6 h-6"><use href="#i-download"/></svg>
+                            Get SwiftBot
+                        </a>
+                        <p class="mt-6 text-sm text-slate-500 dark:text-gray-500">Free · Version <span data-latest-version-raw>1.21</span> · Requires macOS 26.0 or later · Auto-updates.</p>
+                    </div>
+                </div>
             </div>
-            <div class="hero-actions">
-              <a class="button primary" href="https://github.com/johnwatso/SwiftBot/releases/download/v1.21/SwiftBot-1.21.zip" data-latest-download download>Download</a>
-              <a class="button" href="./help/bot-setup/">Bot setup</a>
-            </div>
-          </div>
-        </div>
-      </section>
+
+            <footer class="w-full border-t border-black/10 dark:border-white/10 bg-white/80 dark:bg-[#0a0c14]/80 backdrop-blur-md mt-16 z-20 relative">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <span class="text-sm text-slate-500 dark:text-gray-500">SwiftBot is open source. Not affiliated with Discord.</span>
+                    <div class="flex flex-wrap items-center justify-center gap-6 text-sm font-semibold text-slate-500 dark:text-gray-400">
+                        <a href="https://github.com/johnwatso/SwiftBot" class="hover:text-slate-900 dark:hover:text-white transition-colors">Source Code</a>
+                        <a href="./help/" class="hover:text-slate-900 dark:hover:text-white transition-colors">Help</a>
+                        <a href="./beta/appcast.xml" class="hover:text-slate-900 dark:hover:text-white transition-colors">Beta appcast</a>
+                        <a href="./appcast.xml" class="hover:text-slate-900 dark:hover:text-white transition-colors">Appcast</a>
+                    </div>
+                </div>
+            </footer>
+        </section>
+
     </main>
 
-    <footer>
-      <div class="shell">
-        <span>SwiftBot for macOS 26 or later. Apple Silicon required.</span>
-        <nav aria-label="Footer">
-          <a href="./help/">Help</a>
-          <a href="./help/web-ui/">Web UI</a>
-          <a href="./help/swiftmesh/">SwiftMesh</a>
-          <a href="./beta/appcast.xml">Beta appcast</a>
-          <a href="https://github.com/johnwatso/SwiftBot">GitHub</a>
-        </nav>
-      </div>
-    </footer>
-  </div>
+    <!-- Interactions, theme, particle canvas, latest-download resolver -->
+    <script src="./assets/js/site.js" defer></script>
 
-  <script>
-    (function () {
-      var toggle = document.getElementById("theme-toggle");
-      var root = document.documentElement;
-      var themeImages = document.querySelectorAll("[data-dark-src][data-light-src]");
-
-      function setTheme(isLight) {
-        root.classList.toggle("light", isLight);
-        root.classList.toggle("dark", !isLight);
-        localStorage.setItem("swiftbot-theme", isLight ? "light" : "dark");
-        themeImages.forEach(function (img) {
-          img.src = isLight ? img.getAttribute("data-light-src") : img.getAttribute("data-dark-src");
-        });
-      }
-
-      setTheme(root.classList.contains("light"));
-
-      if (toggle) {
-        toggle.addEventListener("click", function () {
-          setTheme(!root.classList.contains("light"));
-        });
-      }
-
-      if (window.location.protocol !== "file:") {
-        fetch("./appcast.xml", { cache: "no-store" })
-          .then(function (response) { return response.ok ? response.text() : ""; })
-          .then(function (text) {
-            if (!text) return;
-            var xml = new DOMParser().parseFromString(text, "application/xml");
-            var enclosure = xml.querySelector("enclosure[url]");
-            if (!enclosure) return;
-            var url = enclosure.getAttribute("url");
-            document.querySelectorAll("[data-latest-download]").forEach(function (link) {
-              link.href = url;
-            });
-          })
-          .catch(function () {});
-      }
-
-      document.querySelectorAll(".faq-question").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var item = button.closest(".faq-item");
-          var isOpening = !item.classList.contains("is-open");
-
-          document.querySelectorAll(".faq-item").forEach(function (faqItem) {
-            faqItem.classList.remove("is-open");
-            var faqButton = faqItem.querySelector(".faq-question");
-            if (faqButton) {
-              faqButton.setAttribute("aria-expanded", "false");
-            }
-          });
-
-          if (isOpening) {
-            item.classList.add("is-open");
-            button.setAttribute("aria-expanded", "true");
-          }
-        });
-      });
-
-      var observer = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("active");
-            observer.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.12 });
-
-      document.querySelectorAll(".reveal").forEach(function (element) {
-        observer.observe(element);
-      });
-    })();
-  </script>
 </body>
 </html>
