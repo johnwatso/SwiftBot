@@ -19,3 +19,4 @@ xcuserdata/
 .shiphook
 .ai-context
 .codex-derived-data
+.claude/launch.json
