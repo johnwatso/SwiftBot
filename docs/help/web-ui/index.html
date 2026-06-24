@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Web UI Setup - SwiftBot Help</title>
+    <meta name="description" content="Run the SwiftBot Admin Web UI locally or publish it securely over HTTPS with Cloudflare Tunnel or your own reverse proxy.">
+    <link rel="canonical" href="https://swiftbot.dev/help/web-ui/">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="SwiftBot">
+    <meta property="og:url" content="https://swiftbot.dev/help/web-ui/">
+    <meta property="og:title" content="Admin Web UI Setup">
+    <meta property="og:description" content="Run the SwiftBot Admin Web UI locally or publish it securely with Cloudflare Tunnel or a reverse proxy.">
+    <meta property="og:image" content="https://swiftbot.dev/assets/landing/webui-preview-dark.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Admin Web UI Setup">
+    <meta name="twitter:description" content="Run the SwiftBot Admin Web UI locally or publish it securely with Cloudflare Tunnel or a reverse proxy.">
+    <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/webui-preview-dark.png">
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"SwiftBot","item":"https://swiftbot.dev/"},{"@type":"ListItem","position":2,"name":"Help","item":"https://swiftbot.dev/help/"},{"@type":"ListItem","position":3,"name":"Admin Web UI","item":"https://swiftbot.dev/help/web-ui/"}]}
+    </script>
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+    <link rel="icon" type="image/png" href="../../favicon.png">
+    <link rel="apple-touch-icon" href="../../assets/landing/app-icon-light.png">
+    <link rel="stylesheet" href="../assets/css/kbase.css">
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
+    <script src="../assets/js/search-index.js" defer></script>
+    <script src="../assets/js/search.js" defer></script>
+    <script src="../assets/js/kbase.js" defer></script>
+    <style>
+        .article-header-wrap { display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+        .article-header-logo { width: 80px; height: 80px; border-radius: 18px; box-shadow: 0 10px 25px rgba(88, 101, 242, 0.15); flex-shrink: 0; }
+        @media (max-width: 640px) {
+            .article-header-wrap { flex-direction: column-reverse; align-items: flex-start; gap: 1rem; }
+            .article-header-logo { width: 64px; height: 64px; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav" aria-label="Main">
+        <div class="shell nav-inner">
+            <a class="brand" href="../">
+                <picture>
+                    <source srcset="../../assets/landing/app-icon-dark.png" media="(prefers-color-scheme: dark)">
+                    <img src="../../assets/landing/app-icon-light.png" alt="">
+                </picture>
+                <span>SwiftBot Help</span>
+            </a>
+            <div class="nav-actions">
+                <a class="nav-link" href="../">Help Home</a>
+                <a class="nav-link optional" href="../../">Overview</a>
+                <a class="nav-link" href="https://github.com/johnwatso/SwiftBot/issues">Raise an Issue</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="shell">
+        <div class="breadcrumbs" aria-label="Breadcrumbs">
+            <a href="../">Help Home</a>
+            <span class="sep">/</span>
+            <span class="current">Admin Web UI</span>
+        </div>
+
+        <header class="article-header">
+            <div class="article-header-wrap">
+                <div style="flex: 1;">
+                    <h1>Choose how the dashboard is reached</h1>
+                    <p class="article-intro">The Web UI can stay local to your Mac or be published safely behind TLS through Cloudflare Tunnel or your own reverse proxy.</p>
+                </div>
+                <picture>
+                    <source srcset="../../assets/landing/app-icon-dark.png" media="(prefers-color-scheme: dark)">
+                    <img src="../../assets/landing/app-icon-light.png" alt="SwiftBot icon" class="article-header-logo">
+                </picture>
+            </div>
+            <div class="search-wrap" style="margin-top: 1.5rem; max-width: 100%;">
+                <i class="ph-bold ph-magnifying-glass" style="position: absolute; top: 50%; left: 1.1rem; transform: translateY(-50%); color: var(--muted);"></i>
+                <input id="help-search" class="search" type="search" placeholder="Search help topics" aria-label="Search help topics" style="width: 100%; height: 48px; padding: 0 1.2rem 0 3rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); color: var(--ink); font: inherit; outline: none; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);">
+            </div>
+        </header>
+
+        <div class="kb-grid">
+            <main class="kb-content">
+                <p>The Admin Web UI mirrors key management surfaces in a browser, so trusted admins can check in when the Mac running SwiftBot is elsewhere. Start local, then publish it only when you need remote access.</p>
+
+                <h2 id="access-modes">Access modes</h2>
+                <div class="kb-table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Mode</th><th>Reachable from</th><th>Supported</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Local-only</td><td>The Mac running SwiftBot, at <code>localhost</code></td><td>Yes, default</td></tr>
+                            <tr><td>Cloudflare Tunnel</td><td>Anywhere over HTTPS</td><td>Yes, recommended</td></tr>
+                            <tr><td>Custom reverse proxy</td><td>Wherever your proxy is reachable</td><td>Yes, with Override Public Base URL</td></tr>
+                            <tr><td>Router port forwarding</td><td>Public internet directly to SwiftBot</td><td>No</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h2 id="local-access">Local-only access</h2>
+                <ol class="steps-list">
+                    <li>
+                        <strong>Open Web UI settings:</strong>
+                        <p>Go to <strong>Settings &gt; Web UI</strong>.</p>
+                    </li>
+                    <li>
+                        <strong>Enable the Admin Web UI:</strong>
+                        <p>Turn on <strong>Admin Web UI</strong>.</p>
+                    </li>
+                    <li>
+                        <strong>Open it in a browser:</strong>
+                        <p>Visit <code>http://localhost:8090</code>, or the port shown under Advanced.</p>
+                    </li>
+                </ol>
+
+                <h2 id="cloudflare-tunnel">Cloudflare Tunnel setup</h2>
+                <ol class="steps-list">
+                    <li>
+                        <strong>Add your domain to Cloudflare:</strong>
+                        <p>Confirm the zone is active in your Cloudflare account.</p>
+                    </li>
+                    <li>
+                        <strong>Create a scoped API token:</strong>
+                        <p>Grant tunnel edit, DNS edit, zone read, and user read permissions.</p>
+                    </li>
+                    <li>
+                        <strong>Open Internet Access:</strong>
+                        <p>In SwiftBot, go to <strong>Settings &gt; Web UI &gt; Internet Access</strong>.</p>
+                    </li>
+                    <li>
+                        <strong>Verify and enable:</strong>
+                        <p>Paste the token, verify it, choose a subdomain, then enable Internet Access.</p>
+                    </li>
+                    <li>
+                        <strong>Update Discord OAuth:</strong>
+                        <p>Add <code>https://your-bot.example.com/auth/discord/callback</code> to your Discord OAuth redirects.</p>
+                    </li>
+                </ol>
+
+                <div class="callout warning">
+                    <strong>Don't expose the local port directly</strong>
+                    <p>Avoid router port forwarding to SwiftBot's local port. The local server is plain HTTP and expects a TLS-terminating tunnel or proxy for public access.</p>
+                </div>
+
+                <h2 id="reverse-proxy">Custom reverse proxy</h2>
+                <p>Forward your proxy to <code>http://localhost:8090</code>, terminate TLS at the proxy, then set <strong>Settings &gt; Web UI &gt; Advanced &gt; Override Public Base URL</strong> to the public URL.</p>
+            </main>
+
+            <aside class="kb-sidebar" aria-label="Sidebar">
+                <div class="sidebar-section">
+                    <h2 class="sidebar-title">On this page</h2>
+                    <ul class="toc-list">
+                        <li><a href="#access-modes" class="toc-link">Access modes</a></li>
+                        <li><a href="#local-access" class="toc-link">Local-only access</a></li>
+                        <li><a href="#cloudflare-tunnel" class="toc-link">Cloudflare Tunnel</a></li>
+                        <li><a href="#reverse-proxy" class="toc-link">Custom reverse proxy</a></li>
+                    </ul>
+                </div>
+
+                <div class="sidebar-section">
+                    <h2 class="sidebar-title">Related Articles</h2>
+                    <ul class="related-links">
+                        <li><a href="../bot-setup/"><i class="ph-bold ph-discord-logo"></i> Discord Bot Setup</a></li>
+                        <li><a href="../swiftmesh/"><i class="ph-bold ph-arrows-clockwise"></i> SwiftMesh Failover</a></li>
+                        <li><a href="../troubleshooting/"><i class="ph-bold ph-wrench"></i> Troubleshooting</a></li>
+                    </ul>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="shell">
+            <span>SwiftBot Help &amp; Guides</span>
+            <span><a class="nav-link" href="../README.md">Markdown docs</a> · <a class="nav-link" href="https://github.com/johnwatso/SwiftBot">GitHub</a></span>
+        </div>
+    </footer>
+</body>
+</html>
