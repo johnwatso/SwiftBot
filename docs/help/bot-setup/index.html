@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Create and Connect Your Discord Bot - SwiftBot Help</title>
+    <meta name="description" content="Create a Discord application, copy the bot token, enable privileged gateway intents, and configure OAuth and redirect URIs for SwiftBot.">
+    <link rel="canonical" href="https://swiftbot.dev/help/bot-setup/">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="SwiftBot">
+    <meta property="og:url" content="https://swiftbot.dev/help/bot-setup/">
+    <meta property="og:title" content="Create and Connect Your Discord Bot">
+    <meta property="og:description" content="Create a Discord application, copy the bot token, enable intents, and configure OAuth for SwiftBot.">
+    <meta property="og:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Create and Connect Your Discord Bot">
+    <meta name="twitter:description" content="Create a Discord application, copy the bot token, enable intents, and configure OAuth for SwiftBot.">
+    <meta name="twitter:image" content="https://swiftbot.dev/assets/landing/ui-preview-dark.png">
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"SwiftBot","item":"https://swiftbot.dev/"},{"@type":"ListItem","position":2,"name":"Help","item":"https://swiftbot.dev/help/"},{"@type":"ListItem","position":3,"name":"Discord Bot Setup","item":"https://swiftbot.dev/help/bot-setup/"}]}
+    </script>
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+    <link rel="icon" type="image/png" href="../../favicon.png">
+    <link rel="apple-touch-icon" href="../../assets/landing/app-icon-light.png">
+    <link rel="stylesheet" href="../assets/css/kbase.css">
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
+    <script src="../assets/js/search-index.js" defer></script>
+    <script src="../assets/js/search.js" defer></script>
+    <script src="../assets/js/kbase.js" defer></script>
+    <style>
+        .article-header-wrap { display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+        .article-header-logo { width: 80px; height: 80px; border-radius: 18px; box-shadow: 0 10px 25px rgba(88, 101, 242, 0.15); flex-shrink: 0; }
+        @media (max-width: 640px) {
+            .article-header-wrap { flex-direction: column-reverse; align-items: flex-start; gap: 1rem; }
+            .article-header-logo { width: 64px; height: 64px; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav" aria-label="Main">
+        <div class="shell nav-inner">
+            <a class="brand" href="../">
+                <picture>
+                    <source srcset="../../assets/landing/app-icon-dark.png" media="(prefers-color-scheme: dark)">
+                    <img src="../../assets/landing/app-icon-light.png" alt="">
+                </picture>
+                <span>SwiftBot Help</span>
+            </a>
+            <div class="nav-actions">
+                <a class="nav-link" href="../">Help Home</a>
+                <a class="nav-link optional" href="../../">Overview</a>
+                <a class="nav-link" href="https://github.com/johnwatso/SwiftBot/issues">Raise an Issue</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="shell">
+        <div class="breadcrumbs" aria-label="Breadcrumbs">
+            <a href="../">Help Home</a>
+            <span class="sep">/</span>
+            <span class="current">Discord Bot Setup</span>
+        </div>
+
+        <header class="article-header">
+            <div class="article-header-wrap">
+                <div style="flex: 1;">
+                    <h1>Create and connect your Discord bot</h1>
+                    <p class="article-intro">One Discord application can provide both the bot token and the OAuth client used by the Admin Web UI.</p>
+                </div>
+                <picture>
+                    <source srcset="../../assets/landing/app-icon-dark.png" media="(prefers-color-scheme: dark)">
+                    <img src="../../assets/landing/app-icon-light.png" alt="SwiftBot icon" class="article-header-logo">
+                </picture>
+            </div>
+            <div class="search-wrap" style="margin-top: 1.5rem; max-width: 100%;">
+                <i class="ph-bold ph-magnifying-glass" style="position: absolute; top: 50%; left: 1.1rem; transform: translateY(-50%); color: var(--muted);"></i>
+                <input id="help-search" class="search" type="search" placeholder="Search help topics" aria-label="Search help topics" style="width: 100%; height: 48px; padding: 0 1.2rem 0 3rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); color: var(--ink); font: inherit; outline: none; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);">
+            </div>
+        </header>
+
+        <div class="kb-grid">
+            <main class="kb-content">
+                <p>SwiftBot connects to your server through your own Discord application. You create the application once, hand SwiftBot the bot token, and optionally reuse the same application for Web UI sign-in.</p>
+
+                <h2 id="create-app">1. Create the application</h2>
+                <p>Open the Discord Developer Portal, choose <strong>New Application</strong>, and give it a name your members will recognize in Discord.</p>
+
+                <h2 id="bot-token">2. Add the bot and copy its token</h2>
+                <ol class="steps-list">
+                    <li>
+                        <strong>Open the Bot page:</strong>
+                        <p>Select your application, then open its <strong>Bot</strong> page.</p>
+                    </li>
+                    <li>
+                        <strong>Add or reset the token:</strong>
+                        <p>Click <strong>Add Bot</strong>, or <strong>Reset Token</strong> if a bot already exists.</p>
+                    </li>
+                    <li>
+                        <strong>Copy the token immediately:</strong>
+                        <p>Discord only shows the token once. Copy it before leaving the page.</p>
+                    </li>
+                    <li>
+                        <strong>Paste it into SwiftBot:</strong>
+                        <p>During onboarding, paste the token. SwiftBot stores it in the macOS Keychain, not in a plain text file.</p>
+                    </li>
+                </ol>
+
+                <h2 id="intents">3. Enable gateway intents</h2>
+                <p>On the application's <strong>Bot</strong> page, enable these privileged gateway intents:</p>
+                <ul>
+                    <li><strong>Server Members Intent</strong> — for join and leave events.</li>
+                    <li><strong>Message Content Intent</strong> — for message rules and AI features.</li>
+                    <li><strong>Presence Intent</strong> — for voice and online-status tracking.</li>
+                </ul>
+
+                <h2 id="oauth">4. Configure OAuth for the Web UI</h2>
+                <p>Open <strong>OAuth2 &gt; General</strong> in Discord, then copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into <strong>SwiftBot &gt; Settings &gt; Web UI &gt; Authentication</strong>.</p>
+
+                <h2 id="redirect-uris">5. Register redirect URIs</h2>
+                <div class="kb-table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Access mode</th><th>Redirect URI</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Local-only dashboard</td><td><code>http://localhost:8090/auth/discord/callback</code></td></tr>
+                            <tr><td>Public dashboard</td><td><code>https://your-bot.example.com/auth/discord/callback</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="callout warning">
+                    <strong>Leave "Requires OAuth2 Code Grant" off</strong>
+                    <p>Keep it disabled unless you specifically need it. If it is on, SwiftBot can generate working invite URLs only after Discord OAuth is configured.</p>
+                </div>
+
+                <div class="button-row">
+                    <a class="button primary" href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer"><i class="ph-bold ph-discord-logo"></i> Open Discord Developer Portal</a>
+                    <a class="button" href="../web-ui/"><i class="ph-bold ph-browser"></i> Set up the Web UI</a>
+                </div>
+            </main>
+
+            <aside class="kb-sidebar" aria-label="Sidebar">
+                <div class="sidebar-section">
+                    <h2 class="sidebar-title">On this page</h2>
+                    <ul class="toc-list">
+                        <li><a href="#create-app" class="toc-link">Create the application</a></li>
+                        <li><a href="#bot-token" class="toc-link">Add the bot token</a></li>
+                        <li><a href="#intents" class="toc-link">Enable intents</a></li>
+                        <li><a href="#oauth" class="toc-link">Configure OAuth</a></li>
+                        <li><a href="#redirect-uris" class="toc-link">Register redirect URIs</a></li>
+                    </ul>
+                </div>
+
+                <div class="sidebar-section">
+                    <h2 class="sidebar-title">Related Articles</h2>
+                    <ul class="related-links">
+                        <li><a href="../install/"><i class="ph-bold ph-download-simple"></i> Install SwiftBot</a></li>
+                        <li><a href="../web-ui/"><i class="ph-bold ph-browser"></i> Admin Web UI</a></li>
+                        <li><a href="../troubleshooting/"><i class="ph-bold ph-wrench"></i> Troubleshooting</a></li>
+                    </ul>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="shell">
+            <span>SwiftBot Help &amp; Guides</span>
+            <span><a class="nav-link" href="../README.md">Markdown docs</a> · <a class="nav-link" href="https://github.com/johnwatso/SwiftBot">GitHub</a></span>
+        </div>
+    </footer>
+</body>
+</html>
