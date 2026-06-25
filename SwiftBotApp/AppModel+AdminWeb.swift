@@ -1530,7 +1530,7 @@ extension AppModel {
             },
             updateAnnouncerSettings: { [weak self] patch in
                 guard let model = self else { return false }
-                return await MainActor.run {
+                await MainActor.run {
                     if let guildID = patch.guildID {
                         model.settings.voice.guildID = guildID
                     }
@@ -1550,8 +1550,18 @@ extension AppModel {
                         model.settings.voice.autoConnect = autoConnect
                     }
                     model.saveSettings()
-                    return true
                 }
+
+                let watcher = await MainActor.run { model.textChannelAnnouncer }
+                if let watcher, let watchedTextChannelID = patch.watchedTextChannelID {
+                    var channelIDs = watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    let voiceChannelID = await MainActor.run { model.settings.voice.voiceChannelID }
+                    if !voiceChannelID.isEmpty {
+                        channelIDs.append(voiceChannelID)
+                    }
+                    await watcher.setWatchedChannels(channelIDs)
+                }
+                return true
             },
             patchyProvider: { [weak self] in
                 guard let model = self else {

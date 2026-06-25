@@ -65,6 +65,7 @@
 		3C569F8CE14C8C41CA1C6246 /* AppModel+DiscordEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6165A66E22A9D4F34E71A45 /* AppModel+DiscordEvents.swift */; };
 		3E3F9681C479C7D5E52D9348 /* IntelligenceGlowBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD2301142C3495D5EE63034 /* IntelligenceGlowBorder.swift */; };
 		3F177F30A59216E08AA7FC23 /* MediaExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5794D658F3B4D68836792B7 /* MediaExportCoordinator.swift */; };
+		3F21CC7649E2FA9622D71744 /* TextChannelAnnouncerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */; };
 		3F3EF4FAF4D2BCE7B8CC3CF0 /* AdminWebCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE53DBB48C421B9BF15DEF91 /* AdminWebCopyTests.swift */; };
 		403C97BE65696647F37FFD89 /* IntelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316BE5EE23ADB08FD4042070 /* IntelService.swift */; };
 		408F2E17E2FF0510DEFCF083 /* AutomationModerationPrecedenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 094185A391BE3C8D76755D2F /* AutomationModerationPrecedenceTests.swift */; };
@@ -271,7 +272,7 @@
 		20B6661E36FB2D18D7E89ED5 /* SwiftMinerDMRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMRouter.swift; sourceTree = "<group>"; };
 		216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		24F8451B9C919529C86CD289 /* RemoteModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteModels.swift; sourceTree = "<group>"; };
-		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
+		253ED8DD86B265E94F6ABDE2 /* SparklePublisher */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; path = SparklePublisher; sourceTree = BUILT_PRODUCTS_DIR; };
 		25D3EF67158250849397FF2E /* PatchySwiftMinerCampaignRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchySwiftMinerCampaignRouter.swift; sourceTree = "<group>"; };
 		2620F1431DA2A3DAB6CE6F69 /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
 		2740C42B76739A3C93CA46E2 /* BotPermissionsCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotPermissionsCheckView.swift; sourceTree = "<group>"; };
@@ -301,6 +302,7 @@
 		40BC9ACDFB65AED3E2743A4D /* WikiLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLookupService.swift; sourceTree = "<group>"; };
 		42D35BA34860F043C661478F /* OnboardingRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingRootView.swift; sourceTree = "<group>"; };
 		440472C1541FD0866542066B /* Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Automations.swift; sourceTree = "<group>"; };
+		44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextChannelAnnouncerTests.swift; sourceTree = "<group>"; };
 		44CA1B8D8A85A90468C0E9C3 /* PatchyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchyView.swift; sourceTree = "<group>"; };
 		44F5F3F20E9067B456E84EB6 /* RemoteAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPI.swift; sourceTree = "<group>"; };
 		44F9E79347D751050F3DE039 /* UpdatesPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesPreferencesView.swift; sourceTree = "<group>"; };
@@ -364,7 +366,7 @@
 		8828FF064E45A0519FB1640E /* ACMEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEClient.swift; sourceTree = "<group>"; };
 		8964B98159AC25452C4423DF /* SwiftBot.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = SwiftBot.icon; sourceTree = "<group>"; };
 		8AC1974FBBE7F7282C86BCB3 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionView.swift; sourceTree = "<group>"; };
-		8CEF7EB5B287F29B8308E663 /* cloudflared */ = {isa = PBXFileReference; path = cloudflared; sourceTree = "<group>"; };
+		8CEF7EB5B287F29B8308E663 /* cloudflared */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = cloudflared; sourceTree = "<group>"; };
 		8D35375EF6E1EA424CC6BE3D /* CommandsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandsView.swift; sourceTree = "<group>"; };
 		8EC3AEA8E17C6B46C8E9A679 /* AppModel+AdminWeb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+AdminWeb.swift"; sourceTree = "<group>"; };
 		8F8170A687CD0015B81C30F9 /* AutomationTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationTemplates.swift; sourceTree = "<group>"; };
@@ -671,6 +673,7 @@
 				EC86FAC3F5E18EB5479DFF96 /* SwiftMinerEditGamesModalTests.swift */,
 				1F6A9414610F28A00389D53E /* SwiftMinerLinkWarningDismissTests.swift */,
 				216D1C0180AF5BC3F68C9B72 /* TestHelpers.swift */,
+				44BEF66B80A037B46C598D03 /* TextChannelAnnouncerTests.swift */,
 				28B9D0104E66A9AAAEB63CCB /* VoiceSessionStoreTests.swift */,
 				F55C5329C73386309DA3DAFB /* WelcomeFlowServiceTests.swift */,
 				29D7C4895E95465392CC834F /* WikiLookupServiceTests.swift */,
@@ -1162,6 +1165,7 @@
 				ABF5B40DBC52122824590658 /* SwiftMinerEditGamesModalTests.swift in Sources */,
 				BCF032218277AED8BE52A820 /* SwiftMinerLinkWarningDismissTests.swift in Sources */,
 				A7C9B7A545299B4F8080CAF0 /* TestHelpers.swift in Sources */,
+				3F21CC7649E2FA9622D71744 /* TextChannelAnnouncerTests.swift in Sources */,
 				8C3F7845C2B78E70DF2C261A /* VoiceSessionStoreTests.swift in Sources */,
 				235E9714811DA9908D599200 /* WelcomeFlowServiceTests.swift in Sources */,
 				B064E4743E8B3F609D1D0CF8 /* WikiLookupServiceTests.swift in Sources */,
@@ -1216,7 +1220,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.21;
+				MARKETING_VERSION = 1.21.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1400,7 +1404,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.21;
+				MARKETING_VERSION = 1.21.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.swiftbot;
 				PRODUCT_NAME = SwiftBot;
 				PROVISIONING_PROFILE_SPECIFIER = "";

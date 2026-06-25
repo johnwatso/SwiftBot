@@ -13,17 +13,25 @@ actor TextChannelAnnouncer {
     private static let maxLength = 300
 
     private let announcer: VoiceAnnouncementService
-    private var watchedChannelID: String?
+    private var watchedChannelIDs: Set<String> = []
 
     init(announcer: VoiceAnnouncementService) {
         self.announcer = announcer
     }
 
     func setWatchedChannel(_ channelID: String?) {
-        watchedChannelID = channelID
+        if let channelID {
+            watchedChannelIDs = [channelID]
+        } else {
+            watchedChannelIDs = []
+        }
     }
 
-    var watchedChannel: String? { watchedChannelID }
+    func setWatchedChannels(_ channelIDs: [String]) {
+        watchedChannelIDs = Set(channelIDs)
+    }
+
+    var watchedChannels: Set<String> { watchedChannelIDs }
 
     /// Hook to call from `GatewayEventDispatcher.onMessageCreate`. `channelNames`
     /// / `roleNames` (id → name) let `<#id>` / `<@&id>` resolve to real names.
@@ -33,7 +41,7 @@ actor TextChannelAnnouncer {
         channelNames: [String: String] = [:],
         roleNames: [String: String] = [:]
     ) async {
-        guard let watched = watchedChannelID, event.channelID == watched else { return }
+        guard watchedChannelIDs.contains(event.channelID) else { return }
         guard let spoken = formattedSpeech(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames
