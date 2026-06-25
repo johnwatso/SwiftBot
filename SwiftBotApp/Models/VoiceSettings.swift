@@ -46,6 +46,13 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
     var tint: AnnouncerTint                 = .purple
     var autoJoin: Bool                      = false
     var introduceOnManualJoin: Bool         = false
+    /// Join automatically when a member starts a Go Live stream in this channel.
+    var autoJoinOnStream: Bool              = false
+    /// Announce a short stream-specific intro when joining because of a stream.
+    var introduceOnStreamJoin: Bool         = false
+    /// Read the voice channel's own built-in text chat (Text-in-Voice) — this is
+    /// the chat viewers see beside a Go Live stream.
+    var readVoiceChannelChat: Bool          = true
     var connectionMode: AnnouncerConnectionMode = .fixed
     var connectionMinutes: Int              = 20
     var textChannels: [String]              = []
@@ -60,6 +67,9 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         tint: AnnouncerTint = .purple,
         autoJoin: Bool = false,
         introduceOnManualJoin: Bool = false,
+        autoJoinOnStream: Bool = false,
+        introduceOnStreamJoin: Bool = false,
+        readVoiceChannelChat: Bool = true,
         connectionMode: AnnouncerConnectionMode = .fixed,
         connectionMinutes: Int = 20,
         textChannels: [String] = [],
@@ -73,6 +83,9 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         self.tint = tint
         self.autoJoin = autoJoin
         self.introduceOnManualJoin = introduceOnManualJoin
+        self.autoJoinOnStream = autoJoinOnStream
+        self.introduceOnStreamJoin = introduceOnStreamJoin
+        self.readVoiceChannelChat = readVoiceChannelChat
         self.connectionMode = connectionMode
         self.connectionMinutes = connectionMinutes
         self.textChannels = textChannels
@@ -88,6 +101,9 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         case tint
         case autoJoin
         case introduceOnManualJoin
+        case autoJoinOnStream
+        case introduceOnStreamJoin
+        case readVoiceChannelChat
         case connectionMode
         case connectionMinutes
         case textChannels
@@ -104,6 +120,9 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         tint = try container.decodeIfPresent(AnnouncerTint.self, forKey: .tint) ?? .purple
         autoJoin = try container.decodeIfPresent(Bool.self, forKey: .autoJoin) ?? false
         introduceOnManualJoin = try container.decodeIfPresent(Bool.self, forKey: .introduceOnManualJoin) ?? false
+        autoJoinOnStream = try container.decodeIfPresent(Bool.self, forKey: .autoJoinOnStream) ?? false
+        introduceOnStreamJoin = try container.decodeIfPresent(Bool.self, forKey: .introduceOnStreamJoin) ?? false
+        readVoiceChannelChat = try container.decodeIfPresent(Bool.self, forKey: .readVoiceChannelChat) ?? true
         connectionMode = try container.decodeIfPresent(AnnouncerConnectionMode.self, forKey: .connectionMode) ?? .fixed
         connectionMinutes = try container.decodeIfPresent(Int.self, forKey: .connectionMinutes) ?? 20
         textChannels = try container.decodeIfPresent([String].self, forKey: .textChannels) ?? []

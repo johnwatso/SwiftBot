@@ -35,6 +35,14 @@ actor VoicePlaybackService {
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeoutTask: Task<Void, Never>?
+    /// Real-time-paced loop that emits Opus silence frames while connected and
+    /// idle, keeping the RTP sequence/timestamp advancing in lockstep with wall
+    /// clock and the UDP path warm. Without it, the stream goes stale between
+    /// announcements and Discord drops the next utterance as late.
+    private var keepaliveTask: Task<Void, Never>?
+    /// True only while `speak(pcm:)` is actively transmitting audio frames, so
+    /// the keepalive loop doesn't also send (and double-advance the timestamp).
+    private var isSpeaking: Bool = false
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -125,6 +133,9 @@ actor VoicePlaybackService {
 
     func disconnect() async {
         await setStatus(.disconnecting)
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
+        isSpeaking = false
         await gateway?.disconnect()
         await transport?.stop()
         gateway = nil
@@ -167,7 +178,11 @@ actor VoicePlaybackService {
             throw VoicePipelineError.daveNotReady
         }
         try await gateway.sendSpeaking(true, ssrc: ssrc)
-        defer { Task { try? await gateway.sendSpeaking(false, ssrc: ssrc) } }
+        isSpeaking = true
+        defer {
+            isSpeaking = false
+            Task { try? await gateway.sendSpeaking(false, ssrc: ssrc) }
+        }
 
         let samplesPerFrame = Int(OpusFrameEncoder.samplesPerFrame)
         let channels = Int(OpusFrameEncoder.channelCount)
@@ -226,6 +241,7 @@ actor VoicePlaybackService {
     /// announcements.
     func sendKeepalive() async throws {
         guard status == .connected,
+              !isSpeaking,
               let transport = transport,
               var rtp = self.rtp,
               var encryption = self.encryption,
@@ -460,6 +476,9 @@ actor VoicePlaybackService {
 
     private func fail(_ reason: String) async {
         Self.logger.error("voice pipeline failed: \(reason)")
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
+        isSpeaking = false
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         await setStatus(.failed(reason))
@@ -475,9 +494,35 @@ actor VoicePlaybackService {
         connectionTimeoutTask = nil
         await debug("Voice media ready: \(reason).")
         await setStatus(.connected)
+        startKeepalive()
         let continuation = readyContinuation
         readyContinuation = nil
         continuation?.resume()
+    }
+
+    /// Spin up the idle keepalive loop. Paced at the 20 ms Opus frame interval
+    /// off a monotonic clock so RTP sequence/timestamp track wall-clock time;
+    /// `sendKeepalive()` no-ops while `speak(pcm:)` is transmitting real audio.
+    private func startKeepalive() {
+        keepaliveTask?.cancel()
+        keepaliveTask = Task { [weak self] in
+            let clock = ContinuousClock()
+            let interval = Duration.milliseconds(Int(OpusFrameEncoder.frameDuration * 1000))
+            var nextDeadline = clock.now.advanced(by: interval)
+            while !Task.isCancelled {
+                guard let self, await self.keepaliveTick() else { return }
+                try? await clock.sleep(until: nextDeadline)
+                nextDeadline = nextDeadline.advanced(by: interval)
+            }
+        }
+    }
+
+    /// One keepalive iteration. Returns `false` once the connection is no longer
+    /// active so the loop can exit.
+    private func keepaliveTick() async -> Bool {
+        guard status == .connected else { return false }
+        try? await sendKeepalive()
+        return true
     }
 
     private func setStatus(_ new: Status) async {
