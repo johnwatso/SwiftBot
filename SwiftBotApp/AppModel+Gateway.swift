@@ -1637,6 +1637,13 @@ extension AppModel {
         )
         activeVoice = await voicePresenceStore.snapshot()
 
+        // Go Live detection runs independently of the channel transition: a
+        // member starting/stopping a stream keeps the same channel, so the
+        // transition is usually `.unchanged`.
+        if allowPrimarySideEffects {
+            await detectStreamTransition(map: map, guildId: guildId, userId: userId, channelId: channelId)
+        }
+
         switch transition {
         case .ignored:
             break

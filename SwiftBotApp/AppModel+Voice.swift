@@ -322,7 +322,13 @@ extension AppModel {
         guard settings.voice.textChannelSourceEnabled else { return }
         let watchedIDs = settings.voice.watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let activeVoiceChannelID = settings.voice.voiceChannelID
-        guard watchedIDs.contains(event.channelID) || (!activeVoiceChannelID.isEmpty && event.channelID == activeVoiceChannelID) else { return }
+        // The voice channel's own chat (Text-in-Voice / stream chat) is only read
+        // when the active config opts in. Defaults to true for the manual path.
+        let readsVoiceChat = settings.voice.announcerConfigs
+            .first(where: { !activeVoiceChannelID.isEmpty && $0.voiceChannelID == activeVoiceChannelID })?
+            .readVoiceChannelChat ?? true
+        let isVoiceChannelChat = readsVoiceChat && !activeVoiceChannelID.isEmpty && event.channelID == activeVoiceChannelID
+        guard watchedIDs.contains(event.channelID) || isVoiceChannelChat else { return }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
         guard let watcher = textChannelAnnouncer else { return }
@@ -559,9 +565,84 @@ extension AppModel {
         // .untilEmpty is handled in handleUntilEmptyCheck below
     }
 
+    /// Inspect a VOICE_STATE_UPDATE for a Go Live stream start/stop and fire the
+    /// stream auto-join rule on the false→true edge.
+    func detectStreamTransition(map: [String: DiscordJSON], guildId: String, userId: String, channelId: String?) async {
+        let key = "\(guildId)-\(userId)"
+        let isStreaming: Bool
+        if case .bool(let value)? = map["self_stream"] {
+            isStreaming = value
+        } else {
+            isStreaming = false
+        }
+        let wasStreaming = streamingMemberKeys.contains(key)
+
+        if isStreaming, !wasStreaming {
+            streamingMemberKeys.insert(key)
+            if let channelId {
+                await handleStreamStart(channelId: channelId, guildId: guildId, triggeringUserId: userId)
+            }
+        } else if !isStreaming, wasStreaming {
+            streamingMemberKeys.remove(key)
+        }
+    }
+
+    /// Called when a member starts a Go Live stream. Mirrors `handleAutoJoin`
+    /// but is gated on `autoJoinOnStream` and uses a stream-specific intro.
+    func handleStreamStart(channelId: String, guildId: String, triggeringUserId: String) async {
+        // Never react to the bot's own state.
+        guard triggeringUserId != botUserId else { return }
+        // Only act when the bot is online but not already in a voice channel.
+        guard status == .running, !voiceConnectionStatus.isConnected else { return }
+
+        guard let config = settings.voice.announcerConfigs.first(where: {
+            $0.autoJoinOnStream && $0.voiceChannelID == channelId && $0.enabled
+        }) else { return }
+
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Stream auto-join triggered for \"\(config.name)\" — member started streaming in \(config.voiceChannelName)."
+        ))
+        guard await activateAnnouncerConfig(config, guildID: guildId) else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Stream auto-join skipped for \"\(config.name)\" because no readable text channel is configured."
+            ))
+            return
+        }
+        await connectVoice(guildID: guildId, channelID: channelId)
+        if config.introduceOnStreamJoin {
+            scheduleVoiceJoinIntro(channelID: channelId, text: randomStreamIntro())
+        }
+
+        // Arm disconnect strategy (same options as a regular auto-join).
+        autoDisconnectTask?.cancel()
+        if config.connectionMode == .fixed {
+            let minutes = config.connectionMinutes
+            autoDisconnectTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Double(minutes) * 60))
+                guard !Task.isCancelled else { return }
+                await self?.autoDisconnect(reason: "Fixed duration (\(minutes) min) elapsed for \"\(config.name)\".")
+            }
+        }
+        // .untilEmpty is handled in handleUntilEmptyCheck.
+    }
+
+    private func randomStreamIntro() -> String {
+        [
+            "SwiftBot here. I'll read notifications during the stream.",
+            "Stream's live — I'll read announcements while it runs.",
+            "I'll read notifications during the stream.",
+            "SwiftBot online. I'll read the chat during the stream."
+        ].randomElement() ?? "I'll read notifications during the stream."
+    }
+
     private func activateAnnouncerConfig(_ config: AnnouncerVoiceChannelConfig, guildID: String) async -> Bool {
         let channelIDs = resolvedTextChannelIDs(for: config, guildID: guildID)
-        guard !channelIDs.isEmpty else {
+        // A config is usable if it has at least one readable text channel, or it
+        // reads the voice channel's own chat (so a stream-join can run with no
+        // separate text channel configured).
+        guard !channelIDs.isEmpty || config.readVoiceChannelChat else {
             return false
         }
 
@@ -574,12 +655,12 @@ extension AppModel {
         persistSettingsIfPossible()
         if let watcher = textChannelAnnouncer {
             var allWatchedIDs = channelIDs
-            if !config.voiceChannelID.isEmpty {
+            if config.readVoiceChannelChat, !config.voiceChannelID.isEmpty {
                 allWatchedIDs.append(config.voiceChannelID)
             }
             await watcher.setWatchedChannels(allWatchedIDs)
         }
-        
+
         let readableNames = channelIDs.map { id in
             for channels in availableTextChannelsByServer.values {
                 if let match = channels.first(where: { $0.id == id }) {
@@ -589,9 +670,17 @@ extension AppModel {
             return id
         }.joined(separator: ", #")
 
+        let sourceSummary: String
+        if channelIDs.isEmpty {
+            sourceSummary = "the voice channel chat"
+        } else if config.readVoiceChannelChat {
+            sourceSummary = "text channels #\(readableNames) and the voice channel chat"
+        } else {
+            sourceSummary = "text channels #\(readableNames)"
+        }
         addVoiceLogEntry(VoiceEventLogEntry(
             time: Date(),
-            description: "Announcer reading text channels #\(readableNames) for \"\(config.name)\"."
+            description: "Announcer reading \(sourceSummary) for \"\(config.name)\"."
         ))
         return true
     }
@@ -614,8 +703,8 @@ extension AppModel {
         }
     }
 
-    private func scheduleVoiceJoinIntro(channelID: String) {
-        let text = randomAutoJoinIntro()
+    private func scheduleVoiceJoinIntro(channelID: String, text: String? = nil) {
+        let text = text ?? randomAutoJoinIntro()
         Task { [weak self] in
             for _ in 0..<24 {
                 try? await Task.sleep(for: .milliseconds(500))

@@ -83,6 +83,9 @@ final class AppModel: ObservableObject {
     @Published var messagesSpokenToday: Int = 0
     var lastSpokenDate: Date = Date()
     var autoDisconnectTask: Task<Void, Never>?
+    /// Member keys ("guildID-userID") currently known to be Go Live streaming,
+    /// used to detect the false→true stream-start edge in VOICE_STATE_UPDATE.
+    var streamingMemberKeys: Set<String> = []
     @Published var activeVoice: [VoiceMemberPresence] = []
     @Published var uptime: UptimeInfo?
     @Published var connectedServers: [String: String] = [:]

@@ -583,6 +583,7 @@ struct VoiceView: View {
     private func behaviourSummary(for config: AnnouncerVoiceChannelConfig) -> String {
         var parts: [String] = []
         if config.autoJoin { parts.append("auto-join") }
+        if config.autoJoinOnStream { parts.append("stream-join") }
         if config.introduceOnManualJoin { parts.append("intro") }
         switch config.connectionMode {
         case .fixed:      parts.append("\(config.connectionMinutes) min")
@@ -934,6 +935,34 @@ private struct AnnouncerConfigSheet: View {
                     .toggleStyle(.checkbox)
                 }
 
+                // Auto-join on stream
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $config.autoJoinOnStream) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Auto-join when someone goes live")
+                                .font(.subheadline)
+                            Text("SwiftBot joins \(config.voiceChannelName == "—" ? "this channel" : config.voiceChannelName) automatically when a member starts a Go Live stream there.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+
+                    if config.autoJoinOnStream {
+                        Toggle(isOn: $config.introduceOnStreamJoin) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Announce on stream join")
+                                    .font(.subheadline)
+                                Text("SwiftBot says “I’ll read notifications during the stream.” when it joins for a stream.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .padding(.leading, 20)
+                    }
+                }
+
                 Divider()
 
                 // Duration
@@ -985,6 +1014,21 @@ private struct AnnouncerConfigSheet: View {
     private var readsFromSection: some View {
         AutomationsSection(title: "Reads From", symbol: "text.bubble.fill") {
             VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $config.readVoiceChannelChat) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Read voice channel chat")
+                                .font(.subheadline)
+                            Text("Reads the voice channel's built-in text chat — the chat viewers see beside a Go Live stream.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+
+                Divider()
+
                 if config.textChannels.isEmpty {
                     Text("No text channels added yet.")
                         .font(.caption)
