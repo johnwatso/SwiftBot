@@ -753,10 +753,22 @@ struct VoiceView: View {
 
     private func textChannelDisplayName(for id: String) -> String {
         guard !id.isEmpty else { return "" }
-        for channels in app.availableTextChannelsByServer.values {
-            if let match = channels.first(where: { $0.id == id }) { return match.name }
+        let ids = id.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var names: [String] = []
+        for singleID in ids {
+            var found = false
+            for channels in app.availableTextChannelsByServer.values {
+                if let match = channels.first(where: { $0.id == singleID }) {
+                    names.append(match.name)
+                    found = true
+                    break
+                }
+            }
+            if !found {
+                names.append(singleID)
+            }
         }
-        return ""
+        return names.joined(separator: ", #")
     }
 
     private func pickerField(

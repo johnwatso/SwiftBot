@@ -61,6 +61,15 @@ extension AppModel {
         }
         guard let announcer = voiceAnnouncementService else { return nil }
         let watcher = TextChannelAnnouncer(announcer: announcer)
+        var channelIDs = settings.voice.watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        if !settings.voice.voiceChannelID.isEmpty {
+            channelIDs.append(settings.voice.voiceChannelID)
+        }
+        if !channelIDs.isEmpty {
+            Task {
+                await watcher.setWatchedChannels(channelIDs)
+            }
+        }
         textChannelAnnouncerStorage = watcher
         return watcher
     }
@@ -246,7 +255,11 @@ extension AppModel {
         settings.voice.watchedTextChannelID = channelID
         persistSettingsIfPossible()
         if let watcher = textChannelAnnouncer {
-            await watcher.setWatchedChannel(channelID.isEmpty ? nil : channelID)
+            var channelIDs = channelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            if !settings.voice.voiceChannelID.isEmpty {
+                channelIDs.append(settings.voice.voiceChannelID)
+            }
+            await watcher.setWatchedChannels(channelIDs)
         }
     }
 
@@ -307,8 +320,9 @@ extension AppModel {
     func forwardMessageToVoiceAnnouncer(_ event: GatewayMessageCreateEvent) async {
         guard voiceConnectionStatus.isConnected else { return }
         guard settings.voice.textChannelSourceEnabled else { return }
-        guard !settings.voice.watchedTextChannelID.isEmpty else { return }
-        guard event.channelID == settings.voice.watchedTextChannelID else { return }
+        let watchedIDs = settings.voice.watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let activeVoiceChannelID = settings.voice.voiceChannelID
+        guard watchedIDs.contains(event.channelID) || (!activeVoiceChannelID.isEmpty && event.channelID == activeVoiceChannelID) else { return }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
         guard let watcher = textChannelAnnouncer else { return }
@@ -463,6 +477,22 @@ extension AppModel {
         return nil
     }
 
+    private func resolvedTextChannelIDs(for config: AnnouncerVoiceChannelConfig, guildID: String) -> [String] {
+        let selectedNames = config.textChannels.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+        guard !selectedNames.isEmpty else { return [] }
+
+        let textChannels = availableTextChannelsByServer[guildID] ?? []
+        var resolved: [String] = []
+        for selectedName in selectedNames {
+            if let match = textChannels.first(where: { $0.id == selectedName || $0.name == selectedName }) {
+                resolved.append(match.id)
+            }
+        }
+        return resolved
+    }
+
     private func voiceChannelPreflightFailure(channelID: String) async -> String? {
         let token = normalizedDiscordToken(from: settings.token)
         guard !token.isEmpty else {
@@ -530,21 +560,38 @@ extension AppModel {
     }
 
     private func activateAnnouncerConfig(_ config: AnnouncerVoiceChannelConfig, guildID: String) async -> Bool {
-        guard let textChannelID = firstReadableTextChannelID(for: config, guildID: guildID) else {
+        let channelIDs = resolvedTextChannelIDs(for: config, guildID: guildID)
+        guard !channelIDs.isEmpty else {
             return false
         }
 
+        let commaSeparatedIDs = channelIDs.joined(separator: ",")
+
         settings.voice.guildID = guildID
         settings.voice.voiceChannelID = config.voiceChannelID
-        settings.voice.watchedTextChannelID = textChannelID
+        settings.voice.watchedTextChannelID = commaSeparatedIDs
         settings.voice.textChannelSourceEnabled = true
         persistSettingsIfPossible()
         if let watcher = textChannelAnnouncer {
-            await watcher.setWatchedChannel(textChannelID)
+            var allWatchedIDs = channelIDs
+            if !config.voiceChannelID.isEmpty {
+                allWatchedIDs.append(config.voiceChannelID)
+            }
+            await watcher.setWatchedChannels(allWatchedIDs)
         }
+        
+        let readableNames = channelIDs.map { id in
+            for channels in availableTextChannelsByServer.values {
+                if let match = channels.first(where: { $0.id == id }) {
+                    return match.name
+                }
+            }
+            return id
+        }.joined(separator: ", #")
+
         addVoiceLogEntry(VoiceEventLogEntry(
             time: Date(),
-            description: "Announcer reading text channel \(textChannelID) for \"\(config.name)\"."
+            description: "Announcer reading text channels #\(readableNames) for \"\(config.name)\"."
         ))
         return true
     }
