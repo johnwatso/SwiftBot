@@ -189,7 +189,7 @@ final class CommandProcessorTests: XCTestCase {
         let recorder = CommandRecorder()
         let processor = makeProcessor(
             recorder: recorder,
-            announceCommand: { raw in
+            announceCommand: { _, raw in
                 await recorder.recordAnnounce(raw: raw)
                 return (true, "Joining configured announcer.")
             }
@@ -222,7 +222,7 @@ final class CommandProcessorTests: XCTestCase {
         let recorder = CommandRecorder()
         let processor = makeProcessor(
             recorder: recorder,
-            announceCommand: { _ in
+            announceCommand: { _, _ in
                 XCTFail("Announce dependency should not be called for unsupported actions")
                 return (true, "")
             }
@@ -242,7 +242,7 @@ final class CommandProcessorTests: XCTestCase {
         )
 
         XCTAssertEqual(response.embeds?.first?["title"] as? String, "Announcer")
-        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join`.")
+        XCTAssertEqual(response.embeds?.first?["description"] as? String, "Usage: `/announce join` or `/announce rejoin`.")
     }
 
     func testPrefixRandomTeamsParsesTeamCountAndMaxSize() async {
@@ -508,7 +508,7 @@ final class CommandProcessorTests: XCTestCase {
             return nil
         },
         defaultWikiCommand: @escaping () -> CommandProcessor.ResolvedWikiCommand? = { nil },
-        announceCommand: @escaping ([String: DiscordJSON]) async -> (ok: Bool, message: String) = { _ in
+        announceCommand: @escaping (String, [String: DiscordJSON]) async -> (ok: Bool, message: String) = { _, _ in
             (ok: true, message: "Announcer result")
         },
         randomTeamsCommand: @escaping (Int, Int?, [String: DiscordJSON]) async -> (ok: Bool, message: String) = { _, _, _ in

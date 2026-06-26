@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import AVFoundation
 import Darwin
 
 func adminWebOAuthRedirectURL(baseURL rawBaseURL: String, redirectPath rawRedirectPath: String) -> String {
@@ -1456,7 +1457,8 @@ extension AppModel {
                         watchedTextChannelID: "",
                         preferredVoiceIdentifier: "",
                         textChannelSourceEnabled: false,
-                        autoConnect: false
+                        autoConnect: false,
+                        installedVoices: []
                     )
                 }
                 return await MainActor.run {
@@ -1477,6 +1479,24 @@ extension AppModel {
                         return (serverID, channels)
                     })
 
+                    let installedVoices = AVSpeechSynthesisVoice.speechVoices()
+                        .sorted {
+                            if $0.language != $1.language { return $0.language < $1.language }
+                            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                        }
+                        .map { voice -> AdminWebSimpleOption in
+                            let quality: String
+                            switch voice.quality {
+                            case .premium: quality = "Premium"
+                            case .enhanced: quality = "Enhanced"
+                            default: quality = "Default"
+                            }
+                            return AdminWebSimpleOption(
+                                id: voice.identifier,
+                                name: "\(voice.name) — \(voice.language) (\(quality))"
+                            )
+                        }
+
                     return AdminWebAnnouncerPayload(
                         configs: model.settings.voice.announcerConfigs,
                         servers: servers,
@@ -1487,7 +1507,8 @@ extension AppModel {
                         watchedTextChannelID: model.settings.voice.watchedTextChannelID,
                         preferredVoiceIdentifier: model.settings.voice.preferredVoiceIdentifier,
                         textChannelSourceEnabled: model.settings.voice.textChannelSourceEnabled,
-                        autoConnect: model.settings.voice.autoConnect
+                        autoConnect: model.settings.voice.autoConnect,
+                        installedVoices: installedVoices
                     )
                 }
             },

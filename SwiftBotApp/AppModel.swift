@@ -272,6 +272,10 @@ final class AppModel: ObservableObject {
     var voicePendingSessionID: String?
     var voicePendingServerToken: String?
     var voicePendingServerEndpoint: String?
+    /// The voice-gateway session the pending server token/endpoint were received
+    /// under. Used to reject credentials left over from a previous session
+    /// (the classic close-code-4006 cause) before opening the voice pipeline.
+    var voiceCredentialsSessionID: String?
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
     /// Retained AVSpeechSynthesizer for in-app preview playback (used while
     /// the Discord voice path is blocked by DAVE).
@@ -1031,6 +1035,7 @@ final class AppModel: ObservableObject {
 
     func stopBot() async {
         stopMediaMonitor()
+        await disconnectVoice()
         await service.disconnect()
         await cluster.stopAll()
         meshSyncTask?.cancel()

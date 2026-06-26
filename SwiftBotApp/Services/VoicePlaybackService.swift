@@ -35,14 +35,20 @@ actor VoicePlaybackService {
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeoutTask: Task<Void, Never>?
-    /// Real-time-paced loop that emits Opus silence frames while connected and
-    /// idle, keeping the RTP sequence/timestamp advancing in lockstep with wall
-    /// clock and the UDP path warm. Without it, the stream goes stale between
-    /// announcements and Discord drops the next utterance as late.
+    /// Loop that emits an Opus silence frame every few seconds while connected
+    /// and idle, keeping the UDP path warm without lighting Discord's "speaking"
+    /// ring. The wide interval means the RTP timestamp no longer advances in
+    /// lockstep with wall-clock on its own, so `catchUpTimestampToWallClock`
+    /// realigns it before each frame — otherwise resumed audio after the gap
+    /// would carry a timestamp Discord reads as continuous and play back late.
     private var keepaliveTask: Task<Void, Never>?
-    /// True only while `speak(pcm:)` is actively transmitting audio frames, so
-    /// the keepalive loop doesn't also send (and double-advance the timestamp).
+    /// True only while a `speak(...)` call is actively transmitting audio frames,
+    /// so the keepalive loop doesn't also send during playback.
     private var isSpeaking: Bool = false
+    /// Wall-clock instant of the last packet emitted (real audio or keepalive),
+    /// used to realign the RTP timestamp across idle gaps. Reset on each new
+    /// session in `handleReady`.
+    private var lastPacketSentAt: ContinuousClock.Instant?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -146,6 +152,9 @@ actor VoicePlaybackService {
         ssrc = nil
         negotiatedMode = nil
         recognizedUserIds.removeAll()
+        if daveCoordinator != nil {
+            await daveLog("DAVE session torn down; MLS coordinator reset.")
+        }
         await daveCoordinator?.reset()
         daveCoordinator = nil
         daveMediaRequired = false
@@ -237,6 +246,110 @@ actor VoicePlaybackService {
         }
     }
 
+    /// Feed a resampled 48 kHz stereo Float32 PCM audio stream to the encoder.
+    /// Audio chunks are sliced into 20 ms frames (960 samples per channel) and
+    /// paced out at 20 ms intervals. `onProgress` fires after each transmitted
+    /// frame so a caller can run an inactivity watchdog over playback.
+    func speak(
+        stream: AsyncThrowingStream<SendableAudioBuffer, Error>,
+        onProgress: @Sendable () -> Void = {}
+    ) async throws {
+        guard status == .connected,
+              let gateway = gateway,
+              let transport = transport,
+              let opus = opus,
+              let ssrc = ssrc else {
+            throw VoicePipelineError.notConnected
+        }
+        guard !daveMediaRequired || daveMediaReady else {
+            throw VoicePipelineError.daveNotReady
+        }
+        try await gateway.sendSpeaking(true, ssrc: ssrc)
+        isSpeaking = true
+        defer {
+            isSpeaking = false
+            Task { try? await gateway.sendSpeaking(false, ssrc: ssrc) }
+        }
+
+        let samplesPerFrame = Int(OpusFrameEncoder.samplesPerFrame)
+        let channels = Int(OpusFrameEncoder.channelCount)
+        let frameDuration = OpusFrameEncoder.frameDuration
+        let floatsPerFrame = samplesPerFrame * channels
+
+        let clock = ContinuousClock()
+        var nextDeadline = clock.now
+
+        // Ring-buffer-style queue: `head` marks the consumed prefix so draining a
+        // frame is O(1) instead of an O(n) `removeFirst`; the consumed prefix is
+        // dropped before each append to keep the backing array bounded.
+        var sampleQueue: [Float] = []
+        var head = 0
+
+        for try await wrappedBuffer in stream {
+            let chunkBuffer = wrappedBuffer.buffer
+            let totalFrames = Int(chunkBuffer.frameLength)
+            guard totalFrames > 0 else { continue }
+            guard let channelData = chunkBuffer.floatChannelData else { continue }
+            let interleaved = chunkBuffer.format.isInterleaved
+
+            // Drop the already-consumed prefix before appending so the backing
+            // array doesn't grow unbounded over a long utterance.
+            if head > 0 {
+                sampleQueue.removeFirst(head)
+                head = 0
+            }
+
+            if interleaved {
+                let src = channelData[0]
+                let sampleCount = totalFrames * channels
+                sampleQueue.append(contentsOf: UnsafeBufferPointer(start: src, count: sampleCount))
+            } else {
+                for i in 0..<totalFrames {
+                    for c in 0..<channels {
+                        sampleQueue.append(channelData[c][i])
+                    }
+                }
+            }
+
+            while sampleQueue.count - head >= floatsPerFrame {
+                guard let frameBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) else {
+                    break
+                }
+                frameBuffer.frameLength = AVAudioFrameCount(samplesPerFrame)
+                if let dest = frameBuffer.floatChannelData?[0] {
+                    sampleQueue.withUnsafeBufferPointer { src in
+                        dest.update(from: src.baseAddress! + head, count: floatsPerFrame)
+                    }
+                }
+                head += floatsPerFrame
+
+                try await sendFrame(frameBuffer, transport: transport)
+                onProgress()
+
+                nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
+                try? await clock.sleep(until: nextDeadline)
+            }
+        }
+
+        // Flush the final partial frame, zero-padding the tail.
+        let remaining = sampleQueue.count - head
+        if remaining > 0,
+           let frameBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) {
+            frameBuffer.frameLength = AVAudioFrameCount(samplesPerFrame)
+            if let dest = frameBuffer.floatChannelData?[0] {
+                sampleQueue.withUnsafeBufferPointer { src in
+                    dest.update(from: src.baseAddress! + head, count: remaining)
+                }
+                for i in remaining..<floatsPerFrame { dest[i] = 0 }
+            }
+            try await sendFrame(frameBuffer, transport: transport)
+            onProgress()
+
+            nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
+            try? await clock.sleep(until: nextDeadline)
+        }
+    }
+
     /// Heartbeat-style silence frame to keep the connection alive between
     /// announcements.
     func sendKeepalive() async throws {
@@ -249,6 +362,7 @@ actor VoicePlaybackService {
             return
         }
         guard !daveMediaRequired || daveMediaReady else { return }
+        catchUpTimestampToWallClock(&rtp, now: ContinuousClock().now)
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let plainPayload = RTPPacketBuilder.opusSilenceFrame
         let encryptedPayload: Data
@@ -279,6 +393,7 @@ actor VoicePlaybackService {
         } else {
             encryptedPayload = plainPayload
         }
+        catchUpTimestampToWallClock(&rtp, now: ContinuousClock().now)
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
@@ -286,9 +401,31 @@ actor VoicePlaybackService {
         self.encryption = encryption
     }
 
+    /// Advance the RTP timestamp to reflect wall-clock time elapsed since the
+    /// previous packet before building the next header. During continuous 20 ms
+    /// playback the gap equals one frame and nothing extra is added; after a
+    /// multi-second keepalive gap the timestamp jumps forward to match real
+    /// time, which is what Discord's jitter buffer expects for resumed audio.
+    private func catchUpTimestampToWallClock(_ rtp: inout RTPPacketBuilder, now: ContinuousClock.Instant) {
+        let frameSamples = UInt32(OpusFrameEncoder.samplesPerFrame)
+        if let last = lastPacketSentAt {
+            let elapsed = now - last
+            let seconds = Double(elapsed.components.seconds)
+                + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
+            let elapsedSamples = UInt32(max(0, (seconds * OpusFrameEncoder.sampleRate).rounded()))
+            // nextHeader() adds one frame's worth; pre-advance only the surplus
+            // so back-to-back frames stay exactly one frame apart.
+            if elapsedSamples > frameSamples {
+                rtp.advanceTimestamp(bySamples: elapsedSamples - frameSamples)
+            }
+        }
+        lastPacketSentAt = now
+    }
+
     private func handleReady(_ info: VoiceReadyInfo) async {
         ssrc = info.ssrc
         rtp = RTPPacketBuilder(ssrc: info.ssrc)
+        lastPacketSentAt = nil
 
         guard let mode = info.modes.first(where: { mode in
             VoiceEncryptionMode.preferred.contains(where: { $0.rawValue == mode })
@@ -320,8 +457,7 @@ actor VoicePlaybackService {
         if let daveVersion = key.daveProtocolVersion, daveVersion > 0, ssrc != nil, let gateway = gateway {
             daveMediaRequired = true
             daveMediaReady = false
-            Self.logger.info("DAVE negotiated version: \(daveVersion). Preparing session coordinator...")
-            await debug("DAVE negotiated version \(daveVersion); preparing MLS session.")
+            await daveLog("DAVE negotiated version \(daveVersion); preparing MLS session for guild \(gateway.server.guildID).")
             let coordinator = DaveSessionCoordinator(authSessionId: nil)
             do {
                 recognizedUserIds.insert(gateway.server.userID)
@@ -331,34 +467,45 @@ actor VoicePlaybackService {
                     protocolVersion: daveVersion
                 )
                 self.daveCoordinator = coordinator
+                await daveLog("DAVE MLS coordinator configured (self user \(gateway.server.userID)).")
                 try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "session description")
 
                 try await sendDaveKeyPackage(reason: "session description")
-                await debug("Waiting for DAVE MLS transition before enabling Discord speech.")
+                await daveLog("Waiting for DAVE MLS transition before enabling Discord speech.")
             } catch {
-                Self.logger.error("DAVE coordinator initialization failed: \(error.localizedDescription)")
-                await debug("DAVE coordinator initialization failed: \(error.localizedDescription)")
+                await daveLogError("DAVE coordinator initialization failed: \(error.localizedDescription)")
                 await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
             }
         } else {
             daveMediaRequired = false
             daveMediaReady = true
-            Self.logger.info("DAVE not enabled or negotiated for this session.")
-            await debug("DAVE not negotiated for this voice session.")
+            await daveLog("DAVE not negotiated for this voice session; media is transport-encrypted only.")
             await completeConnection(reason: "transport encryption ready")
         }
     }
 
     private func handleClientsConnect(_ userIds: [String]) async {
+        guard daveMediaRequired else {
+            recognizedUserIds.formUnion(userIds)
+            return
+        }
+        let added = userIds.filter { !recognizedUserIds.contains($0) }
         recognizedUserIds.formUnion(userIds)
+        if !added.isEmpty {
+            await daveLog("DAVE roster: \(added.count) client(s) joined the encrypted session (now \(recognizedUserIds.count)).")
+        }
     }
 
     private func handleClientDisconnect(_ userId: String) async {
-        recognizedUserIds.remove(userId)
+        let removed = recognizedUserIds.remove(userId) != nil
+        if daveMediaRequired, removed {
+            await daveLog("DAVE roster: a client left the encrypted session (now \(recognizedUserIds.count)).")
+        }
     }
 
     private func handleDavePrepareEpoch(protocolVersion: UInt16, epoch: UInt64) async {
         guard protocolVersion > 0 else { return }
+        await daveLog("DAVE prepare epoch received (version \(protocolVersion), epoch \(epoch)).")
         do {
             if let coordinator = daveCoordinator {
                 if epoch == 1 {
@@ -369,73 +516,86 @@ actor VoicePlaybackService {
                     )
                     try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "prepare epoch")
                     try await sendDaveKeyPackage(reason: "prepare epoch")
+                    await daveLog("DAVE MLS session re-initialised for epoch \(epoch).")
                 }
+            } else {
+                await daveLog("DAVE prepare epoch ignored; no active MLS session.")
             }
         } catch {
-            Self.logger.error("DAVE prepare epoch failed: \(error.localizedDescription)")
+            await daveLogError("DAVE prepare epoch failed: \(error.localizedDescription)")
         }
     }
 
     private func handleDaveExecuteTransition(_ transitionId: UInt64) async {
-        Self.logger.info("DAVE transition execute received. Transition ID: \(transitionId)")
-        guard let coordinator = daveCoordinator else { return }
+        await daveLog("DAVE execute transition received (id \(transitionId)).")
+        guard let coordinator = daveCoordinator else {
+            await daveLog("DAVE execute transition ignored; no active MLS session.")
+            return
+        }
         let diagnostics = await coordinator.getDiagnostics()
         guard diagnostics.handshakeState == .ready else {
-            await debug("DAVE transition execute received, but MLS handshake is \(diagnostics.handshakeState.rawValue).")
+            await daveLog("DAVE execute transition deferred; MLS handshake is \(diagnostics.handshakeState.rawValue) (epoch \(diagnostics.currentEpoch)).")
             return
         }
         await completeConnection(reason: "DAVE transition \(transitionId) ready")
     }
 
     private func handleDaveExternalSender(_ data: Data) async {
+        await daveLog("DAVE external sender package received (\(data.count) bytes).")
         do {
             daveExternalSender = data
             if let coordinator = daveCoordinator {
                 try await coordinator.setExternalSender(data)
             }
-            Self.logger.info("DAVE external sender package registered successfully.")
+            await daveLog("DAVE external sender registered.")
             try await sendDaveKeyPackage(reason: "external sender")
         } catch {
-            Self.logger.error("DAVE setExternalSender failed: \(error.localizedDescription)")
+            await daveLogError("DAVE external sender registration failed: \(error.localizedDescription)")
         }
     }
 
     private func handleDaveProposals(_ data: Data) async {
+        await daveLog("DAVE MLS proposals received (\(data.count) bytes).")
         do {
-            guard let coordinator = daveCoordinator else { return }
+            guard let coordinator = daveCoordinator else {
+                await daveLog("DAVE MLS proposals ignored; no active MLS session.")
+                return
+            }
             let commitWelcome = try await coordinator.processProposals(
                 data,
                 recognizedUserIds: Array(recognizedUserIds)
             )
             try await gateway?.sendMlsCommitWelcome(commitWelcome)
-            Self.logger.info("DAVE MLS proposals processed and commit/welcome sent.")
+            await daveLog("DAVE MLS proposals processed; commit/welcome sent.")
         } catch {
-            Self.logger.error("DAVE proposal handling failed: \(error.localizedDescription)")
+            await daveLogError("DAVE proposal handling failed: \(error.localizedDescription)")
         }
     }
 
     private func handleDaveAnnounceCommit(_ data: Data, transitionId: UInt64) async {
+        await daveLog("DAVE announce commit received (id \(transitionId), \(data.count) bytes).")
         do {
             try await daveCoordinator?.processDiscordTransition(.commit(data))
-            Self.logger.info("DAVE transition commit processed successfully. Transition ID: \(transitionId)")
+            await daveLog("DAVE commit processed; transition-ready sent (id \(transitionId)).")
             try await gateway?.sendTransitionReady(transitionId: transitionId)
         } catch {
-            Self.logger.error("DAVE process transition commit failed: \(error.localizedDescription)")
+            await daveLogError("DAVE commit processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
         }
     }
 
     private func handleDaveWelcome(_ data: Data, transitionId: UInt64) async {
+        await daveLog("DAVE welcome received (id \(transitionId), \(data.count) bytes).")
         guard let gateway = gateway else { return }
         do {
             recognizedUserIds.insert(gateway.server.userID)
             try await daveCoordinator?.processDiscordTransition(
                 .welcome(data, recognizedUserIds: Array(recognizedUserIds))
             )
-            Self.logger.info("DAVE transition welcome processed successfully. Transition ID: \(transitionId)")
+            await daveLog("DAVE welcome processed; transition-ready sent (id \(transitionId)).")
             try await gateway.sendTransitionReady(transitionId: transitionId)
         } catch {
-            Self.logger.error("DAVE process transition welcome failed: \(error.localizedDescription)")
+            await daveLogError("DAVE welcome processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
         }
     }
@@ -444,11 +604,11 @@ actor VoicePlaybackService {
         guard let coordinator = daveCoordinator, let gateway = gateway else { return }
         let keyPackage = try await coordinator.getMarshalledKeyPackage()
         try await gateway.sendMlsKeyPackage(keyPackage)
-        Self.logger.info("DAVE MLS key package sent after \(reason, privacy: .public).")
-        await debug("DAVE MLS key package sent after \(reason).")
+        await daveLog("DAVE MLS key package sent after \(reason).")
     }
 
     private func recoverFromInvalidDaveTransition(transitionId: UInt64) async {
+        await daveLog("DAVE recovering from invalid transition (id \(transitionId)); resetting MLS session.")
         do {
             try await gateway?.sendInvalidCommitWelcome(transitionId: transitionId)
             try await daveCoordinator?.recreateSessionState()
@@ -456,16 +616,16 @@ actor VoicePlaybackService {
                 try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "invalid commit/welcome recovery")
             }
             try await sendDaveKeyPackage(reason: "invalid commit/welcome recovery")
+            await daveLog("DAVE session state recreated after invalid transition (id \(transitionId)).")
         } catch {
-            Self.logger.error("DAVE recovery failed: \(error.localizedDescription)")
+            await daveLogError("DAVE recovery failed (id \(transitionId)): \(error.localizedDescription)")
         }
     }
 
     private func applyDaveExternalSenderIfAvailable(to coordinator: DaveSessionCoordinator, reason: String) async throws {
         guard let externalSender = daveExternalSender else { return }
         try await coordinator.setExternalSender(externalSender)
-        Self.logger.info("DAVE external sender reapplied after \(reason, privacy: .public).")
-        await debug("DAVE external sender reapplied after \(reason).")
+        await daveLog("DAVE external sender reapplied after \(reason).")
     }
 
     private func handleGatewayClose(_ code: Int) async {
@@ -493,6 +653,9 @@ actor VoicePlaybackService {
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         await debug("Voice media ready: \(reason).")
+        if daveMediaRequired {
+            await logDaveState("secure session active")
+        }
         await setStatus(.connected)
         startKeepalive()
         let continuation = readyContinuation
@@ -500,14 +663,14 @@ actor VoicePlaybackService {
         continuation?.resume()
     }
 
-    /// Spin up the idle keepalive loop. Paced at the 20 ms Opus frame interval
-    /// off a monotonic clock so RTP sequence/timestamp track wall-clock time;
-    /// `sendKeepalive()` no-ops while `speak(pcm:)` is transmitting real audio.
+    /// Spin up the idle keepalive loop. Paced at 5 seconds to keep the UDP port binding
+    /// active in firewall/NAT without flooding Discord with continuous silence frames,
+    /// ensuring the bot does not show up as speaking (green ring) when silent.
     private func startKeepalive() {
         keepaliveTask?.cancel()
         keepaliveTask = Task { [weak self] in
             let clock = ContinuousClock()
-            let interval = Duration.milliseconds(Int(OpusFrameEncoder.frameDuration * 1000))
+            let interval = Duration.seconds(5)
             var nextDeadline = clock.now.advanced(by: interval)
             while !Task.isCancelled {
                 guard let self, await self.keepaliveTick() else { return }
@@ -532,6 +695,27 @@ actor VoicePlaybackService {
 
     private func debug(_ message: String) async {
         await onDebug?(message)
+    }
+
+    /// Mirror a DAVE protocol/handshake event to both the OS log (Console) and
+    /// the in-app voice diagnostics log. This tracks key-exchange and transition
+    /// state only — it never carries decrypted or spoken message content.
+    private func daveLog(_ message: String) async {
+        Self.logger.info("\(message, privacy: .public)")
+        await debug(message)
+    }
+
+    /// Like `daveLog`, for failure paths (logged at error level).
+    private func daveLogError(_ message: String) async {
+        Self.logger.error("\(message, privacy: .public)")
+        await debug(message)
+    }
+
+    /// Snapshot the live MLS epoch + handshake state for the diagnostics log.
+    private func logDaveState(_ context: String) async {
+        guard let coordinator = daveCoordinator else { return }
+        let d = await coordinator.getDiagnostics()
+        await daveLog("DAVE \(context): epoch \(d.currentEpoch), handshake \(d.handshakeState.rawValue).")
     }
 
     private func isFailed(_ status: Status) -> Bool {

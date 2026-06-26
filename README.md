@@ -60,11 +60,12 @@ It can run as a single local bot or as part of a SwiftMesh setup where a primary
 
 ## Setup
 
-- ➡️ **[Install Guide](docs/help/INSTALL.md)** — download, install, requirements, updates.
-- ➡️ **[Bot Setup Guide](docs/help/BOT_SETUP.md)** — Discord application, token, intents, OAuth, troubleshooting.
-- ➡️ **[Web UI Setup Guide](docs/help/WEB_UI_SETUP.md)** — local-only vs public access (Cloudflare Tunnel, reverse proxy).
+For full installation and setup instructions, visit **[swiftbot.dev/help](https://swiftbot.dev/help/)**.
 
-More walkthroughs live in [docs/help/](docs/help/).
+- ➡️ **[Install Guide](https://swiftbot.dev/help/install/)** — download, install, requirements, updates.
+- ➡️ **[Bot Setup Guide](https://swiftbot.dev/help/bot-setup/)** — Discord application, token, intents, OAuth, troubleshooting.
+- ➡️ **[Web UI Setup Guide](https://swiftbot.dev/help/web-ui/)** — local-only vs public access (Cloudflare Tunnel, reverse proxy).
+
 
 ## Application Areas
 
@@ -120,7 +121,7 @@ Please raise a GitHub issue if something breaks. Include the SwiftBot version, m
 
 ## Related Docs
 
-- [Help & Setup Guides](docs/help/)
+- [Help & Setup Guides](https://swiftbot.dev/help/)
 - [Architecture](ARCHITECTURE.md)
 - [AI Guide](AI_GUIDE.md)
 

@@ -265,6 +265,15 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 ## Session log
 
+### 2026-06-26 — Piper TTS, Stall Protections, & Priority Inversion Fixes
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Refined voice picker options in VoiceView to display Apple Premium/Enhanced voices and downloaded Piper voices (identifiable by "piper"), filtering out low-quality legacy system voices. Added setup documentation to the settings help popover. |
+| `_working-tree_` | Resolved announcer queue freeze issue by wrapping `ttsSource.render` and `playback.speak` in timeouts (15s/20s) with a Sendable wrapper, ensuring the service logs hangs and recovers. |
+| `_working-tree_` | Optimized VoicePlaybackService keepalive pacing to 5 seconds (was 20 ms), resolving the persistent green speaking indicator in Discord when silent and preventing UDP socket congestion/disconnects. |
+| `_working-tree_` | Resolved UI thread priority inversion warning in `speakLocallyPreview` by offloading `AVSpeechSynthesizer` calls to an asynchronous background task. |
+
 ### 2026-06-09 — Patchy monitoring target sync
 
 | Commit | Summary |

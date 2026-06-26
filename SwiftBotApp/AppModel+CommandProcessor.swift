@@ -152,8 +152,11 @@ extension AppModel {
                     guard let self else { return (ok: false, message: "Sweep is unavailable.") }
                     return await self.handleSweepSlash(action: action)
                 },
-                announceCommand: { [weak self] raw in
+                announceCommand: { [weak self] action, raw in
                     guard let self else { return (ok: false, message: "Announcer is unavailable.") }
+                    if action == "rejoin" {
+                        return await self.handleAnnounceRejoinSlash(raw: raw)
+                    }
                     return await self.handleAnnounceJoinSlash(raw: raw)
                 },
                 randomTeamsCommand: { [weak self] teamCount, maxSize, raw in

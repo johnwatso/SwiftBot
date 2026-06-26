@@ -1,16 +1,30 @@
 import Foundation
 import OSLog
 
+/// Per-config message-content filters applied before a message is spoken.
+/// Resolved from the active `AnnouncerVoiceChannelConfig` and passed into
+/// `TextChannelAnnouncer.handle`.
+struct AnnouncerReadOptions: Sendable {
+    var ignoreLinks: Bool = true
+    var summariseLong: Bool = false
+    var keepShort: Bool = false
+    var ignoreEmojiSpam: Bool = false
+}
+
 /// Watches a single text channel and enqueues each new message into a
 /// `VoiceAnnouncementService` to be spoken aloud. Applies the formatting and
 /// filtering rules:
 /// - Format: "Author: text"
-/// - Skip messages longer than 300 characters
+/// - Skip messages longer than 300 characters (or shorten them when the config
+///   opts into `summariseLong`)
+/// - Optionally strip links, skip emoji spam, and keep announcements short
 /// - Skip pure link / attachment messages, but read the first embed title
 ///   when present.
 actor TextChannelAnnouncer {
     private static let logger = Logger(subsystem: "com.swiftbot", category: "voice.announcer.text")
     private static let maxLength = 300
+    private static let shortCap = 160
+    private static let summaryCap = 220
 
     private let announcer: VoiceAnnouncementService
     private var watchedChannelIDs: Set<String> = []
@@ -39,12 +53,13 @@ actor TextChannelAnnouncer {
         _ event: GatewayMessageCreateEvent,
         displayNameOverride: String? = nil,
         channelNames: [String: String] = [:],
-        roleNames: [String: String] = [:]
+        roleNames: [String: String] = [:],
+        options: AnnouncerReadOptions = AnnouncerReadOptions()
     ) async {
         guard watchedChannelIDs.contains(event.channelID) else { return }
         guard let spoken = formattedSpeech(
             for: event, displayNameOverride: displayNameOverride,
-            channelNames: channelNames, roleNames: roleNames
+            channelNames: channelNames, roleNames: roleNames, options: options
         ) else { return }
         await announcer.enqueue(spoken)
     }
@@ -55,11 +70,23 @@ actor TextChannelAnnouncer {
         for event: GatewayMessageCreateEvent,
         displayNameOverride: String?,
         channelNames: [String: String],
-        roleNames: [String: String]
+        roleNames: [String: String],
+        options: AnnouncerReadOptions
     ) -> String? {
-        let body = readableBody(for: event, channelNames: channelNames, roleNames: roleNames)
-        guard let body, !body.isEmpty else { return nil }
-        guard body.count <= Self.maxLength else { return nil }
+        guard var body = readableBody(
+            for: event, channelNames: channelNames, roleNames: roleNames, options: options
+        ) else { return nil }
+
+        // Length policy: messages over `maxLength` are skipped unless the config
+        // opts to shorten them; `keepShort` tightens the cap for everything.
+        if body.count > Self.maxLength {
+            guard options.summariseLong else { return nil }
+            body = Self.truncate(body, to: Self.summaryCap)
+        }
+        if options.keepShort, body.count > Self.shortCap {
+            body = Self.truncate(body, to: Self.shortCap)
+        }
+
         let override = displayNameOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let author = if !override.isEmpty {
             override
@@ -74,7 +101,8 @@ actor TextChannelAnnouncer {
     private func readableBody(
         for event: GatewayMessageCreateEvent,
         channelNames: [String: String],
-        roleNames: [String: String]
+        roleNames: [String: String],
+        options: AnnouncerReadOptions
     ) -> String? {
         // Convert raw Discord markup (mentions, custom emoji, timestamps) into
         // human-readable text so it's both spoken and logged cleanly.
@@ -86,11 +114,19 @@ actor TextChannelAnnouncer {
         )
         let content = humanized.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // If the message has visible non-link text, prefer that.
+        // Skip emoji-dominated spam when the config asks for it.
+        if options.ignoreEmojiSpam, Self.isEmojiSpam(content) {
+            return nil
+        }
+
+        // If the message has visible text, prefer that. URLs are stripped unless
+        // the config opts to read links aloud.
         if !content.isEmpty {
-            let stripped = stripURLs(content).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stripped.isEmpty {
-                return stripped
+            let text = options.ignoreLinks
+                ? stripURLs(content).trimmingCharacters(in: .whitespacesAndNewlines)
+                : content
+            if !text.isEmpty {
+                return text
             }
         }
 
@@ -119,5 +155,26 @@ actor TextChannelAnnouncer {
             mutable.replaceCharacters(in: match.range, with: "")
         }
         return (mutable as String)
+    }
+
+    /// Truncate at a word boundary and append an ellipsis.
+    private static func truncate(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let slice = String(text.prefix(limit))
+        if let lastSpace = slice.lastIndex(of: " ") {
+            let head = String(slice[..<lastSpace]).trimmingCharacters(in: .whitespaces)
+            if !head.isEmpty { return head + "…" }
+        }
+        return slice.trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    /// Heuristic: treat a message as emoji spam when it carries many
+    /// default-presentation unicode emoji. Conservative threshold to avoid
+    /// false positives on the odd reaction emoji.
+    private static func isEmojiSpam(_ text: String) -> Bool {
+        let emojiCount = text.filter { character in
+            character.unicodeScalars.contains { $0.properties.isEmojiPresentation }
+        }.count
+        return emojiCount >= 8
     }
 }
