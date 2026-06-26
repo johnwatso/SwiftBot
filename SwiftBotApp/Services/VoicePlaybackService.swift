@@ -37,18 +37,12 @@ actor VoicePlaybackService {
     private var connectionTimeoutTask: Task<Void, Never>?
     /// Loop that emits an Opus silence frame every few seconds while connected
     /// and idle, keeping the UDP path warm without lighting Discord's "speaking"
-    /// ring. The wide interval means the RTP timestamp no longer advances in
-    /// lockstep with wall-clock on its own, so `catchUpTimestampToWallClock`
-    /// realigns it before each frame — otherwise resumed audio after the gap
-    /// would carry a timestamp Discord reads as continuous and play back late.
+    /// ring. The RTP timestamp advances by one frame (960 samples) per packet
+    /// sent — cumulative samples, not wall-clock — which is what Discord expects.
     private var keepaliveTask: Task<Void, Never>?
     /// True only while a `speak(...)` call is actively transmitting audio frames,
     /// so the keepalive loop doesn't also send during playback.
     private var isSpeaking: Bool = false
-    /// Wall-clock instant of the last packet emitted (real audio or keepalive),
-    /// used to realign the RTP timestamp across idle gaps. Reset on each new
-    /// session in `handleReady`.
-    private var lastPacketSentAt: ContinuousClock.Instant?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -362,7 +356,6 @@ actor VoicePlaybackService {
             return
         }
         guard !daveMediaRequired || daveMediaReady else { return }
-        catchUpTimestampToWallClock(&rtp, now: ContinuousClock().now)
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let plainPayload = RTPPacketBuilder.opusSilenceFrame
         let encryptedPayload: Data
@@ -393,7 +386,6 @@ actor VoicePlaybackService {
         } else {
             encryptedPayload = plainPayload
         }
-        catchUpTimestampToWallClock(&rtp, now: ContinuousClock().now)
         let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
         let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
         try await transport.send(packet)
@@ -401,31 +393,9 @@ actor VoicePlaybackService {
         self.encryption = encryption
     }
 
-    /// Advance the RTP timestamp to reflect wall-clock time elapsed since the
-    /// previous packet before building the next header. During continuous 20 ms
-    /// playback the gap equals one frame and nothing extra is added; after a
-    /// multi-second keepalive gap the timestamp jumps forward to match real
-    /// time, which is what Discord's jitter buffer expects for resumed audio.
-    private func catchUpTimestampToWallClock(_ rtp: inout RTPPacketBuilder, now: ContinuousClock.Instant) {
-        let frameSamples = UInt32(OpusFrameEncoder.samplesPerFrame)
-        if let last = lastPacketSentAt {
-            let elapsed = now - last
-            let seconds = Double(elapsed.components.seconds)
-                + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
-            let elapsedSamples = UInt32(max(0, (seconds * OpusFrameEncoder.sampleRate).rounded()))
-            // nextHeader() adds one frame's worth; pre-advance only the surplus
-            // so back-to-back frames stay exactly one frame apart.
-            if elapsedSamples > frameSamples {
-                rtp.advanceTimestamp(bySamples: elapsedSamples - frameSamples)
-            }
-        }
-        lastPacketSentAt = now
-    }
-
     private func handleReady(_ info: VoiceReadyInfo) async {
         ssrc = info.ssrc
         rtp = RTPPacketBuilder(ssrc: info.ssrc)
-        lastPacketSentAt = nil
 
         guard let mode = info.modes.first(where: { mode in
             VoiceEncryptionMode.preferred.contains(where: { $0.rawValue == mode })
