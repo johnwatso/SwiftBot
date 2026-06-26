@@ -69,6 +69,135 @@ final class VoiceTTSSource: @unchecked Sendable {
             }
         }
     }
+
+    /// Synthesize `text` and yield target-format buffers as `AVSpeechSynthesizer`
+    /// produces them, so playback can start before synthesis finishes. A single
+    /// `AVAudioConverter` is kept alive for the whole utterance (fed `.noDataNow`
+    /// per chunk, flushed once at the end) so its resampler state is continuous —
+    /// converting each chunk in isolation distorts the audio at the seams.
+    func renderStream(text: String, voice: AVSpeechSynthesisVoice?) -> AsyncThrowingStream<SendableAudioBuffer, Error> {
+        let format = targetFormat
+        let resolvedVoice = voice ?? Self.preferredEnglishVoice()
+        let converter = StreamingConverter(targetFormat: format)
+        return AsyncThrowingStream { continuation in
+            Task { @MainActor in
+                let utterance = AVSpeechUtterance(string: text)
+                utterance.voice = resolvedVoice
+                utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+                utterance.pitchMultiplier = 1.0
+                utterance.volume = 1.0
+
+                // Box the synthesizer so the @Sendable termination handler can
+                // retain and stop it (AVSpeechSynthesizer isn't Sendable).
+                let box = SpeechSynthesizerBox()
+                continuation.onTermination = { @Sendable _ in
+                    Task { @MainActor in box.synthesizer.stopSpeaking(at: .immediate) }
+                }
+
+                box.synthesizer.write(utterance) { buffer in
+                    guard let pcm = buffer as? AVAudioPCMBuffer else { return }
+                    do {
+                        if pcm.frameLength == 0 {
+                            // End of synthesis: flush the resampler tail, then finish.
+                            if let tail = try converter.drain() {
+                                continuation.yield(SendableAudioBuffer(buffer: tail))
+                            }
+                            continuation.finish()
+                            return
+                        }
+                        if let converted = try converter.convert(pcm) {
+                            continuation.yield(SendableAudioBuffer(buffer: converted))
+                        }
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Holds an `AVSpeechSynthesizer` so a `@Sendable` closure can retain and stop
+/// it. The synthesizer is only ever touched on the MainActor; the box just
+/// carries the reference across the Sendable boundary.
+private final class SpeechSynthesizerBox: @unchecked Sendable {
+    let synthesizer = AVSpeechSynthesizer()
+}
+
+/// Streaming resampler that converts `AVSpeechSynthesizer.write` chunks to the
+/// target format while preserving continuity across chunks. The single
+/// `AVAudioConverter` is reused and only told `.endOfStream` in `drain()`; each
+/// chunk is fed with `.noDataNow` so the resampler keeps its filter state
+/// (signalling `.endOfStream` per chunk resets it and corrupts the seams). The
+/// write callback runs off the main thread, so access is lock-guarded.
+private final class StreamingConverter: @unchecked Sendable {
+    private let targetFormat: AVAudioFormat
+    private let lock = NSLock()
+    private var converter: AVAudioConverter?
+
+    init(targetFormat: AVAudioFormat) {
+        self.targetFormat = targetFormat
+    }
+
+    /// Convert one source chunk. Returns the converted buffer, or `nil` if the
+    /// chunk produced no output yet (held back for continuity). Throws on
+    /// unsupported format / conversion error.
+    func convert(_ pcm: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer? {
+        guard pcm.frameLength > 0 else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        if pcm.format == targetFormat { return pcm }
+        let converter = try makeConverterIfNeeded(sourceFormat: pcm.format)
+
+        let ratio = targetFormat.sampleRate / pcm.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(pcm.frameLength) * ratio) + 4096
+        guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
+            throw VoicePipelineError.audioFormatUnsupported
+        }
+        var fed = false
+        var conversionError: NSError?
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            if fed {
+                // No more input for this call, but more chunks may follow — do
+                // NOT signal endOfStream, which would reset the resampler.
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            fed = true
+            inputStatus.pointee = .haveData
+            return pcm
+        }
+        if status == .error, let conversionError {
+            throw conversionError
+        }
+        return output.frameLength > 0 ? output : nil
+    }
+
+    /// Flush the resampler's remaining tail after the final chunk.
+    func drain() throws -> AVAudioPCMBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let converter else { return nil }
+        guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: 8192) else { return nil }
+        var conversionError: NSError?
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            inputStatus.pointee = .endOfStream
+            return nil
+        }
+        if status == .error, let conversionError {
+            throw conversionError
+        }
+        return output.frameLength > 0 ? output : nil
+    }
+
+    private func makeConverterIfNeeded(sourceFormat: AVAudioFormat) throws -> AVAudioConverter {
+        if let converter { return converter }
+        guard let newConverter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
+            throw VoicePipelineError.audioFormatUnsupported
+        }
+        converter = newConverter
+        return newConverter
+    }
 }
 
 /// Accumulates partial PCM buffers from `AVSpeechSynthesizer.write` and
