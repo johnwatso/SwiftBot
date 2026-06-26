@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwiftBot 1.22 - Release Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px 20px 48px;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #111827;
+    }
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
+    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.piper { --accent: #0f766e; }
+    section.reliability { --accent: #a21caf; }
+    section.keepalive { --accent: #b45309; }
+    section.priority { --accent: #0a67a3; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
+    a { color: #0a67a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b1017; color: #edf2f7; }
+      main {
+        background: rgba(15, 23, 32, 0.92);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
+      }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
+      a { color: #73c3ff; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SwiftBot 1.22</h1>
+    <p class="meta">Version 1.22 · Build 2026062612</p>
+    <p class="intro">An upgrade for the voice announcer featuring support for high-quality local Piper TTS neural voices, alongside critical stability protections to prevent connection drop-outs and UI thread locks.</p>
+
+    <section class="piper">
+      <h2><span class="badge" aria-hidden="true">🗣️</span>Piper TTS Integration</h2>
+      <p class="summary">High-quality, local, and private neural text-to-speech support.</p>
+      <ul>
+        <li><strong>Custom System Voices:</strong> Support for custom neural voices registered by third-party macOS app extensions like "Piper - Neural TTS".</li>
+        <li><strong>Focused Voice Selection:</strong> The announcer dropdown is now filtered to show only Apple Premium, Apple Enhanced, and custom Piper voices, filtering out legacy low-quality system defaults.</li>
+        <li><strong>Setup Guide Popover:</strong> Added clear documentation directly inside the voice settings UI guiding users on how to obtain and configure Piper neural voices.</li>
+      </ul>
+    </section>
+
+    <section class="reliability">
+      <h2><span class="badge" aria-hidden="true">🛡️</span>Announcer Stall Protection</h2>
+      <p class="summary">Ensuring the bot keeps reading notifications even when audio services hang.</p>
+      <ul>
+        <li><strong>Timeout Safeguards:</strong> Implemented thread-safe timeout limits (15 seconds for TTS synthesis, 20 seconds for audio transmission).</li>
+        <li><strong>Automatic Queue Recovery:</strong> If a voice operation hangs or drops out, the announcer catches the error, logs a diagnostic warning, resets its draining flag, and continues reading subsequent notifications.</li>
+        <li><strong>Sendable Buffer Safety:</strong> Structured under a new thread-safe sendable container to adhere to Swift Concurrency strict compile-time checks.</li>
+      </ul>
+    </section>
+
+    <section class="keepalive">
+      <h2><span class="badge" aria-hidden="true">🔌</span>Speaking Indicator &amp; UDP Pacing</h2>
+      <p class="summary">Paced keepalive checks reduce packet overhead and fix speaking rings.</p>
+      <ul>
+        <li><strong>Paced UDP Keepalives:</strong> Lowered background keepalive packet frequency from 20 ms to 5 seconds.</li>
+        <li><strong>Speaking Ring Fix:</strong> SwiftBot now displays the green speaking indicator ring in Discord <em>only</em> when it is actually reading a notification, turning off immediately when silent.</li>
+        <li><strong>Network Congestion Reduction:</strong> Reducing background keepalive traffic by 250x prevents socket buffer backups, resolving connection drops after 2-5 minutes of silent operation.</li>
+      </ul>
+    </section>
+
+    <section class="priority">
+      <h2><span class="badge" aria-hidden="true">⚡</span>UI Priority Inversion Fix</h2>
+      <p class="summary">Preventing speech preview queries from blocking the main thread.</p>
+      <ul>
+        <li><strong>Background Preview Synthesis:</strong> Offloaded AVSpeechSynthesizer state and preview calls to a background task.</li>
+        <li><strong>Unblocked Main Actor:</strong> Eliminates thread priority inversion warnings (User-Interactive threads blocking on Default thread XPC speech daemons), ensuring UI responsiveness and preventing actor queue deadlocks.</li>
+      </ul>
+    </section>
+
+    <p class="commit-link">Commit: _working-tree_</p>
+  </main>
+</body>
+</html>

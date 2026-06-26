@@ -71,6 +71,7 @@ final class DiscordServiceDMTests: XCTestCase {
 
         let service = DiscordService(session: makeMockSession())
         await service.setBotTokenForTesting("test-token")
+        await service.setOutputAllowed(true)
 
         try await service.sendDMEmbed(
             userId: "user-7",

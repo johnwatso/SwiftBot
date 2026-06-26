@@ -4521,55 +4521,13 @@
 
           <div id="announcerTop" class="stats-grid" style="margin-top: 10px;"></div>
 
-          <div class="diagnostics-panels" style="grid-template-columns: 1fr 340px; margin-top: 14px;">
+          <div class="diagnostics-panels" style="grid-template-columns: 1fr; margin-top: 14px;">
             <div>
               <div class="section-mini-title" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                 <span><i class="lucide" data-lucide="speaker"></i> Voice Channel Configurations</span>
                 <button id="announcerNewConfig" class="primary-action mini-btn" type="button"><i class="lucide" data-lucide="plus"></i> Add Voice Channel</button>
               </div>
               <div id="announcerConfigsList" style="display: grid; gap: 10px;"></div>
-            </div>
-            <div>
-              <div class="section-mini-title" style="margin-bottom: 12px;"><i class="lucide" data-lucide="settings"></i> Global Settings</div>
-              <div class="glass" style="padding: 16px; display: grid; gap: 12px;">
-                <div class="setting-row">
-                  <div class="left">
-                    <div class="title">Announcer Enable</div>
-                    <div class="desc">Watch text channels to read messages aloud.</div>
-                  </div>
-                  <label class="switch">
-                    <input id="globalAnnouncerTextChannelSourceEnabled" type="checkbox">
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                  </label>
-                </div>
-                <div class="setting-row">
-                  <div class="left">
-                    <div class="title">Auto-Connect</div>
-                    <div class="desc">Connect bot automatically on startup.</div>
-                  </div>
-                  <label class="switch">
-                    <input id="globalAnnouncerAutoConnect" type="checkbox">
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                  </label>
-                </div>
-                <div class="setting-row-column">
-                  <label class="label">Discord Server (Guild)</label>
-                  <select id="globalAnnouncerGuild" class="field-select"></select>
-                </div>
-                <div class="setting-row-column">
-                  <label class="label">Voice Channel</label>
-                  <select id="globalAnnouncerVoiceChannel" class="field-select"></select>
-                </div>
-                <div class="setting-row-column">
-                  <label class="label">Watched Text Channel</label>
-                  <select id="globalAnnouncerWatchedTextChannel" class="field-select"></select>
-                </div>
-                <div class="setting-row-column">
-                  <label class="label">Preferred System Voice</label>
-                  <input id="globalAnnouncerPreferredVoice" class="field-input" placeholder="AVSpeechSynthesisVoice Identifier (e.g. com.apple.voice.premium.en-US.Nathan)">
-                </div>
-                <button id="globalAnnouncerSave" class="primary-action" type="button" style="width: 100%; margin-top: 8px;">Save Settings</button>
-              </div>
             </div>
           </div>
         </section>
@@ -7648,21 +7606,6 @@
       renderSweepView();
     }
 
-    function populateAnnouncerChannels(guildId, selectedVoiceChannelId, selectedTextChannelId) {
-      const voiceSelect = document.getElementById('globalAnnouncerVoiceChannel');
-      const textSelect = document.getElementById('globalAnnouncerWatchedTextChannel');
-      if (!voiceSelect || !textSelect) return;
-
-      const voiceChannels = announcerData.voiceChannelsByServer[guildId] || [];
-      const textChannels = announcerData.textChannelsByServer[guildId] || [];
-
-      voiceSelect.innerHTML = '<option value="">— Pick a voice channel —</option>' + 
-        voiceChannels.map(ch => `<option value="${ch.id}" ${ch.id === selectedVoiceChannelId ? 'selected' : ''}>${escapeHTML(ch.name)}</option>`).join('');
-
-      textSelect.innerHTML = '<option value="">— Pick a text channel —</option>' + 
-        textChannels.map(ch => `<option value="${ch.id}" ${ch.id === selectedTextChannelId ? 'selected' : ''}>${escapeHTML(ch.name)}</option>`).join('');
-    }
-
     function renderAnnouncerView() {
       if (!announcerData) return;
       const top = document.getElementById('announcerTop');
@@ -7761,47 +7704,6 @@
       // Bind new config click
       newBtn.onclick = () => openAnnouncerConfigEditor(null);
 
-      // Global Settings Populating
-      const enableSourceCb = document.getElementById('globalAnnouncerTextChannelSourceEnabled');
-      const autoConnectCb = document.getElementById('globalAnnouncerAutoConnect');
-      const guildSelect = document.getElementById('globalAnnouncerGuild');
-      const voiceInput = document.getElementById('globalAnnouncerPreferredVoice');
-      const saveSettingsBtn = document.getElementById('globalAnnouncerSave');
-
-      enableSourceCb.checked = announcerData.textChannelSourceEnabled;
-      autoConnectCb.checked = announcerData.autoConnect;
-      voiceInput.value = announcerData.preferredVoiceIdentifier || '';
-
-      guildSelect.innerHTML = '<option value="">— Pick a Discord server —</option>' + 
-        announcerData.servers.map(s => `<option value="${s.id}" ${s.id === announcerData.guildID ? 'selected' : ''}>${escapeHTML(s.name)}</option>`).join('');
-
-      // Populate text/voice dropdowns based on guildID
-      populateAnnouncerChannels(announcerData.guildID, announcerData.voiceChannelID, announcerData.watchedTextChannelID);
-
-      guildSelect.onchange = (e) => {
-        populateAnnouncerChannels(e.target.value, '', '');
-      };
-
-      saveSettingsBtn.onclick = async () => {
-        const patch = {
-          textChannelSourceEnabled: enableSourceCb.checked,
-          autoConnect: autoConnectCb.checked,
-          guildID: guildSelect.value,
-          voiceChannelID: document.getElementById('globalAnnouncerVoiceChannel').value,
-          watchedTextChannelID: document.getElementById('globalAnnouncerWatchedTextChannel').value,
-          preferredVoiceIdentifier: voiceInput.value.trim()
-        };
-
-        const success = await postJSON('/api/announcer/settings', patch);
-        if (success) {
-          setMessage('Announcer settings saved successfully!', 'success');
-          await loadAnnouncer();
-          renderAnnouncerView();
-        } else {
-          setMessage('Failed to save announcer settings.', 'error');
-        }
-      };
-
       refreshIcons();
     }
 
@@ -7829,6 +7731,7 @@
         tint: 'purple',
         autoJoin: false,
         introduceOnManualJoin: false,
+        preferredVoiceIdentifier: '',
         connectionMode: 'fixed',
         connectionMinutes: 20,
         textChannels: [],
@@ -7851,6 +7754,7 @@
         config.voiceChannelName = vcSelect.options[vcSelect.selectedIndex]?.text || '—';
         config.symbol = document.getElementById('acSymbol').value;
         config.tint = document.getElementById('acTint').value;
+        config.preferredVoiceIdentifier = document.getElementById('acPreferredVoice').value;
         config.autoJoin = document.getElementById('acAutoJoin').checked;
         config.introduceOnManualJoin = document.getElementById('acIntroduceOnManualJoin').checked;
         config.connectionMode = document.getElementById('acConnectionMode').value;
@@ -7921,6 +7825,13 @@
         </select>
       `;
 
+      const voiceSelectHTML = `
+        <select id="acPreferredVoice" class="field-select">
+          <option value="">Auto (best English voice)</option>
+          ${(announcerData.installedVoices || []).map(v => `<option value="${escapeHTML(v.id)}" ${v.id === config.preferredVoiceIdentifier ? 'selected' : ''}>${escapeHTML(v.name)}</option>`).join('')}
+        </select>
+      `;
+
       const connectionModeHTML = `
         <select id="acConnectionMode" class="field-select">
           <option value="fixed" ${config.connectionMode === 'fixed' ? 'selected' : ''}>Fixed time</option>
@@ -7982,6 +7893,7 @@
         row('Voice Channel', vcSelectHTML) +
         row('Icon', symbolSelectHTML) +
         row('Tint Color', tintSelectHTML) +
+        row('Reading Voice', voiceSelectHTML) +
         row('Auto-join', `<input id="acAutoJoin" type="checkbox" ${config.autoJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Join automatically when a user enters voice</span>`) +
         row('Manual intro', `<input id="acIntroduceOnManualJoin" type="checkbox" ${config.introduceOnManualJoin ? 'checked' : ''}> <span style="font-size:11px;color:var(--muted);margin-left:4px;">Say a short intro after /announce join</span>`) +
         row('Connection Mode', connectionModeHTML) +

@@ -62,7 +62,9 @@ actor VoiceAnnouncementService {
         guard !trimmed.isEmpty else { return }
         let announcement = Announcement(text: trimmed)
         queue.append(announcement)
-        await onDebug?("Queued Discord speech: \"\(Self.preview(trimmed))\".")
+        // Log the event, not the content: the message text is kept out of the
+        // diagnostics log (it still appears in the Recent list for the UI).
+        await onDebug?("Queued Discord speech (\(trimmed.count) chars); queue depth \(queue.count).")
         await onQueueChange?(queue)
         if !draining {
             Task { await self.drain() }
@@ -76,16 +78,45 @@ actor VoiceAnnouncementService {
             let next = queue.removeFirst()
             await onQueueChange?(queue)
             do {
-                await onDebug?("Rendering speech audio for Discord.")
-                let buffer = try await ttsSource.render(text: next.text, voice: voice)
-                await onDebug?("Sending speech audio to Discord.")
-                try await playback.speak(pcm: buffer)
-                await onDebug?("Finished Discord speech: \"\(Self.preview(next.text))\".")
+                await onDebug?("Rendering and streaming speech audio to Discord.")
+                let stream = self.ttsSource.renderStream(text: next.text, voice: self.voice)
+                try await playWithStallTimeout(stream: stream, stallSeconds: 15.0)
+                await onDebug?("Finished Discord speech (\(next.text.count) chars).")
                 recordRecent(next)
             } catch {
                 Self.logger.error("announcement failed: \(error.localizedDescription)")
                 await onDebug?("Discord speech failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Play `stream` with an inactivity watchdog rather than a fixed wall-clock
+    /// cap: the timeout fires only when no audio frame is transmitted for
+    /// `stallSeconds`, so a legitimately long message plays in full while a hung
+    /// synthesiser or stalled network is still bounded. Cancelling playback
+    /// terminates the render stream, which stops the underlying synthesiser.
+    private func playWithStallTimeout(
+        stream: AsyncThrowingStream<SendableAudioBuffer, Error>,
+        stallSeconds: Double
+    ) async throws {
+        let progress = ProgressTracker()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { [playback] in
+                try await playback.speak(stream: stream, onProgress: { progress.tick() })
+            }
+            group.addTask {
+                let clock = ContinuousClock()
+                while true {
+                    try await Task.sleep(for: .seconds(1))
+                    if clock.now - progress.last > .seconds(stallSeconds) {
+                        throw VoicePipelineError.timeout
+                    }
+                }
+            }
+            defer { group.cancelAll() }
+            // First child to finish decides the outcome: playback returns on
+            // success, the watchdog (or a playback error) throws otherwise.
+            try await group.next()
         }
     }
 
@@ -95,9 +126,21 @@ actor VoiceAnnouncementService {
         let copy = recent
         Task { await onRecentChange?(copy) }
     }
+}
 
-    private static func preview(_ text: String) -> String {
-        if text.count <= 80 { return text }
-        return String(text.prefix(77)) + "..."
+/// Thread-safe record of the last playback-progress timestamp, shared between
+/// the playback task (which ticks it) and the stall watchdog (which reads it).
+private final class ProgressTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _last: ContinuousClock.Instant = ContinuousClock().now
+
+    var last: ContinuousClock.Instant {
+        lock.lock(); defer { lock.unlock() }
+        return _last
+    }
+
+    func tick() {
+        let now = ContinuousClock().now
+        lock.lock(); _last = now; lock.unlock()
     }
 }

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 enum VoiceOpcode: Int {
@@ -86,6 +87,7 @@ enum VoicePipelineError: LocalizedError {
     case audioFormatUnsupported
     case notConnected
     case daveNotReady
+    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -98,6 +100,12 @@ enum VoicePipelineError: LocalizedError {
         case .audioFormatUnsupported: return "Audio format unsupported"
         case .notConnected: return "Voice pipeline not connected"
         case .daveNotReady: return "DAVE media encryption is not ready yet"
+        case .timeout: return "Voice operation timed out"
         }
     }
 }
+
+struct SendableAudioBuffer: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+}
+

@@ -245,7 +245,10 @@ actor VoiceGatewayConnection {
             let transitionId = transitionId(from: payload)
             let version = protocolVersion(from: payload)
             if version == 0 {
+                await debug("DAVE prepare transition (id \(transitionId)): downgrade to unencrypted (protocol version 0); acknowledging.")
                 try? await sendTransitionReady(transitionId: transitionId)
+            } else {
+                await debug("DAVE prepare transition received (id \(transitionId), protocol version \(version)).")
             }
         case .daveExecuteTransition:
             await onDaveExecuteTransition?(transitionId(from: payload))

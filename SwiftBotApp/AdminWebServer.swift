@@ -478,6 +478,9 @@ struct AdminWebAnnouncerPayload: Codable {
     let preferredVoiceIdentifier: String
     let textChannelSourceEnabled: Bool
     let autoConnect: Bool
+    /// Voices installed on this Mac (id = AVSpeechSynthesisVoice identifier),
+    /// offered as a dropdown in the per-rule editor.
+    let installedVoices: [AdminWebSimpleOption]
 }
 
 struct AdminWebAnnouncerConfigUpsertPatch: Codable {

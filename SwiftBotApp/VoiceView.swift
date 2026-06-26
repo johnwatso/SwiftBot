@@ -705,6 +705,13 @@ struct VoiceView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("For high-quality neural voices (e.g. Piper), download the 'Piper - Neural TTS' app from the Mac App Store and download voices inside it. They will automatically appear in SwiftBot.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .frame(width: 320, alignment: .leading)
@@ -727,11 +734,20 @@ struct VoiceView: View {
             .filter { $0.language.hasPrefix("en") }
         let premium = englishVoices.filter { $0.quality == .premium }
         let enhanced = englishVoices.filter { $0.quality == .enhanced }
+        let piper = englishVoices.filter {
+            $0.quality != .premium &&
+            $0.quality != .enhanced &&
+            ($0.identifier.localizedCaseInsensitiveContains("piper") || $0.name.localizedCaseInsensitiveContains("piper"))
+        }
+        
         for v in premium {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Premium · \(v.language))"))
         }
         for v in enhanced {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Enhanced · \(v.language))"))
+        }
+        for v in piper {
+            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Piper · \(v.language))"))
         }
         return options
     }
@@ -1025,6 +1041,17 @@ private struct AnnouncerConfigSheet: View {
                         }
                     }
                     .toggleStyle(.checkbox)
+
+                    Toggle(isOn: $config.ignoreWebhooks) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Only read server members")
+                                .font(.subheadline)
+                            Text("Skips messages posted by webhooks and integrations, so only real server members are read aloud.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
                 }
 
                 Divider()
@@ -1079,15 +1106,15 @@ private struct AnnouncerConfigSheet: View {
                     Toggle("Announce joins", isOn: $state.announceJoins)
                     Toggle("Announce leaves", isOn: $state.announceLeaves)
                     Divider().padding(.vertical, 2)
-                    Toggle("Summarise long messages", isOn: $state.summariseLong)
-                    Toggle("Ignore links", isOn: $state.ignoreLinks)
-                    Toggle("Skip bot messages", isOn: $state.skipBots)
-                    Toggle("Ignore emoji spam", isOn: $state.ignoreEmojiSpam)
-                    Toggle("Keep announcements short", isOn: $state.keepShort)
+                    Toggle("Shorten long messages", isOn: $config.summariseLong)
+                    Toggle("Ignore links", isOn: $config.ignoreLinks)
+                    Toggle("Skip bot messages", isOn: $config.skipBots)
+                    Toggle("Ignore emoji spam", isOn: $config.ignoreEmojiSpam)
+                    Toggle("Keep announcements short", isOn: $config.keepShort)
                 }
                 .toggleStyle(.checkbox)
 
-                Text("Long messages are summarised before being read aloud.")
+                Text("Messages over 300 characters are shortened instead of skipped; \"Keep announcements short\" tightens the cap further.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

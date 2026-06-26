@@ -143,6 +143,7 @@ extension AppModel {
         voicePendingSessionID = nil
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
+        voiceCredentialsSessionID = nil
         voiceConnectionStatus = .connecting
         addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice join requested for channel \(channelID)."))
 
@@ -199,6 +200,7 @@ extension AppModel {
         voicePendingSessionID = nil
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
+        voiceCredentialsSessionID = nil
         voiceConnectionStatus = .idle
         deactivateAnnouncerSession()
     }
@@ -233,21 +235,37 @@ extension AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         incrementSpokenToday()
-        let utterance = AVSpeechUtterance(string: trimmed)
+        
         let preferredIdentifier = settings.voice.preferredVoiceIdentifier
-        if !preferredIdentifier.isEmpty,
-           let v = AVSpeechSynthesisVoice(identifier: preferredIdentifier) {
-            utterance.voice = v
-        } else {
-            utterance.voice = VoiceTTSSource.preferredEnglishVoice()
+        
+        // AVSpeechSynthesizer must be created and driven on the MainActor.
+        // Driving it from a background thread/actor triggers "unsafeForcedSync
+        // called from Swift Concurrent context" faults in AXCoreUtilities and
+        // crashes — same constraint as VoiceTTSSource.render(). We deliberately
+        // stay on the MainActor: speak() is non-blocking (it enqueues and
+        // returns), so it does not stall the UI, and the benign "priority
+        // inversion" log AVSpeechSynthesizer emits internally is the price of
+        // crash safety. Do NOT move this onto a background queue.
+        Task { @MainActor [localSpeechPreviewSynthesizer] in
+            let resolvedVoice: AVSpeechSynthesisVoice?
+            if !preferredIdentifier.isEmpty,
+               let v = AVSpeechSynthesisVoice(identifier: preferredIdentifier) {
+                resolvedVoice = v
+            } else {
+                resolvedVoice = VoiceTTSSource.preferredEnglishVoice()
+            }
+
+            let utterance = AVSpeechUtterance(string: trimmed)
+            utterance.voice = resolvedVoice
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+            utterance.pitchMultiplier = 1.0
+            utterance.volume = 1.0
+            
+            if localSpeechPreviewSynthesizer.isSpeaking {
+                localSpeechPreviewSynthesizer.stopSpeaking(at: .immediate)
+            }
+            localSpeechPreviewSynthesizer.speak(utterance)
         }
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.pitchMultiplier = 1.0
-        utterance.volume = 1.0
-        if localSpeechPreviewSynthesizer.isSpeaking {
-            localSpeechPreviewSynthesizer.stopSpeaking(at: .immediate)
-        }
-        localSpeechPreviewSynthesizer.speak(utterance)
     }
 
     /// Apply a new watched text-channel selection from the UI.
@@ -279,11 +297,26 @@ extension AppModel {
     }
 
     func handleAnnounceJoinSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
+        await connectAnnouncerFromSlash(raw: raw, rejoin: false)
+    }
+
+    /// `/announce rejoin` — force a clean disconnect and reconnect to the
+    /// caller's configured Announcer voice channel. Useful when the voice
+    /// connection is degraded or stuck: a plain `join` short-circuits in
+    /// `connectVoice` when the bot already believes it is connected, whereas
+    /// `rejoin` tears the session down first so the reconnect always runs.
+    func handleAnnounceRejoinSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
+        await connectAnnouncerFromSlash(raw: raw, rejoin: true)
+    }
+
+    /// Shared implementation for `/announce join` and `/announce rejoin`.
+    private func connectAnnouncerFromSlash(raw: [String: DiscordJSON], rejoin: Bool) async -> (ok: Bool, message: String) {
+        let verb = rejoin ? "rejoin" : "join"
         guard let guildID = guildId(from: raw), !guildID.isEmpty else {
-            return (false, "Use `/announce join` in a server channel.")
+            return (false, "Use `/announce \(verb)` in a server channel.")
         }
         guard let userID = authorId(from: raw), !userID.isEmpty else {
-            return (false, "I couldn't identify who ran `/announce join`.")
+            return (false, "I couldn't identify who ran `/announce \(verb)`.")
         }
 
         let configuredChannels = settings.voice.announcerConfigs.filter {
@@ -294,10 +327,19 @@ extension AppModel {
         }
 
         guard let presence = activeVoice.first(where: { $0.guildId == guildID && $0.userId == userID }) else {
-            return (false, "Join a configured voice channel first, then run `/announce join` again.")
+            return (false, "Join a configured voice channel first, then run `/announce \(verb)` again.")
         }
         guard let config = configuredChannels.first(where: { $0.voiceChannelID == presence.channelId }) else {
             return (false, "No enabled Announcer configuration matches your current voice channel.")
+        }
+
+        // For rejoin, tear down any existing session first so the connect below
+        // isn't skipped by connectVoice's "already connected/connecting" guard.
+        // The short pause lets Discord register the leave before the new join,
+        // avoiding a re-join being ignored as a duplicate voice state.
+        if rejoin {
+            await disconnectVoice()
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
         guard await activateAnnouncerConfig(config, guildID: guildID) else {
@@ -311,7 +353,8 @@ extension AppModel {
         if config.introduceOnManualJoin {
             scheduleVoiceJoinIntro(channelID: config.voiceChannelID)
         }
-        return (true, "Joining \(config.voiceChannelName) and reading the configured text feed.")
+        let lead = rejoin ? "Reconnecting to" : "Joining"
+        return (true, "\(lead) \(config.voiceChannelName) and reading the configured text feed.")
     }
 
     /// Forward a `MESSAGE_CREATE` event to the text-channel announcer. Called
@@ -322,22 +365,34 @@ extension AppModel {
         guard settings.voice.textChannelSourceEnabled else { return }
         let watchedIDs = settings.voice.watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let activeVoiceChannelID = settings.voice.voiceChannelID
+        let activeConfig = settings.voice.announcerConfigs
+            .first(where: { !activeVoiceChannelID.isEmpty && $0.voiceChannelID == activeVoiceChannelID })
         // The voice channel's own chat (Text-in-Voice / stream chat) is only read
         // when the active config opts in. Defaults to true for the manual path.
-        let readsVoiceChat = settings.voice.announcerConfigs
-            .first(where: { !activeVoiceChannelID.isEmpty && $0.voiceChannelID == activeVoiceChannelID })?
-            .readVoiceChannelChat ?? true
+        let readsVoiceChat = activeConfig?.readVoiceChannelChat ?? true
         let isVoiceChannelChat = readsVoiceChat && !activeVoiceChannelID.isEmpty && event.channelID == activeVoiceChannelID
         guard watchedIDs.contains(event.channelID) || isVoiceChannelChat else { return }
         // Don't read SwiftBot's own messages to avoid feedback loops.
         if let botUserId, event.userID == botUserId { return }
+        // Optionally skip webhook posts (integrations, bridges, bots that post
+        // via webhooks) so only real server members are read aloud.
+        if activeConfig?.ignoreWebhooks == true, event.rawMap["webhook_id"] != nil { return }
+        // Optionally skip bot-authored messages.
+        if activeConfig?.skipBots == true, event.isBot { return }
         guard let watcher = textChannelAnnouncer else { return }
+        let options = AnnouncerReadOptions(
+            ignoreLinks: activeConfig?.ignoreLinks ?? true,
+            summariseLong: activeConfig?.summariseLong ?? false,
+            keepShort: activeConfig?.keepShort ?? false,
+            ignoreEmojiSpam: activeConfig?.ignoreEmojiSpam ?? false
+        )
         let cachedDisplayName = await discordCache.userName(for: event.userID)
         await watcher.handle(
             event,
             displayNameOverride: cachedDisplayName,
             channelNames: flattenedChannelNames(),
-            roleNames: flattenedRoleNames()
+            roleNames: flattenedRoleNames(),
+            options: options
         )
     }
 
@@ -362,6 +417,9 @@ extension AppModel {
         }
         voicePendingServerToken = event.token
         voicePendingServerEndpoint = endpoint
+        // Tag these credentials with the session current at receipt so a connect
+        // never fires with a token paired to a stale session id.
+        voiceCredentialsSessionID = voicePendingSessionID
         addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice server update received; endpoint ready."))
         await beginVoicePipelineIfReady()
     }
@@ -390,6 +448,13 @@ extension AppModel {
             return
         }
         if case let .string(sessionID)? = event.rawMap["session_id"] {
+            if voicePendingSessionID != sessionID {
+                // New session: any server token/endpoint we hold predate it and
+                // would be rejected with close code 4006, so discard them.
+                voicePendingServerToken = nil
+                voicePendingServerEndpoint = nil
+                voiceCredentialsSessionID = nil
+            }
             voicePendingSessionID = sessionID
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice state update received; session id ready."))
             await beginVoicePipelineIfReady()
@@ -409,6 +474,16 @@ extension AppModel {
               let token = voicePendingServerToken,
               let endpoint = voicePendingServerEndpoint,
               let userID = botUserId else {
+            return
+        }
+        // Only connect when the stored credentials were received under the
+        // current session. Guards against an interleaved server/state update
+        // pairing a token with a stale session id and tripping close code 4006.
+        guard voiceCredentialsSessionID == sessionID else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Holding voice connect: server credentials are from a previous session; awaiting a refreshed voice server update."
+            ))
             return
         }
         let info = VoiceServerInfo(
@@ -448,13 +523,30 @@ extension AppModel {
         case .disconnecting:
             voiceConnectionStatus = .disconnecting
         case .failed(let reason):
+            // Surface unexpected drops (e.g. a voice gateway WS close after we
+            // were connected) in the activity log. Without this the announcer
+            // silently stops reading — messages are dropped by the
+            // `isConnected` guard in forwardMessageToVoiceAnnouncer with no
+            // trace — while the bot may still appear present in Discord.
+            let wasConnected = voiceConnectionStatus.isConnected
             voiceConnectionStatus = .failed(reason)
+            if wasConnected {
+                addVoiceLogEntry(VoiceEventLogEntry(
+                    time: Date(),
+                    description: "Voice connection lost (\(reason)). Announcer paused — run /announce rejoin to resume reading."
+                ))
+            }
             deactivateAnnouncerSession()
         }
     }
 
     private func applyPreferredVoiceFromSettings(to announcer: VoiceAnnouncementService) {
-        let identifier = settings.voice.preferredVoiceIdentifier
+        applyPreferredVoice(identifier: settings.voice.preferredVoiceIdentifier, to: announcer)
+    }
+
+    /// Resolve `identifier` (empty → best English voice) and apply it to the
+    /// announcer.
+    private func applyPreferredVoice(identifier: String, to announcer: VoiceAnnouncementService) {
         let voice: AVSpeechSynthesisVoice?
         if identifier.isEmpty {
             voice = VoiceTTSSource.preferredEnglishVoice()
@@ -659,6 +751,15 @@ extension AppModel {
                 allWatchedIDs.append(config.voiceChannelID)
             }
             await watcher.setWatchedChannels(allWatchedIDs)
+        }
+
+        // Apply this rule's preferred voice (empty falls back to the global
+        // setting, then the best English voice).
+        if let announcer = voiceAnnouncementService {
+            let identifier = config.preferredVoiceIdentifier.isEmpty
+                ? settings.voice.preferredVoiceIdentifier
+                : config.preferredVoiceIdentifier
+            applyPreferredVoice(identifier: identifier, to: announcer)
         }
 
         let readableNames = channelIDs.map { id in

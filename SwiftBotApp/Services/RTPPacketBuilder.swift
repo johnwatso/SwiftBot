@@ -39,6 +39,15 @@ struct RTPPacketBuilder {
         return header
     }
 
+    /// Advance the timestamp by `samples` (per channel) without emitting a
+    /// packet, to account for a real-time gap during which no audio was sent
+    /// (e.g. the idle keepalive interval). Keeps the RTP timestamp aligned with
+    /// wall-clock so Discord schedules resumed audio with the correct gap
+    /// instead of treating it as continuous.
+    mutating func advanceTimestamp(bySamples samples: UInt32) {
+        timestamp &+= samples
+    }
+
     /// 20 ms of silence as a single Opus frame, useful as a keepalive between
     /// announcements so the Discord client renders the speaker as still
     /// connected.
