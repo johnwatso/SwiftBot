@@ -39,9 +39,9 @@ struct RTPPacketBuilder {
         return header
     }
 
-    /// 20 ms of silence as a single Opus frame, useful as a keepalive between
-    /// announcements so the Discord client renders the speaker as still
-    /// connected.
+    /// 20 ms of silence as a single Opus frame. Sent as a short burst at the end
+    /// of an utterance to flush the receiving Discord decoder so the next
+    /// utterance isn't clipped.
     static var opusSilenceFrame: Data {
         Data([0xF8, 0xFF, 0xFE])
     }

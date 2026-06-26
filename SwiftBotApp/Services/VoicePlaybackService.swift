@@ -35,13 +35,7 @@ actor VoicePlaybackService {
     private var recognizedUserIds: Set<String> = []
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeoutTask: Task<Void, Never>?
-    /// Loop that emits an Opus silence frame every few seconds while connected
-    /// and idle, keeping the UDP path warm without lighting Discord's "speaking"
-    /// ring. The RTP timestamp advances by one frame (960 samples) per packet
-    /// sent — cumulative samples, not wall-clock — which is what Discord expects.
-    private var keepaliveTask: Task<Void, Never>?
-    /// True only while a `speak(...)` call is actively transmitting audio frames,
-    /// so the keepalive loop doesn't also send during playback.
+    /// True only while a `speak(...)` call is actively transmitting audio frames.
     private var isSpeaking: Bool = false
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
@@ -133,8 +127,6 @@ actor VoicePlaybackService {
 
     func disconnect() async {
         await setStatus(.disconnecting)
-        keepaliveTask?.cancel()
-        keepaliveTask = nil
         isSpeaking = false
         await gateway?.disconnect()
         await transport?.stop()
@@ -244,30 +236,33 @@ actor VoicePlaybackService {
             nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
             try? await clock.sleep(until: nextDeadline)
         }
+
+        // Standard Discord end-of-speech marker: a short burst of Opus silence
+        // flushes the receiving decoder so the next utterance isn't clipped.
+        await sendTrailingSilence(5, transport: transport)
     }
 
-    /// Heartbeat-style silence frame to keep the connection alive between
-    /// announcements.
-    func sendKeepalive() async throws {
-        guard status == .connected,
-              !isSpeaking,
-              let transport = transport,
-              var rtp = self.rtp,
-              var encryption = self.encryption,
-              let ssrc = ssrc else {
-            return
+    /// Send `count` Opus silence frames at the end of an utterance. This is the
+    /// standard Discord voice "end of speech" signal: it flushes the receiving
+    /// client's Opus decoder so the next utterance starts cleanly. We do NOT
+    /// send silence while idle — that would keep packets flowing on our SSRC and
+    /// light the "speaking" ring continuously (Discord can't see the encrypted
+    /// payload is silence, so any packet counts as activity).
+    private func sendTrailingSilence(_ count: Int, transport: VoiceUDPTransport) async {
+        guard var rtp = self.rtp, var encryption = self.encryption, let ssrc = ssrc else { return }
+        for _ in 0..<count {
+            let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
+            let plainPayload = RTPPacketBuilder.opusSilenceFrame
+            let encryptedPayload: Data
+            if let coordinator = daveCoordinator {
+                guard let encrypted = try? await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc) else { return }
+                encryptedPayload = encrypted
+            } else {
+                encryptedPayload = plainPayload
+            }
+            guard let packet = try? encryption.seal(rtpHeader: header, payload: encryptedPayload) else { return }
+            try? await transport.send(packet)
         }
-        guard !daveMediaRequired || daveMediaReady else { return }
-        let header = rtp.nextHeader(samplesPerChannel: UInt32(OpusFrameEncoder.samplesPerFrame))
-        let plainPayload = RTPPacketBuilder.opusSilenceFrame
-        let encryptedPayload: Data
-        if let coordinator = daveCoordinator {
-            encryptedPayload = try await coordinator.encryptDiscordAudioFrame(plainPayload, ssrc: ssrc)
-        } else {
-            encryptedPayload = plainPayload
-        }
-        let packet = try encryption.seal(rtpHeader: header, payload: encryptedPayload)
-        try await transport.send(packet)
         self.rtp = rtp
         self.encryption = encryption
     }
@@ -508,8 +503,6 @@ actor VoicePlaybackService {
 
     private func fail(_ reason: String) async {
         Self.logger.error("voice pipeline failed: \(reason)")
-        keepaliveTask?.cancel()
-        keepaliveTask = nil
         isSpeaking = false
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
@@ -529,35 +522,9 @@ actor VoicePlaybackService {
             await logDaveState("secure session active")
         }
         await setStatus(.connected)
-        startKeepalive()
         let continuation = readyContinuation
         readyContinuation = nil
         continuation?.resume()
-    }
-
-    /// Spin up the idle keepalive loop. Paced at 5 seconds to keep the UDP port binding
-    /// active in firewall/NAT without flooding Discord with continuous silence frames,
-    /// ensuring the bot does not show up as speaking (green ring) when silent.
-    private func startKeepalive() {
-        keepaliveTask?.cancel()
-        keepaliveTask = Task { [weak self] in
-            let clock = ContinuousClock()
-            let interval = Duration.seconds(5)
-            var nextDeadline = clock.now.advanced(by: interval)
-            while !Task.isCancelled {
-                guard let self, await self.keepaliveTick() else { return }
-                try? await clock.sleep(until: nextDeadline)
-                nextDeadline = nextDeadline.advanced(by: interval)
-            }
-        }
-    }
-
-    /// One keepalive iteration. Returns `false` once the connection is no longer
-    /// active so the loop can exit.
-    private func keepaliveTick() async -> Bool {
-        guard status == .connected else { return false }
-        try? await sendKeepalive()
-        return true
     }
 
     private func setStatus(_ new: Status) async {
