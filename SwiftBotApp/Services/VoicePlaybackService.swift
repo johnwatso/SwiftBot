@@ -166,6 +166,12 @@ actor VoicePlaybackService {
         return nil
     }
 
+    /// `SendableAudioBuffer` entry point so a rendered buffer can cross from the
+    /// announcer actor (the wrapped `AVAudioPCMBuffer` itself isn't `Sendable`).
+    func speak(pcm wrapped: SendableAudioBuffer) async throws {
+        try await speak(pcm: wrapped.buffer)
+    }
+
     /// Feed pre-resampled 48 kHz stereo Float32 PCM to the encoder. The buffer
     /// is sliced into 20 ms frames (960 samples per channel) and paced out at
     /// 20 ms intervals.
@@ -234,110 +240,6 @@ actor VoicePlaybackService {
             }
             try await sendFrame(chunkBuffer, transport: transport)
             processed += chunkFrames
-
-            nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
-            try? await clock.sleep(until: nextDeadline)
-        }
-    }
-
-    /// Feed a resampled 48 kHz stereo Float32 PCM audio stream to the encoder.
-    /// Audio chunks are sliced into 20 ms frames (960 samples per channel) and
-    /// paced out at 20 ms intervals. `onProgress` fires after each transmitted
-    /// frame so a caller can run an inactivity watchdog over playback.
-    func speak(
-        stream: AsyncThrowingStream<SendableAudioBuffer, Error>,
-        onProgress: @Sendable () -> Void = {}
-    ) async throws {
-        guard status == .connected,
-              let gateway = gateway,
-              let transport = transport,
-              let opus = opus,
-              let ssrc = ssrc else {
-            throw VoicePipelineError.notConnected
-        }
-        guard !daveMediaRequired || daveMediaReady else {
-            throw VoicePipelineError.daveNotReady
-        }
-        try await gateway.sendSpeaking(true, ssrc: ssrc)
-        isSpeaking = true
-        defer {
-            isSpeaking = false
-            Task { try? await gateway.sendSpeaking(false, ssrc: ssrc) }
-        }
-
-        let samplesPerFrame = Int(OpusFrameEncoder.samplesPerFrame)
-        let channels = Int(OpusFrameEncoder.channelCount)
-        let frameDuration = OpusFrameEncoder.frameDuration
-        let floatsPerFrame = samplesPerFrame * channels
-
-        let clock = ContinuousClock()
-        var nextDeadline = clock.now
-
-        // Ring-buffer-style queue: `head` marks the consumed prefix so draining a
-        // frame is O(1) instead of an O(n) `removeFirst`; the consumed prefix is
-        // dropped before each append to keep the backing array bounded.
-        var sampleQueue: [Float] = []
-        var head = 0
-
-        for try await wrappedBuffer in stream {
-            let chunkBuffer = wrappedBuffer.buffer
-            let totalFrames = Int(chunkBuffer.frameLength)
-            guard totalFrames > 0 else { continue }
-            guard let channelData = chunkBuffer.floatChannelData else { continue }
-            let interleaved = chunkBuffer.format.isInterleaved
-
-            // Drop the already-consumed prefix before appending so the backing
-            // array doesn't grow unbounded over a long utterance.
-            if head > 0 {
-                sampleQueue.removeFirst(head)
-                head = 0
-            }
-
-            if interleaved {
-                let src = channelData[0]
-                let sampleCount = totalFrames * channels
-                sampleQueue.append(contentsOf: UnsafeBufferPointer(start: src, count: sampleCount))
-            } else {
-                for i in 0..<totalFrames {
-                    for c in 0..<channels {
-                        sampleQueue.append(channelData[c][i])
-                    }
-                }
-            }
-
-            while sampleQueue.count - head >= floatsPerFrame {
-                guard let frameBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) else {
-                    break
-                }
-                frameBuffer.frameLength = AVAudioFrameCount(samplesPerFrame)
-                if let dest = frameBuffer.floatChannelData?[0] {
-                    sampleQueue.withUnsafeBufferPointer { src in
-                        dest.update(from: src.baseAddress! + head, count: floatsPerFrame)
-                    }
-                }
-                head += floatsPerFrame
-
-                try await sendFrame(frameBuffer, transport: transport)
-                onProgress()
-
-                nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
-                try? await clock.sleep(until: nextDeadline)
-            }
-        }
-
-        // Flush the final partial frame, zero-padding the tail.
-        let remaining = sampleQueue.count - head
-        if remaining > 0,
-           let frameBuffer = AVAudioPCMBuffer(pcmFormat: opus.format, frameCapacity: AVAudioFrameCount(samplesPerFrame)) {
-            frameBuffer.frameLength = AVAudioFrameCount(samplesPerFrame)
-            if let dest = frameBuffer.floatChannelData?[0] {
-                sampleQueue.withUnsafeBufferPointer { src in
-                    dest.update(from: src.baseAddress! + head, count: remaining)
-                }
-                for i in remaining..<floatsPerFrame { dest[i] = 0 }
-            }
-            try await sendFrame(frameBuffer, transport: transport)
-            onProgress()
 
             nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
             try? await clock.sleep(until: nextDeadline)
