@@ -203,6 +203,10 @@ actor VoiceGatewayConnection {
             lastSequenceNumber = sequence
         }
         let payload = json["d"] as? [String: Any] ?? [:]
+        #if DEBUG
+        let opName = VoiceOpcode(rawValue: op).map { String(describing: $0) } ?? "unknown"
+        await debug("🔍 voice gw ← op \(op) (\(opName))")
+        #endif
         switch VoiceOpcode(rawValue: op) {
         case .hello:
             if let interval = payload["heartbeat_interval"] as? Double {
@@ -265,6 +269,9 @@ actor VoiceGatewayConnection {
     private func handle(binary data: Data) async {
         guard let frame = VoiceBinaryFrame.decodeServerFrame(data) else { return }
         lastSequenceNumber = Int(frame.sequence)
+        #if DEBUG
+        await debug("🔍 voice gw ← binary op \(frame.opcode.rawValue) (\(String(describing: frame.opcode)), \(frame.payload.count) bytes)")
+        #endif
         switch frame.opcode {
         case .mlsExternalSenderPackage:
             await onDaveMlsExternalSender?(frame.payload)
