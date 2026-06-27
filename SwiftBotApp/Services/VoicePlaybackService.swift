@@ -42,6 +42,9 @@ actor VoicePlaybackService {
     /// the speaking ring stays off while idle.
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
+    /// When the current connect attempt began, used to time each handshake phase
+    /// in the diagnostics log (so a slow connect can be pinpointed).
+    private var connectStartedAt: ContinuousClock.Instant?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -68,6 +71,7 @@ actor VoicePlaybackService {
             return
         }
         await setStatus(.connecting)
+        connectStartedAt = ContinuousClock().now
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -308,7 +312,7 @@ actor VoicePlaybackService {
             return
         }
         negotiatedMode = mode
-        await debug("Voice selected transport encryption: \(mode.rawValue).")
+        await debug("[+\(elapsedSinceConnect())] Voice gateway ready; selected transport encryption: \(mode.rawValue).")
 
         if let existing = transport {
             await existing.stop()
@@ -318,7 +322,7 @@ actor VoicePlaybackService {
         do {
             try await udp.start()
             let address = try await udp.discoverAddress(ssrc: info.ssrc)
-            await debug("Voice UDP discovery returned \(address.ip):\(address.port); selecting protocol.")
+            await debug("[+\(elapsedSinceConnect())] Voice UDP discovery returned \(address.ip):\(address.port); selecting protocol.")
             try await gateway?.sendSelectProtocol(address: address, mode: mode)
         } catch {
             await fail("ip discovery failed: \(error.localizedDescription)")
@@ -526,7 +530,7 @@ actor VoicePlaybackService {
         daveMediaReady = true
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
-        await debug("Voice media ready: \(reason).")
+        await debug("Voice media ready in \(elapsedSinceConnect()): \(reason).")
         if daveMediaRequired {
             await logDaveState("secure session active")
         }
@@ -580,18 +584,31 @@ actor VoicePlaybackService {
         await onDebug?(message)
     }
 
+    /// Time since the current connect attempt began, e.g. "2.1s", for timing the
+    /// handshake phases in the diagnostics log. "?" before a connect starts.
+    private func elapsedSinceConnect() -> String {
+        guard let start = connectStartedAt else { return "?" }
+        let elapsed = ContinuousClock().now - start
+        let seconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
+        return String(format: "%.1fs", seconds)
+    }
+
     /// Mirror a DAVE protocol/handshake event to both the OS log (Console) and
-    /// the in-app voice diagnostics log. This tracks key-exchange and transition
-    /// state only — it never carries decrypted or spoken message content.
+    /// the in-app voice diagnostics log. Each line is stamped with the time since
+    /// connect started so a slow handshake phase is obvious. This tracks
+    /// key-exchange and transition state only — never spoken/decrypted content.
     private func daveLog(_ message: String) async {
-        Self.logger.info("\(message, privacy: .public)")
-        await debug(message)
+        let stamped = "[+\(elapsedSinceConnect())] \(message)"
+        Self.logger.info("\(stamped, privacy: .public)")
+        await debug(stamped)
     }
 
     /// Like `daveLog`, for failure paths (logged at error level).
     private func daveLogError(_ message: String) async {
-        Self.logger.error("\(message, privacy: .public)")
-        await debug(message)
+        let stamped = "[+\(elapsedSinceConnect())] \(message)"
+        Self.logger.error("\(stamped, privacy: .public)")
+        await debug(stamped)
     }
 
     /// Snapshot the live MLS epoch + handshake state for the diagnostics log.
