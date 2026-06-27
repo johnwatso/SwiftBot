@@ -78,11 +78,14 @@ actor VoiceAnnouncementService {
             let next = queue.removeFirst()
             await onQueueChange?(queue)
             do {
-                await onDebug?("Rendering and streaming speech audio to Discord.")
-                // Stream synthesis straight into playback so audio starts before
-                // the whole utterance is rendered (lower latency).
-                let stream = ttsSource.renderStream(text: next.text, voice: voice)
-                try await playWithStallTimeout(stream: stream, stallSeconds: 15.0)
+                await onDebug?("Rendering speech audio for Discord.")
+                // Render the full utterance to one buffer, then stream it out in
+                // 20 ms frames. (Per-chunk resampling distorts the audio because
+                // AVAudioConverter's resampler state can't be reset mid-stream,
+                // so we render-then-play rather than convert-as-we-go.)
+                let rendered = try await renderWithTimeout(text: next.text, seconds: 30.0)
+                await onDebug?("Sending speech audio to Discord.")
+                try await playback.speak(pcm: rendered)
                 await onDebug?("Finished Discord speech (\(next.text.count) chars).")
                 recordRecent(next)
             } catch {
@@ -92,33 +95,26 @@ actor VoiceAnnouncementService {
         }
     }
 
-    /// Play `stream` with an inactivity watchdog: the timeout fires only when no
-    /// audio frame is transmitted for `stallSeconds`, so a legitimately long
-    /// message plays in full while a hung synthesiser or stalled network is still
-    /// bounded. Cancelling playback terminates the render stream, which stops the
-    /// underlying synthesiser.
-    private func playWithStallTimeout(
-        stream: AsyncThrowingStream<SendableAudioBuffer, Error>,
-        stallSeconds: Double
-    ) async throws {
-        let progress = ProgressTracker()
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { [playback] in
-                try await playback.speak(stream: stream, onProgress: { progress.tick() })
+    /// Render `text` to a single PCM buffer, bounded by `seconds` so a hung
+    /// synthesiser can't stall the whole announcement queue. The voice is passed
+    /// by identifier because `AVSpeechSynthesisVoice` isn't `Sendable`; the
+    /// result stays wrapped in `SendableAudioBuffer` so the non-Sendable buffer
+    /// can cross to the playback actor safely.
+    private func renderWithTimeout(text: String, seconds: Double) async throws -> SendableAudioBuffer {
+        let voiceID = voice?.identifier
+        return try await withThrowingTaskGroup(of: SendableAudioBuffer.self) { group in
+            group.addTask { [ttsSource] in
+                let resolved = voiceID.flatMap { AVSpeechSynthesisVoice(identifier: $0) }
+                let buffer = try await ttsSource.render(text: text, voice: resolved)
+                return SendableAudioBuffer(buffer: buffer)
             }
             group.addTask {
-                let clock = ContinuousClock()
-                while true {
-                    try await Task.sleep(for: .seconds(1))
-                    if clock.now - progress.last > .seconds(stallSeconds) {
-                        throw VoicePipelineError.timeout
-                    }
-                }
+                try await Task.sleep(for: .seconds(seconds))
+                throw VoicePipelineError.timeout
             }
             defer { group.cancelAll() }
-            // First child to finish decides the outcome: playback returns on
-            // success, the watchdog (or a playback error) throws otherwise.
-            try await group.next()
+            guard let first = try await group.next() else { throw VoicePipelineError.timeout }
+            return first
         }
     }
 
@@ -127,22 +123,5 @@ actor VoiceAnnouncementService {
         if recent.count > recentLimit { recent.removeLast(recent.count - recentLimit) }
         let copy = recent
         Task { await onRecentChange?(copy) }
-    }
-}
-
-/// Thread-safe record of the last playback-progress timestamp, shared between
-/// the playback task (which ticks it) and the stall watchdog (which reads it).
-private final class ProgressTracker: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _last: ContinuousClock.Instant = ContinuousClock().now
-
-    var last: ContinuousClock.Instant {
-        lock.lock(); defer { lock.unlock() }
-        return _last
-    }
-
-    func tick() {
-        let now = ContinuousClock().now
-        lock.lock(); _last = now; lock.unlock()
     }
 }
