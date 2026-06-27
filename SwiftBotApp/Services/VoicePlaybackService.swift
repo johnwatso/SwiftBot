@@ -45,6 +45,9 @@ actor VoicePlaybackService {
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
+    /// When the previous DAVE log line was emitted, so each line can show the gap
+    /// since the last step (Δ) — the big Δ is where the handshake stalls.
+    private var lastDaveStepAt: ContinuousClock.Instant?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -72,6 +75,7 @@ actor VoicePlaybackService {
         }
         await setStatus(.connecting)
         connectStartedAt = ContinuousClock().now
+        lastDaveStepAt = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -350,6 +354,7 @@ actor VoicePlaybackService {
 
                 try await sendDaveKeyPackage(reason: "session description")
                 await daveLog("Waiting for DAVE MLS transition before enabling Discord speech.")
+                await verbose("awaiting Discord → MLS external-sender package + proposals (a large next Δ means Discord is the slow side here)")
             } catch {
                 await daveLogError("DAVE coordinator initialization failed: \(error.localizedDescription)")
                 await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
@@ -427,6 +432,7 @@ actor VoicePlaybackService {
             }
             await daveLog("DAVE external sender registered.")
             try await sendDaveKeyPackage(reason: "external sender")
+            await verbose("awaiting Discord → MLS proposals")
         } catch {
             await daveLogError("DAVE external sender registration failed: \(error.localizedDescription)")
         }
@@ -445,6 +451,7 @@ actor VoicePlaybackService {
             )
             try await gateway?.sendMlsCommitWelcome(commitWelcome)
             await daveLog("DAVE MLS proposals processed; commit/welcome sent.")
+            await verbose("awaiting Discord → announce-commit / welcome + execute-transition")
         } catch {
             await daveLogError("DAVE proposal handling failed: \(error.localizedDescription)")
         }
@@ -456,6 +463,7 @@ actor VoicePlaybackService {
             try await daveCoordinator?.processDiscordTransition(.commit(data))
             await daveLog("DAVE commit processed; transition-ready sent (id \(transitionId)).")
             try await gateway?.sendTransitionReady(transitionId: transitionId)
+            await verbose("transition-ready sent; awaiting Discord → execute-transition (id \(transitionId))")
         } catch {
             await daveLogError("DAVE commit processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
@@ -472,6 +480,7 @@ actor VoicePlaybackService {
             )
             await daveLog("DAVE welcome processed; transition-ready sent (id \(transitionId)).")
             try await gateway.sendTransitionReady(transitionId: transitionId)
+            await verbose("transition-ready sent; awaiting Discord → execute-transition (id \(transitionId))")
         } catch {
             await daveLogError("DAVE welcome processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
@@ -584,31 +593,53 @@ actor VoicePlaybackService {
         await onDebug?(message)
     }
 
+    private static func format(_ duration: Duration) -> String {
+        let seconds = Double(duration.components.seconds)
+            + Double(duration.components.attoseconds) / 1_000_000_000_000_000_000
+        return String(format: "%.1fs", seconds)
+    }
+
     /// Time since the current connect attempt began, e.g. "2.1s", for timing the
     /// handshake phases in the diagnostics log. "?" before a connect starts.
     private func elapsedSinceConnect() -> String {
         guard let start = connectStartedAt else { return "?" }
-        let elapsed = ContinuousClock().now - start
-        let seconds = Double(elapsed.components.seconds)
-            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
-        return String(format: "%.1fs", seconds)
+        return Self.format(ContinuousClock().now - start)
+    }
+
+    /// `[+total Δsince-last-step]` prefix for DAVE lines, and advances the
+    /// step clock. The large Δ on a line is the gap we spent waiting before it.
+    private func daveTimingPrefix() -> String {
+        let now = ContinuousClock().now
+        let total = connectStartedAt.map { Self.format(now - $0) } ?? "?"
+        let delta = lastDaveStepAt.map { Self.format(now - $0) } ?? total
+        lastDaveStepAt = now
+        return "[+\(total) Δ\(delta)]"
     }
 
     /// Mirror a DAVE protocol/handshake event to both the OS log (Console) and
     /// the in-app voice diagnostics log. Each line is stamped with the time since
-    /// connect started so a slow handshake phase is obvious. This tracks
-    /// key-exchange and transition state only — never spoken/decrypted content.
+    /// connect started and the gap since the previous step, so a slow handshake
+    /// phase is obvious. Tracks key-exchange/transition state only — never
+    /// spoken/decrypted content.
     private func daveLog(_ message: String) async {
-        let stamped = "[+\(elapsedSinceConnect())] \(message)"
+        let stamped = "\(daveTimingPrefix()) \(message)"
         Self.logger.info("\(stamped, privacy: .public)")
         await debug(stamped)
     }
 
     /// Like `daveLog`, for failure paths (logged at error level).
     private func daveLogError(_ message: String) async {
-        let stamped = "[+\(elapsedSinceConnect())] \(message)"
+        let stamped = "\(daveTimingPrefix()) \(message)"
         Self.logger.error("\(stamped, privacy: .public)")
         await debug(stamped)
+    }
+
+    /// Extra-detailed diagnostics that only surface in DEBUG builds (Dev), so
+    /// release logs stay clean. Used for blow-by-blow voice/DAVE tracing.
+    private func verbose(_ message: String) async {
+        #if DEBUG
+        await debug("🔍 [+\(elapsedSinceConnect())] \(message)")
+        #endif
     }
 
     /// Snapshot the live MLS epoch + handshake state for the diagnostics log.

@@ -510,6 +510,16 @@ struct VoiceView: View {
         }
     }
 
+    /// Technical Logs render more lines in DEBUG (Dev) builds so a full connect
+    /// sequence stays visible; release stays compact.
+    private var technicalLogLimit: Int {
+        #if DEBUG
+        return 60
+        #else
+        return 12
+        #endif
+    }
+
     private var recentActivitySection: some View {
         AutomationsSection(title: "Recent Activity", symbol: "text.bubble") {
             VStack(alignment: .leading, spacing: 8) {
@@ -518,10 +528,10 @@ struct VoiceView: View {
                 } else {
                     ForEach(Array(app.voiceLog.prefix(8))) { entry in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(entry.time, style: .time)
+                            Text(entry.time, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.tertiary)
-                                .frame(width: 48, alignment: .leading)
+                                .frame(width: 64, alignment: .leading)
                             Text(humanReadableLog(entry.description))
                                 .font(.caption)
                                 .foregroundStyle(.primary)
@@ -533,7 +543,7 @@ struct VoiceView: View {
 
                     DisclosureGroup("Technical Logs", isExpanded: $technicalLogsExpanded) {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(app.voiceLog.prefix(12))) { entry in
+                            ForEach(Array(app.voiceLog.prefix(technicalLogLimit))) { entry in
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     Text(entry.time, style: .time)
                                         .font(.caption2.monospacedDigit())
