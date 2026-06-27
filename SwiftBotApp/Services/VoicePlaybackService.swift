@@ -37,6 +37,11 @@ actor VoicePlaybackService {
     private var connectionTimeoutTask: Task<Void, Never>?
     /// True only while a `speak(...)` call is actively transmitting audio frames.
     private var isSpeaking: Bool = false
+    /// Periodic Discord UDP keepalive. Keeps the NAT/UDP mapping alive between
+    /// utterances so playback doesn't go stale — without sending RTP audio, so
+    /// the speaking ring stays off while idle.
+    private var keepaliveTask: Task<Void, Never>?
+    private var keepaliveCounter: UInt32 = 0
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -127,6 +132,8 @@ actor VoicePlaybackService {
 
     func disconnect() async {
         await setStatus(.disconnecting)
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
         isSpeaking = false
         await gateway?.disconnect()
         await transport?.stop()
@@ -599,6 +606,8 @@ actor VoicePlaybackService {
 
     private func fail(_ reason: String) async {
         Self.logger.error("voice pipeline failed: \(reason)")
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
         isSpeaking = false
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
@@ -618,9 +627,44 @@ actor VoicePlaybackService {
             await logDaveState("secure session active")
         }
         await setStatus(.connected)
+        startKeepalive()
         let continuation = readyContinuation
         readyContinuation = nil
         continuation?.resume()
+    }
+
+    /// Discord UDP keepalive loop: every 5 s send an 8-byte datagram (a
+    /// little-endian counter in the first 4 bytes) to keep the NAT/UDP mapping
+    /// warm so the next utterance isn't dropped as stale. This is NOT an RTP
+    /// audio packet, so Discord doesn't light the speaking ring for it.
+    private func startKeepalive() {
+        keepaliveTask?.cancel()
+        keepaliveCounter = 0
+        keepaliveTask = Task { [weak self] in
+            let clock = ContinuousClock()
+            let interval = Duration.seconds(5)
+            var nextDeadline = clock.now.advanced(by: interval)
+            while !Task.isCancelled {
+                try? await clock.sleep(until: nextDeadline)
+                nextDeadline = nextDeadline.advanced(by: interval)
+                guard let self, await self.sendKeepaliveDatagram() else { return }
+            }
+        }
+    }
+
+    /// Send one keepalive datagram. Returns `false` once the connection is no
+    /// longer active so the loop can exit.
+    private func sendKeepaliveDatagram() async -> Bool {
+        guard status == .connected, let transport = transport else { return false }
+        var packet = Data(count: 8)
+        let counter = keepaliveCounter
+        packet[0] = UInt8(counter & 0xff)
+        packet[1] = UInt8((counter >> 8) & 0xff)
+        packet[2] = UInt8((counter >> 16) & 0xff)
+        packet[3] = UInt8((counter >> 24) & 0xff)
+        keepaliveCounter &+= 1
+        try? await transport.send(packet)
+        return true
     }
 
     private func setStatus(_ new: Status) async {
