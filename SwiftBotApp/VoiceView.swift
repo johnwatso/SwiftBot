@@ -545,10 +545,10 @@ struct VoiceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(Array(app.voiceLog.prefix(technicalLogLimit))) { entry in
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Text(entry.time, style: .time)
+                                    Text(entry.time, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
                                         .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.tertiary)
-                                        .frame(width: 48, alignment: .leading)
+                                        .frame(width: 64, alignment: .leading)
                                     Text(entry.description)
                                         .font(.caption2.monospaced())
                                         .foregroundStyle(.secondary)
