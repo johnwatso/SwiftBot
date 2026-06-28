@@ -48,6 +48,14 @@ actor VoicePlaybackService {
     /// When the previous DAVE log line was emitted, so each line can show the gap
     /// since the last step (Δ) — the big Δ is where the handshake stalls.
     private var lastDaveStepAt: ContinuousClock.Instant?
+    /// Whether we've published our MLS key package for the current handshake.
+    /// The key package must be sent only AFTER the server's external sender
+    /// arrives; sending it earlier (or twice) makes Discord build its Welcome for
+    /// a stale key package and forces a slow MLS reset/recovery.
+    private var daveInitialKeyPackageSent = false
+    /// Fallback that publishes the key package if the external sender is slow to
+    /// arrive, so a missing external sender can't stall the handshake.
+    private var daveKeyPackageFallbackTask: Task<Void, Never>?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -76,6 +84,9 @@ actor VoicePlaybackService {
         await setStatus(.connecting)
         connectStartedAt = ContinuousClock().now
         lastDaveStepAt = nil
+        daveInitialKeyPackageSent = false
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -142,6 +153,8 @@ actor VoicePlaybackService {
         await setStatus(.disconnecting)
         keepaliveTask?.cancel()
         keepaliveTask = nil
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = nil
         isSpeaking = false
         await gateway?.disconnect()
         await transport?.stop()
@@ -352,9 +365,17 @@ actor VoicePlaybackService {
                 await daveLog("DAVE MLS coordinator configured (self user \(gateway.server.userID)).")
                 try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "session description")
 
-                try await sendDaveKeyPackage(reason: "session description")
-                await daveLog("Waiting for DAVE MLS transition before enabling Discord speech.")
-                await verbose("awaiting Discord → MLS external-sender package + proposals (a large next Δ means Discord is the slow side here)")
+                // Publish the key package only AFTER the external sender arrives
+                // (the MLS-correct order). If the external sender was already
+                // cached (reconnect), send now; otherwise wait for it, with a
+                // fallback so a missing external sender can't stall us.
+                if daveExternalSender != nil {
+                    await sendInitialDaveKeyPackage(reason: "session description (external sender cached)")
+                } else {
+                    await daveLog("Waiting for DAVE external sender before publishing key package.")
+                    await verbose("awaiting Discord → MLS external-sender package (a large next Δ means Discord is the slow side here)")
+                    startDaveKeyPackageFallback()
+                }
             } catch {
                 await daveLogError("DAVE coordinator initialization failed: \(error.localizedDescription)")
                 await fail("DAVE coordinator initialization failed: \(error.localizedDescription)")
@@ -431,7 +452,7 @@ actor VoicePlaybackService {
                 try await coordinator.setExternalSender(data)
             }
             await daveLog("DAVE external sender registered.")
-            try await sendDaveKeyPackage(reason: "external sender")
+            await sendInitialDaveKeyPackage(reason: "external sender")
             await verbose("awaiting Discord → MLS proposals")
         } catch {
             await daveLogError("DAVE external sender registration failed: \(error.localizedDescription)")
@@ -494,6 +515,39 @@ actor VoicePlaybackService {
         await daveLog("DAVE MLS key package sent after \(reason).")
     }
 
+    /// Publish the initial key package exactly once per handshake (guarded so the
+    /// external-sender path and the fallback timer can't double-send, which is
+    /// what caused the "Welcome not intended for key package" failure).
+    private func sendInitialDaveKeyPackage(reason: String) async {
+        guard !daveInitialKeyPackageSent, daveCoordinator != nil else { return }
+        daveInitialKeyPackageSent = true
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = nil
+        do {
+            try await sendDaveKeyPackage(reason: reason)
+        } catch {
+            await daveLogError("DAVE key package send failed (\(reason)): \(error.localizedDescription)")
+        }
+    }
+
+    /// If the server's external sender doesn't arrive shortly after the session
+    /// description, publish the key package anyway so the handshake can't stall.
+    private func startDaveKeyPackageFallback() {
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            await self.fireDaveKeyPackageFallback()
+        }
+    }
+
+    private func fireDaveKeyPackageFallback() async {
+        guard !daveInitialKeyPackageSent else { return }
+        await daveLog("DAVE external sender not received in ~3s; publishing key package as fallback.")
+        await sendInitialDaveKeyPackage(reason: "fallback (external sender delayed)")
+    }
+
     private func recoverFromInvalidDaveTransition(transitionId: UInt64) async {
         await daveLog("DAVE recovering from invalid transition (id \(transitionId)); resetting MLS session.")
         do {
@@ -525,6 +579,8 @@ actor VoicePlaybackService {
         Self.logger.error("voice pipeline failed: \(reason)")
         keepaliveTask?.cancel()
         keepaliveTask = nil
+        daveKeyPackageFallbackTask?.cancel()
+        daveKeyPackageFallbackTask = nil
         isSpeaking = false
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
