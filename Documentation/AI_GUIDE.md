@@ -230,7 +230,7 @@ private func handleMyEvent(_ raw: DiscordJSON?) {
 
 ### Adding a Rule Trigger Type
 
-**Location:** `SwiftBotApp/Models/Automations.swift` → `TriggerKind` enum
+**Location:** `Sources/SwiftBot/Models/Automations.swift` → `TriggerKind` enum
 
 ```swift
 enum TriggerKind: String, Codable, Hashable, Sendable, CaseIterable {
@@ -247,7 +247,7 @@ enum TriggerKind: String, Codable, Hashable, Sendable, CaseIterable {
 
 ### Adding a Rule Action Type (Step Kind)
 
-**Location:** `SwiftBotApp/Models/Automations.swift` → `StepKind` enum
+**Location:** `Sources/SwiftBot/Models/Automations.swift` → `StepKind` enum
 
 ```swift
 enum StepKind: String, Codable, Hashable, Sendable, CaseIterable {

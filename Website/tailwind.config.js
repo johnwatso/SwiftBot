@@ -1,15 +1,16 @@
 /**
- * Tailwind config for the SwiftBot landing page (docs/index.html).
+ * Tailwind config for the SwiftBot landing page (Website/public/index.html).
  * Brand palette is borrowed from the SwiftBot app Web UI (Apple blue + Discord
  * blurple + cyan) so the marketing site matches the product.
  *
- * Rebuild the static stylesheet after editing index.html classes:
- *   cd docs && npx tailwindcss@3 -c tailwind.config.js \
- *     -i assets/css/tailwind.src.css -o assets/css/tailwind.css --minify
+ * Rebuild the static stylesheet (from the repo root) after editing index.html classes:
+ *   npx tailwindcss@3 -c Website/tailwind.config.js \
+ *     -i Website/styles/tailwind.src.css \
+ *     -o Website/public/assets/css/tailwind.css --minify
  */
 module.exports = {
   darkMode: 'class',
-  content: ['./index.html', './help/**/*.html'],
+  content: ['./public/index.html', './public/help/**/*.html'],
   theme: {
     extend: {
       colors: {

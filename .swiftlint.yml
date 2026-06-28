@@ -129,14 +129,14 @@ analyzer_rules:
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 included:
-  - SwiftBotApp
+  - Sources/SwiftBot
   - Tools
 
 excluded:
   - .build
   - DerivedData
   - Pods
-  - SwiftBotApp/Resources
+  - Sources/SwiftBot/Resources
   - Tests
 
 # ── Reporter ───────────────────────────────────────────────────────────────────

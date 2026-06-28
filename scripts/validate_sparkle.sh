@@ -6,9 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-INFO_PLIST="$ROOT_DIR/SwiftBot-Info.plist"
-APPCAST_STABLE="$ROOT_DIR/docs/appcast.xml"
-APPCAST_BETA="$ROOT_DIR/docs/beta/appcast.xml"
+INFO_PLIST="$ROOT_DIR/Sources/SwiftBot/Info.plist"
+APPCAST_STABLE="$ROOT_DIR/Website/public/appcast.xml"
+APPCAST_BETA="$ROOT_DIR/Website/public/beta/appcast.xml"
 
 echo "🔍 Validating Sparkle Release Pipeline..."
 

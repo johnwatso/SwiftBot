@@ -3,7 +3,7 @@ import Network
 import CryptoKit
 @testable import SwiftBot
 
-// Note: AITestOverrides is now in SwiftBotApp/TestSupport.swift (wrapped in #if DEBUG)
+// Note: AITestOverrides is now in Sources/SwiftBot/TestSupport.swift (wrapped in #if DEBUG)
 // so it's available to both production code (in Debug) and tests via @testable.
 
 extension ClusterCoordinator {
