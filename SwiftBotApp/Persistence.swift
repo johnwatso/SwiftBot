@@ -372,6 +372,12 @@ actor DiscordCacheStore {
         let data = try encoder.encode(snapshot)
         try data.write(to: url, options: .atomic)
     }
+
+    /// Remove the persisted cache file so stale server data (channel/role/member
+    /// names from a previously-connected server) doesn't linger.
+    func delete() {
+        try? FileManager.default.removeItem(at: url)
+    }
 }
 
 @MainActor

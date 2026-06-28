@@ -5,6 +5,7 @@ struct GeneralPreferencesView: View {
     @EnvironmentObject var app: AppModel
 
     @State private var showRunSetupPrompt = false
+    @State private var showClearCachePrompt = false
     @State private var transientToastMessage: String?
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var inviteActionInProgress = false
@@ -130,6 +131,43 @@ struct GeneralPreferencesView: View {
                 }
             } header: {
                 Text("Setup")
+            }
+            .preferencesCardDisabled(when: app.isFailoverManagedNode)
+
+            Section {
+                Button(role: .destructive) {
+                    showClearCachePrompt = true
+                } label: {
+                    Label("Clear Cached Data…", systemImage: "trash")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .confirmationDialog(
+                    "Clear cached server data?",
+                    isPresented: $showClearCachePrompt,
+                    titleVisibility: .visible
+                ) {
+                    Button("Clear Cache", role: .destructive) {
+                        Task {
+                            await app.clearCachedData()
+                            transientToastMessage = "Cached server data cleared."
+                            toastDismissTask?.cancel()
+                            toastDismissTask = Task {
+                                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                                transientToastMessage = nil
+                            }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Removes cached channel, role, and member names from previously-connected servers. Your settings and token are kept. Restart the bot to repopulate from the current server.")
+                }
+            } header: {
+                Text("Cached Data")
+            } footer: {
+                Text("Use this after moving SwiftBot to a different server so stale names don't linger.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .preferencesCardDisabled(when: app.isFailoverManagedNode)
         }

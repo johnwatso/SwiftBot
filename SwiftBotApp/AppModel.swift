@@ -1211,6 +1211,24 @@ final class AppModel: ObservableObject {
         persistAnalyticsRuntime()
     }
 
+    /// Clear cached Discord server data — the in-memory cache, the on-disk
+    /// `discord-cache.json`, and the derived published lists (channels, roles,
+    /// members, invites). Useful after moving the bot to a different server so
+    /// names/IDs from the old server don't linger. Live data repopulates from
+    /// gateway events the next time the bot connects.
+    func clearCachedData() async {
+        await discordCache.replace(with: DiscordCacheSnapshot())
+        await discordCacheStore.delete()
+        connectedServers = [:]
+        availableVoiceChannelsByServer = [:]
+        availableTextChannelsByServer = [:]
+        availableRolesByServer = [:]
+        welcomeFlowInvitesByServer = [:]
+        knownGuildMemberIds = []
+        guildAvatarHashByMemberKey = [:]
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Cleared cached Discord server data."))
+    }
+
     private func restoreAnalyticsRuntime(_ snapshot: AnalyticsRuntimeSnapshot) {
         events = snapshot.events
         commandLog = snapshot.commandLog
