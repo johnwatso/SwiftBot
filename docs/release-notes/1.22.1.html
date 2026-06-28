@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.22.1 — Release Notes</title>
+  <title>SwiftBot 1.22.1: voice announcer reliability &amp; faster encrypted connect - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -16,93 +16,38 @@
     main {
       max-width: 760px;
       margin: 0 auto;
-      padding: 32px;
+      padding: 28px;
       border-radius: 22px;
       background: rgba(255, 255, 255, 0.86);
       box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
     }
     h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    h2 {
-      margin: 30px 0 12px;
-      font-size: 19px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .meta { margin: 0 0 20px; color: #52606d; font-size: 14px; }
-    .lead { margin: 0 0 8px; font-size: 17px; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
     p { margin: 0 0 16px; }
-    ul { margin: 0 0 18px; padding-left: 0; list-style: none; }
-    li { position: relative; padding: 6px 0 6px 26px; }
-    li::before {
-      content: "";
-      position: absolute;
-      left: 4px; top: 13px;
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: #0a67a3;
-    }
-    li strong { font-weight: 600; }
-    code {
-      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-      background: rgba(10, 103, 163, 0.10);
-      padding: 1px 6px;
-      border-radius: 6px;
-    }
-    .divider { height: 1px; background: rgba(15, 23, 32, 0.08); border: 0; margin: 26px 0; }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .footer { color: #52606d; font-size: 13px; margin-top: 26px; }
     @media (prefers-color-scheme: dark) {
       body { background: #0b1015; color: #edf2f7; }
       main {
         background: rgba(15, 23, 32, 0.88);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
       }
-      .meta, .footer { color: #9fb0c2; }
-      li::before { background: #73c3ff; }
-      code { background: rgba(115, 195, 255, 0.14); }
-      .divider { background: rgba(255, 255, 255, 0.10); }
+      .meta { color: #9fb0c2; }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.22.1</h1>
-    <p class="meta">Patch release · Build 2026062801</p>
-    <p class="lead">A focused follow-up to 1.22 that makes the voice Announcer dependable end to end — clean audio, a connection that stays up, and a much faster, more reliable encrypted (DAVE) handshake.</p>
-
-    <hr class="divider">
-
-    <h2>🔊 Voice Announcer — clean, reliable audio</h2>
-    <ul>
-      <li><strong>Fixed silent and distorted speech.</strong> Announcements now render and play through cleanly, with correctly paced 20&nbsp;ms audio frames.</li>
-      <li><strong>The connection no longer goes stale.</strong> A proper UDP keepalive keeps the voice link warm between messages, so the Announcer keeps reading instead of quietly dropping after the first few.</li>
-      <li><strong>No more phantom "speaking" indicator.</strong> The green voice-activity ring now lights only while SwiftBot is actually talking, not on a timer while idle.</li>
-      <li><strong>Cleaner message handoff.</strong> A short end-of-speech marker is sent after each announcement so the next one starts without clipping.</li>
-    </ul>
-
-    <h2>🔐 Faster, more reliable encrypted connect (DAVE)</h2>
-    <ul>
-      <li><strong>Connects in seconds, not 15.</strong> Fixed an MLS key-package ordering bug that was forcing a slow reset-and-retry on every join.</li>
-      <li><strong>No more failed joins on some servers.</strong> SwiftBot now finishes connecting as soon as the secure session is ready, instead of waiting for a follow-up signal some servers never send (which previously timed out and failed).</li>
-      <li><strong>End-to-end encryption stays on</strong> throughout — these are reliability fixes to the DAVE handshake, not a downgrade.</li>
-    </ul>
-
-    <h2>🩺 Diagnostics &amp; tooling</h2>
-    <ul>
-      <li><strong>Clear, timestamped voice logs.</strong> The Announcer's Technical Logs now show second-resolution timestamps and a full, labelled trace of the connection and DAVE handshake — including how long each phase took — so issues are easy to pinpoint.</li>
-      <li><strong>Privacy-aware.</strong> Spoken message content is kept out of the diagnostics log (it still appears in the Recent list).</li>
-      <li><strong>New: Clear Cached Data button.</strong> Under <code>General</code> preferences — wipes cached channel, role, and member names from previously-connected servers. Handy after moving SwiftBot to a different server. Your settings and token are preserved.</li>
-    </ul>
-
-    <h2>🧹 Maintenance</h2>
-    <ul>
-      <li>Resolved build warnings and a deprecated API usage for a cleaner, future-proof build.</li>
-    </ul>
-
-    <p class="footer">Upgrading from 1.22 — no configuration changes required. If you've moved SwiftBot to a new server, use <strong>General → Clear Cached Data</strong> to drop any stale server names.</p>
+    <h1>SwiftBot 1.22.1: voice announcer reliability &amp; faster encrypted connect</h1>
+    <p class="meta">Version 1.22.1 · Build 2026062801</p>
+    <p>A focused follow-up to 1.22 that makes the voice Announcer dependable end to end — clean audio, a connection that stays up, and a much faster, more reliable encrypted (DAVE) handshake.</p>
+<p>Voice Announcer:<br>- Fixed silent and distorted speech; announcements render and play through cleanly.<br>- Added a proper UDP keepalive so the voice link no longer goes stale between messages and stops reading after the first few.<br>- The green voice-activity ring now lights only while SwiftBot is actually talking, not on a timer while idle.<br>- A short end-of-speech marker is sent after each announcement so the next one starts without clipping.</p>
+<p>Encrypted connect (DAVE):<br>- Connects in seconds instead of ~15: fixed an MLS key-package ordering bug that forced a slow reset-and-retry on every join.<br>- No more failed joins on some servers: SwiftBot completes the connection as soon as the secure session is ready, instead of waiting for a follow-up signal some servers never send.<br>- End-to-end encryption stays on throughout — these are reliability fixes, not a downgrade.</p>
+<p>Diagnostics &amp; tooling:<br>- The Announcer's Technical Logs now show second-resolution timestamps and a full, labelled trace of the connection and DAVE handshake, including how long each phase took.<br>- Spoken message content is kept out of the diagnostics log (it still appears in the Recent list).<br>- New: a Clear Cached Data button under General preferences that wipes cached channel, role, and member names from previously-connected servers. Settings and token are preserved.</p>
+<p>Maintenance:<br>- Resolved build warnings and a deprecated API usage for a cleaner, future-proof build.</p>
+<p>Upgrading from 1.22 needs no configuration changes. If you've moved SwiftBot to a new server, use General → Clear Cached Data to drop any stale server names.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/fb16027">fb16027</a></p>
   </main>
 </body>
 </html>
