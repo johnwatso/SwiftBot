@@ -3,135 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SwiftBot 1.22.1 - Release Notes</title>
+  <title>Restyle 1.21–1.22.1 release notes to the 1.20 sectioned template - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f7fb;
-      color: #111827;
+      background: #f4f6f8;
+      color: #0f1720;
     }
     main {
-      max-width: 780px;
+      max-width: 760px;
       margin: 0 auto;
-      padding: 30px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
-      border: 1px solid rgba(82, 96, 109, 0.14);
+      padding: 28px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
-    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    .intro { margin: 0 0 22px; color: #364152; }
-    section {
-      margin: 18px 0 0;
-      padding: 18px 18px 14px;
-      border: 1px solid rgba(82, 96, 109, 0.18);
-      border-left: 5px solid var(--accent, #0a67a3);
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.56);
-    }
-    section.security { --accent: #a21caf; }
-    section.mesh { --accent: #4f46a5; }
-    section.automation { --accent: #0f766e; }
-    section.ui { --accent: #b45309; }
-    section.core { --accent: #0a67a3; }
-    section.docs { --accent: #52606d; }
-    section.voice { --accent: #0e7490; }
-    section.dave { --accent: #7c3aed; }
-    section.reliability { --accent: #15803d; }
-    section.release { --accent: #52606d; }
-    .badge {
-      display: inline-grid;
-      width: 28px;
-      height: 28px;
-      place-items: center;
-      margin-right: 8px;
-      border-radius: 8px;
-      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
-      font-size: 16px;
-      vertical-align: middle;
-    }
-    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
-    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
-    ul { margin: 0; padding-left: 22px; }
-    li { margin: 0 0 8px; }
-    li:last-child { margin-bottom: 0; }
-    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
-    code {
-      padding: 1px 5px;
-      border-radius: 6px;
-      background: rgba(82, 96, 109, 0.12);
-      font-size: 0.92em;
-    }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
+    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
+    p { margin: 0 0 16px; }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1017; color: #edf2f7; }
+      body { background: #0b1015; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.92);
+        background: rgba(15, 23, 32, 0.88);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta, .summary, .commit-link { color: #9fb0c2; }
-      .intro { color: #c8d3df; }
-      section {
-        border-color: rgba(159, 176, 194, 0.18);
-        background: rgba(255, 255, 255, 0.04);
-      }
-      code { background: rgba(159, 176, 194, 0.16); }
+      .meta { color: #9fb0c2; }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>SwiftBot 1.22.1</h1>
-    <p class="meta">Version 1.22.1 · Build 2026062801</p>
-    <p class="intro">A focused follow-up to 1.22 that makes the voice Announcer dependable end to end — clean audio, a connection that stays up, and a much faster, more reliable encrypted (DAVE) handshake.</p>
-
-    <section class="voice">
-      <h2><span class="badge" aria-hidden="true">🔊</span>Voice Announcer</h2>
-      <p class="summary">Clean audio and a connection that stays up.</p>
-      <ul>
-        <li><strong>Fixed silent and distorted speech:</strong> Announcements render and play through cleanly.</li>
-        <li><strong>Stays connected:</strong> A proper UDP keepalive keeps the voice link warm between messages, so the Announcer no longer stops reading after the first few.</li>
-        <li><strong>Accurate activity indicator:</strong> The green voice-activity ring lights only while SwiftBot is actually talking, not on a timer while idle.</li>
-        <li><strong>Clean handoff:</strong> A short end-of-speech marker is sent after each announcement so the next one starts without clipping.</li>
-      </ul>
-    </section>
-
-    <section class="dave">
-      <h2><span class="badge" aria-hidden="true">🔐</span>Encrypted Connect (DAVE)</h2>
-      <p class="summary">Faster, more reliable end-to-end-encrypted voice connections.</p>
-      <ul>
-        <li><strong>Connects in seconds, not ~15:</strong> Fixed an MLS key-package ordering bug that forced a slow reset-and-retry on every join.</li>
-        <li><strong>No more failed joins on some servers:</strong> The connection completes as soon as the secure session is ready, instead of waiting for a follow-up signal some servers never send.</li>
-        <li><strong>Encryption stays on:</strong> These are reliability fixes to the DAVE handshake, not a downgrade.</li>
-      </ul>
-    </section>
-
-    <section class="ui">
-      <h2><span class="badge" aria-hidden="true">🩺</span>Diagnostics &amp; Tooling</h2>
-      <p class="summary">Easier to inspect voice connections, with privacy in mind.</p>
-      <ul>
-        <li><strong>Detailed logs:</strong> Second-resolution timestamps and a full, labelled trace of the connection and DAVE handshake in the Technical Logs, including per-phase timing.</li>
-        <li><strong>Privacy-aware:</strong> Spoken message content is kept out of the diagnostics log (it still appears in the Recent list).</li>
-        <li><strong>Clear Cached Data:</strong> A new button under <code>General</code> preferences wipes cached channel, role, and member names from previously-connected servers. Settings and token are preserved.</li>
-      </ul>
-    </section>
-
-    <section class="release">
-      <h2><span class="badge" aria-hidden="true">🧹</span>Maintenance</h2>
-      <p class="summary">Housekeeping for a cleaner build.</p>
-      <ul>
-        <li>Resolved build warnings and a deprecated API usage.</li>
-      </ul>
-    </section>
-
-    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/fb16027">fb16027</a></p>
+    <h1>Restyle 1.21–1.22.1 release notes to the 1.20 sectioned template</h1>
+    <p class="meta">Version 1.22.1</p>
+    <p>Restyle 1.21–1.22.1 release notes to the 1.20 sectioned template</p>
+<p>1.21, 1.21.1, 1.21.2, 1.22 and 1.22.1 were using the simple auto-generated<br>template (raw commit-message paragraphs). Rewrite them in the same rich,<br>sectioned format as 1.20/1.20.1 — accent-bordered section cards with badges,<br>summaries and bulleted highlights — with curated per-release content. 1.20 and<br>1.20.1 already used this template and are unchanged.</p>
+    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/3efc3533d7a3beb12e10e4aee01e888017d4d99e">3efc353</a></p>
   </main>
 </body>
 </html>
