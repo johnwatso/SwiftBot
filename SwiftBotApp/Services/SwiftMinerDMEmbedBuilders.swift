@@ -564,7 +564,7 @@ enum SwiftMinerDMEmbedBuilders {
             fields.append(helpField)
         }
 
-        var embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
+        let embed = SwiftMinerDMEmbedPrimitives.makeStandardEmbed(
             title: "🔗 Link Twitch for \(game)",
             description: SwiftMinerDMEmbedPrimitives.greeting(for: discordName) + desc,
             style: .warning,

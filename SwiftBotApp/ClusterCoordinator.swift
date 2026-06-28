@@ -3250,7 +3250,7 @@ actor ClusterCoordinator {
                         if getnameinfo(addr, socklen_t(addr.pointee.sa_len),
                                        &host, socklen_t(host.count),
                                        nil, 0, NI_NUMERICHOST) == 0 {
-                            let raw = String(cString: host)
+                            let raw = String(decoding: host.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
                             // Strip any IPv6 zone id (e.g. "fe80::1%en0").
                             let cleaned = (raw.components(separatedBy: "%").first ?? raw).lowercased()
                             if !cleaned.isEmpty { addresses.insert(cleaned) }
