@@ -474,7 +474,16 @@ actor VoicePlaybackService {
             await daveLog("DAVE MLS proposals processed; commit/welcome sent.")
             await verbose("awaiting Discord → announce-commit / welcome + execute-transition")
         } catch {
-            await daveLogError("DAVE proposal handling failed: \(error.localizedDescription)")
+            // Before we've joined the group (no welcome processed yet), Discord
+            // may send proposals we can't act on — "not for this group" — which is
+            // expected: the upcoming welcome makes us a member. Only treat it as a
+            // real error once we're an established member.
+            let joined = (await daveCoordinator?.getDiagnostics().handshakeState) == .ready
+            if joined {
+                await daveLogError("DAVE proposal handling failed: \(error.localizedDescription)")
+            } else {
+                await daveLog("DAVE proposals not actionable yet (awaiting welcome to join group): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -484,7 +493,7 @@ actor VoicePlaybackService {
             try await daveCoordinator?.processDiscordTransition(.commit(data))
             await daveLog("DAVE commit processed; transition-ready sent (id \(transitionId)).")
             try await gateway?.sendTransitionReady(transitionId: transitionId)
-            await verbose("transition-ready sent; awaiting Discord → execute-transition (id \(transitionId))")
+            await completeConnectionIfHandshakeReady(reason: "DAVE commit \(transitionId) ready")
         } catch {
             await daveLogError("DAVE commit processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
@@ -501,11 +510,28 @@ actor VoicePlaybackService {
             )
             await daveLog("DAVE welcome processed; transition-ready sent (id \(transitionId)).")
             try await gateway.sendTransitionReady(transitionId: transitionId)
-            await verbose("transition-ready sent; awaiting Discord → execute-transition (id \(transitionId))")
+            await completeConnectionIfHandshakeReady(reason: "DAVE welcome \(transitionId) ready")
         } catch {
             await daveLogError("DAVE welcome processing failed (id \(transitionId)): \(error.localizedDescription)")
             await recoverFromInvalidDaveTransition(transitionId: transitionId)
         }
+    }
+
+    /// A successful welcome/commit already advances us to the new epoch with the
+    /// key ratchet installed (see DaveSessionCoordinator.processDiscordTransition),
+    /// so we're ready to send audio immediately. Some servers — notably the
+    /// initial epoch (transition id 0) — never send a separate execute-transition,
+    /// so complete the connection here once the handshake is ready rather than
+    /// waiting for one (which previously caused a 15s media-readiness timeout).
+    /// `completeConnection` self-guards against double-completion.
+    private func completeConnectionIfHandshakeReady(reason: String) async {
+        guard status != .connected, let coordinator = daveCoordinator else { return }
+        let diagnostics = await coordinator.getDiagnostics()
+        guard diagnostics.handshakeState == .ready else {
+            await verbose("handshake not ready after transition (\(diagnostics.handshakeState.rawValue)); awaiting Discord → execute-transition")
+            return
+        }
+        await completeConnection(reason: reason)
     }
 
     private func sendDaveKeyPackage(reason: String) async throws {
