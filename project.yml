@@ -79,6 +79,7 @@ targets:
         script: "if which swiftlint > /dev/null; then swiftlint; fi"
         basedOnDependencyAnalysis: false
     dependencies:
+      - target: RecordingsKit
       - package: Sparkle
         product: Sparkle
       - package: swift-certificates
@@ -164,6 +165,25 @@ targets:
         ENABLE_NS_ASSERTIONS: NO
         MTL_ENABLE_DEBUG_INFO: NO
 
+  RecordingsKit:
+    type: framework
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Sources/RecordingsKit
+        type: group
+    settings:
+      base:
+        PRODUCT_NAME: RecordingsKit
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftbot.recordingskit
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        SDKROOT: macosx
+        ARCHS: arm64
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: NO
+
   SwiftBotTests:
     type: bundle.unit-test
     platform: macOS
@@ -173,6 +193,7 @@ targets:
         type: group
     dependencies:
       - target: SwiftBot
+      - target: RecordingsKit
     settings:
       base:
         PRODUCT_NAME: SwiftBotTests

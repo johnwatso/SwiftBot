@@ -1,4 +1,5 @@
 import SwiftUI
+import RecordingsKit
 import AppKit
 
 struct GeneralPreferencesView: View {

@@ -1,4 +1,5 @@
 import Foundation
+import RecordingsKit
 import SwiftUI
 import AppKit
 import AVFoundation
@@ -1691,6 +1692,14 @@ extension AppModel {
             mediaStreamProvider: { [weak self] token, rangeHeader, quality in
                 guard let model = self else { return nil }
                 return await model.adminWebMediaStreamResponse(token: token, rangeHeader: rangeHeader, quality: quality)
+            },
+            mediaHLSPlaylistProvider: { [weak self] token, accessToken in
+                guard let model = self else { return nil }
+                return await model.adminWebMediaHLSPlaylistResponse(token: token, accessToken: accessToken)
+            },
+            mediaHLSSegmentProvider: { [weak self] token, segment in
+                guard let model = self else { return nil }
+                return await model.adminWebMediaHLSSegmentResponse(token: token, segment: segment)
             },
             mediaThumbnailProvider: { [weak self] token in
                 guard let model = self else { return nil }

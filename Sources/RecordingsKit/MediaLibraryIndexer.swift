@@ -4,7 +4,7 @@ import CoreMedia
 import Foundation
 import VideoToolbox
 
-actor MediaLibraryIndexer {
+public actor MediaLibraryIndexer {
     private struct CacheEntry {
         let signature: String
         let payload: MediaLibraryPayload
@@ -14,15 +14,17 @@ actor MediaLibraryIndexer {
     private var cachedEntry: CacheEntry?
     private let cacheTTL: TimeInterval = 30
 
-    func cachedItem(for id: String) -> MediaLibraryItem? {
+    public init() {}
+
+    public func cachedItem(for id: String) -> MediaLibraryItem? {
         cachedEntry?.payload.items.first(where: { $0.id == id })
     }
 
-    func invalidate() {
+    public func invalidate() {
         cachedEntry = nil
     }
 
-    func snapshot(
+    public func snapshot(
         sources: [MediaLibrarySource],
         ownerNodeName: String,
         ownerBaseURL: String?,

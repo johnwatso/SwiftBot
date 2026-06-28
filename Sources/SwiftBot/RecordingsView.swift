@@ -1,4 +1,5 @@
 import SwiftUI
+import RecordingsKit
 import UniformTypeIdentifiers
 
 struct RecordingsView: View {

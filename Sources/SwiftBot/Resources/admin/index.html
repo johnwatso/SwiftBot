@@ -20,6 +20,8 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <!-- Self-hosted Lucide icons for maximum privacy and CSP compatibility. -->
   <script src="assets/lucide.min.js"></script>
+  <!-- Self-hosted hls.js for adaptive/fragmented-MP4 playback on non-Safari browsers. -->
+  <script src="assets/hls.min.js"></script>
   <style>
     :root {
       color-scheme: light dark;
@@ -4597,6 +4599,74 @@
       return mediaAccessToken ? `&token=${encodeURIComponent(mediaAccessToken)}` : '';
     }
 
+    let activeMediaHls = null;
+
+    function destroyActiveMediaHls() {
+      if (!activeMediaHls) return;
+      try { activeMediaHls.destroy(); } catch (_) {}
+      activeMediaHls = null;
+    }
+
+    function mediaHLSURL(streamURL) {
+      const id = mediaTokenFromURL(streamURL);
+      if (!id) return '';
+      const params = new URLSearchParams({ id });
+      if (mediaAccessToken) params.set('token', mediaAccessToken);
+      return `/api/media/hls?${params.toString()}`;
+    }
+
+    function mediaMP4URL(item) {
+      const quality = mediaExportState.playbackQuality === 'low' ? '&quality=low' : '';
+      return `${item.streamURL}${quality}${mediaAccessQuery()}`;
+    }
+
+    function attachRecordingPlayer(video, item) {
+      if (!video || !item) return;
+      destroyActiveMediaHls();
+
+      const fallbackURL = mediaMP4URL(item);
+      const hlsURL = mediaExportState.playbackQuality === 'low' ? '' : mediaHLSURL(item.streamURL);
+      let didFallback = false;
+      const useFallback = () => {
+        if (didFallback) return;
+        didFallback = true;
+        destroyActiveMediaHls();
+        video.src = fallbackURL;
+        video.load();
+      };
+
+      if (!hlsURL) {
+        useFallback();
+        return;
+      }
+
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.addEventListener('error', useFallback, { once: true });
+        video.src = hlsURL;
+        video.load();
+        return;
+      }
+
+      if (window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          manifestLoadingMaxRetry: 0,
+          levelLoadingMaxRetry: 0,
+          fragLoadingMaxRetry: 1
+        });
+        activeMediaHls = hls;
+        hls.on(window.Hls.Events.ERROR, (_event, data) => {
+          if (data?.fatal) useFallback();
+        });
+        hls.attachMedia(video);
+        hls.loadSource(hlsURL);
+        return;
+      }
+
+      useFallback();
+    }
+
     // Delegated event dispatcher. Replaces inline onclick/onchange/onerror so
     // the page can be served under a strict CSP that forbids inline JS.
     document.addEventListener('click', (e) => {
@@ -8630,6 +8700,7 @@
       const header = document.getElementById('mediaHeader');
       const panels = document.getElementById('mediaPanels');
       if (!header || !panels) return;
+      destroyActiveMediaHls();
 
       const items = mediaLibraryData.items || [];
       const sources = mediaLibraryData.sources || [];
@@ -8685,7 +8756,7 @@
                     </button>
                   </div>
                 </div>
-                <video controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;" src="${selected.streamURL}${mediaExportState.playbackQuality === 'low' ? '&quality=low' : ''}${mediaAccessQuery()}"></video>
+                <video id="mediaPlayer" controls preload="metadata" style="width:100%;max-height:72vh;border-radius:20px;background:#000;"></video>
                 <div style="font-size:12px;color:var(--muted);">Path: ${selected.relativePath}</div>
               </div>
             ` : '<div class="placeholder">Select a recording from the library to play it.</div>'}
@@ -8884,6 +8955,8 @@
         const primaryToken = selected ? mediaTokenFromURL(selected.streamURL) : '';
         let primaryState = null;
         if (primaryVideo) {
+          attachRecordingPlayer(primaryVideo, selected);
+
           activeMediaPlayback.sessionID = createPlaybackSession(selected.id);
           activeMediaPlayback.itemID = selected.id;
           activeMediaPlayback.started = false;

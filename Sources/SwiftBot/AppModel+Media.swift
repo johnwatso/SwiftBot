@@ -1,4 +1,5 @@
 import AppKit
+import RecordingsKit
 import AVFoundation
 import CryptoKit
 import Foundation
@@ -164,6 +165,9 @@ extension AppModel {
            let variantURL = await mediaTranscodeCache.variantURL(itemID: itemID, sourceURL: originalURL, quality: .low) {
             resolvedURL = variantURL
             resolvedSource = "low"
+        } else if let optimizedURL = await mediaFastStartCache.optimizedURL(itemID: itemID, sourceURL: originalURL) {
+            resolvedURL = optimizedURL
+            resolvedSource = "faststart"
         } else {
             resolvedURL = originalURL
             resolvedSource = "raw"
@@ -256,6 +260,82 @@ extension AppModel {
                 )
             }
         }.value
+    }
+
+    // MARK: - HLS streaming
+
+    /// Serves the HLS playlist for a local recording, packaging it into fMP4
+    /// segments on first request. The on-disk playlist references segments by
+    /// bare file name; here we rewrite those into authorized segment URLs the
+    /// browser's player can fetch, reusing the same `id` token the playlist was
+    /// requested with plus the caller's short-lived access token.
+    func localMediaHLSPlaylistResponse(itemID: String, idToken: String, accessToken: String?) async -> BinaryHTTPResponse? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
+        let sourceURL = URL(fileURLWithPath: item.absolutePath)
+        guard let playlistURL = await hlsPackager.playlistURL(itemID: itemID, sourceURL: sourceURL),
+              let raw = try? String(contentsOf: playlistURL, encoding: .utf8) else {
+            return nil
+        }
+        let rewritten = rewriteHLSPlaylist(raw, idToken: idToken, accessToken: accessToken)
+        return BinaryHTTPResponse(
+            status: "200 OK",
+            contentType: "application/vnd.apple.mpegurl",
+            headers: ["Cache-Control": "no-cache"],
+            body: Data(rewritten.utf8)
+        )
+    }
+
+    /// Serves a single HLS segment (init or media) for a local recording. The
+    /// packager validates `segment` against path traversal.
+    func localMediaHLSSegmentResponse(itemID: String, segment: String) async -> BinaryHTTPResponse? {
+        guard let item = await localMediaItem(for: itemID) else { return nil }
+        let sourceURL = URL(fileURLWithPath: item.absolutePath)
+        guard let segmentURL = await hlsPackager.segmentURL(itemID: itemID, sourceURL: sourceURL, segment: segment),
+              let data = try? Data(contentsOf: segmentURL) else {
+            return nil
+        }
+        return BinaryHTTPResponse(
+            status: "200 OK",
+            contentType: "video/mp4",
+            headers: [
+                // Segments are content-addressed by source mtime, so they're
+                // safe to cache aggressively.
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Content-Length": "\(data.count)"
+            ],
+            body: data
+        )
+    }
+
+    /// Rewrites the bare segment names in a generated playlist into relative
+    /// segment URLs (`hls-segment?id=…&seg=…&token=…`) that resolve against the
+    /// playlist endpoint and carry auth.
+    private func rewriteHLSPlaylist(_ playlist: String, idToken: String, accessToken: String?) -> String {
+        func encode(_ value: String) -> String {
+            let allowed = CharacterSet(charactersIn:
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+            return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+        }
+        func segmentURL(_ name: String) -> String {
+            var url = "hls-segment?id=\(encode(idToken))&seg=\(encode(name))"
+            if let accessToken, !accessToken.isEmpty {
+                url += "&token=\(encode(accessToken))"
+            }
+            return url
+        }
+
+        var lines: [String] = []
+        for rawLine in playlist.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+            if line.hasPrefix("#EXT-X-MAP:URI=\"") {
+                lines.append("#EXT-X-MAP:URI=\"\(segmentURL(HLSPackager.initSegmentFileName))\"")
+            } else if !line.hasPrefix("#") && line.hasSuffix(".m4s") {
+                lines.append(segmentURL(line))
+            } else {
+                lines.append(line)
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     func adminWebRecordMediaPlayback(_ patch: AdminWebMediaPlaybackPatch) async -> Bool {
@@ -552,6 +632,33 @@ extension AppModel {
         return await localMediaFrameResponse(itemID: descriptor.itemID, atSeconds: atSeconds)
     }
 
+    func adminWebMediaHLSPlaylistResponse(token: String, accessToken: String?) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+        // HLS packaging is local-node only. For a remote-owned recording, return
+        // nil so the browser falls back to the MP4 stream, which already proxies
+        // via the mesh in adminWebMediaStreamResponse.
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL, !ownerBaseURL.isEmpty {
+            return nil
+        }
+        return await localMediaHLSPlaylistResponse(itemID: descriptor.itemID, idToken: token, accessToken: accessToken)
+    }
+
+    func adminWebMediaHLSSegmentResponse(token: String, segment: String) async -> BinaryHTTPResponse? {
+        guard let descriptor = decodedMediaStreamToken(token) else { return nil }
+        let localNodeName = settings.clusterNodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (Host.current().localizedName ?? "SwiftBot Node")
+            : settings.clusterNodeName
+        if descriptor.ownerNodeName != localNodeName,
+           let ownerBaseURL = descriptor.ownerBaseURL, !ownerBaseURL.isEmpty {
+            return nil
+        }
+        return await localMediaHLSSegmentResponse(itemID: descriptor.itemID, segment: segment)
+    }
+
     func adminWebMediaExportStatus() async -> MediaExportStatus {
         await mediaExportCoordinator.exportStatus()
     }
@@ -741,17 +848,21 @@ extension AppModel {
         mediaMonitorTask?.cancel()
         mediaMonitorTask = nil
         lastSeenMediaItemIDs.removeAll()
+        attemptedFastStartPrewarmKeys.removeAll()
     }
 
     private func scanMediaForNewItems() async {
         guard runtimeClusterMode != .standby else { return }
+        let hasLocalSources = mediaLibrarySettings.sources.contains { $0.isEnabled && !$0.normalizedRootPath.isEmpty }
+        if !hasLocalSources && runtimeClusterMode != .leader {
+            return
+        }
+
+        await prewarmLocalMediaFastStartCache()
+
         let shouldScan = ruleStore.rules.contains { $0.isEnabled && $0.trigger == .mediaAdded }
         guard shouldScan else {
             lastSeenMediaItemIDs.removeAll()
-            return
-        }
-        let hasLocalSources = mediaLibrarySettings.sources.contains { $0.isEnabled && !$0.normalizedRootPath.isEmpty }
-        if !hasLocalSources && runtimeClusterMode != .leader {
             return
         }
         let payloads = await mediaPayloadsForTriggers()
@@ -772,6 +883,35 @@ extension AppModel {
         guard !newItems.isEmpty else { return }
         for entry in newItems {
             await handleMediaAddedEvent(item: entry.item, nodeName: entry.payload.nodeName)
+        }
+    }
+
+    private func prewarmLocalMediaFastStartCache() async {
+        guard runtimeClusterMode != .standby else { return }
+
+        let payload = await localMediaLibrarySnapshot()
+        let settleCutoff = Date().addingTimeInterval(-2 * 60)
+        let batchLimit = 2
+        var warmedCount = 0
+
+        for item in payload.items where warmedCount < batchLimit {
+            guard item.fileExtension.lowercased() == "mp4",
+                  item.modifiedAt < settleCutoff else {
+                continue
+            }
+
+            let mtimeStamp = Int(item.modifiedAt.timeIntervalSince1970)
+            let prewarmKey = "\(item.id)|\(mtimeStamp)"
+            guard !attemptedFastStartPrewarmKeys.contains(prewarmKey) else {
+                continue
+            }
+
+            attemptedFastStartPrewarmKeys.insert(prewarmKey)
+            warmedCount += 1
+            _ = await mediaFastStartCache.optimizedURL(
+                itemID: item.id,
+                sourceURL: URL(fileURLWithPath: item.absolutePath)
+            )
         }
     }
 
