@@ -1,4 +1,5 @@
 import Foundation
+import RecordingsKit
 
 enum SwiftBotStorage {
     static let appFolderName = "SwiftBot"

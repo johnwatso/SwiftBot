@@ -13,8 +13,8 @@ import os
 ///
 /// Concurrent requests for the same item share a single in-flight transcode
 /// task instead of kicking off duplicates.
-actor MediaTranscodeCache {
-    enum Quality: String, Sendable {
+public actor MediaTranscodeCache {
+    public enum Quality: String, Sendable {
         case low
     }
 
@@ -22,7 +22,7 @@ actor MediaTranscodeCache {
     private let logger = Logger(subsystem: "com.swiftbot.media", category: "transcode")
     private var inFlight: [String: Task<URL?, Never>] = [:]
 
-    init(cacheRoot: URL) {
+    public init(cacheRoot: URL) {
         self.cacheRoot = cacheRoot
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
     }
@@ -30,7 +30,7 @@ actor MediaTranscodeCache {
     /// Returns the file URL of a cached low-quality variant of `sourceURL`,
     /// generating it if needed. Returns `nil` if the source can't be opened
     /// or the export fails.
-    func variantURL(itemID: String, sourceURL: URL, quality: Quality) async -> URL? {
+    public func variantURL(itemID: String, sourceURL: URL, quality: Quality) async -> URL? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
               let mtime = attributes[.modificationDate] as? Date else {
             return nil

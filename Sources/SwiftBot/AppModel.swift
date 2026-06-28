@@ -1,4 +1,5 @@
 import AppKit
+import RecordingsKit
 import AVFoundation
 import CryptoKit
 import Foundation
@@ -215,6 +216,18 @@ final class AppModel: ObservableObject {
         let root = baseCaches.appendingPathComponent("SwiftBot/MediaTranscodes", isDirectory: true)
         return MediaTranscodeCache(cacheRoot: root)
     }()
+    let mediaFastStartCache: MediaFastStartCache = {
+        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let root = baseCaches.appendingPathComponent("SwiftBot/MediaFastStart", isDirectory: true)
+        return MediaFastStartCache(cacheRoot: root)
+    }()
+    let hlsPackager: HLSPackager = {
+        let baseCaches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let root = baseCaches.appendingPathComponent("SwiftBot/MediaHLS", isDirectory: true)
+        return HLSPackager(cacheRoot: root)
+    }()
     let discordCache = DiscordCache()
 
     /// Shared session for general Discord REST API calls (gateway, guild, message operations).
@@ -309,6 +322,7 @@ final class AppModel: ObservableObject {
     var adminWebCertificateRenewalConfiguration: AdminWebCertificateRenewalConfiguration?
     var mediaMonitorTask: Task<Void, Never>?
     var lastSeenMediaItemIDs: Set<String> = []
+    var attemptedFastStartPrewarmKeys: Set<String> = []
     var botUserId: String?
     let launchedAt = Date()
     var clusterNodesRefreshTask: Task<Void, Never>?

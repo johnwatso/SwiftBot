@@ -1,4 +1,5 @@
 import Foundation
+import RecordingsKit
 import Network
 import Darwin
 import CryptoKit
@@ -752,6 +753,8 @@ actor AdminWebServer {
     private var deleteWikiSource: (@Sendable (UUID) async -> Bool)?
     private var mediaLibraryProvider: (@Sendable ([String: String]) async -> AdminWebMediaLibraryPayload)?
     private var mediaStreamProvider: (@Sendable (String, String?, String?) async -> BinaryHTTPResponse?)?
+    private var mediaHLSPlaylistProvider: (@Sendable (String, String?) async -> BinaryHTTPResponse?)?
+    private var mediaHLSSegmentProvider: (@Sendable (String, String) async -> BinaryHTTPResponse?)?
     private var mediaThumbnailProvider: (@Sendable (String) async -> BinaryHTTPResponse?)?
     private var mediaFrameProvider: (@Sendable (String, Double) async -> BinaryHTTPResponse?)?
     private var mediaExportStatusProvider: (@Sendable () async -> MediaExportStatus)?
@@ -867,6 +870,8 @@ actor AdminWebServer {
         deleteWikiSource: @escaping @Sendable (UUID) async -> Bool,
         mediaLibraryProvider: @escaping @Sendable ([String: String]) async -> AdminWebMediaLibraryPayload,
         mediaStreamProvider: @escaping @Sendable (String, String?, String?) async -> BinaryHTTPResponse?,
+        mediaHLSPlaylistProvider: @escaping @Sendable (String, String?) async -> BinaryHTTPResponse?,
+        mediaHLSSegmentProvider: @escaping @Sendable (String, String) async -> BinaryHTTPResponse?,
         mediaThumbnailProvider: @escaping @Sendable (String) async -> BinaryHTTPResponse?,
         mediaFrameProvider: @escaping @Sendable (String, Double) async -> BinaryHTTPResponse?,
         mediaExportStatusProvider: @escaping @Sendable () async -> MediaExportStatus,
@@ -945,6 +950,8 @@ actor AdminWebServer {
         self.deleteWikiSource = deleteWikiSource
         self.mediaLibraryProvider = mediaLibraryProvider
         self.mediaStreamProvider = mediaStreamProvider
+        self.mediaHLSPlaylistProvider = mediaHLSPlaylistProvider
+        self.mediaHLSSegmentProvider = mediaHLSSegmentProvider
         self.mediaThumbnailProvider = mediaThumbnailProvider
         self.mediaFrameProvider = mediaFrameProvider
         self.mediaExportStatusProvider = mediaExportStatusProvider
@@ -1390,6 +1397,8 @@ actor AdminWebServer {
             return serveAsset(named: "SwiftBird3", ext: "png")
         case ("GET", "/assets/lucide.min.js"):
             return serveAsset(named: "lucide.min", ext: "js")
+        case ("GET", "/assets/hls.min.js"):
+            return serveAsset(named: "hls.min", ext: "js")
         case ("GET", let path) where path.hasPrefix("/assets/games/"):
             let filename = path.replacingOccurrences(of: "/assets/games/", with: "")
             let parts = filename.split(separator: ".", maxSplits: 1).map(String.init)
@@ -2369,6 +2378,40 @@ actor AdminWebServer {
             let quality = request.query["quality"]
             guard let response = await mediaStreamProvider?(token, rangeHeader, quality) else {
                 return jsonResponse(["error": "stream_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("GET", "/api/media/hls"):
+            guard mediaAccessAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            let accessToken = request.query["token"]
+            guard let response = await mediaHLSPlaylistProvider?(token, accessToken) else {
+                return jsonResponse(["error": "hls_unavailable"], status: "404 Not Found")
+            }
+            return httpResponse(
+                status: response.status,
+                body: response.body,
+                contentType: response.contentType,
+                headers: response.headers
+            )
+        case ("GET", "/api/media/hls-segment"):
+            guard mediaAccessAuthorized(request) else {
+                return unauthorizedResponse()
+            }
+            guard let token = request.query["id"], !token.isEmpty,
+                  let segment = request.query["seg"], !segment.isEmpty else {
+                return jsonResponse(["error": "missing_id"], status: "400 Bad Request")
+            }
+            guard let response = await mediaHLSSegmentProvider?(token, segment) else {
+                return jsonResponse(["error": "hls_segment_unavailable"], status: "404 Not Found")
             }
             return httpResponse(
                 status: response.status,

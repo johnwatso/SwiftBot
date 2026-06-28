@@ -265,6 +265,14 @@ All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilde
 
 ## Session log
 
+### 2026-06-29 — Recordings HLS Playback Continuation
+
+| Commit | Summary |
+|---|---|
+| `_working-tree_` | Continued the recordings playback work by completing browser-side HLS attachment: the admin player now tries the generated HLS playlist in Safari or hls.js-capable browsers, falls back to the existing MP4 stream when HLS is unavailable, and preserves the lower-quality MP4 escape hatch. Regenerated the Xcode project after the RecordingsKit target changes and verified `xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Debug test` passes. |
+| `_working-tree_` | Validated the common desktop sample (`unknown_replay_2026.06.13-02.25.mp4`): it is a 15-minute 1440p H.264/AAC MP4 with `moov` after `mdat`, and AVFoundation HLS passthrough rejects audio+video segmentation for this profile. Added a fast-start remux cache so the normal MP4 fallback rewrites end-`moov` files without re-encoding; the sample remuxed in about 16 seconds and moved `moov` before `mdat`. |
+| `_working-tree_` | Added periodic fast-start pre-warming to the media monitor: every monitor pass prepares a small batch of settled local MP4s in the background, independent of media-added automation rules, so common recordings are likely ready before first playback. |
+
 ### 2026-06-26 — Piper TTS, Stall Protections, & Priority Inversion Fixes
 
 | Commit | Summary |

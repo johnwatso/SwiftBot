@@ -1,27 +1,29 @@
 import AVFoundation
 import Foundation
 
-actor MediaExportCoordinator {
+public actor MediaExportCoordinator {
     private var jobs: [String: MediaExportJob] = [:]
     private var onJobFinished: (@Sendable (MediaExportJob) async -> Void)?
 
-    func exportStatus() async -> MediaExportStatus {
+    public init() {}
+
+    public func exportStatus() async -> MediaExportStatus {
         MediaExportStatus(installed: true, version: "Apple AVFoundation", path: nil)
     }
 
-    func listJobs() async -> [MediaExportJob] {
+    public func listJobs() async -> [MediaExportJob] {
         jobs.values.sorted { $0.createdAt > $1.createdAt }
     }
 
-    func recordExternalJob(_ job: MediaExportJob) async {
+    public func recordExternalJob(_ job: MediaExportJob) async {
         jobs[job.id] = job
     }
 
-    func setOnJobFinished(_ handler: @escaping @Sendable (MediaExportJob) async -> Void) async {
+    public func setOnJobFinished(_ handler: @escaping @Sendable (MediaExportJob) async -> Void) async {
         onJobFinished = handler
     }
 
-    func startClip(
+    public func startClip(
         item: MediaLibraryItem,
         request: MediaExportClipRequest,
         exportRoot: URL,
@@ -35,7 +37,7 @@ actor MediaExportCoordinator {
         return job
     }
 
-    func startMultiView(
+    public func startMultiView(
         primary: MediaLibraryItem,
         secondary: MediaLibraryItem,
         request: MediaExportMultiViewRequest,

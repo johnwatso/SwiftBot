@@ -1,4 +1,5 @@
 import AppKit
+import RecordingsKit
 import AVFoundation
 import CryptoKit
 import Foundation
