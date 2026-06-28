@@ -96,12 +96,12 @@ App data lives in `~/Library/Application Support/SwiftBot/` (`settings.json`, `r
 ## Project Layout
 
 ```text
-SwiftBotApp/             macOS app, SwiftUI interface, Discord runtime, diagnostics, SwiftMesh
+Sources/SwiftBot/        macOS app, SwiftUI interface, Discord runtime, diagnostics, SwiftMesh
 Sources/UpdateEngine/    reusable update-checking engine used by Patchy
 Tools/SparklePublisher/  Sparkle publishing helper
 Tests/SwiftBotTests/     application test suite
-docs/                    GitHub Pages site, release notes, Sparkle appcasts
-notes/                   internal planning, design, and review docs
+Website/                 GitHub Pages site (public/), release notes, Sparkle appcasts
+Documentation/           architecture, AI, and design references
 ```
 
 ## Notes
@@ -122,8 +122,8 @@ Please raise a GitHub issue if something breaks. Include the SwiftBot version, m
 ## Related Docs
 
 - [Help & Setup Guides](https://swiftbot.dev/help/)
-- [Architecture](ARCHITECTURE.md)
-- [AI Guide](AI_GUIDE.md)
+- [Architecture](Documentation/ARCHITECTURE.md)
+- [AI Guide](Documentation/AI_GUIDE.md)
 
 ## Releases
 

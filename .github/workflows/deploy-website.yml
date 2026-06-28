@@ -1,12 +1,12 @@
-name: Deploy Pages
+name: Deploy website
 
 on:
   push:
     branches:
       - main
     paths:
-      - "docs/**"
-      - ".github/workflows/pages.yml"
+      - "Website/public/**"
+      - ".github/workflows/deploy-website.yml"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: Website/public
 
   deploy:
     needs: build

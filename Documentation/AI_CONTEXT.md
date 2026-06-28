@@ -103,7 +103,7 @@ struct PipelineContext {
 | `AppModel+Gateway.swift` | Gateway event parsing and dispatch |
 | `AppModel+AI.swift` | AI provider routing and response generation |
 | `DiscordService.swift` | Discord WebSocket gateway + REST API actor. Rule action execution. AI replies. Wiki lookup. |
-| `SwiftBotApp/Models/` | Directory containing modular data models: `Automations.swift` (rules), `BotSettings.swift` (config), `EventBus.swift` (pub/sub), `ClusterModels.swift` (mesh). |
+| `Sources/SwiftBot/Models/` | Directory containing modular data models: `Automations.swift` (rules), `BotSettings.swift` (config), `EventBus.swift` (pub/sub), `ClusterModels.swift` (mesh). |
 | `ClusterCoordinator.swift` | SwiftMesh cluster: leader election, health monitoring, replication, failover |
 | `Persistence.swift` | ConfigStore, RuleConfigStore, DiscordCacheStore, SwiftMeshConfigStore, MeshCursorStore (all actors). Keychain for secrets. |
 | `AdminWebServer.swift` | HTTP REST API for web admin UI. Discord OAuth. |
@@ -298,7 +298,7 @@ struct Rule: Codable, Identifiable, Hashable, Sendable, Validatable {
 - [ ] Modified feature works as expected
 - [ ] No regressions in unrelated features
 - [ ] If `project.yml` changed, regenerate with `xcodegen`
-- [ ] If versioning or release metadata changed, verify `project.yml`, `SwiftBot.xcodeproj/project.pbxproj`, and `docs/` stay aligned
+- [ ] If versioning or release metadata changed, verify `project.yml`, `SwiftBot.xcodeproj/project.pbxproj`, and `Website/public/` stay aligned
 - [ ] **Update `ROADMAP.md`** — tick off any item this work closed, strike items that became invalid, and add a one-line entry under the session log with the commit hash(es) and key decisions. Don't let the roadmap drift out of sync with the codebase.
 
 ---

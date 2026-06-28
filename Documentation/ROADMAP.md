@@ -191,7 +191,7 @@ Voice summaries still need separate work (no transcription infra yet).
 - [ ] Campaign blocked — **blocked**: needs SwiftMiner backend to define the payload shape.
 - [ ] Opportunity resolved — **blocked**: needs SwiftMiner backend to define the payload shape.
 
-All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.swift` and dispatch via `SwiftMinerDMRouter`.
+All implemented types live in `Sources/SwiftBot/Services/SwiftMinerDMEmbedBuilders.swift` and dispatch via `SwiftMinerDMRouter`.
 
 ### DM Rendering — UI Polish
 
@@ -257,7 +257,7 @@ All implemented types live in `SwiftBotApp/Services/SwiftMinerDMEmbedBuilders.sw
 
 > Not in original roadmap.
 
-- [x] ~~Strip dead OpenAI image-gen toggles from `SwiftBotApp/Resources/admin/index.html`~~ — cleaned up; three dead UI clusters removed, replaced with single Apple Intelligence panels.
+- [x] ~~Strip dead OpenAI image-gen toggles from `Sources/SwiftBot/Resources/admin/index.html`~~ — cleaned up; three dead UI clusters removed, replaced with single Apple Intelligence panels.
 - [x] ~~Decide fate of `FoundationModelsSpikeTests`~~ — removed. Was a P1.1 milestone gate for the Apple Intelligence decision; that decision is made, ongoing latency/quality belongs in telemetry not a CI gate. Preserved in git history.
 - [x] ~~Rename internal `case aiBots`, `struct AIBotsView`, JSON key `aiBots:`~~ — done. Swift symbols → `appleIntelligence` / `AppleIntelligenceView` / `AppleIntelligenceDashboardSummary`; AdminWeb JSON field → `appleIntelligence`; admin HTML JS updated to match. File renamed `AIBotsView.swift` → `AppleIntelligenceView.swift`.
 

@@ -1,6 +1,6 @@
 # SwiftBot Agent Notes
 
-Read `AI_CONTEXT.md` first. It is the main architecture and workflow reference for AI agents working in this repo.
+Read `Documentation/AI_CONTEXT.md` first. It is the main architecture and workflow reference for AI agents working in this repo.
 
 This file exists to capture the practical guardrails that agents are most likely to miss: build system boundaries, project generation, versioning, and release metadata discipline.
 
@@ -50,7 +50,7 @@ Do not use `swift build` or `swift test` as a substitute for validating the app 
 - `CURRENT_PROJECT_VERSION` is timestamp-based. Update it whenever release/version/build preparation is part of the requested work. Use the local project time at the moment of the change, formatted as `yyyyMMddHH` (example: `2026050813` means 2026 May 8 at 1pm).
 - Treat ShipHook/publish/release-prep work like SwiftMiner: refresh the build number before shipping, even when the marketing version stays the same.
 - When version metadata changes, keep `project.yml` and `SwiftBot.xcodeproj/project.pbxproj` aligned.
-- If release metadata is touched, also verify related Sparkle/appcast files under `docs/`:
+- If release metadata is touched, also verify related Sparkle/appcast files under `Website/public/`:
   - `sparkle:shortVersionString` should match `MARKETING_VERSION`.
   - `sparkle:version` should match the generated `CURRENT_PROJECT_VERSION` timestamp.
   - Any visible build references in release notes should match the generated build number.
@@ -61,8 +61,8 @@ Treat these as release-critical whenever touched:
 
 - `project.yml`
 - `SwiftBot.xcodeproj/project.pbxproj`
-- `docs/appcast.xml`
-- `docs/release-notes/*`
+- `Website/public/appcast.xml`
+- `Website/public/release-notes/*`
 
 Do not break:
 
@@ -117,5 +117,5 @@ Token management endpoints are `POST /api/auth/tokens` and `POST /api/auth/token
 
 ## Coordination
 
-- Use `AI_CONTEXT.md` for architecture, file ownership, cluster safety rules, and UI rules.
-- If guidance in this file and `AI_CONTEXT.md` ever appear to conflict, follow the repo reality and preserve existing behavior, then document the inconsistency in your final note.
+- Use `Documentation/AI_CONTEXT.md` for architecture, file ownership, cluster safety rules, and UI rules.
+- If guidance in this file and `Documentation/AI_CONTEXT.md` ever appear to conflict, follow the repo reality and preserve existing behavior, then document the inconsistency in your final note.

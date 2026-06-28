@@ -50,7 +50,7 @@ This document provides a high-level overview of the SwiftBot application archite
   - Shared AI prompt/message composition path for consistent local reply behavior
 
 ### 4. Data Models
-- **Directory:** `SwiftBotApp/Models/` (Modular structure)
+- **Directory:** `Sources/SwiftBot/Models/` (Modular structure)
 - **Files & Contents:**
   - `Automations.swift` — Unified step-based automation rule, trigger, and filter data models.
   - `BotSettings.swift` — Core system and user preferences (non-sensitive preferences persist to `settings.json`).
@@ -332,7 +332,7 @@ SwiftBot.xcodeproj
     ├── ClusterCoordinator.swift (SwiftMesh cluster HTTP server and replication orchestration)
     ├── Persistence.swift (durable actor stores for configs/rules/cursors/cache)
     ├── HelpEngine.swift (built-in manual commands indexer)
-    ├── SwiftBotApp/
+    ├── Sources/SwiftBot/
     │   ├── Models/
     │   │   ├── Automations.swift (IFTTT step-based rules and variables models)
     │   │   ├── BotSettings.swift (non-sensitive preferences)
