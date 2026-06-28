@@ -3,50 +3,115 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Add SwiftMesh failover config mutations - Release Notes</title>
+  <title>SwiftBot 1.21 - Release Notes</title>
   <style>
     :root { color-scheme: light dark; }
     body {
       margin: 0;
       padding: 32px 20px 48px;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f6f8;
-      color: #0f1720;
+      background: #f5f7fb;
+      color: #111827;
     }
     main {
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto;
-      padding: 28px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.86);
-      box-shadow: 0 20px 60px rgba(15, 23, 32, 0.10);
+      padding: 30px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 18px 52px rgba(17, 24, 39, 0.10);
+      border: 1px solid rgba(82, 96, 109, 0.14);
     }
-    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; }
-    .meta { margin: 0 0 24px; color: #52606d; font-size: 14px; }
-    p { margin: 0 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .meta { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    .intro { margin: 0 0 22px; color: #364152; }
+    section {
+      margin: 18px 0 0;
+      padding: 18px 18px 14px;
+      border: 1px solid rgba(82, 96, 109, 0.18);
+      border-left: 5px solid var(--accent, #0a67a3);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+    section.security { --accent: #a21caf; }
+    section.mesh { --accent: #4f46a5; }
+    section.automation { --accent: #0f766e; }
+    section.ui { --accent: #b45309; }
+    section.core { --accent: #0a67a3; }
+    section.docs { --accent: #52606d; }
+    section.voice { --accent: #0e7490; }
+    section.dave { --accent: #7c3aed; }
+    section.reliability { --accent: #15803d; }
+    section.release { --accent: #52606d; }
+    .badge {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      margin-right: 8px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent, #0a67a3) 15%, transparent);
+      font-size: 16px;
+      vertical-align: middle;
+    }
+    h2 { margin: 0 0 4px; color: var(--accent, #0a67a3); font-size: 18px; line-height: 1.3; letter-spacing: 0; }
+    .summary { margin: 0 0 12px; color: #566273; font-size: 14px; }
+    ul { margin: 0; padding-left: 22px; }
+    li { margin: 0 0 8px; }
+    li:last-child { margin-bottom: 0; }
+    .commit-link { margin: 20px 0 0; color: #566273; font-size: 13px; }
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: rgba(82, 96, 109, 0.12);
+      font-size: 0.92em;
+    }
     a { color: #0a67a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
     @media (prefers-color-scheme: dark) {
-      body { background: #0b1015; color: #edf2f7; }
+      body { background: #0b1017; color: #edf2f7; }
       main {
-        background: rgba(15, 23, 32, 0.88);
+        background: rgba(15, 23, 32, 0.92);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        border-color: rgba(159, 176, 194, 0.14);
       }
-      .meta { color: #9fb0c2; }
+      .meta, .summary, .commit-link { color: #9fb0c2; }
+      .intro { color: #c8d3df; }
+      section {
+        border-color: rgba(159, 176, 194, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      code { background: rgba(159, 176, 194, 0.16); }
       a { color: #73c3ff; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Add SwiftMesh failover config mutations</h1>
+    <h1>SwiftBot 1.21</h1>
     <p class="meta">Version 1.21</p>
-    <p>Add SwiftMesh failover config mutations</p>
-<p>Allow supported Failover GUI surfaces to forward typed config edits to the Primary instead of writing replicated config locally. Adds mutation envelopes, Primary-side application/ack handling, idempotency, failure surfacing, and immediate reconciliation pulls.</p>
-<p>Routes Patchy, Automations, Commands, Welcome Flow, Voice, Lookup, and Sweep edits through the new authority path. Adds a dedicated Sweep policy sync endpoint because Sweep state lives outside BotSettings.</p>
-<p>Adds MeshConfigMutationTests for leader-only handling, mutation acknowledgement, Codable round-tripping, and duplicate client mutation IDs.</p>
-<p>Verification: xcodebuild -project SwiftBot.xcodeproj -scheme SwiftBot -configuration Debug test -only-testing:SwiftBotTests/MeshConfigMutationTests passed. Full SwiftBot test run executed 259 tests with 2 existing failures in DiscordServiceDMTests.testSendDMEmbedSuccess().</p>
-    <p><strong>Commit:</strong> <a href="https://github.com/johnwatso/SwiftBot/commit/57d7a22ca53ccc3c7b0e7f19bceae824d26421c9">57d7a22</a></p>
+    <p class="intro">A clustering release that lets Failover (standby) nodes safely forward configuration edits to the Primary instead of writing replicated config locally, so multi-node setups stay consistent.</p>
+
+    <section class="mesh">
+      <h2><span class="badge" aria-hidden="true">🕸️</span>SwiftMesh Failover</h2>
+      <p class="summary">Standby nodes can now edit configuration through the Primary rather than writing replicated config locally.</p>
+      <ul>
+        <li><strong>Config authority:</strong> Failover GUI surfaces forward typed config edits to the Primary via mutation envelopes; the Primary applies and acknowledges each change.</li>
+        <li><strong>Safe by design:</strong> Mutations are idempotent (deduplicated by client mutation ID), failures are surfaced explicitly, and an immediate reconciliation pull follows each change.</li>
+        <li><strong>Broad coverage:</strong> Patchy, Automations, Commands, Welcome Flow, Voice, Lookup, and Sweep edits all route through the new authority path.</li>
+        <li><strong>Sweep sync:</strong> A dedicated Sweep policy sync endpoint handles Sweep state, which lives outside <code>BotSettings</code>.</li>
+      </ul>
+    </section>
+
+    <section class="core">
+      <h2><span class="badge" aria-hidden="true">⚙️</span>Testing</h2>
+      <p class="summary">New coverage for the failover authority path.</p>
+      <ul>
+        <li>Added <code>MeshConfigMutationTests</code> for leader-only handling, mutation acknowledgement, Codable round-tripping, and duplicate mutation-ID handling.</li>
+      </ul>
+    </section>
+
+    <p class="commit-link">Commit: <a href="https://github.com/johnwatso/SwiftBot/commit/57d7a22ca53ccc3c7b0e7f19bceae824d26421c9">57d7a22</a></p>
   </main>
 </body>
 </html>
