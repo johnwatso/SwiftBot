@@ -25,8 +25,11 @@ actor VoiceAnnouncementService {
     private var voice: AVSpeechSynthesisVoice?
     private var queue: [Announcement] = []
     private var draining: Bool = false
+    private var paused: Bool = false
     private var recent: [Announcement] = []
     private let recentLimit: Int = 25
+    private let maxQueueDepth: Int = 20
+    private var retryCounts: [UUID: Int] = [:]
 
     private var onQueueChange: (@Sendable ([Announcement]) async -> Void)?
     private var onRecentChange: (@Sendable ([Announcement]) async -> Void)?
@@ -57,16 +60,33 @@ actor VoiceAnnouncementService {
     var pending: [Announcement] { queue }
     var recentHistory: [Announcement] { recent }
 
+    func setPaused(_ paused: Bool) async {
+        self.paused = paused
+        if !paused, !queue.isEmpty, !draining {
+            Task { await self.drain() }
+        }
+    }
+
+    func clearPending() async {
+        queue.removeAll()
+        retryCounts.removeAll()
+        await onQueueChange?(queue)
+    }
+
     func enqueue(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let announcement = Announcement(text: trimmed)
+        if queue.count >= maxQueueDepth {
+            let overflow = queue.count - maxQueueDepth + 1
+            queue.removeFirst(overflow)
+        }
         queue.append(announcement)
         // Log the event, not the content: the message text is kept out of the
         // diagnostics log (it still appears in the Recent list for the UI).
         await onDebug?("Queued Discord speech (\(trimmed.count) chars); queue depth \(queue.count).")
         await onQueueChange?(queue)
-        if !draining {
+        if !draining, !paused {
             Task { await self.drain() }
         }
     }
@@ -75,6 +95,7 @@ actor VoiceAnnouncementService {
         draining = true
         defer { draining = false }
         while !queue.isEmpty {
+            if paused { return }
             let next = queue.removeFirst()
             await onQueueChange?(queue)
             do {
@@ -87,11 +108,40 @@ actor VoiceAnnouncementService {
                 await onDebug?("Sending speech audio to Discord.")
                 try await playback.speak(pcm: rendered)
                 await onDebug?("Finished Discord speech (\(next.text.count) chars).")
+                retryCounts[next.id] = nil
                 recordRecent(next)
             } catch {
+                if case VoicePipelineError.daveNotReady = error {
+                    let retries = retryCounts[next.id, default: 0]
+                    if retries < 5 {
+                        retryCounts[next.id] = retries + 1
+                        queue.insert(next, at: 0)
+                        await onQueueChange?(queue)
+                        await onDebug?("Discord speech paused while DAVE media encryption refreshes; retrying.")
+                        try? await Task.sleep(for: .seconds(1))
+                        continue
+                    }
+                    retryCounts[next.id] = nil
+                }
+                if isReconnectablePlaybackError(error) {
+                    queue.insert(next, at: 0)
+                    await onQueueChange?(queue)
+                    await onDebug?("Discord speech paused while the voice connection recovers.")
+                    paused = true
+                    continue
+                }
                 Self.logger.error("announcement failed: \(error.localizedDescription)")
                 await onDebug?("Discord speech failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func isReconnectablePlaybackError(_ error: Error) -> Bool {
+        switch error {
+        case VoicePipelineError.notConnected, VoicePipelineError.socketClosed:
+            return true
+        default:
+            return false
         }
     }
 

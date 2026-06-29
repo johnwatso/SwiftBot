@@ -289,6 +289,9 @@ final class AppModel: ObservableObject {
     /// under. Used to reject credentials left over from a previous session
     /// (the classic close-code-4006 cause) before opening the voice pipeline.
     var voiceCredentialsSessionID: String?
+    var voiceRecoveryTask: Task<Void, Never>?
+    var voiceRecoveryInProgress: Bool = false
+    var voiceRecoveryAttemptUsed: Bool = false
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
     /// Retained AVSpeechSynthesizer for in-app preview playback (used while
     /// the Discord voice path is blocked by DAVE).

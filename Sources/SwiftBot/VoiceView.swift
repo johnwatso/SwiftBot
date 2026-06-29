@@ -97,7 +97,7 @@ struct VoiceView: View {
     private var statusColor: Color {
         switch app.voiceConnectionStatus {
         case .connected: return .green
-        case .connecting, .disconnecting: return .yellow
+        case .connecting, .recovering, .disconnecting: return .yellow
         case .failed: return .red
         case .idle: return .gray
         }
@@ -108,6 +108,7 @@ struct VoiceView: View {
         case .idle: return "Disconnected"
         case .connecting: return "Connecting to voice channel\u{2026}"
         case .connected: return connectedSubtitle
+        case .recovering(let detail): return detail.isEmpty ? "Recovering voice connection\u{2026}" : detail
         case .disconnecting: return "Disconnecting\u{2026}"
         case .failed(let reason): return "Failed: \(reason)"
         }
@@ -257,7 +258,7 @@ struct VoiceView: View {
     private var badgeBackground: Color {
         switch app.voiceConnectionStatus {
         case .connected: return .green.opacity(0.18)
-        case .connecting, .disconnecting: return .yellow.opacity(0.18)
+        case .connecting, .recovering, .disconnecting: return .yellow.opacity(0.18)
         case .failed: return .red.opacity(0.18)
         case .idle: return Color.primary.opacity(0.06)
         }
@@ -265,7 +266,7 @@ struct VoiceView: View {
     private var badgeForeground: Color {
         switch app.voiceConnectionStatus {
         case .connected: return .green
-        case .connecting, .disconnecting: return .yellow
+        case .connecting, .recovering, .disconnecting: return .yellow
         case .failed: return .red
         case .idle: return .secondary
         }
@@ -278,8 +279,8 @@ struct VoiceView: View {
         LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
             DashboardMetricCard(
                 title: "Active Sessions",
-                value: app.voiceConnectionStatus.isConnected ? "1" : "0",
-                subtitle: app.voiceConnectionStatus.isConnected ? liveSessionText : "Ready for /announce",
+                value: app.voiceConnectionStatus.canQueueAnnouncements ? "1" : "0",
+                subtitle: app.voiceConnectionStatus.canQueueAnnouncements ? liveSessionText : "Ready for /announce",
                 symbol: "waveform.badge.mic",
                 color: statusColor
             )

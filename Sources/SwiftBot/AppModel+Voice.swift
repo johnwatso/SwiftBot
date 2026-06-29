@@ -113,7 +113,11 @@ extension AppModel {
         await connectVoice(guildID: guildID, channelID: channelID)
     }
 
-    func connectVoice(guildID: String, channelID: String) async {
+    func connectVoice(guildID: String, channelID: String, recovering: Bool = false) async {
+        if !recovering {
+            cancelVoiceRecovery()
+            voiceRecoveryAttemptUsed = false
+        }
         // The main gateway has to be live before voice can negotiate.
         guard status == .running else {
             voiceConnectionStatus = .failed("Bot is offline — click Start Bot first.")
@@ -144,11 +148,15 @@ extension AppModel {
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceCredentialsSessionID = nil
-        voiceConnectionStatus = .connecting
-        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "Voice join requested for channel \(channelID)."))
+        voiceConnectionStatus = recovering
+            ? .recovering("Rejoining voice channel…")
+            : .connecting
+        let action = recovering ? "Voice rejoin requested" : "Voice join requested"
+        addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: "\(action) for channel \(channelID)."))
 
         if let preflightFailure = await voiceChannelPreflightFailure(channelID: channelID) {
             voiceConnectionStatus = .failed(preflightFailure)
+            finishVoiceRecoveryIfNeeded(success: false)
             deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: preflightFailure))
             return
@@ -158,6 +166,7 @@ extension AppModel {
         guard didSendJoin else {
             let message = "Voice join failed before Discord acknowledged it: main gateway send was blocked or disconnected."
             voiceConnectionStatus = .failed(message)
+            finishVoiceRecoveryIfNeeded(success: false)
             deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
             return
@@ -175,11 +184,12 @@ extension AppModel {
                 let isMissingVoiceHandshakeData = self.voicePendingSessionID == nil ||
                     self.voicePendingServerToken == nil ||
                     self.voicePendingServerEndpoint == nil
-                if self.voiceConnectionStatus == .connecting,
+                if self.voiceConnectionStatus.isWaitingForConnectionData,
                    self.voicePendingGuildID == attemptGuildID,
                    isMissingVoiceHandshakeData {
                     let message = "Timed out waiting for Discord voice state and voice server updates."
                     self.voiceConnectionStatus = .failed(message)
+                    self.finishVoiceRecoveryIfNeeded(success: false)
                     self.deactivateAnnouncerSession()
                     self.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
                 }
@@ -189,7 +199,14 @@ extension AppModel {
 
     /// Tear down the voice connection (sends VOICE_STATE_UPDATE with null
     /// channel, then closes the playback pipeline).
-    func disconnectVoice() async {
+    func disconnectVoice(preserveAnnouncerSession: Bool = false) async {
+        if !preserveAnnouncerSession {
+            cancelVoiceRecovery()
+            if let announcer = voiceAnnouncementServiceStorage {
+                await announcer.setPaused(true)
+                await announcer.clearPending()
+            }
+        }
         let guildID = voicePendingGuildID ?? settings.voice.guildID
         if !guildID.isEmpty {
             _ = await service.sendVoiceStateUpdate(guildID: guildID, channelID: nil)
@@ -201,8 +218,12 @@ extension AppModel {
         voicePendingServerToken = nil
         voicePendingServerEndpoint = nil
         voiceCredentialsSessionID = nil
-        voiceConnectionStatus = .idle
-        deactivateAnnouncerSession()
+        if preserveAnnouncerSession {
+            voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
+        } else {
+            voiceConnectionStatus = .idle
+            deactivateAnnouncerSession()
+        }
     }
 
     /// Manually trigger an announcement (e.g. `/say` or the Test button in the
@@ -361,7 +382,7 @@ extension AppModel {
     /// from `handleMessageCreate` so we don't have to re-subscribe to the
     /// dispatcher.
     func forwardMessageToVoiceAnnouncer(_ event: GatewayMessageCreateEvent) async {
-        guard voiceConnectionStatus.isConnected else { return }
+        guard voiceConnectionStatus.canQueueAnnouncements else { return }
         guard settings.voice.textChannelSourceEnabled else { return }
         let watchedIDs = settings.voice.watchedTextChannelID.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let activeVoiceChannelID = settings.voice.voiceChannelID
@@ -497,12 +518,17 @@ extension AppModel {
         do {
             try await voicePlaybackService.connect(server: info)
             voiceConnectionStatus = .connected
+            finishVoiceRecoveryIfNeeded(success: true)
+            if let announcer = voiceAnnouncementServiceStorage {
+                await announcer.setPaused(false)
+            }
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connected to channel \(voicePendingChannelID ?? "?")"
             ))
         } catch {
             voiceConnectionStatus = .failed(error.localizedDescription)
+            finishVoiceRecoveryIfNeeded(success: false)
             deactivateAnnouncerSession()
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
@@ -514,14 +540,28 @@ extension AppModel {
     private func handleVoicePlaybackStatus(_ status: VoicePlaybackService.Status) async {
         switch status {
         case .idle:
+            if voiceRecoveryInProgress {
+                voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
+                return
+            }
             voiceConnectionStatus = .idle
             deactivateAnnouncerSession()
         case .connecting:
-            voiceConnectionStatus = .connecting
+            if !voiceRecoveryInProgress {
+                voiceConnectionStatus = .connecting
+            }
         case .connected:
             voiceConnectionStatus = .connected
+            finishVoiceRecoveryIfNeeded(success: true)
+            if let announcer = voiceAnnouncementServiceStorage {
+                await announcer.setPaused(false)
+            }
         case .disconnecting:
-            voiceConnectionStatus = .disconnecting
+            if voiceRecoveryInProgress {
+                voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
+            } else {
+                voiceConnectionStatus = .disconnecting
+            }
         case .failed(let reason):
             // Surface unexpected drops (e.g. a voice gateway WS close after we
             // were connected) in the activity log. Without this the announcer
@@ -529,15 +569,92 @@ extension AppModel {
             // `isConnected` guard in forwardMessageToVoiceAnnouncer with no
             // trace — while the bot may still appear present in Discord.
             let wasConnected = voiceConnectionStatus.isConnected
+            if wasConnected, scheduleVoiceAutoRecovery(reason: reason) {
+                return
+            }
             voiceConnectionStatus = .failed(reason)
             if wasConnected {
                 addVoiceLogEntry(VoiceEventLogEntry(
                     time: Date(),
-                    description: "Voice connection lost (\(reason)). Announcer paused — run /announce rejoin to resume reading."
+                    description: "Voice connection lost (\(reason)). Announcer paused."
                 ))
             }
+            finishVoiceRecoveryIfNeeded(success: false)
             deactivateAnnouncerSession()
         }
+    }
+
+    private func scheduleVoiceAutoRecovery(reason: String) -> Bool {
+        guard !voiceRecoveryAttemptUsed, !voiceRecoveryInProgress else { return false }
+        let guildID = voicePendingGuildID ?? settings.voice.guildID
+        let channelID = voicePendingChannelID ?? settings.voice.voiceChannelID
+        guard status == .running, !guildID.isEmpty, !channelID.isEmpty else { return false }
+
+        voiceRecoveryAttemptUsed = true
+        voiceRecoveryInProgress = true
+        voiceConnectionStatus = .recovering("Rejoining after voice drop…")
+        if let announcer = voiceAnnouncementServiceStorage {
+            Task { await announcer.setPaused(true) }
+        }
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Voice connection lost (\(reason)). Announcer is auto-rejoining and queued reads are paused."
+        ))
+
+        voiceRecoveryTask?.cancel()
+        voiceRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            await self?.performVoiceAutoRecovery(guildID: guildID, channelID: channelID, reason: reason)
+        }
+        return true
+    }
+
+    private func performVoiceAutoRecovery(guildID: String, channelID: String, reason: String) async {
+        guard voiceRecoveryInProgress else { return }
+        guard status == .running else {
+            let message = "Voice auto-rejoin stopped because the bot is offline."
+            voiceConnectionStatus = .failed(message)
+            finishVoiceRecoveryIfNeeded(success: false)
+            deactivateAnnouncerSession()
+            addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
+            return
+        }
+
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Voice auto-rejoin starting after \(reason)."
+        ))
+        await disconnectVoice(preserveAnnouncerSession: true)
+        guard voiceRecoveryInProgress else { return }
+        try? await Task.sleep(for: .milliseconds(750))
+        guard voiceRecoveryInProgress else { return }
+        await connectVoice(guildID: guildID, channelID: channelID, recovering: true)
+        voiceRecoveryTask = nil
+    }
+
+    private func finishVoiceRecoveryIfNeeded(success: Bool) {
+        guard voiceRecoveryInProgress else { return }
+        voiceRecoveryInProgress = false
+        voiceRecoveryTask = nil
+        if success {
+            voiceRecoveryAttemptUsed = false
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice auto-rejoin succeeded; queued reads are resuming."
+            ))
+        } else {
+            addVoiceLogEntry(VoiceEventLogEntry(
+                time: Date(),
+                description: "Voice auto-rejoin failed; announcer session was stopped."
+            ))
+        }
+    }
+
+    private func cancelVoiceRecovery() {
+        voiceRecoveryTask?.cancel()
+        voiceRecoveryTask = nil
+        voiceRecoveryInProgress = false
     }
 
     private func applyPreferredVoiceFromSettings(to announcer: VoiceAnnouncementService) {
@@ -787,6 +904,12 @@ extension AppModel {
     }
 
     private func deactivateAnnouncerSession() {
+        if let announcer = voiceAnnouncementServiceStorage {
+            Task {
+                await announcer.setPaused(true)
+                await announcer.clearPending()
+            }
+        }
         var changed = false
         if settings.voice.textChannelSourceEnabled {
             settings.voice.textChannelSourceEnabled = false

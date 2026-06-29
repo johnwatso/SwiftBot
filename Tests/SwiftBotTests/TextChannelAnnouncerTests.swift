@@ -2,6 +2,21 @@ import XCTest
 @testable import SwiftBot
 
 final class TextChannelAnnouncerTests: XCTestCase {
+    func testAnnouncementQueueKeepsLatestMessagesWhilePaused() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+
+        await announcer.setPaused(true)
+        for index in 1...25 {
+            await announcer.enqueue("Message \(index)")
+        }
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.count, 20)
+        XCTAssertEqual(pending.first?.text, "Message 6")
+        XCTAssertEqual(pending.last?.text, "Message 25")
+    }
+
     func testTextChannelAnnouncerHandlesMultipleChannels() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
@@ -172,6 +187,43 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertEqual(texts.count, 2)
         XCTAssertTrue(texts.contains("Alice: Message in watched text channel"))
         XCTAssertTrue(texts.contains("Bob: Message in voice chat"))
+    }
+
+    @MainActor
+    func testAppModelQueuesMessagesWhileVoiceConnectionRecovers() async throws {
+        let app = AppModel()
+
+        app.voiceConnectionStatus = .recovering("Rejoining voice channel...")
+        app.settings.voice.textChannelSourceEnabled = true
+        app.settings.voice.watchedTextChannelID = "channel-1"
+        app.settings.voice.voiceChannelID = "voice-channel-chat"
+
+        let watcher = app.textChannelAnnouncer
+        XCTAssertNotNil(watcher)
+        guard let announcer = app.voiceAnnouncementService else {
+            XCTFail("Expected voice announcement service")
+            return
+        }
+        await announcer.setPaused(true)
+
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: "Message while reconnecting",
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "channel-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        await app.forwardMessageToVoiceAnnouncer(event)
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Alice: Message while reconnecting"])
     }
 }
 
