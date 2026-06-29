@@ -56,6 +56,9 @@ actor VoicePlaybackService {
     /// Fallback that publishes the key package if the external sender is slow to
     /// arrive, so a missing external sender can't stall the handshake.
     private var daveKeyPackageFallbackTask: Task<Void, Never>?
+    /// Watchdog used only after an established voice session receives a DAVE
+    /// re-key. Initial connection has its own media-readiness timeout.
+    private var daveMediaReadinessWatchdogTask: Task<Void, Never>?
 
     private var onStatusChange: (@Sendable (Status) async -> Void)?
     private var onDebug: (@Sendable (String) async -> Void)?
@@ -87,6 +90,8 @@ actor VoicePlaybackService {
         daveInitialKeyPackageSent = false
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 15_000_000_000)
@@ -155,6 +160,8 @@ actor VoicePlaybackService {
         keepaliveTask = nil
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
         isSpeaking = false
         await gateway?.disconnect()
         await transport?.stop()
@@ -206,7 +213,12 @@ actor VoicePlaybackService {
         guard !daveMediaRequired || daveMediaReady else {
             throw VoicePipelineError.daveNotReady
         }
-        try await gateway.sendSpeaking(true, ssrc: ssrc)
+        do {
+            try await gateway.sendSpeaking(true, ssrc: ssrc)
+        } catch {
+            await fail("voice speaking update failed: \(error.localizedDescription)")
+            throw VoicePipelineError.socketClosed
+        }
         isSpeaking = true
         defer {
             isSpeaking = false
@@ -258,7 +270,14 @@ actor VoicePlaybackService {
                     }
                 }
             }
-            try await sendFrame(chunkBuffer, transport: transport)
+            do {
+                try await sendFrame(chunkBuffer, transport: transport)
+            } catch VoicePipelineError.daveNotReady {
+                throw VoicePipelineError.daveNotReady
+            } catch {
+                await fail("voice audio send failed: \(error.localizedDescription)")
+                throw VoicePipelineError.socketClosed
+            }
             processed += chunkFrames
 
             nextDeadline = nextDeadline.advanced(by: .milliseconds(Int(frameDuration * 1000)))
@@ -303,6 +322,9 @@ actor VoicePlaybackService {
               var encryption = self.encryption,
               let ssrc = ssrc else {
             return
+        }
+        guard !daveMediaRequired || daveMediaReady else {
+            throw VoicePipelineError.daveNotReady
         }
         let plainPayload = try opus.encode(buffer)
         let encryptedPayload: Data
@@ -356,21 +378,29 @@ actor VoicePlaybackService {
             let coordinator = DaveSessionCoordinator(authSessionId: nil)
             do {
                 recognizedUserIds.insert(gateway.server.userID)
-                try await coordinator.configureForDiscordVoice(
+                let result = try await coordinator.configureDiscordVoiceSession(
                     groupId: UInt64(gateway.server.guildID) ?? 0,
                     selfUserId: gateway.server.userID,
                     protocolVersion: daveVersion
                 )
                 self.daveCoordinator = coordinator
                 await daveLog("DAVE MLS coordinator configured (self user \(gateway.server.userID)).")
-                try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "session description")
+                try await sendDaveOutboundActions(result.outboundActions, reason: "session description")
 
                 // Publish the key package only AFTER the external sender arrives
                 // (the MLS-correct order). If the external sender was already
                 // cached (reconnect), send now; otherwise wait for it, with a
                 // fallback so a missing external sender can't stall us.
-                if daveExternalSender != nil {
-                    await sendInitialDaveKeyPackage(reason: "session description (external sender cached)")
+                if let externalSender = daveExternalSender {
+                    let registration = try await coordinator.registerDiscordExternalSender(
+                        externalSender,
+                        publishInitialKeyPackage: true
+                    )
+                    await daveLog("DAVE external sender reapplied after session description.")
+                    try await sendDaveOutboundActions(
+                        registration.outboundActions,
+                        reason: "session description (external sender cached)"
+                    )
                 } else {
                     await daveLog("Waiting for DAVE external sender before publishing key package.")
                     await verbose("awaiting Discord → MLS external-sender package (a large next Δ means Discord is the slow side here)")
@@ -413,13 +443,17 @@ actor VoicePlaybackService {
         do {
             if let coordinator = daveCoordinator {
                 if epoch == 1 {
-                    try await coordinator.configureForDiscordVoice(
-                        groupId: UInt64(gateway?.server.guildID ?? "") ?? 0,
-                        selfUserId: gateway?.server.userID ?? "",
-                        protocolVersion: protocolVersion
+                    await pauseDaveMediaForRefresh(reason: "prepare epoch \(epoch)")
+                    daveInitialKeyPackageSent = false
+                    let result = try await coordinator.prepareDiscordEpoch(
+                        protocolVersion: protocolVersion,
+                        epoch: epoch
                     )
-                    try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "prepare epoch")
-                    try await sendDaveKeyPackage(reason: "prepare epoch")
+                    try await sendDaveOutboundActions(result.outboundActions, reason: "prepare epoch")
+                    if result.recoveryHint == .waitForExternalSender {
+                        await daveLog("DAVE prepare epoch is waiting for external sender before a fresh key package.")
+                        startDaveKeyPackageFallback()
+                    }
                     await daveLog("DAVE MLS session re-initialised for epoch \(epoch).")
                 }
             } else {
@@ -436,9 +470,13 @@ actor VoicePlaybackService {
             await daveLog("DAVE execute transition ignored; no active MLS session.")
             return
         }
-        let diagnostics = await coordinator.getDiagnostics()
-        guard diagnostics.handshakeState == .ready else {
-            await daveLog("DAVE execute transition deferred; MLS handshake is \(diagnostics.handshakeState.rawValue) (epoch \(diagnostics.currentEpoch)).")
+        let result = await coordinator.executeDiscordTransition(transitionId)
+        guard result.recoveryHint != .retryLater else {
+            await daveLog("DAVE execute transition deferred; MLS handshake is \(result.diagnostics.handshakeState.rawValue) (epoch \(result.diagnostics.currentEpoch)).")
+            return
+        }
+        if status == .connected {
+            await resumeDaveMedia(reason: "transition \(transitionId) ready; media resumed")
             return
         }
         await completeConnection(reason: "DAVE transition \(transitionId) ready")
@@ -449,10 +487,13 @@ actor VoicePlaybackService {
         do {
             daveExternalSender = data
             if let coordinator = daveCoordinator {
-                try await coordinator.setExternalSender(data)
+                let result = try await coordinator.registerDiscordExternalSender(
+                    data,
+                    publishInitialKeyPackage: !daveInitialKeyPackageSent
+                )
+                try await sendDaveOutboundActions(result.outboundActions, reason: "external sender")
             }
             await daveLog("DAVE external sender registered.")
-            await sendInitialDaveKeyPackage(reason: "external sender")
             await verbose("awaiting Discord → MLS proposals")
         } catch {
             await daveLogError("DAVE external sender registration failed: \(error.localizedDescription)")
@@ -466,11 +507,11 @@ actor VoicePlaybackService {
                 await daveLog("DAVE MLS proposals ignored; no active MLS session.")
                 return
             }
-            let commitWelcome = try await coordinator.processProposals(
+            let result = try await coordinator.processDiscordProposalsForOutbound(
                 data,
                 recognizedUserIds: Array(recognizedUserIds)
             )
-            try await gateway?.sendMlsCommitWelcome(commitWelcome)
+            try await sendDaveOutboundActions(result.outboundActions, reason: "proposals")
             await daveLog("DAVE MLS proposals processed; commit/welcome sent.")
             await verbose("awaiting Discord → announce-commit / welcome + execute-transition")
         } catch {
@@ -490,9 +531,27 @@ actor VoicePlaybackService {
     private func handleDaveAnnounceCommit(_ data: Data, transitionId: UInt64) async {
         await daveLog("DAVE announce commit received (id \(transitionId), \(data.count) bytes).")
         do {
-            try await daveCoordinator?.processDiscordTransition(.commit(data))
+            guard let coordinator = daveCoordinator else {
+                await daveLog("DAVE commit ignored; no active MLS session.")
+                return
+            }
+            let result = try await coordinator.processDiscordCommitForOutbound(
+                data,
+                transitionId: transitionId
+            )
+            if result.needsRecovery {
+                daveInitialKeyPackageSent = false
+                await pauseDaveMediaForRefresh(reason: "invalid transition \(transitionId) recovery")
+            }
+            try await sendDaveOutboundActions(result.outboundActions, reason: "commit \(transitionId)")
+            if result.needsRecovery {
+                await daveLog("DAVE commit rejected; recovery actions sent (id \(transitionId)).")
+                if result.recoveryHint == .waitForExternalSender {
+                    startDaveKeyPackageFallback()
+                }
+                return
+            }
             await daveLog("DAVE commit processed; transition-ready sent (id \(transitionId)).")
-            try await gateway?.sendTransitionReady(transitionId: transitionId)
             await completeConnectionIfHandshakeReady(reason: "DAVE commit \(transitionId) ready")
         } catch {
             await daveLogError("DAVE commit processing failed (id \(transitionId)): \(error.localizedDescription)")
@@ -504,12 +563,29 @@ actor VoicePlaybackService {
         await daveLog("DAVE welcome received (id \(transitionId), \(data.count) bytes).")
         guard let gateway = gateway else { return }
         do {
+            guard let coordinator = daveCoordinator else {
+                await daveLog("DAVE welcome ignored; no active MLS session.")
+                return
+            }
             recognizedUserIds.insert(gateway.server.userID)
-            try await daveCoordinator?.processDiscordTransition(
-                .welcome(data, recognizedUserIds: Array(recognizedUserIds))
+            let result = try await coordinator.processDiscordWelcomeForOutbound(
+                data,
+                transitionId: transitionId,
+                recognizedUserIds: Array(recognizedUserIds)
             )
+            if result.needsRecovery {
+                daveInitialKeyPackageSent = false
+                await pauseDaveMediaForRefresh(reason: "invalid transition \(transitionId) recovery")
+            }
+            try await sendDaveOutboundActions(result.outboundActions, reason: "welcome \(transitionId)")
+            if result.needsRecovery {
+                await daveLog("DAVE welcome rejected; recovery actions sent (id \(transitionId)).")
+                if result.recoveryHint == .waitForExternalSender {
+                    startDaveKeyPackageFallback()
+                }
+                return
+            }
             await daveLog("DAVE welcome processed; transition-ready sent (id \(transitionId)).")
-            try await gateway.sendTransitionReady(transitionId: transitionId)
             await completeConnectionIfHandshakeReady(reason: "DAVE welcome \(transitionId) ready")
         } catch {
             await daveLogError("DAVE welcome processing failed (id \(transitionId)): \(error.localizedDescription)")
@@ -525,20 +601,23 @@ actor VoicePlaybackService {
     /// waiting for one (which previously caused a 15s media-readiness timeout).
     /// `completeConnection` self-guards against double-completion.
     private func completeConnectionIfHandshakeReady(reason: String) async {
-        guard status != .connected, let coordinator = daveCoordinator else { return }
+        guard let coordinator = daveCoordinator else { return }
         let diagnostics = await coordinator.getDiagnostics()
         guard diagnostics.handshakeState == .ready else {
             await verbose("handshake not ready after transition (\(diagnostics.handshakeState.rawValue)); awaiting Discord → execute-transition")
+            return
+        }
+        if status == .connected {
+            await resumeDaveMedia(reason: "\(reason); media resumed")
             return
         }
         await completeConnection(reason: reason)
     }
 
     private func sendDaveKeyPackage(reason: String) async throws {
-        guard let coordinator = daveCoordinator, let gateway = gateway else { return }
-        let keyPackage = try await coordinator.getMarshalledKeyPackage()
-        try await gateway.sendMlsKeyPackage(keyPackage)
-        await daveLog("DAVE MLS key package sent after \(reason).")
+        guard let coordinator = daveCoordinator else { return }
+        let result = try await coordinator.publishDiscordInitialKeyPackage()
+        try await sendDaveOutboundActions(result.outboundActions, reason: reason)
     }
 
     /// Publish the initial key package exactly once per handshake (guarded so the
@@ -577,22 +656,40 @@ actor VoicePlaybackService {
     private func recoverFromInvalidDaveTransition(transitionId: UInt64) async {
         await daveLog("DAVE recovering from invalid transition (id \(transitionId)); resetting MLS session.")
         do {
-            try await gateway?.sendInvalidCommitWelcome(transitionId: transitionId)
-            try await daveCoordinator?.recreateSessionState()
-            if let coordinator = daveCoordinator {
-                try await applyDaveExternalSenderIfAvailable(to: coordinator, reason: "invalid commit/welcome recovery")
+            daveInitialKeyPackageSent = false
+            await pauseDaveMediaForRefresh(reason: "invalid transition \(transitionId) recovery")
+            let result = try await daveCoordinator?.recoverDiscordInvalidTransition(transitionId: transitionId)
+            try await sendDaveOutboundActions(result?.outboundActions ?? [], reason: "invalid commit/welcome recovery")
+            if result?.recoveryHint == .waitForExternalSender {
+                startDaveKeyPackageFallback()
             }
-            try await sendDaveKeyPackage(reason: "invalid commit/welcome recovery")
             await daveLog("DAVE session state recreated after invalid transition (id \(transitionId)).")
         } catch {
             await daveLogError("DAVE recovery failed (id \(transitionId)): \(error.localizedDescription)")
         }
     }
 
-    private func applyDaveExternalSenderIfAvailable(to coordinator: DaveSessionCoordinator, reason: String) async throws {
-        guard let externalSender = daveExternalSender else { return }
-        try await coordinator.setExternalSender(externalSender)
-        await daveLog("DAVE external sender reapplied after \(reason).")
+    private func sendDaveOutboundActions(_ actions: [DiscordDaveOutboundAction], reason: String) async throws {
+        guard let gateway = gateway else { return }
+        for action in actions {
+            switch action {
+            case .mlsKeyPackage(let data):
+                try await gateway.sendMlsKeyPackage(data)
+                daveInitialKeyPackageSent = true
+                daveKeyPackageFallbackTask?.cancel()
+                daveKeyPackageFallbackTask = nil
+                await daveLog("DAVE MLS key package sent after \(reason).")
+            case .mlsCommitWelcome(let data):
+                try await gateway.sendMlsCommitWelcome(data)
+                await daveLog("DAVE MLS commit/welcome sent after \(reason).")
+            case .transitionReady(let transitionId):
+                try await gateway.sendTransitionReady(transitionId: transitionId)
+                await daveLog("DAVE transition-ready sent after \(reason) (id \(transitionId)).")
+            case .invalidCommitWelcome(let transitionId):
+                try await gateway.sendInvalidCommitWelcome(transitionId: transitionId)
+                await daveLog("DAVE invalid commit/welcome sent after \(reason) (id \(transitionId)).")
+            }
+        }
     }
 
     private func handleGatewayClose(_ code: Int) async {
@@ -607,6 +704,8 @@ actor VoicePlaybackService {
         keepaliveTask = nil
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
         isSpeaking = false
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
@@ -619,6 +718,8 @@ actor VoicePlaybackService {
     private func completeConnection(reason: String) async {
         guard status != .connected else { return }
         daveMediaReady = true
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
         await debug("Voice media ready in \(elapsedSinceConnect()): \(reason).")
@@ -649,6 +750,40 @@ actor VoicePlaybackService {
                 guard let self, await self.sendKeepaliveDatagram() else { return }
             }
         }
+    }
+
+    private func pauseDaveMediaForRefresh(reason: String) async {
+        guard daveMediaRequired else { return }
+        daveMediaReady = false
+        _ = await daveCoordinator?.markDiscordMediaNotReady(reason: reason)
+        guard status == .connected else { return }
+        await daveLog("DAVE media paused for \(reason); awaiting refreshed MLS transition.")
+        startDaveMediaReadinessWatchdog(reason: reason)
+    }
+
+    private func resumeDaveMedia(reason: String) async {
+        let wasPaused = daveMediaRequired && !daveMediaReady
+        daveMediaReady = true
+        _ = await daveCoordinator?.markDiscordMediaReady(reason: reason)
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = nil
+        if wasPaused {
+            await logDaveState(reason)
+        }
+    }
+
+    private func startDaveMediaReadinessWatchdog(reason: String) {
+        daveMediaReadinessWatchdogTask?.cancel()
+        daveMediaReadinessWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            await self?.failIfDaveMediaStillNotReady(reason: reason)
+        }
+    }
+
+    private func failIfDaveMediaStillNotReady(reason: String) async {
+        guard status == .connected, daveMediaRequired, !daveMediaReady else { return }
+        await fail("DAVE media encryption did not recover after \(reason)")
     }
 
     /// Send one keepalive datagram. Returns `false` once the connection is no
