@@ -189,7 +189,7 @@ struct VoiceSettings: Codable, Hashable {
     var watchedTextChannelID: String = ""
 
     /// `AVSpeechSynthesisVoice.identifier` of the preferred system voice.
-    /// Empty means "best Premium English voice available."
+    /// Empty means "best automatic English voice" (Ryan Piper, any Piper, Premium, then Enhanced).
     var preferredVoiceIdentifier: String = ""
 
     /// Whether the text-channel announcement source is enabled.

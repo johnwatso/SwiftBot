@@ -322,6 +322,28 @@ extension AppModel {
         }
     }
 
+    func commitAnnouncerConfigsFromEditor(_ configs: [AnnouncerVoiceChannelConfig]) {
+        guard settings.voice.announcerConfigs != configs else { return }
+        settings.voice.announcerConfigs = configs
+
+        if forwardsConfigEditsToPrimary {
+            forwardConfigMutationToPrimary(.replaceVoice(settings.voice), revertOnFailure: true)
+        } else {
+            saveSettings()
+            scheduleVoiceSettingsFinalSave()
+        }
+    }
+
+    private func scheduleVoiceSettingsFinalSave() {
+        voiceSettingsFinalSaveTask?.cancel()
+        voiceSettingsFinalSaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3.25))
+            guard !Task.isCancelled else { return }
+            self?.saveSettings()
+            self?.voiceSettingsFinalSaveTask = nil
+        }
+    }
+
     func reconnectAnnouncerVoiceFromUI() async {
         let guildID = settings.voice.guildID
         let channelID = settings.voice.voiceChannelID

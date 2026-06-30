@@ -292,6 +292,7 @@ final class AppModel: ObservableObject {
     var voiceCredentialsSessionID: String?
     var voiceRecoveryTask: Task<Void, Never>?
     var announcerHealthWatchdogTask: Task<Void, Never>?
+    var voiceSettingsFinalSaveTask: Task<Void, Never>?
     var voiceRecoveryInProgress: Bool = false
     var voiceRecoveryAttemptUsed: Bool = false
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle
