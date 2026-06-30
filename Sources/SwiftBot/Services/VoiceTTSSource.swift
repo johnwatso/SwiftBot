@@ -25,14 +25,29 @@ final class VoiceTTSSource: @unchecked Sendable {
     var format: AVAudioFormat { targetFormat }
 
     /// Pick the best available voice for an English locale.
-    /// Prefers Nathan Enhanced → Premium → Enhanced → Default.
+    /// Prefers Ryan Piper -> any Piper -> Premium -> Enhanced -> Default.
     static func preferredEnglishVoice() -> AVSpeechSynthesisVoice? {
-        let englishVoices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
-        if let nathan = englishVoices.first(where: { $0.name == "Nathan (Enhanced)" }) { return nathan }
-        if let nathan = englishVoices.first(where: { $0.identifier == "com.apple.voice.enhanced.en-US.Nathan" }) { return nathan }
+        preferredEnglishVoice(from: AVSpeechSynthesisVoice.speechVoices())
+    }
+
+    static func preferredEnglishVoice(from voices: [AVSpeechSynthesisVoice]) -> AVSpeechSynthesisVoice? {
+        let englishVoices = voices.filter { $0.language.hasPrefix("en") }
+        if let ryanPiper = englishVoices.first(where: isRyanPiperVoice) { return ryanPiper }
+        if let piper = englishVoices.first(where: isPiperVoice) { return piper }
         if let premium = englishVoices.first(where: { $0.quality == .premium }) { return premium }
         if let enhanced = englishVoices.first(where: { $0.quality == .enhanced }) { return enhanced }
         return englishVoices.first ?? AVSpeechSynthesisVoice(language: "en-US")
+    }
+
+    static func isPiperVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
+        voice.identifier.localizedCaseInsensitiveContains("piper") ||
+            voice.name.localizedCaseInsensitiveContains("piper")
+    }
+
+    static func isRyanPiperVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
+        isPiperVoice(voice) &&
+            (voice.identifier.localizedCaseInsensitiveContains("ryan") ||
+             voice.name.localizedCaseInsensitiveContains("ryan"))
     }
 
     /// Synthesize `text` and return one fully-rendered AVAudioPCMBuffer in the

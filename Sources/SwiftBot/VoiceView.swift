@@ -13,6 +13,10 @@ struct VoiceView: View {
     @State private var vcBehaviours: [String: AnnouncerBehaviourState] = [:]
     @State private var technicalLogsExpanded: Bool = false
     @State private var editingVCConfigIndex: Int?
+    @State private var applyingSettingsSnapshot: Bool = false
+    @State private var voiceConfigCommitTask: Task<Void, Never>?
+    @State private var cachedVoiceOptions: [PickerOption] = [PickerOption(id: "", label: "Recommended: Piper / Premium (auto)")]
+    @State private var autoVoiceDisplayName: String = "Auto"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -46,22 +50,30 @@ struct VoiceView: View {
         .disabled(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary)
         .opacity(app.isFailoverManagedNode && !app.forwardsConfigEditsToPrimary ? 0.62 : 1)
         .meshConfigMutationErrorAlert()
-        .onAppear { syncFromSettings() }
-        .onChange(of: app.settings.voice) { _, _ in syncFromSettings() }
-        .onChange(of: vcConfigs) { _, newValue in
-            app.settings.voice.announcerConfigs = newValue
-            // On a Failover, forward the whole Announcer section to the Primary
-            // (revert on failure). `syncFromSettings()` guards against echoing
-            // the reconciled value back, so this doesn't loop.
-            if app.forwardsConfigEditsToPrimary {
-                app.forwardConfigMutationToPrimary(.replaceVoice(app.settings.voice), revertOnFailure: true)
+        .onAppear {
+            syncFromSettings()
+            refreshVoiceOptions()
+        }
+        .onDisappear { flushVoiceConfigCommit() }
+        .onChange(of: app.settings.voice) { _, _ in
+            if editingVCConfigIndex == nil, voiceConfigCommitTask == nil {
+                syncFromSettings()
             } else {
-                app.saveSettings()
+                selectedVoiceIdentifier = app.settings.voice.preferredVoiceIdentifier
             }
+        }
+        .onChange(of: vcConfigs) { _, newValue in
+            guard !applyingSettingsSnapshot else { return }
+            scheduleVoiceConfigCommit(newValue)
         }
         .sheet(isPresented: Binding(
             get: { editingVCConfigIndex != nil },
-            set: { if !$0 { editingVCConfigIndex = nil } }
+            set: {
+                if !$0 {
+                    flushVoiceConfigCommit()
+                    editingVCConfigIndex = nil
+                }
+            }
         )) {
             if let index = editingVCConfigIndex {
                 AnnouncerConfigSheet(config: $vcConfigs[index], state: behaviourBinding(for: vcConfigs[index].id))
@@ -786,7 +798,7 @@ struct VoiceView: View {
                     voiceDownloadHelpPopover
                 }
             }
-            Text("Recommended: Nathan (Enhanced). Empty uses Nathan when installed, then the best available Premium or Enhanced English voice.")
+            Text("Auto uses Ryan Piper when available, then any Piper voice, then the best available Premium or Enhanced English voice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -805,14 +817,14 @@ struct VoiceView: View {
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Download Nathan (Enhanced) under English voices if it is not listed. macOS does not let SwiftBot install voices automatically.")
+            Text("For the best Announcer voice, install Piper - Neural TTS and download Ryan. Any installed Piper voice is preferred automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
 
-            Text("For high-quality neural voices (e.g. Piper), download the 'Piper - Neural TTS' app from the Mac App Store and download voices inside it. They will automatically appear in SwiftBot.")
+            Text("If no Piper voice is available, SwiftBot falls back to the best Premium or Enhanced English voice installed in macOS.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -828,38 +840,78 @@ struct VoiceView: View {
         // Only pull configs in from settings if our local state is stale
         // (avoids overwriting edits in progress when settings change for unrelated reasons)
         if vcConfigs != app.settings.voice.announcerConfigs {
+            applyingSettingsSnapshot = true
             vcConfigs = app.settings.voice.announcerConfigs
+            Task { @MainActor in
+                await Task.yield()
+                applyingSettingsSnapshot = false
+            }
         }
     }
 
+    private func scheduleVoiceConfigCommit(_ configs: [AnnouncerVoiceChannelConfig]) {
+        voiceConfigCommitTask?.cancel()
+        voiceConfigCommitTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            voiceConfigCommitTask = nil
+            app.commitAnnouncerConfigsFromEditor(configs)
+        }
+    }
+
+    private func flushVoiceConfigCommit() {
+        voiceConfigCommitTask?.cancel()
+        voiceConfigCommitTask = nil
+        guard !applyingSettingsSnapshot else { return }
+        app.commitAnnouncerConfigsFromEditor(vcConfigs)
+    }
+
     private var voiceOptions: [PickerOption] {
-        var options = [PickerOption(id: "", label: "Recommended: Nathan Enhanced (auto)")]
+        cachedVoiceOptions
+    }
+
+    private func refreshVoiceOptions() {
         let englishVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
-        let premium = englishVoices.filter { $0.quality == .premium }
-        let enhanced = englishVoices.filter { $0.quality == .enhanced }
-        let piper = englishVoices.filter {
-            $0.quality != .premium &&
-            $0.quality != .enhanced &&
-            ($0.identifier.localizedCaseInsensitiveContains("piper") || $0.name.localizedCaseInsensitiveContains("piper"))
+        autoVoiceDisplayName = VoiceTTSSource.preferredEnglishVoice(from: englishVoices)?.name ?? "Auto"
+
+        var options = [PickerOption(id: "", label: "Recommended: \(autoVoiceDisplayName) (auto)")]
+        let piper = sortedVoices(englishVoices.filter(VoiceTTSSource.isPiperVoice))
+        let premium = sortedVoices(englishVoices.filter { $0.quality == .premium && !VoiceTTSSource.isPiperVoice($0) })
+        let enhanced = sortedVoices(englishVoices.filter { $0.quality == .enhanced && !VoiceTTSSource.isPiperVoice($0) })
+
+        for v in piper {
+            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Piper · \(v.language))"))
         }
-        
         for v in premium {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Premium · \(v.language))"))
         }
         for v in enhanced {
             options.append(PickerOption(id: v.identifier, label: "\(v.name) (Enhanced · \(v.language))"))
         }
-        for v in piper {
-            options.append(PickerOption(id: v.identifier, label: "\(v.name) (Piper · \(v.language))"))
+        cachedVoiceOptions = options
+    }
+
+    private func sortedVoices(_ voices: [AVSpeechSynthesisVoice]) -> [AVSpeechSynthesisVoice] {
+        voices.sorted { lhs, rhs in
+            let lhsIsRyan = VoiceTTSSource.isRyanPiperVoice(lhs)
+            let rhsIsRyan = VoiceTTSSource.isRyanPiperVoice(rhs)
+            if lhsIsRyan != rhsIsRyan { return lhsIsRyan }
+            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
         }
-        return options
+    }
+
+    private func displayName(from option: PickerOption) -> String {
+        option.label.components(separatedBy: " (").first ?? option.label
     }
 
     private var preferredVoiceDisplayName: String {
         let identifier = app.settings.voice.preferredVoiceIdentifier
         if identifier.isEmpty {
-            return VoiceTTSSource.preferredEnglishVoice()?.name ?? "Auto"
+            return autoVoiceDisplayName
+        }
+        if let option = cachedVoiceOptions.first(where: { $0.id == identifier }) {
+            return displayName(from: option)
         }
         return AVSpeechSynthesisVoice(identifier: identifier)?.name ?? "Auto"
     }
