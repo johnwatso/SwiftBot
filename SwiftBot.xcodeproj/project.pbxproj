@@ -214,6 +214,7 @@
 		E6B74D5745792EA317F4352E /* SwiftMinerDMSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD1F742923CA5CFE63A2061 /* SwiftMinerDMSender.swift */; };
 		E6EB5838CF9F9E9BBEB38BC2 /* GatewayEventPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDE2D481BEE14FBC0B80C60 /* GatewayEventPresentation.swift */; };
 		E8BF070366372320FB043818 /* RuleEngineModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94FFE2322D424228C3F6C01D /* RuleEngineModels.swift */; };
+		EA6387246F5CA0709EA25405 /* VoiceAnnouncerHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2E9D2E506AD2D8AE3A4C2A /* VoiceAnnouncerHealth.swift */; };
 		EAEDC19B03FED30AC99ECBFB /* SwiftBot.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8964B98159AC25452C4423DF /* SwiftBot.icon */; };
 		EB2ABE370C2878688D3F25A8 /* RecordingsKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 886361EEFCD726EB521500E6 /* RecordingsKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		EC945C92A428A86DAF62173F /* MeshFailoverIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */; };
@@ -363,6 +364,7 @@
 		47FB5492E7AD64FBC5083CB8 /* DiscordTimestamp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordTimestamp.swift; sourceTree = "<group>"; };
 		4BEED9AA31DA223B10FC247A /* MeshFailoverIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshFailoverIntegrationTests.swift; sourceTree = "<group>"; };
 		4C5788F384AF1C5CEC1A7137 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		4D2E9D2E506AD2D8AE3A4C2A /* VoiceAnnouncerHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceAnnouncerHealth.swift; sourceTree = "<group>"; };
 		4D308AFB25CA0A2E9B2CE9F2 /* AppModel+Media.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Media.swift"; sourceTree = "<group>"; };
 		4D3D889F1B0A734AA5C79602 /* SteamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteamService.swift; sourceTree = "<group>"; };
 		4D7439BDA54C341126F5A30C /* SwiftMinerDMSenderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftMinerDMSenderTests.swift; sourceTree = "<group>"; };
@@ -857,6 +859,7 @@
 				94FFE2322D424228C3F6C01D /* RuleEngineModels.swift */,
 				65163E09004C5188A7725459 /* SwiftMinerDMTypes.swift */,
 				6BEA1503C3A7DDF64C2607C5 /* Validation.swift */,
+				4D2E9D2E506AD2D8AE3A4C2A /* VoiceAnnouncerHealth.swift */,
 				DEBB16B1FE01A3A14A7ED0BC /* VoiceConnectionStatus.swift */,
 				0C654453B8C0EDE901C01798 /* VoiceSettings.swift */,
 			);
@@ -1204,6 +1207,7 @@
 				9F327A8C13AE1959FC6E7265 /* VariableAutocompleteField.swift in Sources */,
 				AC55DF43FED0AFC0CC0E93AD /* VersionStore.swift in Sources */,
 				F0339F4D594D49B4A4625A3B /* VoiceAnnouncementService.swift in Sources */,
+				EA6387246F5CA0709EA25405 /* VoiceAnnouncerHealth.swift in Sources */,
 				C8A3C4E26497AAEFB48047D0 /* VoiceConnectionStatus.swift in Sources */,
 				1702075E35E0AE27103CE46B /* VoiceEncryption.swift in Sources */,
 				BB8C25DB9DA191781CA1DB06 /* VoiceGatewayConnection.swift in Sources */,

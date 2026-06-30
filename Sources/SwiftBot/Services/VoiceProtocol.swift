@@ -85,6 +85,7 @@ enum VoicePipelineError: LocalizedError {
     case socketClosed
     case opusInitFailed
     case audioFormatUnsupported
+    case audioRenderInvalid(String)
     case notConnected
     case daveNotReady
     case timeout
@@ -98,6 +99,7 @@ enum VoicePipelineError: LocalizedError {
         case .socketClosed: return "Voice socket closed"
         case .opusInitFailed: return "Opus encoder init failed"
         case .audioFormatUnsupported: return "Audio format unsupported"
+        case .audioRenderInvalid(let reason): return "Speech audio invalid: \(reason)"
         case .notConnected: return "Voice pipeline not connected"
         case .daveNotReady: return "DAVE media encryption is not ready yet"
         case .timeout: return "Voice operation timed out"
@@ -108,4 +110,3 @@ enum VoicePipelineError: LocalizedError {
 struct SendableAudioBuffer: @unchecked Sendable {
     let buffer: AVAudioPCMBuffer
 }
-

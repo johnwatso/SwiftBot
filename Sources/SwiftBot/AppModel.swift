@@ -82,6 +82,7 @@ final class AppModel: ObservableObject {
     }
     @Published var voiceLog: [VoiceEventLogEntry] = []
     @Published var messagesSpokenToday: Int = 0
+    @Published var announcerHealth = VoiceAnnouncerHealth()
     var lastSpokenDate: Date = Date()
     var autoDisconnectTask: Task<Void, Never>?
     /// Member keys ("guildID-userID") currently known to be Go Live streaming,
@@ -290,6 +291,7 @@ final class AppModel: ObservableObject {
     /// (the classic close-code-4006 cause) before opening the voice pipeline.
     var voiceCredentialsSessionID: String?
     var voiceRecoveryTask: Task<Void, Never>?
+    var announcerHealthWatchdogTask: Task<Void, Never>?
     var voiceRecoveryInProgress: Bool = false
     var voiceRecoveryAttemptUsed: Bool = false
     @Published var voiceConnectionStatus: VoiceConnectionStatus = .idle

@@ -495,6 +495,7 @@ struct VoiceView: View {
 
                 DisclosureGroup(isExpanded: $advancedExpanded) {
                     VStack(alignment: .leading, spacing: 14) {
+                        announcerHealthPanel
                         connectionPanel
                         daveBlockedBanner
                     }
@@ -509,6 +510,98 @@ struct VoiceView: View {
                 }
             }
         }
+    }
+
+    private var announcerHealthPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: announcerHealthSymbol)
+                    .foregroundStyle(announcerHealthColor)
+                    .font(.title3)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Announcer Health")
+                        .font(.subheadline.weight(.semibold))
+                    Text(app.announcerHealth.phase.displayLabel)
+                        .font(.caption)
+                        .foregroundStyle(announcerHealthColor)
+                }
+                Spacer()
+                Button {
+                    Task { await app.reconnectAnnouncerVoiceFromUI() }
+                } label: {
+                    Label("Reconnect Voice", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(app.status != .running || app.settings.voice.voiceChannelID.isEmpty)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], alignment: .leading, spacing: 8) {
+                announcerHealthMetric("Pending", "\(app.announcerHealth.queueDepth)")
+                announcerHealthMetric("Retry Streak", "\(app.announcerHealth.retryStreak)")
+                announcerHealthMetric("Last Spoken", formattedHealthDate(app.announcerHealth.lastSpokenAt))
+                announcerHealthMetric("Last Recovery", formattedHealthDate(app.announcerHealth.lastRecoveryAt))
+            }
+
+            if let failure = app.announcerHealth.lastFailureReason, !failure.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(failure)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(announcerHealthColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(announcerHealthColor.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    private func announcerHealthMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private var announcerHealthColor: Color {
+        switch app.announcerHealth.phase {
+        case .idle: return .secondary
+        case .queued, .rendering, .sending: return .blue
+        case .paused, .recovering: return .yellow
+        case .failed: return .red
+        }
+    }
+
+    private var announcerHealthSymbol: String {
+        switch app.announcerHealth.phase {
+        case .idle: return "checkmark.circle"
+        case .queued: return "text.line.first.and.arrowtriangle.forward"
+        case .rendering: return "waveform"
+        case .sending: return "paperplane.fill"
+        case .paused: return "pause.circle"
+        case .recovering: return "arrow.clockwise.circle"
+        case .failed: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func formattedHealthDate(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        return date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
     }
 
     /// Technical Logs render more lines in DEBUG (Dev) builds so a full connect
