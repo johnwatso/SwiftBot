@@ -42,6 +42,7 @@ actor VoicePlaybackService {
     /// the speaking ring stays off while idle.
     private var keepaliveTask: Task<Void, Never>?
     private var keepaliveCounter: UInt32 = 0
+    private var keepaliveFailureCount: Int = 0
     /// When the current connect attempt began, used to time each handshake phase
     /// in the diagnostics log (so a slow connect can be pinpointed).
     private var connectStartedAt: ContinuousClock.Instant?
@@ -158,6 +159,7 @@ actor VoicePlaybackService {
         await setStatus(.disconnecting)
         keepaliveTask?.cancel()
         keepaliveTask = nil
+        keepaliveFailureCount = 0
         daveKeyPackageFallbackTask?.cancel()
         daveKeyPackageFallbackTask = nil
         daveMediaReadinessWatchdogTask?.cancel()
@@ -740,6 +742,7 @@ actor VoicePlaybackService {
     private func startKeepalive() {
         keepaliveTask?.cancel()
         keepaliveCounter = 0
+        keepaliveFailureCount = 0
         keepaliveTask = Task { [weak self] in
             let clock = ContinuousClock()
             let interval = Duration.seconds(5)
@@ -747,7 +750,13 @@ actor VoicePlaybackService {
             while !Task.isCancelled {
                 try? await clock.sleep(until: nextDeadline)
                 nextDeadline = nextDeadline.advanced(by: interval)
-                guard let self, await self.sendKeepaliveDatagram() else { return }
+                guard let self else { return }
+                do {
+                    guard try await self.sendKeepaliveDatagram() else { return }
+                    await self.resetKeepaliveFailureCount()
+                } catch {
+                    await self.handleKeepaliveFailure(error)
+                }
             }
         }
     }
@@ -788,7 +797,7 @@ actor VoicePlaybackService {
 
     /// Send one keepalive datagram. Returns `false` once the connection is no
     /// longer active so the loop can exit.
-    private func sendKeepaliveDatagram() async -> Bool {
+    private func sendKeepaliveDatagram() async throws -> Bool {
         guard status == .connected, let transport = transport else { return false }
         var packet = Data(count: 8)
         let counter = keepaliveCounter
@@ -797,8 +806,21 @@ actor VoicePlaybackService {
         packet[2] = UInt8((counter >> 16) & 0xff)
         packet[3] = UInt8((counter >> 24) & 0xff)
         keepaliveCounter &+= 1
-        try? await transport.send(packet)
+        try await transport.send(packet)
         return true
+    }
+
+    private func resetKeepaliveFailureCount() {
+        keepaliveFailureCount = 0
+    }
+
+    private func handleKeepaliveFailure(_ error: Error) async {
+        guard status == .connected else { return }
+        keepaliveFailureCount += 1
+        await debug("Voice UDP keepalive failed (\(keepaliveFailureCount)/2): \(error.localizedDescription)")
+        if keepaliveFailureCount >= 2 {
+            await fail("voice UDP keepalive failed repeatedly: \(error.localizedDescription)")
+        }
     }
 
     private func setStatus(_ new: Status) async {

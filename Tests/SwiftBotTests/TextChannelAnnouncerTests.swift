@@ -1,7 +1,24 @@
+import AVFoundation
 import XCTest
 @testable import SwiftBot
 
 final class TextChannelAnnouncerTests: XCTestCase {
+    func testSpeechSanitizerCleansDiscordNoise() {
+        let sanitized = AnnouncerSpeechSanitizer.sanitized(
+            "**Look** at <@123> in <#456> <:party_parrot:789> https://example.com/a/b"
+        )
+
+        XCTAssertEqual(sanitized, "Look at user in channel party parrot link")
+    }
+
+    func testSpeechSanitizerReplacesCodeBlocksAndMarkdownLinks() {
+        let sanitized = AnnouncerSpeechSanitizer.sanitized(
+            "```swift\nprint(\"secret\")\n``` Read [the notes](https://example.com)."
+        )
+
+        XCTAssertEqual(sanitized, "code block Read the notes.")
+    }
+
     func testAnnouncementQueueKeepsLatestMessagesWhilePaused() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
@@ -15,6 +32,56 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertEqual(pending.count, 20)
         XCTAssertEqual(pending.first?.text, "Message 6")
         XCTAssertEqual(pending.last?.text, "Message 25")
+
+        let health = await announcer.healthSnapshot
+        XCTAssertEqual(health.phase, .paused)
+        XCTAssertEqual(health.queueDepth, 20)
+        XCTAssertTrue(health.isPaused)
+    }
+
+    func testAnnouncementQueueStoresSanitizedSpeech() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+
+        await announcer.setPaused(true)
+        await announcer.enqueue("**Launch** `status` https://example.com <@123>")
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Launch status link user"])
+    }
+
+    func testAudioGuardrailsRejectEmptyRenderedAudio() throws {
+        let format = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: OpusFrameEncoder.sampleRate,
+            channels: OpusFrameEncoder.channelCount,
+            interleaved: true
+        ))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 0
+
+        XCTAssertThrowsError(try AnnouncerAudioGuardrails.validateAndRepair(buffer))
+    }
+
+    func testAudioGuardrailsNormaliseClipping() throws {
+        let format = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: OpusFrameEncoder.sampleRate,
+            channels: OpusFrameEncoder.channelCount,
+            interleaved: true
+        ))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 2))
+        buffer.frameLength = 2
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        samples[0] = 2.0
+        samples[1] = -2.0
+        samples[2] = 1.5
+        samples[3] = -1.5
+
+        _ = try AnnouncerAudioGuardrails.validateAndRepair(buffer)
+
+        let peak = max(abs(samples[0]), abs(samples[1]), abs(samples[2]), abs(samples[3]))
+        XCTAssertLessThanOrEqual(peak, 0.921)
     }
 
     func testTextChannelAnnouncerHandlesMultipleChannels() async throws {

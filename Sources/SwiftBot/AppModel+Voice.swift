@@ -44,6 +44,11 @@ extension AppModel {
                         self?.addVoiceLogEntry(VoiceEventLogEntry(time: Date(), description: message))
                     }
                 }
+                await announcer.setOnHealthChange { [weak self] health in
+                    await MainActor.run {
+                        self?.announcerHealth = health
+                    }
+                }
             }
             return announcer
         } catch {
@@ -317,6 +322,30 @@ extension AppModel {
         }
     }
 
+    func reconnectAnnouncerVoiceFromUI() async {
+        let guildID = settings.voice.guildID
+        let channelID = settings.voice.voiceChannelID
+        guard status == .running else {
+            voiceConnectionStatus = .failed("Bot is offline — click Start Bot first.")
+            return
+        }
+        guard !guildID.isEmpty, !channelID.isEmpty else {
+            voiceConnectionStatus = .failed("Announcer voice channel is not configured.")
+            return
+        }
+
+        if let announcer = voiceAnnouncementServiceStorage {
+            await announcer.markRecovering("manual voice reconnect")
+        }
+        addVoiceLogEntry(VoiceEventLogEntry(
+            time: Date(),
+            description: "Manual Announcer voice reconnect requested."
+        ))
+        await disconnectVoice(preserveAnnouncerSession: true)
+        try? await Task.sleep(for: .milliseconds(750))
+        await connectVoice(guildID: guildID, channelID: channelID, recovering: true)
+    }
+
     func handleAnnounceJoinSlash(raw: [String: DiscordJSON]) async -> (ok: Bool, message: String) {
         await connectAnnouncerFromSlash(raw: raw, rejoin: false)
     }
@@ -522,6 +551,7 @@ extension AppModel {
             if let announcer = voiceAnnouncementServiceStorage {
                 await announcer.setPaused(false)
             }
+            startAnnouncerHealthWatchdog()
             addVoiceLogEntry(VoiceEventLogEntry(
                 time: Date(),
                 description: "Voice pipeline connected to channel \(voicePendingChannelID ?? "?")"
@@ -556,6 +586,7 @@ extension AppModel {
             if let announcer = voiceAnnouncementServiceStorage {
                 await announcer.setPaused(false)
             }
+            startAnnouncerHealthWatchdog()
         case .disconnecting:
             if voiceRecoveryInProgress {
                 voiceConnectionStatus = .recovering("Preparing a clean rejoin…")
@@ -594,7 +625,7 @@ extension AppModel {
         voiceRecoveryInProgress = true
         voiceConnectionStatus = .recovering("Rejoining after voice drop…")
         if let announcer = voiceAnnouncementServiceStorage {
-            Task { await announcer.setPaused(true) }
+            Task { await announcer.markRecovering(reason) }
         }
         addVoiceLogEntry(VoiceEventLogEntry(
             time: Date(),
@@ -655,6 +686,32 @@ extension AppModel {
         voiceRecoveryTask?.cancel()
         voiceRecoveryTask = nil
         voiceRecoveryInProgress = false
+    }
+
+    private func startAnnouncerHealthWatchdog() {
+        announcerHealthWatchdogTask?.cancel()
+        announcerHealthWatchdogTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                await self?.evaluateAnnouncerHealthWatchdog()
+            }
+        }
+    }
+
+    private func stopAnnouncerHealthWatchdog() {
+        announcerHealthWatchdogTask?.cancel()
+        announcerHealthWatchdogTask = nil
+    }
+
+    private func evaluateAnnouncerHealthWatchdog() async {
+        guard voiceConnectionStatus.isConnected else { return }
+        guard announcerHealth.isStalled(threshold: 60) else { return }
+        guard let announcer = voiceAnnouncementServiceStorage else { return }
+
+        let reason = "announcer health watchdog: \(announcerHealth.phase.displayLabel.lowercased()) for too long"
+        await announcer.markRecovering(reason)
+        _ = scheduleVoiceAutoRecovery(reason: reason)
     }
 
     private func applyPreferredVoiceFromSettings(to announcer: VoiceAnnouncementService) {
@@ -904,6 +961,7 @@ extension AppModel {
     }
 
     private func deactivateAnnouncerSession() {
+        stopAnnouncerHealthWatchdog()
         if let announcer = voiceAnnouncementServiceStorage {
             Task {
                 await announcer.setPaused(true)
