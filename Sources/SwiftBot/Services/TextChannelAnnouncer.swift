@@ -8,7 +8,28 @@ struct AnnouncerReadOptions: Sendable {
     var ignoreLinks: Bool = true
     var summariseLong: Bool = false
     var keepShort: Bool = false
+    var smartShortenWithAppleIntelligence: Bool = false
+    var smartShortener: (@Sendable (String) async -> String?)? = nil
     var ignoreEmojiSpam: Bool = false
+}
+
+private enum SmartShortenResultState: Sendable {
+    case pending
+    case complete(String?)
+}
+
+private actor SmartShortenResult {
+    private var current: SmartShortenResultState = .pending
+
+    func complete(_ value: String?) {
+        if case .pending = current {
+            current = .complete(value)
+        }
+    }
+
+    func state() -> SmartShortenResultState {
+        current
+    }
 }
 
 /// Watches a single text channel and enqueues each new message into a
@@ -57,7 +78,7 @@ actor TextChannelAnnouncer {
         options: AnnouncerReadOptions = AnnouncerReadOptions()
     ) async {
         guard watchedChannelIDs.contains(event.channelID) else { return }
-        guard let spoken = formattedSpeech(
+        guard let spoken = await formattedSpeech(
             for: event, displayNameOverride: displayNameOverride,
             channelNames: channelNames, roleNames: roleNames, options: options
         ) else { return }
@@ -72,13 +93,21 @@ actor TextChannelAnnouncer {
         channelNames: [String: String],
         roleNames: [String: String],
         options: AnnouncerReadOptions
-    ) -> String? {
+    ) async -> String? {
         guard var body = readableBody(
             for: event, channelNames: channelNames, roleNames: roleNames, options: options
         ) else { return nil }
 
         // Length policy: messages over `maxLength` are skipped unless the config
-        // opts to shorten them; `keepShort` tightens the cap for everything.
+        // opts to shorten them; `keepShort` tightens the cap for everything. When
+        // smart shortening is enabled, Apple Intelligence gets a short chance to
+        // rewrite the message before the deterministic fallback caps apply.
+        if shouldSmartShorten(body, options: options),
+           let smartShortener = options.smartShortener,
+           let shortened = await Self.smartShorten(body, using: smartShortener),
+           shortened.count < body.count {
+            body = shortened
+        }
         if body.count > Self.maxLength {
             guard options.summariseLong else { return nil }
             body = Self.truncate(body, to: Self.summaryCap)
@@ -96,6 +125,12 @@ actor TextChannelAnnouncer {
             "Someone"
         }
         return "\(author): \(body)"
+    }
+
+    private func shouldSmartShorten(_ body: String, options: AnnouncerReadOptions) -> Bool {
+        guard options.smartShortenWithAppleIntelligence else { return false }
+        if options.keepShort, body.count > Self.shortCap { return true }
+        return body.count > Self.maxLength
     }
 
     private func readableBody(
@@ -166,6 +201,38 @@ actor TextChannelAnnouncer {
             if !head.isEmpty { return head + "…" }
         }
         return slice.trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    private static func smartShorten(
+        _ text: String,
+        using shortener: @escaping @Sendable (String) async -> String?
+    ) async -> String? {
+        let result = SmartShortenResult()
+        let task = Task {
+            await result.complete(await shortener(text))
+        }
+        defer { task.cancel() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .milliseconds(900))
+        while clock.now < deadline {
+            switch await result.state() {
+            case .pending:
+                try? await Task.sleep(for: .milliseconds(25))
+            case let .complete(raw):
+                return cleanSmartShortenResult(raw, original: text)
+            }
+        }
+        return nil
+    }
+
+    private static func cleanSmartShortenResult(_ raw: String?, original text: String) -> String? {
+        guard let raw else { return nil }
+        let cleaned = raw
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, cleaned.count < text.count else { return nil }
+        return truncate(cleaned, to: shortCap)
     }
 
     /// Heuristic: treat a message as emoji spam when it carries many

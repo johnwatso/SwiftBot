@@ -168,6 +168,133 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertTrue(texts.contains("Bob: Hello from channel 2"))
     }
 
+    func testTextChannelAnnouncerUsesSmartShortenerWhenAvailable() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+        await announcer.setPaused(true)
+
+        let watcher = TextChannelAnnouncer(announcer: announcer)
+        await watcher.setWatchedChannel("channel-1")
+
+        let longMessage = Array(repeating: "the build passed after removing the old DAVE retry timer", count: 5)
+            .joined(separator: " and ")
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: longMessage,
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "channel-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        await watcher.handle(
+            event,
+            options: AnnouncerReadOptions(
+                keepShort: true,
+                smartShortenWithAppleIntelligence: true,
+                smartShortener: { _ in "The build passed after removing the old DAVE retry timer." }
+            )
+        )
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Alice: The build passed after removing the old DAVE retry timer."])
+    }
+
+    func testTextChannelAnnouncerFallsBackWhenSmartShortenerReturnsNil() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+        await announcer.setPaused(true)
+
+        let watcher = TextChannelAnnouncer(announcer: announcer)
+        await watcher.setWatchedChannel("channel-1")
+
+        let longMessage = Array(repeating: "this is a long noisy Discord message that should be kept short", count: 6)
+            .joined(separator: " ")
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: longMessage,
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "channel-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        await watcher.handle(
+            event,
+            options: AnnouncerReadOptions(
+                summariseLong: true,
+                keepShort: true,
+                smartShortenWithAppleIntelligence: true,
+                smartShortener: { _ in nil }
+            )
+        )
+
+        let pending = await announcer.pending
+        let spoken = try XCTUnwrap(pending.first?.text)
+        XCTAssertTrue(spoken.hasPrefix("Alice: "))
+        XCTAssertTrue(spoken.hasSuffix("…"))
+        XCTAssertLessThanOrEqual(spoken.count, 170)
+    }
+
+    func testTextChannelAnnouncerTimesOutSlowSmartShortener() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+        await announcer.setPaused(true)
+
+        let watcher = TextChannelAnnouncer(announcer: announcer)
+        await watcher.setWatchedChannel("channel-1")
+
+        let longMessage = Array(repeating: "this message should not wait for a slow smart shortener", count: 6)
+            .joined(separator: " ")
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: longMessage,
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "channel-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        let start = Date()
+        await watcher.handle(
+            event,
+            options: AnnouncerReadOptions(
+                summariseLong: true,
+                keepShort: true,
+                smartShortenWithAppleIntelligence: true,
+                smartShortener: { _ in
+                    await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+                            continuation.resume(returning: "This arrived too late to be spoken.")
+                        }
+                    }
+                }
+            )
+        )
+
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2.0)
+        let pending = await announcer.pending
+        let spoken = try XCTUnwrap(pending.first?.text)
+        XCTAssertTrue(spoken.hasPrefix("Alice: "))
+        XCTAssertTrue(spoken.hasSuffix("…"))
+        XCTAssertLessThanOrEqual(spoken.count, 170)
+    }
+
     @MainActor
     func testAppModelForwardsActiveVoiceChannelMessages() async throws {
         let app = AppModel()

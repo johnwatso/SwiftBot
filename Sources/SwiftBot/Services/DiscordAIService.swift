@@ -218,6 +218,34 @@ actor DiscordAIService {
         return await generateReply(messages: messages, systemPrompt: systemPrompt, stripSpeakerPrefixFor: event.username)
     }
 
+    func summarizeAnnouncerMessageWithAppleIntelligence(_ text: String) async -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count > 120, appleAvailability() else { return nil }
+
+        let systemPrompt = """
+        You rewrite Discord messages for a spoken voice announcer.
+        Preserve the concrete meaning, decisions, requests, and action items.
+        Remove filler, markdown, URLs, boilerplate, and repeated chatter.
+        Output one natural sentence, ideally 12-28 words and under 140 characters.
+        Do not add a speaker name, heading, bullet, quote marks, or mention AI.
+        Do not invent details not present in the message.
+        """
+        let prompt = """
+        Rewrite this message for a short spoken announcement:
+
+        \(trimmed)
+        """
+        let engine = engineFactory(systemPrompt)
+        let messages = [
+            Message(channelID: "announcer", userID: "swiftbot", username: "Announcer", content: systemPrompt, role: .system),
+            Message(channelID: "announcer", userID: "swiftbot", username: "Announcer", content: prompt, role: .user)
+        ]
+
+        guard let reply = await engine.generate(messages: messages) else { return nil }
+        let summary = Self.cleanAnnouncerSummary(cleanAIOutput(reply))
+        return Self.isUsefulAnnouncerSummary(summary, original: trimmed) ? summary : nil
+    }
+
     func summarizePatchyUpdateWithAppleIntelligence(updateText: String, source: String) async -> String? {
         let trimmed = updateText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, appleAvailability() else { return nil }
@@ -293,6 +321,40 @@ actor DiscordAIService {
         ]
         guard !vagueOpeners.contains(where: { lowered.hasPrefix($0) }) else { return false }
         return true
+    }
+
+    nonisolated static func cleanAnnouncerSummary(_ raw: String) -> String {
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+
+        let prefixes = ["summary:", "announcement:", "announcer:", "say:", "spoken:"]
+        var didStripPrefix = true
+        while didStripPrefix {
+            didStripPrefix = false
+            let lowered = cleaned.lowercased()
+            for prefix in prefixes where lowered.hasPrefix(prefix) {
+                cleaned = String(cleaned.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                didStripPrefix = true
+                break
+            }
+        }
+
+        cleaned = cleaned
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'“”")))
+        while cleaned.contains("  ") {
+            cleaned = cleaned.replacingOccurrences(of: "  ", with: " ")
+        }
+        return cleaned
+    }
+
+    nonisolated static func isUsefulAnnouncerSummary(_ summary: String, original: String) -> Bool {
+        let cleaned = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, cleaned.count < original.count, cleaned.count <= 180 else { return false }
+        let lowered = cleaned.lowercased()
+        guard !lowered.contains("as an ai"), !lowered.contains("i can't") else { return false }
+        let words = cleaned.split { !$0.isLetter && !$0.isNumber }
+        return words.count >= 4
     }
 
     /// Sweep digest — on-device summarisation of a stretch of channel activity
