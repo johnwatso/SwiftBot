@@ -452,10 +452,19 @@ extension AppModel {
         // Optionally skip bot-authored messages.
         if activeConfig?.skipBots == true, event.isBot { return }
         guard let watcher = textChannelAnnouncer else { return }
+        let smartShortenWithAppleIntelligence = activeConfig?.smartShortenWithAppleIntelligence == true
+        let announcerAIService = aiService
+        let smartShortener: (@Sendable (String) async -> String?)? = smartShortenWithAppleIntelligence
+            ? { @Sendable [announcerAIService] text in
+                await announcerAIService.summarizeAnnouncerMessageWithAppleIntelligence(text)
+            }
+            : nil
         let options = AnnouncerReadOptions(
             ignoreLinks: activeConfig?.ignoreLinks ?? true,
             summariseLong: activeConfig?.summariseLong ?? false,
             keepShort: activeConfig?.keepShort ?? false,
+            smartShortenWithAppleIntelligence: smartShortenWithAppleIntelligence,
+            smartShortener: smartShortener,
             ignoreEmojiSpam: activeConfig?.ignoreEmojiSpam ?? false
         )
         let cachedDisplayName = await discordCache.userName(for: event.userID)

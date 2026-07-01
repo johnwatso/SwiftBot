@@ -705,9 +705,9 @@ struct VoiceView: View {
         case .fixed:      parts.append("\(config.connectionMinutes) min")
         case .untilEmpty: parts.append("until empty")
         }
-        let s = vcBehaviours[config.id] ?? AnnouncerBehaviourState()
-        if s.summariseLong { parts.append("summarises") }
-        if s.ignoreLinks   { parts.append("no links") }
+        if config.summariseLong { parts.append("summarises") }
+        if config.smartShortenWithAppleIntelligence { parts.append("AI shortens") }
+        if config.ignoreLinks { parts.append("no links") }
         return parts.prefix(3).joined(separator: " · ")
     }
 
@@ -1267,10 +1267,11 @@ private struct AnnouncerConfigSheet: View {
                     Toggle("Skip bot messages", isOn: $config.skipBots)
                     Toggle("Ignore emoji spam", isOn: $config.ignoreEmojiSpam)
                     Toggle("Keep announcements short", isOn: $config.keepShort)
+                    Toggle("Smart shorten with Apple Intelligence", isOn: $config.smartShortenWithAppleIntelligence)
                 }
                 .toggleStyle(.checkbox)
 
-                Text("Messages over 300 characters are shortened instead of skipped; \"Keep announcements short\" tightens the cap further.")
+                Text("Messages over 300 characters are shortened instead of skipped. Smart shortening uses Apple Intelligence when available and falls back to the regular caps.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

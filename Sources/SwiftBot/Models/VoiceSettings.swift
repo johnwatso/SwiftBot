@@ -64,6 +64,9 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
     var summariseLong: Bool                 = false
     /// Apply a tighter length cap so announcements stay brief.
     var keepShort: Bool                     = false
+    /// Use on-device Apple Intelligence to rewrite long/noisy messages into a
+    /// short spoken sentence when available, falling back to deterministic caps.
+    var smartShortenWithAppleIntelligence: Bool = false
     /// Skip messages that are mostly emoji.
     var ignoreEmojiSpam: Bool               = false
     /// Per-rule TTS voice (AVSpeechSynthesisVoice identifier). Empty falls back
@@ -91,6 +94,7 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         ignoreLinks: Bool = true,
         summariseLong: Bool = false,
         keepShort: Bool = false,
+        smartShortenWithAppleIntelligence: Bool = false,
         ignoreEmojiSpam: Bool = false,
         preferredVoiceIdentifier: String = "",
         connectionMode: AnnouncerConnectionMode = .fixed,
@@ -114,6 +118,7 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         self.ignoreLinks = ignoreLinks
         self.summariseLong = summariseLong
         self.keepShort = keepShort
+        self.smartShortenWithAppleIntelligence = smartShortenWithAppleIntelligence
         self.ignoreEmojiSpam = ignoreEmojiSpam
         self.preferredVoiceIdentifier = preferredVoiceIdentifier
         self.connectionMode = connectionMode
@@ -139,6 +144,7 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         case ignoreLinks
         case summariseLong
         case keepShort
+        case smartShortenWithAppleIntelligence
         case ignoreEmojiSpam
         case preferredVoiceIdentifier
         case connectionMode
@@ -165,6 +171,7 @@ struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {
         ignoreLinks = try container.decodeIfPresent(Bool.self, forKey: .ignoreLinks) ?? true
         summariseLong = try container.decodeIfPresent(Bool.self, forKey: .summariseLong) ?? false
         keepShort = try container.decodeIfPresent(Bool.self, forKey: .keepShort) ?? false
+        smartShortenWithAppleIntelligence = try container.decodeIfPresent(Bool.self, forKey: .smartShortenWithAppleIntelligence) ?? false
         ignoreEmojiSpam = try container.decodeIfPresent(Bool.self, forKey: .ignoreEmojiSpam) ?? false
         preferredVoiceIdentifier = try container.decodeIfPresent(String.self, forKey: .preferredVoiceIdentifier) ?? ""
         connectionMode = try container.decodeIfPresent(AnnouncerConnectionMode.self, forKey: .connectionMode) ?? .fixed
