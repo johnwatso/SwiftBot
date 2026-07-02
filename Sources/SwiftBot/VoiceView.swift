@@ -96,9 +96,11 @@ struct VoiceView: View {
                 announcementPreviewSection
             }
 
-            HStack(alignment: .top, spacing: 16) {
+            EqualHeightHStack(spacing: 16) {
                 currentStateSection
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
                 recentActivitySection
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,7 +118,7 @@ struct VoiceView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                ViewSectionHeader(title: "Announcer", symbol: "speaker.wave.2.bubble.fill")
+                ViewSectionHeader(title: "Announcer", symbol: "person.wave.2.fill")
                 Text("Context-aware spoken Discord feeds")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -148,9 +150,11 @@ struct VoiceView: View {
     private var connectionStatusControl: some View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
+                Image(systemName: voiceConnectionStatusSymbol)
+                    .font(.caption.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(statusColor)
+                    .frame(width: 16)
                 Text(connectionStatusLabel)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
@@ -197,6 +201,19 @@ struct VoiceView: View {
             .menuIndicator(.hidden)
             .controlSize(.small)
             .help("More connection actions")
+        }
+    }
+
+    private var voiceConnectionStatusSymbol: String {
+        switch app.voiceConnectionStatus {
+        case .connected:
+            return "checkmark.circle.dotted"
+        case .connecting, .recovering, .disconnecting:
+            return "clock.badge"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .idle:
+            return "pause.circle"
         }
     }
 
@@ -297,72 +314,30 @@ struct VoiceView: View {
     }
 
     private func voiceChannelConfigCard(_ config: AnnouncerVoiceChannelConfig) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 Circle()
                     .fill(config.enabled ? config.tint.color : Color.secondary.opacity(0.4))
                     .frame(width: 10, height: 10)
-                    .padding(.top, 5)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: config.symbol)
-                            .font(.subheadline.weight(.semibold))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(config.tint.color)
+                Image(systemName: config.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(config.tint.color)
 
-                        Text(config.name)
-                            .font(.headline.weight(.semibold))
-                            .lineLimit(1)
+                Text(config.name)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
 
-                        if memberCount(for: config) > 0 {
-                            Label("\(memberCount(for: config)) members", systemImage: "person.2.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    HStack(alignment: .top, spacing: 28) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Feeds")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            AnnouncerChipFlow(spacing: 6, rowSpacing: 5) {
-                                ForEach(feedLabels(for: config).prefix(4), id: \.self) { feed in
-                                    channelChip(feed, color: config.tint.color)
-                                }
-                                if feedLabels(for: config).count > 4 {
-                                    countChip("+\(feedLabels(for: config).count - 4)")
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Behaviour")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            AnnouncerChipFlow(spacing: 8, rowSpacing: 5) {
-                                ForEach(behaviourFlags(for: config).prefix(5), id: \.self) { flag in
-                                    behaviourChip(flag)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .layoutPriority(1)
-                    }
+                if memberCount(for: config) > 0 {
+                    Label("\(memberCount(for: config)) members", systemImage: "person.2.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 12)
 
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text("Status")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    configStatusBadge(config)
-                }
+                configStatusBadge(config)
 
                 Toggle("", isOn: Binding(
                     get: { config.enabled },
@@ -375,26 +350,28 @@ struct VoiceView: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .padding(.top, 18)
 
                 Divider()
-                    .frame(height: 38)
-                    .padding(.top, 8)
+                    .frame(height: 22)
 
                 HStack(spacing: 8) {
                     Button {
                         app.speakLocallyPreview(previewText(for: config))
                     } label: {
                         Label("Preview", systemImage: "play.circle")
+                            .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .help("Preview announcement")
 
                     Button { openConfig(for: config) } label: {
                         Label("Edit", systemImage: "pencil")
+                            .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .help("Edit configuration")
 
                     Menu {
                         Button {
@@ -423,10 +400,33 @@ struct VoiceView: View {
                     .menuIndicator(.hidden)
                     .controlSize(.small)
                 }
-                .padding(.top, 12)
+            }
+
+            HStack(alignment: .top, spacing: 18) {
+                voiceChannelDetailGroup("Feeds") {
+                    AnnouncerChipFlow(spacing: 6, rowSpacing: 5) {
+                        ForEach(feedLabels(for: config).prefix(4), id: \.self) { feed in
+                            channelChip(feed, color: config.tint.color)
+                        }
+                        if feedLabels(for: config).count > 4 {
+                            countChip("+\(feedLabels(for: config).count - 4)")
+                        }
+                    }
+                }
+                .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+
+                voiceChannelDetailGroup("Behaviour") {
+                    AnnouncerChipFlow(spacing: 8, rowSpacing: 5) {
+                        ForEach(behaviourFlags(for: config).prefix(5), id: \.self) { flag in
+                            behaviourChip(flag)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(14)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.primary.opacity(0.03))
@@ -435,6 +435,18 @@ struct VoiceView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    private func voiceChannelDetailGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+        }
     }
 
     // MARK: - Announcement voice
@@ -520,12 +532,15 @@ struct VoiceView: View {
     }
 
     private var currentStateSection: some View {
-        AutomationsSection(title: "Current State", symbol: "circle.fill", minHeight: statePanelMinHeight) {
+        AutomationsSection(title: "Current State", symbol: "bolt.badge.checkmark.fill", minHeight: statePanelMinHeight) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 10, height: 10)
+                    Image(systemName: voiceConnectionStatusSymbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 28, height: 28)
+                        .background(statusColor.opacity(0.12), in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(app.voiceConnectionStatus.isConnected ? "Connected" : "Disconnected")
                             .font(.headline.weight(.semibold))
@@ -539,7 +554,11 @@ struct VoiceView: View {
                 VStack(spacing: 8) {
                     currentStateRow(symbol: "speaker.wave.2.fill", label: "Listening", value: listeningStateText)
                     currentStateRow(symbol: "text.bubble.fill", label: "Monitored feeds", value: monitoredFeedsText)
-                    currentStateRow(symbol: "tray.full.fill", label: "Next announcement", value: queueStateText)
+                    currentStateRow(
+                        symbol: app.announcerHealth.queueDepth == 0 ? "checkmark.circle.dotted" : "clock.badge",
+                        label: "Next announcement",
+                        value: queueStateText
+                    )
                 }
 
                 HStack {
@@ -582,7 +601,11 @@ struct VoiceView: View {
     }
 
     private var queueSummaryBadge: some View {
-        Text(app.announcerHealth.queueDepth == 0 ? "Queue clear" : "\(app.announcerHealth.queueDepth) queued")
+        Label(
+            app.announcerHealth.queueDepth == 0 ? "Queue clear" : "\(app.announcerHealth.queueDepth) queued",
+            systemImage: app.announcerHealth.queueDepth == 0 ? "checkmark.circle.dotted" : "clock.badge"
+        )
+            .labelStyle(.titleAndIcon)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(app.announcerHealth.queueDepth == 0 ? Color.secondary : Color.purple)
             .padding(.horizontal, 8)
@@ -684,10 +707,16 @@ struct VoiceView: View {
         if raw.hasPrefix("LEAVE ") || lower.contains("disconnect") || lower.contains(" left ") {
             return AnnouncerActivityKind(label: "LEAVE", symbol: "person.fill.badge.minus", color: .red)
         }
+        if lower.contains("queued") {
+            return AnnouncerActivityKind(label: "QUEUED", symbol: "clock.badge", color: .blue)
+        }
         if lower.contains("speech") || lower.contains("announcement") || lower.contains("queued") {
             return AnnouncerActivityKind(label: "ANNOUNCEMENT", symbol: "speaker.wave.2.fill", color: .purple)
         }
-        return AnnouncerActivityKind(label: "STATUS", symbol: "circle.dashed", color: .secondary)
+        if lower.contains("connect") {
+            return AnnouncerActivityKind(label: "READY", symbol: "checkmark.circle.dotted", color: .green)
+        }
+        return AnnouncerActivityKind(label: "STATUS", symbol: "clock.badge", color: .secondary)
     }
 
     private var enabledConfigCount: Int {
@@ -756,7 +785,9 @@ struct VoiceView: View {
         let isActive = app.voiceConnectionStatus.isConnected && app.settings.voice.voiceChannelID == config.voiceChannelID
         let label = isActive ? "Listening" : (config.enabled ? "Enabled" : "Disabled")
         let color: Color = isActive || config.enabled ? .green : .secondary
-        return Text(label)
+        let symbol = isActive || config.enabled ? "checkmark.circle.dotted" : "pause.circle"
+        return Label(label, systemImage: symbol)
+            .labelStyle(.titleAndIcon)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 8)
@@ -1493,6 +1524,44 @@ private struct AnnouncerActivityKind {
     let label: String
     let symbol: String
     let color: Color
+}
+
+private struct EqualHeightHStack: Layout {
+    var spacing: CGFloat = 16
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+
+        let totalSpacing = spacing * CGFloat(max(0, subviews.count - 1))
+        let equalWidth = proposal.width.map { max(0, ($0 - totalSpacing) / CGFloat(subviews.count)) }
+        var naturalWidth = totalSpacing
+        var maxHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: equalWidth, height: nil))
+            naturalWidth += equalWidth ?? size.width
+            maxHeight = max(maxHeight, size.height)
+        }
+
+        return CGSize(width: proposal.width ?? naturalWidth, height: maxHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+
+        let totalSpacing = spacing * CGFloat(max(0, subviews.count - 1))
+        let equalWidth = max(0, (bounds.width - totalSpacing) / CGFloat(subviews.count))
+        var x = bounds.minX
+
+        for subview in subviews {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: equalWidth, height: bounds.height)
+            )
+            x += equalWidth + spacing
+        }
+    }
 }
 
 private struct AnnouncerChipFlow: Layout {

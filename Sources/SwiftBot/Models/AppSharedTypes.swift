@@ -164,7 +164,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .activity: return "list.bullet.clipboard.fill"
         case .wikiBridge: return "rectangle.and.text.magnifyingglass"
         case .appleIntelligence: return "apple.intelligence"
-        case .voice: return "speaker.wave.2.bubble.fill"
+        case .voice: return "person.wave.2.fill"
         case .recordings: return "video.fill"
         case .analytics: return "chart.line.uptrend.xyaxis"
         case .swiftMesh: return "point.3.filled.connected.trianglepath.dotted"

@@ -1,5 +1,6 @@
 import AVFoundation
 import XCTest
+import libdave_swift
 @testable import SwiftBot
 
 final class VoicePlaybackServiceTests: XCTestCase {
@@ -107,6 +108,22 @@ final class VoicePlaybackServiceTests: XCTestCase {
             if case .failed = await playback.currentStatus { return true }
             return false
         }
+    }
+
+    /// Regression: a coordinator configured the way `establishDaveSession`
+    /// does — including the persistent `authSessionId` — must be able to
+    /// marshal its MLS key package. On framework builds with a null key
+    /// store (pre-1.3.1 libdave-swift), a non-nil id aborts leaf-node init
+    /// and the handshake dies at the media-readiness timeout with no audio.
+    func testDaveCoordinatorWithAuthSessionIdProducesKeyPackage() async throws {
+        let coordinator = DaveSessionCoordinator(authSessionId: "1077354549104345159")
+        _ = try await coordinator.configureDiscordVoiceSession(
+            groupId: 1_480_049_140_082_933_860,
+            selfUserId: "1077354549104345159",
+            protocolVersion: 1
+        )
+        let keyPackage = try await coordinator.getMarshalledKeyPackage()
+        XCTAssertFalse(keyPackage.isEmpty, "configured session must yield a non-empty MLS key package")
     }
 
     func testDaveDowngradeCompletesConnectionAndAllowsPlainAudio() async throws {

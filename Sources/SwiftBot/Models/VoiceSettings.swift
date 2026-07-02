@@ -35,6 +35,26 @@ enum AnnouncerConnectionMode: String, CaseIterable, Codable, Hashable {
     }
 }
 
+// MARK: - Attribution style
+
+/// How a spoken message credits its author.
+enum AnnouncerAttributionStyle: String, CaseIterable, Codable, Hashable {
+    /// "John: message" — the colon renders as a short spoken pause.
+    case name = "name"
+    /// "John says message" — matches the phrasing of Discord's built-in TTS.
+    case nameSays = "nameSays"
+    /// Message only, no author.
+    case off = "off"
+
+    var displayName: String {
+        switch self {
+        case .name: return "Name"
+        case .nameSays: return "Name says"
+        case .off: return "Off"
+        }
+    }
+}
+
 // MARK: - Per-channel configuration
 
 struct AnnouncerVoiceChannelConfig: Identifiable, Codable, Hashable {

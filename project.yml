@@ -39,7 +39,7 @@ packages:
     exactVersion: 0.0.2
   libdave-swift:
     url: https://github.com/johnwatso/libdave-swift.git
-    exactVersion: 1.2.0
+    exactVersion: 1.3.1
 
 targets:
   SwiftBot:
@@ -124,8 +124,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: SwiftBot
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
         COMBINE_HIDPI_IMAGES: YES
-        CURRENT_PROJECT_VERSION: "2026062801"
-        MARKETING_VERSION: "1.22.1"
+        CURRENT_PROJECT_VERSION: "2026070311"
+        MARKETING_VERSION: "1.22.2"
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Manual
         PROVISIONING_PROFILE_SPECIFIER: ""

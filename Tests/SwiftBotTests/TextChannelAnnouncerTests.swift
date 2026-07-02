@@ -168,6 +168,58 @@ final class TextChannelAnnouncerTests: XCTestCase {
         XCTAssertTrue(texts.contains("Bob: Hello from channel 2"))
     }
 
+    /// A message over the 300-character reading cap is skipped when the
+    /// config doesn't shorten — but the skip must be visible in the debug
+    /// log with an actionable reason, and flipping `summariseLong` must get
+    /// the message read.
+    func testLongMessageSkipIsLoggedAndSummariseLongReadsIt() async throws {
+        let playback = VoicePlaybackService()
+        let announcer = try VoiceAnnouncementService(playback: playback)
+        await announcer.setPaused(true)
+
+        let watcher = TextChannelAnnouncer(announcer: announcer)
+        await watcher.setWatchedChannel("channel-1")
+
+        let logged = LockedMessageBox()
+        await watcher.setOnDebug { message in
+            await logged.append(message)
+        }
+
+        let longAnnouncement = Array(repeating: "community games kick off tonight at eight", count: 9)
+            .joined(separator: ", ")
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: longAnnouncement,
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "channel-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        await watcher.handle(event, options: AnnouncerReadOptions(summariseLong: false))
+        let pendingAfterSkip = await announcer.pending
+        XCTAssertTrue(pendingAfterSkip.isEmpty, "over-cap message must be skipped when shortening is off")
+        let messages = await logged.all()
+        XCTAssertEqual(messages.count, 1, "the skip must be logged")
+        XCTAssertTrue(messages[0].contains("reading cap"), "the log must explain the length cap: \(messages)")
+
+        await watcher.handle(event, options: AnnouncerReadOptions(summariseLong: true))
+        let pendingAfterShorten = await announcer.pending
+        XCTAssertEqual(pendingAfterShorten.count, 1, "with summariseLong on, the message must be read shortened")
+        XCTAssertTrue(pendingAfterShorten[0].text.hasPrefix("Alice: community games"))
+    }
+
+    private actor LockedMessageBox {
+        private var messages: [String] = []
+        func append(_ message: String) { messages.append(message) }
+        func all() -> [String] { messages }
+    }
+
     func testTextChannelAnnouncerUsesSmartShortenerWhenAvailable() async throws {
         let playback = VoicePlaybackService()
         let announcer = try VoiceAnnouncementService(playback: playback)
