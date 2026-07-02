@@ -1,46 +1,53 @@
 import AVFoundation
 import SwiftUI
-import libdave_swift
 
 struct VoiceView: View {
     @EnvironmentObject var app: AppModel
 
     @State private var selectedVoiceIdentifier: String = ""
-    @State private var daveDiagnostics: DaveDiagnostics? = nil
     @State private var showingVoiceDownloadHelp: Bool = false
     @State private var vcConfigs: [AnnouncerVoiceChannelConfig] = []
-    @State private var advancedExpanded: Bool = false
     @State private var vcBehaviours: [String: AnnouncerBehaviourState] = [:]
-    @State private var technicalLogsExpanded: Bool = false
     @State private var editingVCConfigIndex: Int?
     @State private var applyingSettingsSnapshot: Bool = false
     @State private var voiceConfigCommitTask: Task<Void, Never>?
     @State private var cachedVoiceOptions: [PickerOption] = [PickerOption(id: "", label: "Recommended: Piper / Premium (auto)")]
     @State private var autoVoiceDisplayName: String = "Auto"
 
+    private let metricColumns = [
+        GridItem(.flexible(minimum: 180), spacing: 16),
+        GridItem(.flexible(minimum: 180), spacing: 16),
+        GridItem(.flexible(minimum: 180), spacing: 16),
+        GridItem(.flexible(minimum: 180), spacing: 16)
+    ]
+    private let voicePanelMinHeight: CGFloat = 176
+    private let statePanelMinHeight: CGFloat = 220
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+            contentContainer {
+                header
+            }
+            .padding(.top, 12)
 
             if app.forwardsConfigEditsToPrimary {
-                PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
-                    .padding(.horizontal, 16)
+                contentContainer {
+                    PreferencesSyncsToPrimaryBanner(text: "Editing as Failover — changes are pushed to the Primary and sync back.")
+                }
             } else if app.isFailoverManagedNode {
-                PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Announcer settings sync from Primary.")
-                    .padding(.horizontal, 16)
+                contentContainer {
+                    PreferencesReadOnlyBanner(text: "Read-only on Failover nodes. Announcer settings sync from Primary.")
+                }
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    liveSessionPill
-                    metricTileRow
-                    voiceChannelConfigurationsSection
-                    globalVoiceSettingsSection
-                    recentActivitySection
+                contentContainer {
+                    VStack(alignment: .leading, spacing: 16) {
+                        metricTileRow
+                        voiceChannelConfigurationsSection
+                        announcerDetailGrid
+                    }
                 }
-                .padding(.horizontal, 16)
                 .padding(.bottom, 16)
                 .padding(.top, 16)
             }
@@ -80,21 +87,34 @@ struct VoiceView: View {
                     .environmentObject(app)
             }
         }
-        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { _ in
-            if app.voiceConnectionStatus.isConnected {
-                Task {
-                    daveDiagnostics = await app.getDaveDiagnostics()
-                }
-            } else {
-                daveDiagnostics = nil
+    }
+
+    private var announcerDetailGrid: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                globalVoiceSettingsSection
+                announcementPreviewSection
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                currentStateSection
+                recentActivitySection
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func contentContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
                 ViewSectionHeader(title: "Announcer", symbol: "speaker.wave.2.bubble.fill")
                 Text("Context-aware spoken Discord feeds")
@@ -102,7 +122,7 @@ struct VoiceView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            statusBadge
+            connectionStatusControl
         }
     }
 
@@ -115,43 +135,87 @@ struct VoiceView: View {
         }
     }
 
-    private var statusSubtitle: String {
+    private var connectionStatusLabel: String {
         switch app.voiceConnectionStatus {
-        case .idle: return "Disconnected"
-        case .connecting: return "Connecting to voice channel\u{2026}"
-        case .connected: return connectedSubtitle
-        case .recovering(let detail): return detail.isEmpty ? "Recovering voice connection\u{2026}" : detail
-        case .disconnecting: return "Disconnecting\u{2026}"
-        case .failed(let reason): return "Failed: \(reason)"
+        case .connected: return "Connected"
+        case .connecting: return "Connecting"
+        case .recovering: return "Recovering"
+        case .disconnecting: return "Disconnecting"
+        case .idle, .failed: return "Disconnected"
         }
     }
 
-    private var connectedSubtitle: String {
-        let channel = voiceChannelDisplayName(for: app.settings.voice.voiceChannelID)
-        let guildName = app.connectedServers[app.settings.voice.guildID] ?? "—"
-        if channel.isEmpty { return "Connected to \(guildName)" }
-        return "Connected to #\(channel) in \(guildName)"
-    }
-
-    private var liveSessionPill: some View {
-        Group {
-            if app.voiceConnectionStatus.isConnected {
-                HStack(spacing: 9) {
-                    LiveWaveformBars(color: .purple)
-                    Text(liveSessionText)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 0)
-                    Text("/announce join")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 8)
-                .background(.thinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.purple.opacity(0.16), lineWidth: 1))
+    private var connectionStatusControl: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                Text(connectionStatusLabel)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
             }
+            .help(connectionDetailText)
+
+            Button {
+                Task {
+                    if app.voiceConnectionStatus.isConnected {
+                        await app.disconnectVoice()
+                    } else {
+                        await app.reconnectAnnouncerVoiceFromUI()
+                    }
+                }
+            } label: {
+                Label(
+                    app.voiceConnectionStatus.isConnected ? "Disconnect" : "Reconnect",
+                    systemImage: app.voiceConnectionStatus.isConnected ? "phone.down.fill" : "arrow.clockwise"
+                )
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(connectionActionDisabled)
+            .help(connectionDetailText)
+
+            Menu {
+                Button {
+                    Task { await app.reconnectAnnouncerVoiceFromUI() }
+                } label: {
+                    Label("Reconnect", systemImage: "arrow.clockwise")
+                }
+                Button {
+                    Task { await app.disconnectVoice() }
+                } label: {
+                    Label("Disconnect", systemImage: "phone.down.fill")
+                }
+                .disabled(app.voiceConnectionStatus == .idle)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 24, height: 24)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .controlSize(.small)
+            .help("More connection actions")
         }
+    }
+
+    private var connectionActionDisabled: Bool {
+        if app.voiceConnectionStatus.isConnected { return false }
+        return app.status != .running || activeAnnouncerConfig == nil
+    }
+
+    private var connectionDetailText: String {
+        if app.voiceConnectionStatus.isConnected {
+            return liveSessionText
+        }
+        if app.status != .running {
+            return "Start the bot before reconnecting Announcer."
+        }
+        if activeAnnouncerConfig == nil && vcConfigs.first(where: \.enabled) == nil {
+            return "Add an enabled voice channel configuration to start listening."
+        }
+        return "Ready to reconnect to the configured voice channel."
     }
 
     private var liveSessionText: String {
@@ -160,135 +224,10 @@ struct VoiceView: View {
         return "Reading #\(channel) in \(guild)"
     }
 
-    private var daveBlockedBanner: some View {
-        Group {
-            if let diag = daveDiagnostics {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(.green)
-                        .font(.title3)
-                        .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("DAVE End-to-End Encryption Active")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.primary)
-                        
-                        Text("Secure voice connection established via **libdave-swift** and Apple's MLS key ratchet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        
-                        HStack(spacing: 16) {
-                            HStack(spacing: 4) {
-                                Text("MLS Epoch:")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text("\(diag.currentEpoch)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.green)
-                            }
-                            HStack(spacing: 4) {
-                                Text("Handshake:")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(diag.handshakeState.rawValue)
-                                    .font(.caption2)
-                                    .foregroundStyle(.green)
-                            }
-                            if let stats = diag.encryptionStats {
-                                HStack(spacing: 4) {
-                                    Text("Encrypted Frames:")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    Text("\(stats.encryptSuccessCount)")
-                                        .font(.caption2.monospaced())
-                                        .foregroundStyle(.green)
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-                    Spacer()
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.green.opacity(0.08))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
-                )
-            } else {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "shield.checkered")
-                        .foregroundStyle(.purple)
-                        .font(.title3)
-                        .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("DAVE E2EE Capability Enabled")
-                            .font(.subheadline.weight(.semibold))
-                        Text(
-                            "SwiftBot now includes a native integration of Discord's DAVE end-to-end encryption " +
-                            "protocol powered by **libdave-swift**. Once you connect to a voice channel, a " +
-                            "secure, hardware-accelerated MLS session will be established automatically."
-                        )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.purple.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.purple.opacity(0.25), lineWidth: 1)
-                )
-            }
-        }
-    }
-
-    private var statusBadge: some View {
-        Text(app.voiceConnectionStatus.displayLabel.uppercased())
-            .font(.caption2.weight(.heavy))
-            .tracking(0.8)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .foregroundStyle(badgeForeground)
-            .background(
-                Capsule().fill(badgeBackground)
-            )
-            .overlay(
-                Capsule().strokeBorder(badgeBorder, lineWidth: 1)
-            )
-    }
-
-    private var badgeBackground: Color {
-        switch app.voiceConnectionStatus {
-        case .connected: return .green.opacity(0.18)
-        case .connecting, .recovering, .disconnecting: return .yellow.opacity(0.18)
-        case .failed: return .red.opacity(0.18)
-        case .idle: return Color.primary.opacity(0.06)
-        }
-    }
-    private var badgeForeground: Color {
-        switch app.voiceConnectionStatus {
-        case .connected: return .green
-        case .connecting, .recovering, .disconnecting: return .yellow
-        case .failed: return .red
-        case .idle: return .secondary
-        }
-    }
-    private var badgeBorder: Color { badgeForeground.opacity(0.4) }
-
     // MARK: - Metrics
 
     private var metricTileRow: some View {
-        LazyVGrid(columns: DashboardMetricGrid.columns, spacing: DashboardMetricGrid.spacing) {
+        LazyVGrid(columns: metricColumns, spacing: 16) {
             DashboardMetricCard(
                 title: "Active Sessions",
                 value: app.voiceConnectionStatus.canQueueAnnouncements ? "1" : "0",
@@ -298,30 +237,26 @@ struct VoiceView: View {
             )
             DashboardMetricCard(
                 title: "Configured Voice Channels",
-                value: "\(vcConfigs.count)",
-                subtitle: "Feeds ready for /announce join",
+                value: "\(enabledConfigCount)",
+                subtitle: vcConfigs.count == enabledConfigCount ? "Feeds ready for /announce join" : "\(vcConfigs.count) total configurations",
                 symbol: "speaker.wave.2.bubble.fill",
                 color: .purple
             )
             DashboardMetricCard(
-                title: "Messages Read Today",
+                title: "Announcements Today",
                 value: "\(app.messagesSpokenToday)",
                 subtitle: app.messagesSpokenToday == 0 ? "No reads yet today" : "Announcements + previews",
                 symbol: "text.bubble.fill",
                 color: .blue
             )
             DashboardMetricCard(
-                title: "Preferred Voice",
-                value: preferredVoiceDisplayName,
-                subtitle: selectedVoiceSubtitle,
-                symbol: "speaker.wave.3.fill",
+                title: "Current Voice Channel",
+                value: currentVoiceChannelMetricValue,
+                subtitle: currentVoiceChannelMetricSubtitle,
+                symbol: "megaphone.fill",
                 color: .pink
             )
         }
-    }
-
-    private var selectedVoiceSubtitle: String {
-        selectedVoiceIdentifier.isEmpty ? "Best available voice" : "macOS speech voice"
     }
 
     // MARK: - Voice channel configurations
@@ -362,232 +297,300 @@ struct VoiceView: View {
     }
 
     private func voiceChannelConfigCard(_ config: AnnouncerVoiceChannelConfig) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(config.enabled ? config.tint.color : Color.secondary.opacity(0.4))
-                .frame(width: 7, height: 7)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(config.enabled ? config.tint.color : Color.secondary.opacity(0.4))
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 5)
 
-            Image(systemName: config.symbol)
-                .font(.subheadline.weight(.semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(config.tint.color)
-                .frame(width: 22)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: config.symbol)
+                            .font(.subheadline.weight(.semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(config.tint.color)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(config.name)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(config.voiceChannelName)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
+                        Text(config.name)
+                            .font(.headline.weight(.semibold))
+                            .lineLimit(1)
 
-                if !config.textChannels.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(config.textChannels.prefix(3), id: \.self) { ch in
-                            Text("#\(ch)")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(config.tint.color)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(config.tint.color.opacity(0.10), in: Capsule())
-                        }
-                        if config.textChannels.count > 3 {
-                            Text("+\(config.textChannels.count - 3)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        if !behaviourSummary(for: config).isEmpty {
-                            Text("·")
-                                .font(.caption2)
-                                .foregroundStyle(.quaternary)
-                            Text(behaviourSummary(for: config))
+                        if memberCount(for: config) > 0 {
+                            Label("\(memberCount(for: config)) members", systemImage: "person.2.fill")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
                         }
                     }
-                }
-            }
 
-            Spacer()
+                    HStack(alignment: .top, spacing: 28) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Feeds")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            AnnouncerChipFlow(spacing: 6, rowSpacing: 5) {
+                                ForEach(feedLabels(for: config).prefix(4), id: \.self) { feed in
+                                    channelChip(feed, color: config.tint.color)
+                                }
+                                if feedLabels(for: config).count > 4 {
+                                    countChip("+\(feedLabels(for: config).count - 4)")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            Toggle("", isOn: Binding(
-                get: { config.enabled },
-                set: { newValue in
-                    if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
-                        vcConfigs[i].enabled = newValue
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Behaviour")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            AnnouncerChipFlow(spacing: 8, rowSpacing: 5) {
+                                ForEach(behaviourFlags(for: config).prefix(5), id: \.self) { flag in
+                                    behaviourChip(flag)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(1)
                     }
                 }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.mini)
 
-            Button {
-                Task {
-                    let text = await app.fetchLastMessageText(fromChannelNamed: config.textChannels.first ?? "")
-                    app.speakLocallyPreview(text)
+                Spacer(minLength: 12)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text("Status")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    configStatusBadge(config)
                 }
-            } label: {
-                Image(systemName: "text.bubble")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Read Last Message")
 
-            Button { openConfig(for: config) } label: {
-                Image(systemName: "pencil")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Configure")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { openConfig(for: config) }
-        .contextMenu {
-            Button {
-                Task {
-                    let text = await app.fetchLastMessageText(fromChannelNamed: config.textChannels.first ?? "")
-                    app.speakLocallyPreview(text)
-                }
-            } label: {
-                Label("Read Last Message", systemImage: "text.bubble")
-            }
-            Button { openConfig(for: config) } label: {
-                Label("Configure", systemImage: "pencil")
-            }
-            Divider()
-            Button(config.enabled ? "Pause" : "Enable") {
-                if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
-                    vcConfigs[i].enabled.toggle()
-                }
-            }
-            Button("Remove", role: .destructive) {
-                vcConfigs.removeAll { $0.id == config.id }
-            }
-        }
-    }
+                Toggle("", isOn: Binding(
+                    get: { config.enabled },
+                    set: { newValue in
+                        if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
+                            vcConfigs[i].enabled = newValue
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .padding(.top, 18)
 
-    // MARK: - Global voice settings
-
-    private var globalVoiceSettingsSection: some View {
-        AutomationsSection(title: "Global Voice Settings", symbol: "speaker.wave.3.fill") {
-            VStack(alignment: .leading, spacing: 12) {
-                voiceSettingsPanel
+                Divider()
+                    .frame(height: 38)
+                    .padding(.top, 8)
 
                 HStack(spacing: 8) {
-                    VoiceWaveformMark(color: .purple)
-                    Text(preferredVoiceDisplayName)
-                        .font(.caption.weight(.medium))
-                    Text(selectedVoiceSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
                     Button {
-                        app.speakLocallyPreview("SwiftBot will read Discord messages using \(preferredVoiceDisplayName).")
+                        app.speakLocallyPreview(previewText(for: config))
                     } label: {
-                        Label("Preview Voice", systemImage: "play.circle")
+                        Label("Preview", systemImage: "play.circle")
                     }
-                }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
 
-                DisclosureGroup(isExpanded: $advancedExpanded) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        announcerHealthPanel
-                        connectionPanel
-                        daveBlockedBanner
+                    Button { openConfig(for: config) } label: {
+                        Label("Edit", systemImage: "pencil")
                     }
-                    .padding(.top, 8)
-                } label: {
-                    HStack(spacing: 8) {
-                        Label("DAVE Status", systemImage: daveDiagnostics == nil ? "shield.checkered" : "lock.shield.fill")
-                        Text(daveDiagnostics == nil ? "Ready when SwiftBot joins voice" : "Encrypted session active")
-                            .foregroundStyle(.secondary)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Menu {
+                        Button {
+                            app.speakLocallyPreview(previewText(for: config))
+                        } label: {
+                            Label("Preview Announcement", systemImage: "play.circle")
+                        }
+                        Button { openConfig(for: config) } label: {
+                            Label("Edit Configuration", systemImage: "pencil")
+                        }
+                        Divider()
+                        Button(config.enabled ? "Disable" : "Enable") {
+                            if let i = vcConfigs.firstIndex(where: { $0.id == config.id }) {
+                                vcConfigs[i].enabled.toggle()
+                            }
+                        }
+                        Button("Remove", role: .destructive) {
+                            vcConfigs.removeAll { $0.id == config.id }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.headline.weight(.semibold))
+                            .frame(width: 28, height: 28)
                     }
-                    .font(.subheadline.weight(.medium))
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .controlSize(.small)
                 }
-            }
-        }
-    }
-
-    private var announcerHealthPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: announcerHealthSymbol)
-                    .foregroundStyle(announcerHealthColor)
-                    .font(.title3)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Announcer Health")
-                        .font(.subheadline.weight(.semibold))
-                    Text(app.announcerHealth.phase.displayLabel)
-                        .font(.caption)
-                        .foregroundStyle(announcerHealthColor)
-                }
-                Spacer()
-                Button {
-                    Task { await app.reconnectAnnouncerVoiceFromUI() }
-                } label: {
-                    Label("Reconnect Voice", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .disabled(app.status != .running || app.settings.voice.voiceChannelID.isEmpty)
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], alignment: .leading, spacing: 8) {
-                announcerHealthMetric("Pending", "\(app.announcerHealth.queueDepth)")
-                announcerHealthMetric("Retry Streak", "\(app.announcerHealth.retryStreak)")
-                announcerHealthMetric("Last Spoken", formattedHealthDate(app.announcerHealth.lastSpokenAt))
-                announcerHealthMetric("Last Recovery", formattedHealthDate(app.announcerHealth.lastRecoveryAt))
-            }
-
-            if let failure = app.announcerHealth.lastFailureReason, !failure.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(failure)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                .padding(.top, 12)
             }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(announcerHealthColor.opacity(0.08))
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.03))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(announcerHealthColor.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 
-    private func announcerHealthMetric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+    // MARK: - Announcement voice
+
+    private var globalVoiceSettingsSection: some View {
+        AutomationsSection(title: "Announcement Voice", symbol: "speaker.wave.3.fill", minHeight: voicePanelMinHeight) {
+            VStack(alignment: .leading, spacing: 12) {
+                voiceSettingsPanel
+
+                Text("Automatically selects the best available voice. Ryan Piper is used when available, otherwise SwiftBot chooses the best installed English voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer(minLength: 0)
+                    Button {
+                        app.speakLocallyPreview("SwiftBot will read Discord messages using \(preferredVoiceDisplayName).")
+                    } label: {
+                        Label("Hear Voice", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
         }
+    }
+
+    private var announcementPreviewSection: some View {
+        AutomationsSection(title: "Announcement Preview", symbol: "play.fill", minHeight: voicePanelMinHeight) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.purple.opacity(0.14))
+                        VoiceWaveformMark(color: .purple)
+                    }
+                    .frame(width: 52, height: 52)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(announcementPreviewText)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Preview uses the selected announcement voice.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.primary.opacity(0.025))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+
+                HStack {
+                    Button {
+                        Task { await app.speakAnnouncement(announcementPreviewText) }
+                    } label: {
+                        Label("Test Announcement", systemImage: "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!app.voiceConnectionStatus.isConnected)
+
+                    Spacer()
+
+                    Button {
+                        app.speakLocallyPreview(announcementPreviewText)
+                    } label: {
+                        Label("Listen", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private var currentStateSection: some View {
+        AutomationsSection(title: "Current State", symbol: "circle.fill", minHeight: statePanelMinHeight) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 10, height: 10)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(app.voiceConnectionStatus.isConnected ? "Connected" : "Disconnected")
+                            .font(.headline.weight(.semibold))
+                        Text(app.announcerHealth.phase.displayLabel)
+                            .font(.caption)
+                            .foregroundStyle(announcerHealthColor)
+                    }
+                    Spacer()
+                }
+
+                VStack(spacing: 8) {
+                    currentStateRow(symbol: "speaker.wave.2.fill", label: "Listening", value: listeningStateText)
+                    currentStateRow(symbol: "text.bubble.fill", label: "Monitored feeds", value: monitoredFeedsText)
+                    currentStateRow(symbol: "tray.full.fill", label: "Next announcement", value: queueStateText)
+                }
+
+                HStack {
+                    Button {
+                        app.speakLocallyPreview(queueStateText)
+                    } label: {
+                        Label("Preview Queue", systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(app.announcerHealth.queueDepth == 0)
+
+                    Spacer()
+
+                    queueSummaryBadge
+                }
+            }
+        }
+    }
+
+    private func currentStateRow(symbol: String, label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var queueSummaryBadge: some View {
+        Text(app.announcerHealth.queueDepth == 0 ? "Queue clear" : "\(app.announcerHealth.queueDepth) queued")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(app.announcerHealth.queueDepth == 0 ? Color.secondary : Color.purple)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(app.announcerHealth.queueDepth == 0 ? Color.primary.opacity(0.05) : Color.purple.opacity(0.12))
+            )
     }
 
     private var announcerHealthColor: Color {
@@ -599,101 +602,239 @@ struct VoiceView: View {
         }
     }
 
-    private var announcerHealthSymbol: String {
-        switch app.announcerHealth.phase {
-        case .idle: return "checkmark.circle"
-        case .queued: return "text.line.first.and.arrowtriangle.forward"
-        case .rendering: return "waveform"
-        case .sending: return "paperplane.fill"
-        case .paused: return "pause.circle"
-        case .recovering: return "arrow.clockwise.circle"
-        case .failed: return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private func formattedHealthDate(_ date: Date?) -> String {
-        guard let date else { return "—" }
-        return date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
-    }
-
-    /// Technical Logs render more lines in DEBUG (Dev) builds so a full connect
-    /// sequence stays visible; release stays compact.
-    private var technicalLogLimit: Int {
-        #if DEBUG
-        return 60
-        #else
-        return 12
-        #endif
-    }
-
     private var recentActivitySection: some View {
-        AutomationsSection(title: "Recent Activity", symbol: "text.bubble") {
+        AutomationsSection(title: "Recent Activity", symbol: "text.bubble", minHeight: statePanelMinHeight) {
             VStack(alignment: .leading, spacing: 8) {
                 if app.voiceLog.isEmpty {
                     PlaceholderPanelLine(text: "Spoken announcements and voice connection events will appear here.")
                 } else {
                     ForEach(Array(app.voiceLog.prefix(8))) { entry in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(entry.time, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 64, alignment: .leading)
-                            Text(humanReadableLog(entry.description))
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 1)
+                        recentActivityRow(entry)
                     }
-
-                    DisclosureGroup("Technical Logs", isExpanded: $technicalLogsExpanded) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(app.voiceLog.prefix(technicalLogLimit))) { entry in
-                                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Text(entry.time, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(.tertiary)
-                                        .frame(width: 64, alignment: .leading)
-                                    Text(entry.description)
-                                        .font(.caption2.monospaced())
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                        }
-                        .padding(.top, 6)
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
                 }
             }
         }
     }
 
+    private func recentActivityRow(_ entry: VoiceEventLogEntry) -> some View {
+        let kind = activityKind(for: entry.description)
+        return HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Image(systemName: kind.symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(kind.color)
+                .frame(width: 16)
+            Text(entry.time, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .frame(width: 54, alignment: .leading)
+            Text(kind.label)
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(kind.color)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(kind.color.opacity(0.10), in: Capsule())
+            Text(humanReadableLog(entry.description))
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.primary.opacity(0.018), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private func humanReadableLog(_ raw: String) -> String {
         let lower = raw.lowercased()
-        if lower.contains("join") && lower.contains("voice") {
-            if let channel = raw.components(separatedBy: "#").dropFirst().first?.components(separatedBy: " ").first {
-                return "Joined #\(channel) voice channel"
-            }
-            return "Joined voice channel"
+        if raw.hasPrefix("JOIN ") {
+            return raw.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if lower.contains("left") || lower.contains("disconnect") {
+        if raw.hasPrefix("LEAVE ") {
+            return raw.dropFirst(6).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if lower.contains("queued discord speech") {
+            return "Announcement queued"
+        }
+        if lower.contains("finished discord speech") {
+            return "Announcement spoken"
+        }
+        if lower.contains("manual announcer voice reconnect") {
+            return "Reconnect requested"
+        }
+        if lower.contains("voice websocket pipeline starting") {
+            return "Voice connection starting"
+        }
+        if lower.contains("voice connection lost") {
+            return "Voice connection needs recovery"
+        }
+        if lower.contains("disconnect") || lower.contains("left") {
             return "Left voice channel"
         }
-        if lower.contains("read") || lower.contains("speak") || lower.contains("announced") {
-            if let channel = raw.components(separatedBy: "#").dropFirst().first?.components(separatedBy: " ").first {
-                return "Read message from #\(channel)"
-            }
-            return "Read a message aloud"
-        }
         if lower.contains("connect") {
-            return "Connected to Discord voice"
+            return "Voice connection updated"
         }
-        return raw
+        return "Voice status updated"
+    }
+
+    private func activityKind(for raw: String) -> AnnouncerActivityKind {
+        let lower = raw.lowercased()
+        if raw.hasPrefix("JOIN ") || lower.contains(" joined ") {
+            return AnnouncerActivityKind(label: "JOIN", symbol: "person.fill.badge.plus", color: .green)
+        }
+        if raw.hasPrefix("LEAVE ") || lower.contains("disconnect") || lower.contains(" left ") {
+            return AnnouncerActivityKind(label: "LEAVE", symbol: "person.fill.badge.minus", color: .red)
+        }
+        if lower.contains("speech") || lower.contains("announcement") || lower.contains("queued") {
+            return AnnouncerActivityKind(label: "ANNOUNCEMENT", symbol: "speaker.wave.2.fill", color: .purple)
+        }
+        return AnnouncerActivityKind(label: "STATUS", symbol: "circle.dashed", color: .secondary)
+    }
+
+    private var enabledConfigCount: Int {
+        vcConfigs.filter(\.enabled).count
+    }
+
+    private var activeAnnouncerConfig: AnnouncerVoiceChannelConfig? {
+        if !app.settings.voice.voiceChannelID.isEmpty,
+           let match = vcConfigs.first(where: { $0.voiceChannelID == app.settings.voice.voiceChannelID }) {
+            return match
+        }
+        return vcConfigs.first(where: \.enabled) ?? vcConfigs.first
+    }
+
+    private var currentVoiceChannelMetricValue: String {
+        if let config = activeAnnouncerConfig,
+           !config.voiceChannelName.isEmpty,
+           config.voiceChannelName != "—" {
+            return config.voiceChannelName
+        }
+        let fallback = voiceChannelDisplayName(for: app.settings.voice.voiceChannelID)
+        return fallback.isEmpty ? "None" : fallback
+    }
+
+    private var currentVoiceChannelMetricSubtitle: String {
+        if app.voiceConnectionStatus.isConnected {
+            return "Connected · \(memberCount(for: activeAnnouncerConfig)) members"
+        }
+        if activeAnnouncerConfig == nil {
+            return "No voice channel selected"
+        }
+        return "Ready to connect"
+    }
+
+    private func memberCount(for config: AnnouncerVoiceChannelConfig?) -> Int {
+        guard let config else { return 0 }
+        return app.activeVoice.filter { $0.channelId == config.voiceChannelID }.count
+    }
+
+    private func feedLabels(for config: AnnouncerVoiceChannelConfig) -> [String] {
+        var labels = config.textChannels.map { "#\($0)" }
+        if config.readVoiceChannelChat {
+            let name = config.voiceChannelName == "—" ? "voice chat" : config.voiceChannelName
+            labels.insert("#\(name)", at: 0)
+        }
+        return labels.isEmpty ? ["No feeds"] : labels
+    }
+
+    private func behaviourFlags(for config: AnnouncerVoiceChannelConfig) -> [String] {
+        var flags: [String] = []
+        if config.autoJoin { flags.append("Auto join") }
+        if config.autoJoinOnStream { flags.append("Stream join") }
+        if config.introduceOnManualJoin || config.introduceOnStreamJoin { flags.append("Intro message") }
+        switch config.connectionMode {
+        case .fixed: flags.append("\(config.connectionMinutes) min")
+        case .untilEmpty: flags.append("Until empty")
+        }
+        if config.keepShort { flags.append("Keep short") }
+        if config.smartShortenWithAppleIntelligence { flags.append("AI shorten") }
+        if config.ignoreLinks { flags.append("No links") }
+        if config.skipBots { flags.append("Skip bots") }
+        return flags.isEmpty ? ["Manual"] : flags
+    }
+
+    private func configStatusBadge(_ config: AnnouncerVoiceChannelConfig) -> some View {
+        let isActive = app.voiceConnectionStatus.isConnected && app.settings.voice.voiceChannelID == config.voiceChannelID
+        let label = isActive ? "Listening" : (config.enabled ? "Enabled" : "Disabled")
+        let color: Color = isActive || config.enabled ? .green : .secondary
+        return Text(label)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12), in: Capsule())
+    }
+
+    private func channelChip(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.11), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    private func countChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    private func behaviourChip(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: behaviourSymbol(for: text))
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.secondary)
+    }
+
+    private func behaviourSymbol(for text: String) -> String {
+        let lower = text.lowercased()
+        if lower.contains("stream") { return "video.fill" }
+        if lower.contains("intro") { return "text.bubble.fill" }
+        if lower.contains("empty") || lower.contains("min") { return "timer" }
+        if lower.contains("short") { return "text.line.first.and.arrowtriangle.forward" }
+        if lower.contains("link") { return "link" }
+        return "checkmark.circle"
+    }
+
+    private var announcementPreviewText: String {
+        previewText(for: activeAnnouncerConfig)
+    }
+
+    private func previewText(for config: AnnouncerVoiceChannelConfig?) -> String {
+        guard let config else {
+            return "John: Announcer is ready to read Discord updates aloud."
+        }
+        if config.autoJoinOnStream {
+            return "John has started streaming The Finals. Come join the action!"
+        }
+        let feed = feedLabels(for: config).first ?? "#general"
+        return "John: The latest update from \(feed) is ready."
+    }
+
+    private var listeningStateText: String {
+        guard app.voiceConnectionStatus.isConnected else { return "Not listening" }
+        return currentVoiceChannelMetricValue == "None" ? "Connected" : "Listening in \(currentVoiceChannelMetricValue)"
+    }
+
+    private var monitoredFeedsText: String {
+        guard let config = activeAnnouncerConfig else { return "No feeds configured" }
+        let labels = feedLabels(for: config)
+        if labels.count <= 3 { return labels.joined(separator: ", ") }
+        return "\(labels.prefix(2).joined(separator: ", ")) +\(labels.count - 2) more"
+    }
+
+    private var queueStateText: String {
+        let depth = app.announcerHealth.queueDepth
+        if depth == 0 { return "No queued announcements" }
+        return "\(depth) announcement\(depth == 1 ? "" : "s") waiting"
     }
 
     private func behaviourSummary(for config: AnnouncerVoiceChannelConfig) -> String {
@@ -737,50 +878,12 @@ struct VoiceView: View {
         )
     }
 
-    // MARK: - Connection panel
-
-    private var connectionPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "terminal.fill")
-                    .font(.title3)
-                    .foregroundStyle(.purple)
-                    .frame(width: 28, height: 28)
-                    .background(Color.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("/announce join")
-                        .font(.subheadline.monospaced().weight(.semibold))
-                    Text("SwiftBot joins the caller's current voice channel and loads the matching voice-channel configuration.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await app.disconnectVoice() }
-                } label: {
-                    Label("End Current Session", systemImage: "phone.down.fill")
-                }
-                .disabled(app.voiceConnectionStatus == .idle)
-
-                Spacer()
-            }
-
-            Text("Connection setup and DAVE encryption happen automatically when a user summons SwiftBot from Discord.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     // MARK: - Voice settings
 
     private var voiceSettingsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom, spacing: 8) {
-                pickerField(label: "Announcer", symbol: "speaker.wave.3.fill", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
+                pickerField(label: "Voice", symbol: "speaker.wave.3.fill", selection: $selectedVoiceIdentifier, options: voiceOptions) { newValue in
                     Task { await app.setPreferredAnnouncerVoice(newValue) }
                 }
 
@@ -798,9 +901,6 @@ struct VoiceView: View {
                     voiceDownloadHelpPopover
                 }
             }
-            Text("Auto uses Ryan Piper when available, then any Piper voice, then the best available Premium or Enhanced English voice.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -1299,7 +1399,7 @@ private struct AnnouncerConfigSheet: View {
                     Button {
                         app.speakLocallyPreview("SwiftBot is ready for the \(config.voiceChannelName) voice channel.")
                     } label: {
-                        Label("Preview Voice", systemImage: "play.circle")
+                        Label("Hear Voice", systemImage: "play.circle")
                     }
                     .buttonStyle(.bordered)
 
@@ -1387,6 +1487,68 @@ private struct AnnouncerConfigSheet: View {
 private struct PickerOption: Identifiable, Hashable {
     let id: String
     let label: String
+}
+
+private struct AnnouncerActivityKind {
+    let label: String
+    let symbol: String
+    let color: Color
+}
+
+private struct AnnouncerChipFlow: Layout {
+    var spacing: CGFloat = 6
+    var rowSpacing: CGFloat = 5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let arrangement = arrange(sizes: sizes, maxWidth: proposal.width)
+        return CGSize(width: proposal.width ?? arrangement.width, height: arrangement.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let arrangement = arrange(sizes: sizes, maxWidth: bounds.width)
+
+        for index in subviews.indices {
+            subviews[index].place(
+                at: CGPoint(
+                    x: bounds.minX + arrangement.positions[index].x,
+                    y: bounds.minY + arrangement.positions[index].y
+                ),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(sizes[index])
+            )
+        }
+    }
+
+    private func arrange(sizes: [CGSize], maxWidth proposedWidth: CGFloat?) -> (positions: [CGPoint], width: CGFloat, height: CGFloat) {
+        let availableWidth = proposedWidth.map { max(0, $0) } ?? .greatestFiniteMagnitude
+        var positions: [CGPoint] = []
+        var rowX: CGFloat = 0
+        var rowY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var measuredWidth: CGFloat = 0
+
+        for size in sizes {
+            let itemWidth = min(size.width, availableWidth)
+            let itemX = rowX == 0 ? 0 : rowX + spacing
+
+            if rowX > 0, itemX + itemWidth > availableWidth {
+                measuredWidth = max(measuredWidth, rowX)
+                rowX = 0
+                rowY += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+
+            let placedX = rowX == 0 ? 0 : rowX + spacing
+            positions.append(CGPoint(x: placedX, y: rowY))
+            rowX = placedX + itemWidth
+            rowHeight = max(rowHeight, size.height)
+        }
+
+        measuredWidth = max(measuredWidth, rowX)
+        return (positions, measuredWidth, rowY + rowHeight)
+    }
 }
 
 private let connectionMinuteOptions: [Int] = [5, 10, 15, 20, 30, 45, 60, 90, 120]

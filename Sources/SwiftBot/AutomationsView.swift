@@ -530,7 +530,20 @@ struct AutomationEditTarget: Identifiable {
 struct AutomationsSection<Content: View>: View {
     let title: String
     let symbol: String
-    @ViewBuilder var content: Content
+    let minHeight: CGFloat?
+    let content: Content
+
+    init(
+        title: String,
+        symbol: String,
+        minHeight: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.symbol = symbol
+        self.minHeight = minHeight
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -544,7 +557,7 @@ struct AutomationsSection<Content: View>: View {
             content
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.035))

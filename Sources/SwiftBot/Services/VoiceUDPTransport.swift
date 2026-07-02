@@ -16,6 +16,13 @@ actor VoiceUDPTransport {
     private let queue: DispatchQueue
     private var ready: Bool = false
     private var readyWaiters: [CheckedContinuation<Void, Error>] = []
+    /// When the last datagram of any kind arrived (other members' RTP, probe
+    /// replies). Inbound traffic is the only proof the NAT mapping is alive —
+    /// outbound sends "succeed" locally even into a dead mapping.
+    private var lastInboundAt: ContinuousClock.Instant?
+    private var inboundMonitorActive = false
+    /// Callers waiting on a liveness-probe reply (see `probeLiveness`).
+    private var probeWaiters: [CheckedContinuation<Void, Error>] = []
 
     init(host: String, port: UInt16) {
         self.queue = DispatchQueue(label: "com.swiftbot.voice.udp")
@@ -40,11 +47,13 @@ actor VoiceUDPTransport {
         connection.stateUpdateHandler = nil
         connection.cancel()
         ready = false
+        inboundMonitorActive = false
         let waiters = readyWaiters
         readyWaiters.removeAll()
         for waiter in waiters {
             waiter.resume(throwing: VoicePipelineError.socketClosed)
         }
+        failProbeWaiters(with: VoicePipelineError.socketClosed)
     }
 
     /// Perform the 74-byte IP discovery handshake. Returns the bot's
@@ -94,6 +103,94 @@ actor VoiceUDPTransport {
                 }
             })
         }
+    }
+
+    // MARK: - Inbound liveness
+
+    /// Continuously read inbound datagrams, timestamping each one and
+    /// answering pending liveness probes when a discovery-type reply
+    /// (0x0002) arrives. Start after the initial IP discovery handshake so
+    /// the two receive paths never overlap.
+    func startInboundMonitor() {
+        guard !inboundMonitorActive else { return }
+        inboundMonitorActive = true
+        receiveNextInbound()
+    }
+
+    /// Seconds since any datagram arrived, or nil if none has been seen since
+    /// the monitor started.
+    func secondsSinceLastInbound() -> Double? {
+        guard let lastInboundAt else { return nil }
+        let elapsed = ContinuousClock().now - lastInboundAt
+        return Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
+    }
+
+    /// Round-trip liveness check of the UDP path: send an IP-discovery probe
+    /// (which Discord always answers) and wait for the reply. Throws
+    /// `VoicePipelineError.timeout` when the path is dead — e.g. an expired
+    /// NAT mapping that local sends can't detect.
+    func probeLiveness(ssrc: UInt32, timeout: Duration = .seconds(5)) async throws {
+        guard inboundMonitorActive else { throw VoicePipelineError.socketClosed }
+        let probe = Self.discoveryProbe(ssrc: ssrc)
+        let timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            await self?.failProbeWaiters(with: VoicePipelineError.timeout)
+        }
+        defer { timeoutTask.cancel() }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            probeWaiters.append(continuation)
+            connection.send(content: probe, completion: .contentProcessed { [weak self] error in
+                if let error {
+                    Task { await self?.failProbeWaiters(with: error) }
+                }
+            })
+        }
+    }
+
+    private static func discoveryProbe(ssrc: UInt32) -> Data {
+        var probe = Data(count: 74)
+        probe[0] = 0x00
+        probe[1] = 0x01
+        probe[2] = 0x00
+        probe[3] = 0x46
+        probe[4] = UInt8((ssrc >> 24) & 0xff)
+        probe[5] = UInt8((ssrc >> 16) & 0xff)
+        probe[6] = UInt8((ssrc >> 8) & 0xff)
+        probe[7] = UInt8(ssrc & 0xff)
+        return probe
+    }
+
+    private func receiveNextInbound() {
+        connection.receiveMessage { [weak self] data, _, _, error in
+            guard let self else { return }
+            Task { await self.handleInbound(data: data, error: error) }
+        }
+    }
+
+    private func handleInbound(data: Data?, error: NWError?) {
+        guard inboundMonitorActive else { return }
+        if error != nil {
+            inboundMonitorActive = false
+            failProbeWaiters(with: VoicePipelineError.socketClosed)
+            return
+        }
+        lastInboundAt = ContinuousClock().now
+        if let data, data.count >= 4,
+           data[data.startIndex] == 0x00, data[data.startIndex + 1] == 0x02 {
+            // IP-discovery response: answers an outstanding liveness probe.
+            let waiters = probeWaiters
+            probeWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
+        receiveNextInbound()
+    }
+
+    private func failProbeWaiters(with error: Error) {
+        let waiters = probeWaiters
+        probeWaiters.removeAll()
+        for waiter in waiters { waiter.resume(throwing: error) }
     }
 
     // MARK: - Private

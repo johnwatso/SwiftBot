@@ -384,6 +384,86 @@ final class TextChannelAnnouncerTests: XCTestCase {
     }
 
     @MainActor
+    func testUIReconnectPreparationArmsConfiguredAnnouncerFeed() async throws {
+        let app = AppModel()
+
+        app.settings.voice.guildID = ""
+        app.settings.voice.voiceChannelID = ""
+        app.settings.voice.watchedTextChannelID = ""
+        app.settings.voice.textChannelSourceEnabled = false
+        app.settings.voice.announcerConfigs = [
+            AnnouncerVoiceChannelConfig(
+                id: "config-1",
+                name: "General",
+                voiceChannelID: "voice-1",
+                voiceChannelName: "General",
+                readVoiceChannelChat: false,
+                textChannels: ["text-1"]
+            )
+        ]
+        app.availableVoiceChannelsByServer = [
+            "guild-1": [GuildVoiceChannel(id: "voice-1", name: "General")]
+        ]
+        app.availableTextChannelsByServer = [
+            "guild-1": [GuildTextChannel(id: "text-1", name: "announcements")]
+        ]
+
+        let target = await app.prepareAnnouncerConfigForUIReconnect(persist: false)
+
+        XCTAssertEqual(target?.guildID, "guild-1")
+        XCTAssertEqual(target?.channelID, "voice-1")
+        XCTAssertEqual(app.settings.voice.guildID, "guild-1")
+        XCTAssertEqual(app.settings.voice.voiceChannelID, "voice-1")
+        XCTAssertEqual(app.settings.voice.watchedTextChannelID, "text-1")
+        XCTAssertTrue(app.settings.voice.textChannelSourceEnabled)
+
+        app.voiceConnectionStatus = .connected
+        guard let announcer = app.voiceAnnouncementService else {
+            XCTFail("Expected voice announcement service")
+            return
+        }
+        await announcer.setPaused(true)
+
+        let event = GatewayMessageCreateEvent(
+            rawMap: [:],
+            content: "Message from the configured feed",
+            author: [:],
+            username: "Alice",
+            displayName: "Alice",
+            channelID: "text-1",
+            userID: "user-1",
+            guildID: "guild-1",
+            messageID: "msg-1",
+            isBot: false,
+            avatarHash: nil
+        )
+
+        await app.forwardMessageToVoiceAnnouncer(event)
+
+        let pending = await announcer.pending
+        XCTAssertEqual(pending.map(\.text), ["Alice: Message from the configured feed"])
+    }
+
+    @MainActor
+    func testPreservedVoiceDisconnectKeepsAnnouncerFeedArmed() async throws {
+        let app = AppModel()
+
+        app.settings.voice.guildID = ""
+        app.settings.voice.voiceChannelID = "voice-1"
+        app.settings.voice.watchedTextChannelID = "text-1"
+        app.settings.voice.textChannelSourceEnabled = true
+
+        _ = app.voicePlaybackService
+
+        await app.disconnectVoice(preserveAnnouncerSession: true)
+
+        XCTAssertEqual(app.settings.voice.voiceChannelID, "voice-1")
+        XCTAssertEqual(app.settings.voice.watchedTextChannelID, "text-1")
+        XCTAssertTrue(app.settings.voice.textChannelSourceEnabled)
+        XCTAssertEqual(app.voiceConnectionStatus, .recovering("Preparing a clean rejoin…"))
+    }
+
+    @MainActor
     func testAppModelQueuesMessagesWhileVoiceConnectionRecovers() async throws {
         let app = AppModel()
 
